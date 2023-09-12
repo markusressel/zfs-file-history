@@ -465,8 +465,9 @@ func (fileBrowser *FileBrowser) updateFileWatcher(path string) {
 	}
 	fileBrowser.fileWatcher = util.NewFileWatcher(path)
 	action := func(s string) {
-		fileBrowser.Refresh()
-		fileBrowser.application.ForceDraw()
+		fileBrowser.application.QueueUpdateDraw(func() {
+			fileBrowser.Refresh()
+		})
 	}
 	err := fileBrowser.fileWatcher.Watch(action)
 	if err != nil {
