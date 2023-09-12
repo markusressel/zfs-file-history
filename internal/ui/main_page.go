@@ -59,7 +59,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	windowLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	//dialog := createFileBrowserActionDialog()
 
-	windowLayout.AddItem(mainPage.fileBrowser.page, 0, 2, true)
+	windowLayout.AddItem(mainPage.fileBrowser.layout, 0, 2, true)
 
 	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 	infoLayout.AddItem(mainPage.datasetInfo.layout, 0, 1, false)

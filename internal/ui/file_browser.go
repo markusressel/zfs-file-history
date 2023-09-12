@@ -26,19 +26,24 @@ const (
 )
 
 type FileBrowser struct {
-	currentDataset       *zfs.Dataset
-	snapshots            []*zfs.Snapshot
-	currentSnapshot      *zfs.Snapshot
-	path                 string
+	path string
+
+	// TODO: move these to the paren/snapshot/dataset view
+	currentDataset  *zfs.Dataset
+	snapshots       []*zfs.Snapshot
+	currentSnapshot *zfs.Snapshot
+
+	filesInLatest        []string
 	fileEntries          []*FileBrowserEntry
 	fileSelection        *FileBrowserEntry
 	fileSelectionChanged chan *FileBrowserEntry
-	page                 *tview.Flex
-	fileTable            *tview.Table
-	filesInLatest        []string
-	selectionIndexMap    map[string]int
-	fileWatcher          *util.FileWatcher
-	application          *tview.Application
+
+	application *tview.Application
+	layout      *tview.Flex
+	fileTable   *tview.Table
+
+	selectionIndexMap map[string]int
+	fileWatcher       *util.FileWatcher
 }
 
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
@@ -126,7 +131,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 
 	fileBrowserLayout.AddItem(table, 0, 1, true)
 
-	fileBrowser.page = fileBrowserLayout
+	fileBrowser.layout = fileBrowserLayout
 }
 
 func (fileBrowser *FileBrowser) readDirectory(path string) {
