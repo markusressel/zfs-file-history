@@ -4,23 +4,46 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/zfs"
 )
 
 type MainPage struct {
-	application *tview.Application
-	fileBrowser *FileBrowser
-	layout      *tview.Flex
+	application     *tview.Application
+	fileBrowser     *FileBrowser
+	datasetInfo     *DatasetInfo
+	snapshotBrowser *SnapshotBrowser
+	layout          *tview.Flex
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
 	fileBrowser := NewFileBrowser(application, path)
 
+	datasetInfo := NewDatasetInfo(fileBrowser.application, fileBrowser.currentDataset)
+	snapshotBrowser := NewSnapshotBrowser(fileBrowser.application, fileBrowser.snapshots)
+
 	mainPage := &MainPage{
-		application: application,
-		fileBrowser: fileBrowser,
+		application:     application,
+		fileBrowser:     fileBrowser,
+		datasetInfo:     datasetInfo,
+		snapshotBrowser: snapshotBrowser,
 	}
 
 	mainPage.layout = mainPage.createLayout()
+	go func() {
+		for {
+			select {
+			case newSelection := <-fileBrowser.fileSelectionChanged:
+				snapshotsContainingSelection := []*zfs.Snapshot{}
+				if fileBrowser.fileSelection != nil {
+					for _, snapshot := range newSelection.Snapshots {
+						snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
+					}
+				}
+				snapshotBrowser.SetSnapshots(snapshotsContainingSelection)
+			}
+		}
+	}()
 
 	return mainPage
 }
@@ -28,17 +51,32 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 func (mainPage *MainPage) createLayout() *tview.Flex {
 	mainPageLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	//dialog := createFileBrowserActionDialog()
 	header := NewApplicationHeader()
-
 	mainPageLayout.AddItem(header.layout, 1, 0, false)
-	mainPageLayout.AddItem(mainPage.fileBrowser.page, 0, 1, true)
+
+	windowLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
+	//dialog := createFileBrowserActionDialog()
+
+	windowLayout.AddItem(mainPage.fileBrowser.page, 0, 2, true)
+
+	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
+	infoLayout.AddItem(mainPage.datasetInfo.layout, 0, 1, false)
+	infoLayout.AddItem(mainPage.snapshotBrowser.snapshotTable, 0, 2, false)
+	windowLayout.AddItem(infoLayout, 0, 1, false)
+
+	mainPageLayout.AddItem(windowLayout, 0, 1, true)
 
 	return mainPageLayout
 }
 
 func (mainPage *MainPage) ToggleFocus() {
-
+	if mainPage.fileBrowser.HasFocus() {
+		mainPage.snapshotBrowser.Focus()
+	} else if mainPage.snapshotBrowser.HasFocus() {
+		mainPage.fileBrowser.Focus()
+	} else {
+		logging.Fatal("Unexpected focus state")
+	}
 }
 
 func createFileBrowserActionDialog() tview.Primitive {

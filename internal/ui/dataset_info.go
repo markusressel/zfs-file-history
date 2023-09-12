@@ -8,14 +8,19 @@ import (
 type DatasetInfo struct {
 	application         *tview.Application
 	dataset             *zfs.Dataset
+	layout              *tview.Flex
 	datasetPathTextView *tview.TextView
 }
 
 func NewDatasetInfo(application *tview.Application, dataset *zfs.Dataset) *DatasetInfo {
-	return &DatasetInfo{
+	datasetInfo := &DatasetInfo{
 		application: application,
 		dataset:     dataset,
 	}
+
+	datasetInfo.createLayout()
+
+	return datasetInfo
 }
 
 func (datasetInfo *DatasetInfo) SetDataset(dataset *zfs.Dataset) {
@@ -26,6 +31,8 @@ func (datasetInfo *DatasetInfo) createLayout() *tview.Flex {
 	layout := tview.NewFlex().SetDirection(tview.FlexRow)
 	layout.SetBorder(true)
 	layout.SetTitle(" Dataset ")
+
+	datasetInfo.layout = layout
 
 	datasetPath := tview.NewTextView()
 	datasetInfo.datasetPathTextView = datasetPath

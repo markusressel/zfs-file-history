@@ -26,25 +26,25 @@ const (
 )
 
 type FileBrowser struct {
-	currentDataset    *zfs.Dataset
-	snapshots         []*zfs.Snapshot
-	currentSnapshot   *zfs.Snapshot
-	path              string
-	fileEntries       []*FileBrowserEntry
-	fileSelection     *FileBrowserEntry
-	page              *tview.Flex
-	fileTable         *tview.Table
-	filesInLatest     []string
-	selectionIndexMap map[string]int
-	fileWatcher       *util.FileWatcher
-	application       *tview.Application
-	datasetInfoBox    *DatasetInfo
-	snapshotsInfoBox  *SnapshotInfo
+	currentDataset       *zfs.Dataset
+	snapshots            []*zfs.Snapshot
+	currentSnapshot      *zfs.Snapshot
+	path                 string
+	fileEntries          []*FileBrowserEntry
+	fileSelection        *FileBrowserEntry
+	fileSelectionChanged chan *FileBrowserEntry
+	page                 *tview.Flex
+	fileTable            *tview.Table
+	filesInLatest        []string
+	selectionIndexMap    map[string]int
+	fileWatcher          *util.FileWatcher
+	application          *tview.Application
 }
 
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 	fileBrowser := &FileBrowser{
-		application: application,
+		application:          application,
+		fileSelectionChanged: make(chan *FileBrowserEntry),
 	}
 
 	fileBrowser.SetPath(path)
@@ -64,14 +64,6 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 
 	// TODO: insert "/.." cell, if path is not /
 	// TODO: use arrow keys to navigate up and down the paths
-
-	datasetInfoBox := NewDatasetInfo(fileBrowser.application, fileBrowser.currentDataset)
-	fileBrowser.datasetInfoBox = datasetInfoBox
-	datasetInfoBoxLayout := datasetInfoBox.createLayout()
-
-	snapshotsInfoBox := NewSnapshotInfo(fileBrowser.application, fileBrowser.snapshots)
-	fileBrowser.snapshotsInfoBox = snapshotsInfoBox
-	snapshotsInfoBoxLayout := snapshotsInfoBox.Layout()
 
 	table := tview.NewTable()
 	fileBrowser.fileTable = table
@@ -94,19 +86,16 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
 		selectionIndex := util.Coerce(row-1, -1, len(fileBrowser.fileEntries)-1)
+		var newSelection *FileBrowserEntry
 		if selectionIndex < 0 {
-			fileBrowser.fileSelection = nil
+			newSelection = nil
 		} else {
-			fileBrowser.fileSelection = fileBrowser.fileEntries[selectionIndex]
+			newSelection = fileBrowser.fileEntries[selectionIndex]
 		}
-
-		snapshotsContainingSelection := []*zfs.Snapshot{}
-		if fileBrowser.fileSelection != nil {
-			for _, snapshot := range fileBrowser.fileSelection.Snapshots {
-				snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
-			}
-		}
-		snapshotsInfoBox.SetSnapshots(snapshotsContainingSelection)
+		fileBrowser.fileSelection = newSelection
+		go func() {
+			fileBrowser.fileSelectionChanged <- newSelection
+		}()
 
 		fileBrowser.setSelectionIndex(fileBrowser.path, row)
 	})
@@ -125,8 +114,6 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 			return nil
 		} else if key == tcell.KeyCtrlR {
 			fileBrowser.Refresh()
-		} else if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
-			fileBrowser.ToggleFocus()
 		}
 		return event
 	})
@@ -137,12 +124,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 		}
 	})
 
-	fileBrowserLayout.AddItem(table, 0, 2, true)
-
-	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-	infoLayout.AddItem(datasetInfoBoxLayout, 0, 1, false)
-	infoLayout.AddItem(snapshotsInfoBoxLayout, 0, 1, false)
-	fileBrowserLayout.AddItem(infoLayout, 0, 1, false)
+	fileBrowserLayout.AddItem(table, 0, 1, true)
 
 	fileBrowser.page = fileBrowserLayout
 }
@@ -489,10 +471,6 @@ func (fileBrowser *FileBrowser) ListIsEmpty() bool {
 	return len(fileBrowser.fileEntries) <= 0
 }
 
-func (fileBrowser *FileBrowser) ToggleFocus() {
-	if fileBrowser.fileTable.HasFocus() {
-		fileBrowser.snapshotsInfoBox.Focus()
-	} else {
-		fileBrowser.application.SetFocus(fileBrowser.fileTable)
-	}
+func (fileBrowser *FileBrowser) HasFocus() bool {
+	return fileBrowser.fileTable.HasFocus()
 }
