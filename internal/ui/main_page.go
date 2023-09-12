@@ -36,6 +36,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		for {
 			select {
 			case newSelection := <-fileBrowser.fileSelectionChanged:
+				// update Snapshot Browser path
 				snapshotsContainingSelection := []*zfs.Snapshot{}
 				if fileBrowser.fileSelection != nil {
 					for _, snapshot := range newSelection.Snapshots {
@@ -43,6 +44,9 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 					}
 				}
 				snapshotBrowser.SetSnapshots(snapshotsContainingSelection)
+
+				// update Dataset Info path
+				datasetInfo.SetPath(newSelection.Path)
 			}
 		}
 	}()

@@ -40,6 +40,19 @@ func FindHostDataset(path string) (*Dataset, error) {
 
 	var currentPath = path
 	for dataset == nil {
+		for {
+			stat, err := os.Stat(path)
+			if err != nil {
+				return nil, err
+			}
+			if !stat.IsDir() {
+				currentPath = path2.Dir(currentPath)
+				continue
+			} else {
+				break
+			}
+		}
+
 		pathToTest := path2.Join(currentPath, ".zfs")
 		_, err := os.Stat(pathToTest)
 		if os.IsNotExist(err) {

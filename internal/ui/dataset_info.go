@@ -5,6 +5,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -25,8 +26,19 @@ func NewDatasetInfo(application *tview.Application, dataset *zfs.Dataset) *Datas
 	return datasetInfo
 }
 
+func (datasetInfo *DatasetInfo) SetPath(path string) {
+	dataset, err := zfs.FindHostDataset(path)
+	if err == nil {
+		datasetInfo.SetDataset(dataset)
+	} else {
+		logging.Error(err.Error())
+		datasetInfo.SetDataset(nil)
+	}
+}
+
 func (datasetInfo *DatasetInfo) SetDataset(dataset *zfs.Dataset) {
 	datasetInfo.dataset = dataset
+	datasetInfo.updateUi()
 }
 
 type DatasetInfoTableEntry struct {
