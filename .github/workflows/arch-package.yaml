@@ -1,0 +1,25 @@
+name: Arch AUR Package
+
+on:
+  push:
+    tags:
+      - '*.*.*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  publish-aur-git-package:
+    name: Update AUR *-git package revision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v3
+
+      - name: Clone AUR repo
+        run: git clone ssh://aur@aur.archlinux.org/zfs-file-history-git.git
+
+      - name: Update, commit and push
+        run: |
+          cd zfs-file-history-git
+          makepkg
+          makepkg --printsrcinfo > .SRCINFO
+          git add PKGBUILD .SRCINFO
+          git commit -m "Release $TAG"
