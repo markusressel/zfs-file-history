@@ -36,10 +36,14 @@ type FileBrowser struct {
 	table             *tview.Table
 	filesInLatest     []string
 	selectionIndexMap map[string]int
+	fileWatcher       *util.FileWatcher
+	application       *tview.Application
 }
 
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
-	fileBrowser := &FileBrowser{}
+	fileBrowser := &FileBrowser{
+		application: application,
+	}
 
 	fileBrowser.SetPath(path)
 	fileBrowser.Layout(application)
@@ -107,7 +111,7 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 			}
 			return nil
 		} else if key == tcell.KeyLeft {
-			if fileBrowser.fileSelection != nil {
+			if fileBrowser.fileSelection != nil || fileBrowser.ListIsEmpty() {
 				fileBrowser.goUp()
 			}
 			return nil
@@ -241,6 +245,8 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 	fileBrowser.updateZfsInfo()
 	fileBrowser.readDirectory(fileBrowser.path)
 	fileBrowser.updateTableContents()
+
+	fileBrowser.updateFileWatcher(newPath)
 }
 
 func (fileBrowser *FileBrowser) openActionDialog(selection string) {
@@ -391,7 +397,14 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 	}
 
 	table.ScrollToBeginning()
-	fileBrowser.table.Select(fileBrowser.getSelectionIndex(fileBrowser.path), 0)
+
+	var selectionIndex int
+	if fileBrowser.ListIsEmpty() {
+		selectionIndex = 0
+	} else {
+		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
+	}
+	fileBrowser.table.Select(selectionIndex, 0)
 }
 
 func (fileBrowser *FileBrowser) SelectEntry(i int) {
@@ -443,4 +456,24 @@ func (fileBrowser *FileBrowser) setSelectionIndex(path string, index int) {
 
 func (fileBrowser *FileBrowser) Refresh() {
 	fileBrowser.SetPath(fileBrowser.path)
+}
+
+func (fileBrowser *FileBrowser) updateFileWatcher(path string) {
+	if fileBrowser.fileWatcher != nil {
+		fileBrowser.fileWatcher.Stop()
+		fileBrowser.fileWatcher = nil
+	}
+	fileBrowser.fileWatcher = util.NewFileWatcher(path)
+	action := func(s string) {
+		fileBrowser.Refresh()
+		fileBrowser.application.ForceDraw()
+	}
+	err := fileBrowser.fileWatcher.Watch(action)
+	if err != nil {
+		logging.Fatal(err.Error())
+	}
+}
+
+func (fileBrowser *FileBrowser) ListIsEmpty() bool {
+	return len(fileBrowser.fileEntries) <= 0
 }
