@@ -6,7 +6,7 @@ type DialogOption struct {
 	Name string
 }
 
-func createModal(title string, content tview.Primitive, width, height int) *tview.Flex {
+func createModal(title string, content tview.Primitive, width int, height int) *tview.Flex {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
 	dialogFrame.SetTitle(title)

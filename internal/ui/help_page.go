@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/rivo/tview"
+import (
+	"fmt"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
 
 type HelpPage struct {
 	layout *tview.Flex
@@ -14,11 +18,46 @@ func NewHelpPage() *HelpPage {
 	return helpPage
 }
 
-func (p HelpPage) createLayout() {
-	someText := tview.NewTextView().SetText("ABC")
+type TableEntry struct {
+	Key   string
+	Value string
+}
 
-	pageContent := tview.NewFlex().
-		AddItem(someText, 40, 0, false)
-	p.layout = pageContent
-	// createModal("Help", pageContent, 80, 80)
+func (p *HelpPage) createLayout() {
+	helpTable := tview.NewTable()
+
+	helpTableEntries := []*TableEntry{
+		{Key: "up, k", Value: "Move cursor up"},
+		{Key: "down, j", Value: "Move cursor down"},
+		{Key: "left, h", Value: "Open parent directory"},
+		{Key: "right", Value: "Open selected directory"},
+		{Key: "tab, backtab", Value: "Switch focus"},
+	}
+
+	columns, rows := 2, len(helpTableEntries)
+	for row := 0; row < rows; row++ {
+		for column := 0; column < columns; column++ {
+			entry := helpTableEntries[row]
+
+			for col := 0; col < columns; col++ {
+				var text string
+				var cellAlignment int
+				var cellColor = tcell.ColorWhite
+				if col == 0 {
+					text = fmt.Sprintf("%s:", entry.Key)
+					cellAlignment = tview.AlignRight
+					cellColor = tcell.ColorSteelBlue
+				} else {
+					text = entry.Value
+					cellAlignment = tview.AlignLeft
+				}
+				helpTable.SetCell(
+					row, col,
+					tview.NewTableCell(text).SetAlign(cellAlignment).SetTextColor(cellColor),
+				)
+			}
+		}
+	}
+
+	p.layout = createModal(" Help ", helpTable, 40, 10)
 }
