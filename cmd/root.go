@@ -17,6 +17,7 @@ var rootCmd = &cobra.Command{
 	Use:   "zfs-file-history",
 	Short: "Easily recover snapshotted versions of files on your ZFS dataset.",
 	Long:  ``,
+	Args:  cobra.MaximumNArgs(1),
 	// this is the default command to run when no subcommand is specified
 	Run: func(cmd *cobra.Command, args []string) {
 		configPath := configuration.DetectAndReadConfigFile()
@@ -28,12 +29,18 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		currentWorkingDirectory, err := os.Getwd()
-		if err != nil {
-			log.Fatal(err)
+		var path string
+		if len(args) > 0 {
+			path = args[0]
+		} else {
+			currentWorkingDirectory, err := os.Getwd()
+			if err != nil {
+				log.Fatal(err)
+			}
+			path = currentWorkingDirectory
 		}
 
-		internal.RunApplication(currentWorkingDirectory)
+		internal.RunApplication(path)
 	},
 }
 

@@ -24,10 +24,11 @@ type FileBrowser struct {
 	table           *tview.Table
 }
 
-func NewFileBrowser(path string) *FileBrowser {
+func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 	fileBrowser := FileBrowser{}
 
 	fileBrowser.SetPath(path)
+	fileBrowser.Layout(application)
 
 	return &fileBrowser
 }
@@ -46,7 +47,7 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 
 	table := tview.NewTable()
 	table.SetBorder(true)
-	table.SetBorders(true)
+	table.SetBorders(false)
 	table.SetBorderPadding(0, 0, 1, 1)
 
 	// fixed header row
@@ -223,7 +224,8 @@ func (fileBrowser *FileBrowser) readDirectory(path string) (mergedFileEntries []
 
 		stat, err := os.Stat(file)
 		if err != nil {
-			logging.Fatal(err.Error())
+			logging.Error(err.Error())
+			continue
 		}
 
 		matchingFilesInSnapshots := []*FileBrowserFileSnapshotEntry{}
@@ -233,7 +235,8 @@ func (fileBrowser *FileBrowser) readDirectory(path string) (mergedFileEntries []
 			if os.IsNotExist(err) {
 				continue
 			} else if err != nil {
-				logging.Fatal(err.Error())
+				logging.Error(err.Error())
+				continue
 			} else {
 				matchingFilesInSnapshots = append(matchingFilesInSnapshots, &FileBrowserFileSnapshotEntry{
 					Path:         snapshotPath,
@@ -265,6 +268,8 @@ func (fileBrowser *FileBrowser) readDirectory(path string) (mergedFileEntries []
 			}
 		}
 	})
+
+	fileBrowser.fileSelection = mergedFileEntries[0]
 
 	return mergedFileEntries, latestFiles
 }
