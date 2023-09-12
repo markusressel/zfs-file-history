@@ -127,38 +127,6 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 	fileBrowser.page = fileBrowserLayout
 }
 
-func (fileBrowser *FileBrowser) createSnapshotsInfoBox() *tview.Flex {
-	layout := tview.NewFlex().SetDirection(tview.FlexRow)
-	layout.SetBorder(true)
-	layout.SetTitle(" Snapshots ")
-
-	snapshots := fileBrowser.snapshots
-	for _, snapshot := range snapshots {
-		datasetPath := tview.NewTextView().SetText(snapshot.Name)
-		layout.AddItem(datasetPath, 0, 1, false)
-	}
-	return layout
-}
-
-type FileBrowserFileSnapshotEntry struct {
-	Path         string
-	OriginalPath string
-	Stat         os.FileInfo
-	Snapshot     *zfs.Snapshot
-}
-
-type FileBrowserEntry struct {
-	Name         string
-	Path         string
-	Stat         os.FileInfo
-	SnapshotOnly bool
-	Snapshots    []*FileBrowserFileSnapshotEntry
-}
-
-func (fileBrowserEntry *FileBrowserEntry) HasSnapshots() bool {
-	return len(fileBrowserEntry.Snapshots) > 0
-}
-
 func (fileBrowser *FileBrowser) readDirectory(path string) {
 	// TODO: list latestFiles and directories in "real" $path as well as all (or a small subset) of the snaphots in a merged view, with an indication of
 	//  - whether the file was deleted (compared to the "real" state)
@@ -183,9 +151,9 @@ func (fileBrowser *FileBrowser) readDirectory(path string) {
 			continue
 		}
 
-		matchingFilesInSnapshots := []*FileBrowserFileSnapshotEntry{}
+		matchingFilesInSnapshots := []*zfs.SnapshotFile{}
 		for _, snapshot := range fileBrowser.snapshots {
-			snapshotPath := snapshot.GetPath(file)
+			snapshotPath := snapshot.GetSnapshotPath(file)
 			stat, err := os.Stat(snapshotPath)
 			if os.IsNotExist(err) {
 				continue
@@ -193,7 +161,7 @@ func (fileBrowser *FileBrowser) readDirectory(path string) {
 				logging.Error(err.Error())
 				continue
 			} else {
-				matchingFilesInSnapshots = append(matchingFilesInSnapshots, &FileBrowserFileSnapshotEntry{
+				matchingFilesInSnapshots = append(matchingFilesInSnapshots, &zfs.SnapshotFile{
 					Path:         snapshotPath,
 					OriginalPath: file,
 					Stat:         stat,
@@ -264,7 +232,7 @@ func (fileBrowser *FileBrowser) openActionDialog(selection string) {
 
 }
 
-func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *FileBrowserEntry, snapshotFile *FileBrowserFileSnapshotEntry) bool {
+func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *FileBrowserEntry, snapshotFile *zfs.SnapshotFile) bool {
 	return originalFile.Stat.IsDir() != snapshotFile.Stat.IsDir() ||
 		originalFile.Stat.Mode() != snapshotFile.Stat.Mode() ||
 		originalFile.Stat.ModTime() != snapshotFile.Stat.ModTime() ||

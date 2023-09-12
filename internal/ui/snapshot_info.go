@@ -2,6 +2,8 @@ package ui
 
 import (
 	"github.com/rivo/tview"
+	"golang.org/x/exp/slices"
+	"strings"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -26,7 +28,10 @@ func (snapshotInfo *SnapshotInfo) Layout() *tview.Table {
 }
 
 func (snapshotInfo *SnapshotInfo) SetSnapshots(snapshots []*zfs.Snapshot) {
-	snapshotInfo.snapshots = snapshots
+	snapshotInfo.snapshots = slices.Clone(snapshots)
+	slices.SortFunc(snapshotInfo.snapshots, func(a, b *zfs.Snapshot) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 	snapshotInfo.updateUi()
 }
 
