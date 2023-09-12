@@ -10,6 +10,7 @@ import (
 	"os"
 	path2 "path"
 	"strings"
+	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -383,7 +384,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				cellColor = statusColor
 				cellAlignment = tview.AlignCenter
 			} else if columnTitle == ModTime {
-				cellText = currentFilePath.Stat.ModTime().Format("2006-01-02 15:01:05")
+				cellText = currentFilePath.Stat.ModTime().Format(time.DateTime)
 			} else if columnTitle == Size {
 				cellText = humanize.IBytes(uint64(currentFilePath.Stat.Size()))
 				if strings.HasSuffix(cellText, " B") {
