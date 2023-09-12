@@ -73,14 +73,18 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 	table.Select(0, 0)
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
-		fileBrowser.fileSelection = fileBrowser.fileEntries[row]
+		selectionIndex := util.Coerce(row-1, -1, len(fileBrowser.fileEntries)-1)
+		if selectionIndex < 0 {
+			fileBrowser.fileSelection = nil
+		} else {
+			fileBrowser.fileSelection = fileBrowser.fileEntries[selectionIndex]
+		}
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if key == tcell.KeyRight {
 			fileBrowser.SetPath(fileBrowser.fileSelection.Path)
-			fileBrowser.updateTableContents()
 			return nil
 		} else if key == tcell.KeyLeft {
 			fileBrowser.goUp()
@@ -278,9 +282,42 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 	table.Clear()
 
-	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)
+	table.SetTitle(fileBrowser.path)
+
+	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)+1
 	fileIndex := 0
 	for row := 0; row < rows; row++ {
+		if (row) == 0 {
+			// Draw Table Column Headers
+			for column := 0; column < cols; column++ {
+				columnTitle := columnTitles[column]
+				var cellColor = tcell.ColorWhite
+				var cellText string
+				var cellAlignment = tview.AlignLeft
+				var cellExpansion = 0
+
+				if columnTitle == Name {
+					cellText = "Name"
+				} else if columnTitle == Status {
+					cellText = "Status"
+					cellAlignment = tview.AlignCenter
+				} else if columnTitle == Size {
+					cellText = "Size"
+					cellAlignment = tview.AlignCenter
+				} else {
+					panic("Unknown column")
+				}
+
+				table.SetCell(row, column,
+					tview.NewTableCell(cellText).
+						SetTextColor(cellColor).
+						SetAlign(cellAlignment).
+						SetExpansion(cellExpansion),
+				)
+			}
+			continue
+		}
+
 		currentFilePath := fileBrowser.fileEntries[fileIndex]
 
 		var status = "U"
@@ -341,6 +378,8 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 		}
 		fileIndex = (fileIndex + 1) % rows
 	}
+
+	table.ScrollToBeginning()
 }
 
 func (fileBrowser *FileBrowser) SelectEntry(i int) {

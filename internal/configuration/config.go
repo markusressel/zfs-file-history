@@ -25,7 +25,7 @@ func InitConfig(cfgFile string) {
 		// Find home directory.
 		home, err := homedir.Dir()
 		if err != nil {
-			logging.ErrorAndNotify("Path Error", "Couldn't detect home directory: %v", err)
+			logging.Error("Path Error", "Couldn't detect home directory: %v", err)
 			os.Exit(1)
 		}
 

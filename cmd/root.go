@@ -25,7 +25,7 @@ var rootCmd = &cobra.Command{
 		configuration.LoadConfig()
 		err := configuration.Validate(configPath)
 		if err != nil {
-			logging.ErrorAndNotify("Config Validation Error", err.Error())
+			logging.Error("Config Validation Error", err.Error())
 			return
 		}
 

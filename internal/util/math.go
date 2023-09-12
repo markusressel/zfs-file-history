@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"golang.org/x/exp/constraints"
 	"sort"
 	"strconv"
 	"zfs-file-history/internal/logging"
@@ -12,7 +13,7 @@ const (
 )
 
 // Coerce returns a value that is at least min and at most max, otherwise value
-func Coerce(value float64, min float64, max float64) float64 {
+func Coerce[T constraints.Ordered](value T, min T, max T) T {
 	if value > max {
 		return max
 	}
