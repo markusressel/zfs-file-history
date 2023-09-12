@@ -13,7 +13,7 @@ type Dataset struct {
 }
 
 // FindHostDataset returns the root path of the dataset containing this path
-func FindHostDataset(path string) *Dataset {
+func FindHostDataset(path string) (*Dataset, error) {
 	var dataset *string = nil
 
 	var currentPath = path
@@ -26,13 +26,15 @@ func FindHostDataset(path string) *Dataset {
 			currentPath = dir
 			continue
 
+		} else if os.IsPermission(err) {
+			return nil, err
 		} else if err != nil {
-			logging.Fatal(err.Error())
+			return nil, err
 		} else {
 			return &Dataset{
 				Path:          currentPath,
 				HiddenZfsPath: pathToTest,
-			}
+			}, nil
 		}
 	}
 

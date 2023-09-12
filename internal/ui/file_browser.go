@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
@@ -23,15 +24,16 @@ const (
 )
 
 type FileBrowser struct {
-	currentDataset  *zfs.Dataset
-	snapshots       []*zfs.Snapshot
-	currentSnapshot *zfs.Snapshot
-	path            string
-	fileEntries     []*FileBrowserEntry
-	fileSelection   *FileBrowserEntry
-	page            *tview.Flex
-	table           *tview.Table
-	filesInLatest   []string
+	currentDataset    *zfs.Dataset
+	snapshots         []*zfs.Snapshot
+	currentSnapshot   *zfs.Snapshot
+	path              string
+	fileEntries       []*FileBrowserEntry
+	fileSelection     *FileBrowserEntry
+	page              *tview.Flex
+	table             *tview.Table
+	filesInLatest     []string
+	selectionIndexMap map[string]int
 }
 
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
@@ -70,7 +72,8 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 
 	table.SetSelectable(true, false)
 	// TODO: remember the selected index for a given path and automatically update the fileSelection when entering and exiting a path
-	table.Select(0, 0)
+	selectionIndex := fileBrowser.getSelectionIndex(fileBrowser.path)
+	table.Select(selectionIndex+1, 0)
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
 		selectionIndex := util.Coerce(row-1, -1, len(fileBrowser.fileEntries)-1)
@@ -79,6 +82,7 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 		} else {
 			fileBrowser.fileSelection = fileBrowser.fileEntries[selectionIndex]
 		}
+		fileBrowser.setSelectionIndex(fileBrowser.path, row)
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -160,7 +164,10 @@ func (fileBrowser *FileBrowser) readDirectory(path string) {
 	//  - how many versions there are of this file in snapshots
 
 	latestFiles, err := util.ListFilesIn(path)
-	if err != nil {
+	if os.IsPermission(err) {
+		fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
+		return
+	} else if err != nil {
 		logging.Fatal("Cannot list path: %s", err.Error())
 	}
 	mergedFileList := util.UniqueSlice(latestFiles)
@@ -218,6 +225,7 @@ func (fileBrowser *FileBrowser) GetView() {
 
 func (fileBrowser *FileBrowser) goUp() {
 	fileBrowser.SetPath(path2.Dir(fileBrowser.path))
+	// TODO: figure out the list index of the folder in the parent directoy and select it accordingly
 }
 
 func (fileBrowser *FileBrowser) enterDir(name string) {
@@ -230,16 +238,25 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 	if err != nil {
 		logging.Error(err.Error())
 		// cannot enter path, ignoring
-	} else if !stat.IsDir() {
+		return
+	}
+
+	if !stat.IsDir() {
 		logging.Warning("Tried to enter path which is not a directory: %s", newPath)
 		fileBrowser.SetPath(path2.Dir(newPath))
 		return
-	} else {
-		fileBrowser.path = newPath
-		fileBrowser.updateZfsInfo()
-		fileBrowser.readDirectory(fileBrowser.path)
-		fileBrowser.updateTableContents()
 	}
+
+	_, err = os.ReadDir(newPath)
+	if err != nil {
+		logging.Error(err.Error())
+		return
+	}
+
+	fileBrowser.path = newPath
+	fileBrowser.updateZfsInfo()
+	fileBrowser.readDirectory(fileBrowser.path)
+	fileBrowser.updateTableContents()
 }
 
 func (fileBrowser *FileBrowser) openActionDialog(selection string) {
@@ -259,12 +276,18 @@ func (fileBrowser *FileBrowser) updateSelectedSnapshot(index int) {
 }
 
 func (fileBrowser *FileBrowser) updateZfsInfo() {
-	fileBrowser.currentDataset = zfs.FindHostDataset(fileBrowser.path)
-	snapshots, err := fileBrowser.currentDataset.GetSnapshots()
-	if err != nil {
-		logging.Fatal(err.Error())
+	fileBrowser.currentDataset, _ = zfs.FindHostDataset(fileBrowser.path)
+
+	if fileBrowser.currentDataset != nil {
+		snapshots, err := fileBrowser.currentDataset.GetSnapshots()
+		if err != nil {
+			logging.Fatal(err.Error())
+		}
+		fileBrowser.snapshots = snapshots
+	} else {
+		fileBrowser.snapshots = []*zfs.Snapshot{}
 	}
-	fileBrowser.snapshots = snapshots
+
 	if len(fileBrowser.snapshots) > 0 {
 		fileBrowser.currentSnapshot = fileBrowser.snapshots[0]
 	} else {
@@ -380,6 +403,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 	}
 
 	table.ScrollToBeginning()
+	fileBrowser.table.Select(fileBrowser.getSelectionIndex(fileBrowser.path), 0)
 }
 
 func (fileBrowser *FileBrowser) SelectEntry(i int) {
@@ -402,4 +426,28 @@ func (fileBrowser *FileBrowser) SortEntries() {
 			}
 		}
 	})
+}
+
+func (fileBrowser *FileBrowser) showError(err error) {
+	fileBrowser.table.SetTitle(err.Error())
+}
+
+func (fileBrowser *FileBrowser) getSelectionIndex(path string) int {
+	if fileBrowser.selectionIndexMap == nil {
+		fileBrowser.selectionIndexMap = map[string]int{}
+	}
+
+	index := fileBrowser.selectionIndexMap[path]
+	if index <= 1 {
+		return 1
+	} else {
+		return index
+	}
+}
+
+func (fileBrowser *FileBrowser) setSelectionIndex(path string, index int) {
+	if fileBrowser.selectionIndexMap == nil {
+		fileBrowser.selectionIndexMap = map[string]int{}
+	}
+	fileBrowser.selectionIndexMap[path] = index
 }
