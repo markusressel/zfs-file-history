@@ -1,6 +1,7 @@
 package zfs
 
 import (
+	gozfs "github.com/mistifyio/go-zfs"
 	"os"
 	path2 "path"
 	"zfs-file-history/internal/logging"
@@ -10,6 +11,27 @@ import (
 type Dataset struct {
 	Path          string
 	HiddenZfsPath string
+	Properties    *gozfs.Dataset
+}
+
+func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
+	dataset := &Dataset{
+		Path:          path,
+		HiddenZfsPath: hiddenZfsPath,
+	}
+
+	datasets, err := gozfs.Filesystems(path)
+	if err != nil {
+		return dataset, err
+	}
+	for _, d := range datasets {
+		if d.Mountpoint == path {
+			dataset.Properties = d
+			break
+		}
+	}
+
+	return dataset, nil
 }
 
 // FindHostDataset returns the root path of the dataset containing this path
@@ -31,10 +53,7 @@ func FindHostDataset(path string) (*Dataset, error) {
 		} else if err != nil {
 			return nil, err
 		} else {
-			return &Dataset{
-				Path:          currentPath,
-				HiddenZfsPath: pathToTest,
-			}, nil
+			return NewDataset(currentPath, pathToTest)
 		}
 	}
 

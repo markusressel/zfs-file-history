@@ -4,7 +4,9 @@ go 1.21
 
 require (
 	github.com/dustin/go-humanize v1.0.1
+	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gdamore/tcell/v2 v2.6.0
+	github.com/mistifyio/go-zfs v2.1.1+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pterm/pterm v0.12.67
 	github.com/rivo/tview v0.0.0-20230909130259-ba6a2a345459
@@ -20,7 +22,6 @@ require (
 	atomicgo.dev/schedule v0.1.0 // indirect
 	github.com/containerd/console v1.0.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
