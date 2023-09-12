@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"github.com/dustin/go-humanize"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/zfs"
@@ -93,7 +94,7 @@ func (datasetInfo *DatasetInfo) updateUi() {
 			var text string
 			var cellAlignment int
 			if col == 0 {
-				text = entry.Name
+				text = fmt.Sprintf("%s:", entry.Name)
 				cellAlignment = tview.AlignRight
 			} else {
 				text = entry.Value
