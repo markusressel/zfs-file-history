@@ -102,10 +102,14 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if key == tcell.KeyRight {
-			fileBrowser.SetPath(fileBrowser.fileSelection.Path)
+			if fileBrowser.fileSelection != nil {
+				fileBrowser.SetPath(fileBrowser.fileSelection.Path)
+			}
 			return nil
 		} else if key == tcell.KeyLeft {
-			fileBrowser.goUp()
+			if fileBrowser.fileSelection != nil {
+				fileBrowser.goUp()
+			}
 			return nil
 		} else if key == tcell.KeyCtrlR {
 			fileBrowser.Refresh()
