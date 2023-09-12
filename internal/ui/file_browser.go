@@ -39,13 +39,13 @@ type FileBrowser struct {
 }
 
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
-	fileBrowser := FileBrowser{}
+	fileBrowser := &FileBrowser{}
 
 	fileBrowser.SetPath(path)
 	fileBrowser.Layout(application)
 	fileBrowser.updateTableContents()
 
-	return &fileBrowser
+	return fileBrowser
 }
 
 func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
@@ -89,8 +89,10 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 		}
 
 		snapshotsContainingSelection := []*zfs.Snapshot{}
-		for _, snapshot := range fileBrowser.fileSelection.Snapshots {
-			snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
+		if fileBrowser.fileSelection != nil {
+			for _, snapshot := range fileBrowser.fileSelection.Snapshots {
+				snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
+			}
 		}
 		snapshotsInfoBox.SetSnapshots(snapshotsContainingSelection)
 
@@ -170,14 +172,14 @@ func (fileBrowser *FileBrowser) readDirectory(path string) {
 			}
 		}
 
-		mergedFileEntries = append(mergedFileEntries, &FileBrowserEntry{
-			Name: name,
-			Stat: stat,
-			Path: file,
-			// TODO: include entries for items, which are only found in a snapshot
-			SnapshotOnly: false,
-			Snapshots:    matchingFilesInSnapshots,
-		})
+		mergedFileEntries = append(
+			mergedFileEntries,
+			NewFileBrowserEntry(
+				name, file, stat,
+				// TODO: include entries for items, which are only found in a snapshot
+				false, matchingFilesInSnapshots,
+			),
+		)
 	}
 
 	fileBrowser.fileEntries = mergedFileEntries

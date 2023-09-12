@@ -10,8 +10,10 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 
 	rootLayout := createRootLayout()
 
+	header := NewApplicationHeader()
 	fileBrowser := NewFileBrowser(application, path)
 
+	rootLayout.AddItem(header.layout, 1, 0, false)
 	rootLayout.AddItem(fileBrowser.page, 0, 1, true)
 
 	rootLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -26,8 +28,6 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 }
 
 func createRootLayout() *tview.Flex {
-	rootLayout := tview.NewFlex()
-	rootLayout.SetBorder(true)
-	rootLayout.SetTitle("  zfs-file-history  ")
+	rootLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 	return rootLayout
 }
