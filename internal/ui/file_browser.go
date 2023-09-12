@@ -190,8 +190,6 @@ func (fileBrowser *FileBrowser) readDirectory(path string) {
 	fileBrowser.filesInLatest = latestFiles
 
 	fileBrowser.SortEntries()
-
-	fileBrowser.SelectEntry(0)
 }
 
 func (fileBrowser *FileBrowser) GetView() {
@@ -199,13 +197,24 @@ func (fileBrowser *FileBrowser) GetView() {
 }
 
 func (fileBrowser *FileBrowser) goUp() {
-	fileBrowser.SetPath(path2.Dir(fileBrowser.path))
-	// TODO: figure out the list index of the folder in the parent directoy and select it accordingly
+	newSelection := fileBrowser.path
+	newPath := path2.Dir(fileBrowser.path)
+	fileBrowser.SetPathWithSelection(newPath, newSelection)
 }
 
 func (fileBrowser *FileBrowser) enterDir(name string) {
 	newPath := path2.Join(fileBrowser.path, name)
 	fileBrowser.SetPath(newPath)
+}
+
+func (fileBrowser *FileBrowser) SetPathWithSelection(newPath string, selection string) {
+	fileBrowser.SetPath(newPath)
+	for i, entry := range fileBrowser.fileEntries {
+		if strings.Contains(entry.Path, selection) {
+			fileBrowser.SelectEntry(i)
+			return
+		}
+	}
 }
 
 func (fileBrowser *FileBrowser) SetPath(newPath string) {
@@ -388,6 +397,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 func (fileBrowser *FileBrowser) SelectEntry(i int) {
 	if len(fileBrowser.fileEntries) > 0 {
 		fileBrowser.fileSelection = fileBrowser.fileEntries[i]
+		fileBrowser.table.Select(i+1, 0)
 	} else {
 		fileBrowser.fileSelection = nil
 	}
