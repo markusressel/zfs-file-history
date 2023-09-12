@@ -41,7 +41,7 @@ func FindHostDataset(path string) (*Dataset, error) {
 	var currentPath = path
 	for dataset == nil {
 		for {
-			stat, err := os.Stat(path)
+			stat, err := os.Stat(currentPath)
 			if err != nil {
 				return nil, err
 			}

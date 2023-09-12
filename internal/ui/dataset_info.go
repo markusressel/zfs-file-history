@@ -27,6 +27,10 @@ func NewDatasetInfo(application *tview.Application, dataset *zfs.Dataset) *Datas
 }
 
 func (datasetInfo *DatasetInfo) SetPath(path string) {
+	if path == "" {
+		datasetInfo.SetDataset(nil)
+		return
+	}
 	dataset, err := zfs.FindHostDataset(path)
 	if err == nil {
 		datasetInfo.SetDataset(dataset)

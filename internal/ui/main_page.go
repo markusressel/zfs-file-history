@@ -38,7 +38,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			case newSelection := <-fileBrowser.fileSelectionChanged:
 				// update Snapshot Browser path
 				snapshotsContainingSelection := []*zfs.Snapshot{}
-				if fileBrowser.fileSelection != nil {
+				if newSelection != nil {
 					for _, snapshot := range newSelection.Snapshots {
 						snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
 					}
@@ -46,7 +46,15 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				snapshotBrowser.SetSnapshots(snapshotsContainingSelection)
 
 				// update Dataset Info path
-				datasetInfo.SetPath(newSelection.Path)
+				var datasetPath string
+				if newSelection != nil {
+					datasetPath = newSelection.Path
+				} else {
+					datasetPath = ""
+				}
+				application.QueueUpdateDraw(func() {
+					datasetInfo.SetPath(datasetPath)
+				})
 			}
 		}
 	}()
