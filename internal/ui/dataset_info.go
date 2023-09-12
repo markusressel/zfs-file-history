@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"github.com/dustin/go-humanize"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/zfs"
 )
@@ -52,36 +53,36 @@ func (datasetInfo *DatasetInfo) updateUi() {
 
 	properties := []*DatasetInfoTableEntry{
 		{
-			Name:  "Name",
-			Value: dataset.Properties.Name,
+			Name:  "Type",
+			Value: dataset.ZfsData.Type,
 		},
 		{
-			Name:  "Type",
-			Value: dataset.Properties.Type,
+			Name:  "Name",
+			Value: dataset.ZfsData.Name,
 		},
 		{
 			Name:  "Mountpoint",
-			Value: dataset.Properties.Mountpoint,
-		},
-		{
-			Name:  "Compression",
-			Value: dataset.Properties.Compression,
-		},
-		{
-			Name:  "Avail",
-			Value: humanize.IBytes(dataset.Properties.Avail),
-		},
-		{
-			Name:  "Used",
-			Value: humanize.IBytes(dataset.Properties.Used),
-		},
-		{
-			Name:  "Origin",
-			Value: dataset.Properties.Origin,
+			Value: dataset.ZfsData.Mountpoint,
 		},
 		{
 			Name:  "Volsize",
-			Value: humanize.IBytes(dataset.Properties.Volsize),
+			Value: humanize.IBytes(dataset.ZfsData.Volsize),
+		},
+		{
+			Name:  "Avail",
+			Value: humanize.IBytes(dataset.ZfsData.Avail),
+		},
+		{
+			Name:  "Used",
+			Value: humanize.IBytes(dataset.ZfsData.Used),
+		},
+		{
+			Name:  "Compression",
+			Value: dataset.ZfsData.Compression,
+		},
+		{
+			Name:  "Origin",
+			Value: dataset.ZfsData.Origin,
 		},
 	}
 
@@ -93,16 +94,18 @@ func (datasetInfo *DatasetInfo) updateUi() {
 		for col := 0; col < columns; col++ {
 			var text string
 			var cellAlignment int
+			var cellColor = tcell.ColorWhite
 			if col == 0 {
 				text = fmt.Sprintf("%s:", entry.Name)
 				cellAlignment = tview.AlignRight
+				cellColor = tcell.ColorSteelBlue
 			} else {
 				text = entry.Value
 				cellAlignment = tview.AlignLeft
 			}
 			datasetInfo.layout.SetCell(
 				row, col,
-				tview.NewTableCell(text).SetAlign(cellAlignment),
+				tview.NewTableCell(text).SetAlign(cellAlignment).SetTextColor(cellColor),
 			)
 		}
 	}

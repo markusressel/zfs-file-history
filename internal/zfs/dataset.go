@@ -11,7 +11,7 @@ import (
 type Dataset struct {
 	Path          string
 	HiddenZfsPath string
-	Properties    *gozfs.Dataset
+	ZfsData       *gozfs.Dataset
 }
 
 func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
@@ -26,7 +26,7 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	}
 	for _, d := range datasets {
 		if d.Mountpoint == path {
-			dataset.Properties = d
+			dataset.ZfsData = d
 			break
 		}
 	}
