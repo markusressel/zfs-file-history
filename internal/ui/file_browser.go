@@ -18,9 +18,10 @@ import (
 type FileBrowserColumn string
 
 const (
-	Name   FileBrowserColumn = "Name"
-	Size   FileBrowserColumn = "Size"
-	Status FileBrowserColumn = "Status"
+	Name    FileBrowserColumn = "Name"
+	Size    FileBrowserColumn = "Size"
+	ModTime FileBrowserColumn = "ModTime"
+	Status  FileBrowserColumn = "Status"
 )
 
 type FileBrowser struct {
@@ -93,6 +94,8 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 		} else if key == tcell.KeyLeft {
 			fileBrowser.goUp()
 			return nil
+		} else if key == tcell.KeyCtrlR {
+			fileBrowser.Refresh()
 		}
 		return event
 	})
@@ -296,7 +299,7 @@ func (fileBrowser *FileBrowser) updateZfsInfo() {
 }
 
 func (fileBrowser *FileBrowser) updateTableContents() {
-	columnTitles := []FileBrowserColumn{Size, Status, Name}
+	columnTitles := []FileBrowserColumn{Size, ModTime, Status, Name}
 
 	table := fileBrowser.table
 	if table == nil {
@@ -321,6 +324,8 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 				if columnTitle == Name {
 					cellText = "Name"
+				} else if columnTitle == ModTime {
+					cellText = "ModTime"
 				} else if columnTitle == Status {
 					cellText = "Status"
 					cellAlignment = tview.AlignCenter
@@ -377,6 +382,8 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				cellText = status
 				cellColor = statusColor
 				cellAlignment = tview.AlignCenter
+			} else if columnTitle == ModTime {
+				cellText = currentFilePath.Stat.ModTime().Format("2006-01-02 15:01:05")
 			} else if columnTitle == Size {
 				cellText = humanize.IBytes(uint64(currentFilePath.Stat.Size()))
 				if strings.HasSuffix(cellText, " B") {
@@ -450,4 +457,8 @@ func (fileBrowser *FileBrowser) setSelectionIndex(path string, index int) {
 		fileBrowser.selectionIndexMap = map[string]int{}
 	}
 	fileBrowser.selectionIndexMap[path] = index
+}
+
+func (fileBrowser *FileBrowser) Refresh() {
+	fileBrowser.SetPath(fileBrowser.path)
 }
