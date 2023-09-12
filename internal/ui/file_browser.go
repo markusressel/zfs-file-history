@@ -323,6 +323,9 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 					withoutSuffix := strings.TrimSuffix(cellText, " B")
 					cellText = fmt.Sprintf("%s   B", withoutSuffix)
 				}
+				if len(cellText) < 10 {
+					cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
+				}
 				cellAlignment = tview.AlignRight
 				cellExpansion = 0
 			} else {
