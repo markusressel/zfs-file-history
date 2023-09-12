@@ -6,13 +6,15 @@ import (
 )
 
 type DatasetInfo struct {
+	application         *tview.Application
 	dataset             *zfs.Dataset
 	datasetPathTextView *tview.TextView
 }
 
-func NewDatasetInfo(dataset *zfs.Dataset) *DatasetInfo {
+func NewDatasetInfo(application *tview.Application, dataset *zfs.Dataset) *DatasetInfo {
 	return &DatasetInfo{
-		dataset: dataset,
+		application: application,
+		dataset:     dataset,
 	}
 }
 
@@ -20,7 +22,7 @@ func (datasetInfo *DatasetInfo) SetDataset(dataset *zfs.Dataset) {
 	datasetInfo.dataset = dataset
 }
 
-func (datasetInfo *DatasetInfo) Layout() *tview.Flex {
+func (datasetInfo *DatasetInfo) createLayout() *tview.Flex {
 	layout := tview.NewFlex().SetDirection(tview.FlexRow)
 	layout.SetBorder(true)
 	layout.SetTitle(" Dataset ")

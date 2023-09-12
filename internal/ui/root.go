@@ -8,13 +8,20 @@ import (
 func CreateUi(path string, fullscreen bool) *tview.Application {
 	application := tview.NewApplication()
 
-	rootLayout := createRootLayout()
+	mainPage := NewMainPage(application, path)
 
-	header := NewApplicationHeader()
-	fileBrowser := NewFileBrowser(application, path)
+	rootLayout := tview.NewPages().
+		AddPage("main", mainPage.layout, true, true).
+		//AddPage("modal", dialog, true, true)
+		ShowPage("main")
 
-	rootLayout.AddItem(header.layout, 1, 0, false)
-	rootLayout.AddItem(fileBrowser.page, 0, 1, true)
+	rootLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		key := event.Key()
+		if key == tcell.KeyTab || key == tcell.KeyBacktab {
+			mainPage.ToggleFocus()
+		}
+		return event
+	})
 
 	rootLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' || event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
@@ -24,10 +31,5 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		return event
 	})
 
-	return application.SetRoot(rootLayout, fullscreen).SetFocus(fileBrowser.table)
-}
-
-func createRootLayout() *tview.Flex {
-	rootLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-	return rootLayout
+	return application.SetRoot(rootLayout, fullscreen).SetFocus(mainPage.fileBrowser.fileTable)
 }

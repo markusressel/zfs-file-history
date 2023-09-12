@@ -18,13 +18,13 @@ func NewApplicationHeader() *ApplicationHeader {
 		version: global.Version,
 	}
 
-	applicationHeader.Layout()
+	applicationHeader.createLayout()
 	applicationHeader.updateUi()
 
 	return applicationHeader
 }
 
-func (applicationHeader *ApplicationHeader) Layout() {
+func (applicationHeader *ApplicationHeader) createLayout() {
 	layout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	layout.SetBackgroundColor(tcell.ColorRed)
 	layout.SetTitleColor(tcell.ColorRed)

@@ -33,11 +33,13 @@ type FileBrowser struct {
 	fileEntries       []*FileBrowserEntry
 	fileSelection     *FileBrowserEntry
 	page              *tview.Flex
-	table             *tview.Table
+	fileTable         *tview.Table
 	filesInLatest     []string
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
 	application       *tview.Application
+	datasetInfoBox    *DatasetInfo
+	snapshotsInfoBox  *SnapshotInfo
 }
 
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
@@ -46,27 +48,33 @@ func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 	}
 
 	fileBrowser.SetPath(path)
-	fileBrowser.Layout(application)
+	fileBrowser.createLayout(application)
 	fileBrowser.updateTableContents()
 
 	return fileBrowser
 }
 
-func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
+func (fileBrowser *FileBrowser) Focus() {
+	fileBrowser.application.SetFocus(fileBrowser.fileTable)
+}
+
+func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	fileBrowserHeaderText := fmt.Sprintf(" %s ", fileBrowser.path)
 
 	// TODO: insert "/.." cell, if path is not /
 	// TODO: use arrow keys to navigate up and down the paths
 
-	datasetInfoBox := NewDatasetInfo(fileBrowser.currentDataset)
-	datasetInfoBoxLayout := datasetInfoBox.Layout()
+	datasetInfoBox := NewDatasetInfo(fileBrowser.application, fileBrowser.currentDataset)
+	fileBrowser.datasetInfoBox = datasetInfoBox
+	datasetInfoBoxLayout := datasetInfoBox.createLayout()
 
-	snapshotsInfoBox := NewSnapshotInfo(fileBrowser.snapshots)
+	snapshotsInfoBox := NewSnapshotInfo(fileBrowser.application, fileBrowser.snapshots)
+	fileBrowser.snapshotsInfoBox = snapshotsInfoBox
 	snapshotsInfoBoxLayout := snapshotsInfoBox.Layout()
 
 	table := tview.NewTable()
-	fileBrowser.table = table
+	fileBrowser.fileTable = table
 
 	table.SetBorder(true)
 	table.SetBorders(false)
@@ -117,6 +125,8 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 			return nil
 		} else if key == tcell.KeyCtrlR {
 			fileBrowser.Refresh()
+		} else if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
+			fileBrowser.ToggleFocus()
 		}
 		return event
 	})
@@ -288,7 +298,7 @@ func (fileBrowser *FileBrowser) updateZfsInfo() {
 func (fileBrowser *FileBrowser) updateTableContents() {
 	columnTitles := []FileBrowserColumn{Size, ModTime, Status, Name}
 
-	table := fileBrowser.table
+	table := fileBrowser.fileTable
 	if table == nil {
 		return
 	}
@@ -404,13 +414,13 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 	} else {
 		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
 	}
-	fileBrowser.table.Select(selectionIndex, 0)
+	fileBrowser.fileTable.Select(selectionIndex, 0)
 }
 
 func (fileBrowser *FileBrowser) SelectEntry(i int) {
 	if len(fileBrowser.fileEntries) > 0 {
 		fileBrowser.fileSelection = fileBrowser.fileEntries[i]
-		fileBrowser.table.Select(i+1, 0)
+		fileBrowser.fileTable.Select(i+1, 0)
 	} else {
 		fileBrowser.fileSelection = nil
 	}
@@ -431,7 +441,7 @@ func (fileBrowser *FileBrowser) SortEntries() {
 }
 
 func (fileBrowser *FileBrowser) showError(err error) {
-	fileBrowser.table.SetTitle(err.Error())
+	fileBrowser.fileTable.SetTitle(err.Error())
 }
 
 func (fileBrowser *FileBrowser) getSelectionIndex(path string) int {
@@ -477,4 +487,12 @@ func (fileBrowser *FileBrowser) updateFileWatcher(path string) {
 
 func (fileBrowser *FileBrowser) ListIsEmpty() bool {
 	return len(fileBrowser.fileEntries) <= 0
+}
+
+func (fileBrowser *FileBrowser) ToggleFocus() {
+	if fileBrowser.fileTable.HasFocus() {
+		fileBrowser.snapshotsInfoBox.Focus()
+	} else {
+		fileBrowser.application.SetFocus(fileBrowser.fileTable)
+	}
 }
