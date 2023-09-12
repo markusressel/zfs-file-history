@@ -55,8 +55,11 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 	// TODO: insert "/.." cell, if path is not /
 	// TODO: use arrow keys to navigate up and down the paths
 
-	datasetInfoBox := fileBrowser.createDatasetInfoBox()
-	snapshotsInfoBox := fileBrowser.createSnapshotsInfoBox()
+	datasetInfoBox := NewDatasetInfo(fileBrowser.currentDataset)
+	datasetInfoBoxLayout := datasetInfoBox.Layout()
+
+	snapshotsInfoBox := NewSnapshotInfo(fileBrowser.snapshots)
+	snapshotsInfoBoxLayout := snapshotsInfoBox.Layout()
 
 	table := tview.NewTable()
 	fileBrowser.table = table
@@ -84,6 +87,13 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 		} else {
 			fileBrowser.fileSelection = fileBrowser.fileEntries[selectionIndex]
 		}
+
+		snapshotsContainingSelection := []*zfs.Snapshot{}
+		for _, snapshot := range fileBrowser.fileSelection.Snapshots {
+			snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
+		}
+		snapshotsInfoBox.SetSnapshots(snapshotsContainingSelection)
+
 		fileBrowser.setSelectionIndex(fileBrowser.path, row)
 	})
 
@@ -107,27 +117,14 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 		}
 	})
 
-	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-	infoLayout.AddItem(datasetInfoBox, 0, 1, false)
-	infoLayout.AddItem(snapshotsInfoBox, 0, 1, false)
-	fileBrowserLayout.AddItem(infoLayout, 0, 1, false)
-
 	fileBrowserLayout.AddItem(table, 0, 2, true)
 
+	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
+	infoLayout.AddItem(datasetInfoBoxLayout, 0, 1, false)
+	infoLayout.AddItem(snapshotsInfoBoxLayout, 0, 1, false)
+	fileBrowserLayout.AddItem(infoLayout, 0, 1, false)
+
 	fileBrowser.page = fileBrowserLayout
-}
-
-func (fileBrowser *FileBrowser) createDatasetInfoBox() *tview.Flex {
-	layout := tview.NewFlex().SetDirection(tview.FlexRow)
-	layout.SetBorder(true)
-	layout.SetTitle(" Dataset ")
-
-	dataset := fileBrowser.currentDataset
-	datasetPath := tview.NewTextView().SetText(dataset.Path)
-
-	layout.AddItem(datasetPath, 0, 1, false)
-
-	return layout
 }
 
 func (fileBrowser *FileBrowser) createSnapshotsInfoBox() *tview.Flex {
