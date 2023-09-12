@@ -14,6 +14,14 @@ import (
 	"zfs-file-history/internal/zfs"
 )
 
+type FileBrowserColumn string
+
+const (
+	Name   FileBrowserColumn = "Name"
+	Size   FileBrowserColumn = "Size"
+	Status FileBrowserColumn = "Status"
+)
+
 type FileBrowser struct {
 	currentDataset  *zfs.Dataset
 	snapshots       []*zfs.Snapshot
@@ -31,6 +39,7 @@ func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 
 	fileBrowser.SetPath(path)
 	fileBrowser.Layout(application)
+	fileBrowser.updateTableContents()
 
 	return &fileBrowser
 }
@@ -46,6 +55,8 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 	snapshotsInfoBox := fileBrowser.createSnapshotsInfoBox()
 
 	table := tview.NewTable()
+	fileBrowser.table = table
+
 	table.SetBorder(true)
 	table.SetBorders(false)
 	table.SetBorderPadding(0, 0, 1, 1)
@@ -57,14 +68,11 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 	table.SetTitleColor(tcell.ColorBlue)
 	table.SetTitleAlign(tview.AlignLeft)
 
-	fileBrowser.computeTableContents(table)
-
 	table.SetSelectable(true, false)
 	// TODO: remember the selected index for a given path and automatically update the fileSelection when entering and exiting a path
 	table.Select(0, 0)
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
-		//cell := table.GetCell(row, column)
 		fileBrowser.fileSelection = fileBrowser.fileEntries[row]
 	})
 
@@ -72,17 +80,12 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 		key := event.Key()
 		if key == tcell.KeyRight {
 			fileBrowser.SetPath(fileBrowser.fileSelection.Path)
-			// TODO: figure out how to redraw when the state changes
+			fileBrowser.updateTableContents()
 			return nil
 		} else if key == tcell.KeyLeft {
 			fileBrowser.goUp()
 			return nil
 		}
-		//} else if key == tcell.KeyEnter {
-		//	_, column := table.GetSelection()
-		//	currentSelection := mergedFileList[column]
-		//	fileBrowser.openActionDialog(currentSelection)
-		//}
 		return event
 	})
 
@@ -100,7 +103,6 @@ func (fileBrowser *FileBrowser) Layout(application *tview.Application) {
 	fileBrowserLayout.AddItem(table, 0, 2, true)
 
 	fileBrowser.page = fileBrowserLayout
-	fileBrowser.table = table
 }
 
 func (fileBrowser *FileBrowser) createDatasetInfoBox() *tview.Flex {
@@ -198,20 +200,10 @@ func (fileBrowser *FileBrowser) readDirectory(path string) {
 		})
 	}
 
-	slices.SortFunc(mergedFileEntries, func(a, b *FileBrowserEntry) int {
-		if a.Stat.IsDir() == b.Stat.IsDir() {
-			return strings.Compare(a.Name, b.Name)
-		} else {
-			if a.Stat.IsDir() {
-				return -1
-			} else {
-				return 1
-			}
-		}
-	})
-
 	fileBrowser.fileEntries = mergedFileEntries
 	fileBrowser.filesInLatest = latestFiles
+
+	fileBrowser.SortEntries()
 
 	fileBrowser.SelectEntry(0)
 }
@@ -221,7 +213,7 @@ func (fileBrowser *FileBrowser) GetView() {
 }
 
 func (fileBrowser *FileBrowser) goUp() {
-	fileBrowser.path = path2.Dir(fileBrowser.path)
+	fileBrowser.SetPath(path2.Dir(fileBrowser.path))
 }
 
 func (fileBrowser *FileBrowser) enterDir(name string) {
@@ -230,14 +222,19 @@ func (fileBrowser *FileBrowser) enterDir(name string) {
 }
 
 func (fileBrowser *FileBrowser) SetPath(newPath string) {
-	_, err := os.Stat(newPath)
-	if err == nil {
+	stat, err := os.Stat(newPath)
+	if err != nil {
+		logging.Error(err.Error())
+		// cannot enter path, ignoring
+	} else if !stat.IsDir() {
+		logging.Warning("Tried to enter path which is not a directory: %s", newPath)
+		fileBrowser.SetPath(path2.Dir(newPath))
+		return
+	} else {
 		fileBrowser.path = newPath
 		fileBrowser.updateZfsInfo()
 		fileBrowser.readDirectory(fileBrowser.path)
-	} else {
-		logging.Error(err.Error())
-		// cannot enter path, ignoring
+		fileBrowser.updateTableContents()
 	}
 }
 
@@ -264,58 +261,79 @@ func (fileBrowser *FileBrowser) updateZfsInfo() {
 		logging.Fatal(err.Error())
 	}
 	fileBrowser.snapshots = snapshots
-	fileBrowser.currentSnapshot = fileBrowser.snapshots[0]
+	if len(fileBrowser.snapshots) > 0 {
+		fileBrowser.currentSnapshot = fileBrowser.snapshots[0]
+	} else {
+		fileBrowser.currentSnapshot = nil
+	}
 }
 
-func (fileBrowser *FileBrowser) computeTableContents(table *tview.Table) {
-	columnTitles := []string{"Name", "Status", "Size"}
+func (fileBrowser *FileBrowser) updateTableContents() {
+	columnTitles := []FileBrowserColumn{Size, Status, Name}
+
+	table := fileBrowser.table
+	if table == nil {
+		return
+	}
+
+	table.Clear()
 
 	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)
 	fileIndex := 0
 	for row := 0; row < rows; row++ {
 		currentFilePath := fileBrowser.fileEntries[fileIndex]
 
-		var status = "UNCHANGED"
+		var status = "U"
 		var statusColor = tcell.ColorGray
 		if currentFilePath.HasSnapshots() && !slices.Contains(fileBrowser.filesInLatest, currentFilePath.Path) {
 			// file only exists in snapshot but not in latest
 			statusColor = tcell.ColorRed
-			status = "DELETED"
+			status = "D"
 		} else if !currentFilePath.HasSnapshots() && slices.Contains(fileBrowser.filesInLatest, currentFilePath.Path) {
 			// file only exists in latest but not in snapshot
 			statusColor = tcell.ColorGreen
-			status = "NEW"
+			status = "N"
 		} else if fileBrowser.checkIfFileHasChanged(currentFilePath, currentFilePath.Snapshots[0]) {
 			statusColor = tcell.ColorYellow
-			status = "MODIFIED"
+			status = "M"
 		}
 
 		for column := 0; column < cols; column++ {
-			var color = tcell.ColorWhite
-
+			columnTitle := columnTitles[column]
+			var cellColor = tcell.ColorWhite
 			var cellText string
-			var alignment = tview.AlignLeft
-			if column == 0 {
+			var cellAlignment = tview.AlignLeft
+			var cellExpansion = 0
+
+			if columnTitle == Name {
 				cellText = fmt.Sprintf("%s", currentFilePath.Name)
-				var nameColor = color
+				var nameColor = cellColor
 				if currentFilePath.Stat.IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
 					nameColor = tcell.ColorSteelBlue
 				}
-				color = nameColor
-			} else if column == 1 {
+				cellColor = nameColor
+			} else if columnTitle == Status {
 				cellText = status
-				color = statusColor
-				alignment = tview.AlignCenter
-			} else {
+				cellColor = statusColor
+				cellAlignment = tview.AlignCenter
+			} else if columnTitle == Size {
 				cellText = humanize.IBytes(uint64(currentFilePath.Stat.Size()))
-				alignment = tview.AlignRight
+				if strings.HasSuffix(cellText, " B") {
+					withoutSuffix := strings.TrimSuffix(cellText, " B")
+					cellText = fmt.Sprintf("%s   B", withoutSuffix)
+				}
+				cellAlignment = tview.AlignRight
+				cellExpansion = 0
+			} else {
+				panic("Unknown column")
 			}
 
 			table.SetCell(row, column,
 				tview.NewTableCell(cellText).
-					SetTextColor(color).
-					SetAlign(alignment),
+					SetTextColor(cellColor).
+					SetAlign(cellAlignment).
+					SetExpansion(cellExpansion),
 			)
 		}
 		fileIndex = (fileIndex + 1) % rows
@@ -328,4 +346,18 @@ func (fileBrowser *FileBrowser) SelectEntry(i int) {
 	} else {
 		fileBrowser.fileSelection = nil
 	}
+}
+
+func (fileBrowser *FileBrowser) SortEntries() {
+	slices.SortFunc(fileBrowser.fileEntries, func(a, b *FileBrowserEntry) int {
+		if a.Stat.IsDir() == b.Stat.IsDir() {
+			return strings.Compare(a.Name, b.Name)
+		} else {
+			if a.Stat.IsDir() {
+				return -1
+			} else {
+				return 1
+			}
+		}
+	})
 }
