@@ -30,6 +30,8 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	}
 
 	mainPage.layout = mainPage.createLayout()
+
+	// listen for selection changes within the file browser
 	go func() {
 		for {
 			select {
@@ -65,6 +67,14 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	windowLayout.AddItem(infoLayout, 0, 1, false)
 
 	mainPageLayout.AddItem(windowLayout, 0, 1, true)
+
+	mainPageLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		key := event.Key()
+		if key == tcell.KeyTab || key == tcell.KeyBacktab {
+			mainPage.ToggleFocus()
+		}
+		return event
+	})
 
 	return mainPageLayout
 }

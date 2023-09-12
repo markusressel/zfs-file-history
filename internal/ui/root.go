@@ -16,14 +16,6 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		ShowPage("main")
 
 	rootLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		key := event.Key()
-		if key == tcell.KeyTab || key == tcell.KeyBacktab {
-			mainPage.ToggleFocus()
-		}
-		return event
-	})
-
-	rootLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' || event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
 			application.Stop()
 			return nil
