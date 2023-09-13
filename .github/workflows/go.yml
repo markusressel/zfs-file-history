@@ -2,11 +2,11 @@ name: Go
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
     tags:
       - '*.*.*' # Push events to matching v*, i.e. v1.0, v20.15.10
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   generate:
