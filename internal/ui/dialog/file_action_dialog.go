@@ -108,6 +108,7 @@ func (d *FileActionDialog) Close() {
 
 func (d *FileActionDialog) RestoreFile(restore *data.SnapshotFile) {
 	go func() {
+		d.actionChannel <- ActionClose
 		d.actionChannel <- RestoreAction
 	}()
 }
