@@ -5,6 +5,7 @@ import (
 	"golang.org/x/exp/slices"
 	"strings"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -72,6 +73,18 @@ func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 	table.SetBorder(true)
 	table.SetTitle(" Snapshots ")
 	table.SetSelectable(true, false)
+
+	table.SetSelectionChangedFunc(func(row int, column int) {
+		selectionIndex := util.Coerce(row, -1, len(snapshotBrowser.snapshots))
+		var newSelection *zfs.Snapshot
+		if selectionIndex < 0 {
+			newSelection = nil
+		} else {
+			newSelection = snapshotBrowser.snapshots[selectionIndex]
+		}
+		snapshotBrowser.SelectSnapshot(newSelection)
+	})
+
 	snapshotBrowser.snapshotTable = table
 	snapshotBrowser.updateUi()
 	return table
