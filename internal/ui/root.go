@@ -14,6 +14,7 @@ const (
 
 func CreateUi(path string, fullscreen bool) *tview.Application {
 	application := tview.NewApplication()
+	application.EnableMouse(true)
 
 	mainPage := NewMainPage(application, path)
 	helpPage := dialog.NewHelpPage()
