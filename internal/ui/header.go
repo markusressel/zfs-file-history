@@ -5,6 +5,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/cmd/global"
+	uiutil "zfs-file-history/internal/ui/util"
 )
 
 type ApplicationHeader struct {
@@ -51,10 +52,7 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	versionTextView.SetText(versionText)
 	versionTextView.SetTextAlign(tview.AlignCenter)
 
-	helpTextView := tview.NewTextView()
-	helpTextView.SetText("  Press '?' for help  ")
-	helpTextView.SetTextColor(tcell.ColorYellow)
-	helpTextView.SetTextAlign(tview.AlignRight)
+	helpTextView := uiutil.CreateAttentionText("Press '?' for help")
 
 	layout.AddItem(nameTextView, len(nameText), 0, false)
 	layout.AddItem(versionTextView, len(versionText), 0, false)

@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/page"
+	uiutil "zfs-file-history/internal/ui/util"
 )
 
 const (
@@ -58,8 +59,7 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		AddItem(spinner, 2, 0, false).
 		AddItem(descriptionTextView, 0, 1, false)
 
-	abortText := fmt.Sprintf("  Press 'q' to abort  ")
-	abortTextView := tview.NewTextView().SetText(abortText).SetTextColor(tcell.ColorYellow).SetTextAlign(tview.AlignRight)
+	abortTextView := uiutil.CreateAttentionText("Press 'q' to abort")
 
 	progress := tvxwidgets.NewPercentageModeGauge()
 	progressTitle := fmt.Sprintf(" %s ... ", d.fileSelection.Name)
