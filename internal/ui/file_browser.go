@@ -166,6 +166,7 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 		_, latestFileName := path2.Split(latestFilePath)
 		latestFileStat, err := os.Stat(latestFilePath)
 		if err != nil {
+			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
 			logging.Error(err.Error())
 			continue
 		}
@@ -213,6 +214,7 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 		statSnap, err := os.Stat(snapshotFilePath)
 		if err != nil {
 			logging.Error(err.Error())
+			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
 			continue
 		}
 
@@ -261,6 +263,7 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 	if err != nil {
 		logging.Error(err.Error())
 		// cannot enter path, ignoring
+		fileBrowser.showError(err)
 		return
 	}
 
@@ -273,6 +276,7 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 	_, err = os.ReadDir(newPath)
 	if err != nil {
 		logging.Error(err.Error())
+		fileBrowser.showError(err)
 		return
 	}
 
