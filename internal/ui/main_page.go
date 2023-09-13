@@ -100,6 +100,6 @@ func (mainPage *MainPage) ToggleFocus() {
 	} else if mainPage.snapshotBrowser.HasFocus() {
 		mainPage.fileBrowser.Focus()
 	} else {
-		logging.Fatal("Unexpected focus state")
+		logging.Warning("Unexpected focus state")
 	}
 }
