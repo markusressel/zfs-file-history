@@ -31,6 +31,12 @@ func NewFileActionDialog(file *data.FileBrowserEntry) *FileActionDialog {
 	return dialog
 }
 
+type DialogOptionId int
+
+const (
+	RestoreFileDialogOption DialogOptionId = iota
+)
+
 func (d *FileActionDialog) createLayout() {
 	dialogTitle := " Select Action "
 
@@ -42,10 +48,14 @@ func (d *FileActionDialog) createLayout() {
 
 	})
 
-	dialogOptions := []*DialogOption{
-		{
-			Name: "Restore",
-		},
+	dialogOptions := []*DialogOption{}
+
+	if len(d.file.SnapshotFiles) > 0 {
+		restoreOption := &DialogOption{
+			Id:   RestoreFileDialogOption,
+			Name: fmt.Sprintf("Restore from '%s'", d.file.SnapshotFiles[0].Snapshot.Name),
+		}
+		dialogOptions = append(dialogOptions, restoreOption)
 	}
 
 	_, rows := 1, len(dialogOptions)

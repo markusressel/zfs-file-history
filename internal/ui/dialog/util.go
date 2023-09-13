@@ -19,6 +19,7 @@ type Dialog interface {
 }
 
 type DialogOption struct {
+	Id   DialogOptionId
 	Name string
 }
 
