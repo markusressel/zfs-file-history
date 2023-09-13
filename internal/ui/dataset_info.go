@@ -15,10 +15,9 @@ type DatasetInfo struct {
 	layout      *tview.Table
 }
 
-func NewDatasetInfo(application *tview.Application, dataset *zfs.Dataset) *DatasetInfo {
+func NewDatasetInfo(application *tview.Application) *DatasetInfo {
 	datasetInfo := &DatasetInfo{
 		application: application,
-		dataset:     dataset,
 	}
 
 	datasetInfo.createLayout()
@@ -67,39 +66,42 @@ func (datasetInfo *DatasetInfo) updateUi() {
 		return
 	}
 
-	properties := []*DatasetInfoTableEntry{
-		{
-			Name:  "Type",
-			Value: dataset.ZfsData.Type,
-		},
-		{
-			Name:  "Name",
-			Value: dataset.ZfsData.Name,
-		},
-		{
-			Name:  "Mountpoint",
-			Value: dataset.ZfsData.Mountpoint,
-		},
-		{
-			Name:  "Volsize",
-			Value: humanize.IBytes(dataset.ZfsData.Volsize),
-		},
-		{
-			Name:  "Avail",
-			Value: humanize.IBytes(dataset.ZfsData.Avail),
-		},
-		{
-			Name:  "Used",
-			Value: humanize.IBytes(dataset.ZfsData.Used),
-		},
-		{
-			Name:  "Compression",
-			Value: dataset.ZfsData.Compression,
-		},
-		{
-			Name:  "Origin",
-			Value: dataset.ZfsData.Origin,
-		},
+	properties := []*DatasetInfoTableEntry{}
+	if dataset.ZfsData != nil {
+		properties = []*DatasetInfoTableEntry{
+			{
+				Name:  "Type",
+				Value: dataset.ZfsData.Type,
+			},
+			{
+				Name:  "Name",
+				Value: dataset.ZfsData.Name,
+			},
+			{
+				Name:  "Mountpoint",
+				Value: dataset.ZfsData.Mountpoint,
+			},
+			{
+				Name:  "Volsize",
+				Value: humanize.IBytes(dataset.ZfsData.Volsize),
+			},
+			{
+				Name:  "Avail",
+				Value: humanize.IBytes(dataset.ZfsData.Avail),
+			},
+			{
+				Name:  "Used",
+				Value: humanize.IBytes(dataset.ZfsData.Used),
+			},
+			{
+				Name:  "Compression",
+				Value: dataset.ZfsData.Compression,
+			},
+			{
+				Name:  "Origin",
+				Value: dataset.ZfsData.Origin,
+			},
+		}
 	}
 
 	datasetInfo.layout.Clear()

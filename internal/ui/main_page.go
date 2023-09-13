@@ -5,7 +5,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/logging"
-	"zfs-file-history/internal/zfs"
 )
 
 type MainPage struct {
@@ -19,8 +18,12 @@ type MainPage struct {
 func NewMainPage(application *tview.Application, path string) *MainPage {
 	fileBrowser := NewFileBrowser(application, path)
 
-	datasetInfo := NewDatasetInfo(fileBrowser.application, fileBrowser.currentDataset)
-	snapshotBrowser := NewSnapshotBrowser(fileBrowser.application, fileBrowser.snapshots)
+	datasetInfo := NewDatasetInfo(application)
+	datasetInfo.SetPath(path)
+
+	snapshotBrowser := NewSnapshotBrowser(application)
+	snapshotBrowser.SetPath(path)
+	snapshotBrowser.SetFileEntry(fileBrowser.fileSelection)
 
 	mainPage := &MainPage{
 		application:     application,
@@ -35,20 +38,20 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	go func() {
 		for {
 			select {
-			case newSelection := <-fileBrowser.fileSelectionChanged:
+			case newSnapshotSelection := <-snapshotBrowser.selectedSnapshotChanged:
+				// update file browser based on currently selected snapshot
+				fileBrowser.SetSelectedSnapshot(newSnapshotSelection)
+			case newFileSelection := <-fileBrowser.selectedFileEntryChanged:
 				// update Snapshot Browser path
-				snapshotsContainingSelection := []*zfs.Snapshot{}
-				if newSelection != nil {
-					for _, snapshot := range newSelection.Snapshots {
-						snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
-					}
+				snapshotBrowser.SetFileEntry(newFileSelection)
+				if newFileSelection != nil {
+					snapshotBrowser.SetPath(newFileSelection.GetRealPath())
 				}
-				snapshotBrowser.SetSnapshots(snapshotsContainingSelection)
 
 				// update Dataset Info path
 				var datasetPath string
-				if newSelection != nil {
-					datasetPath = newSelection.Path
+				if newFileSelection != nil {
+					datasetPath = newFileSelection.GetRealPath()
 				} else {
 					datasetPath = ""
 				}

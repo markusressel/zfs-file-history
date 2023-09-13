@@ -28,15 +28,11 @@ const (
 type FileBrowser struct {
 	path string
 
-	// TODO: move these to the paren/snapshot/dataset view
-	currentDataset  *zfs.Dataset
-	snapshots       []*zfs.Snapshot
 	currentSnapshot *zfs.Snapshot
 
-	filesInLatest        []string
-	fileEntries          []*FileBrowserEntry
-	fileSelection        *FileBrowserEntry
-	fileSelectionChanged chan *FileBrowserEntry
+	fileEntries              []*FileBrowserEntry
+	fileSelection            *FileBrowserEntry
+	selectedFileEntryChanged chan *FileBrowserEntry
 
 	application *tview.Application
 	layout      *tview.Flex
@@ -48,13 +44,12 @@ type FileBrowser struct {
 
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 	fileBrowser := &FileBrowser{
-		application:          application,
-		fileSelectionChanged: make(chan *FileBrowserEntry),
+		application:              application,
+		selectedFileEntryChanged: make(chan *FileBrowserEntry),
 	}
 
-	fileBrowser.SetPath(path)
 	fileBrowser.createLayout(application)
-	fileBrowser.updateTableContents()
+	fileBrowser.SetPath(path)
 
 	return fileBrowser
 }
@@ -97,10 +92,13 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 		} else {
 			newSelection = fileBrowser.fileEntries[selectionIndex]
 		}
-		fileBrowser.fileSelection = newSelection
-		go func() {
-			fileBrowser.fileSelectionChanged <- newSelection
-		}()
+
+		if fileBrowser.fileSelection != newSelection {
+			fileBrowser.fileSelection = newSelection
+			go func() {
+				fileBrowser.selectedFileEntryChanged <- newSelection
+			}()
+		}
 
 		fileBrowser.setSelectionIndex(fileBrowser.path, row)
 	})
@@ -109,7 +107,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 		key := event.Key()
 		if key == tcell.KeyRight {
 			if fileBrowser.fileSelection != nil {
-				fileBrowser.SetPath(fileBrowser.fileSelection.Path)
+				fileBrowser.SetPath(fileBrowser.fileSelection.GetRealPath())
 			}
 			return nil
 		} else if key == tcell.KeyLeft {
@@ -118,7 +116,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 			}
 			return nil
 		} else if key == tcell.KeyCtrlR {
-			fileBrowser.Refresh()
+			fileBrowser.refresh()
 		}
 		return event
 	})
@@ -134,11 +132,11 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 	fileBrowser.layout = fileBrowserLayout
 }
 
-func (fileBrowser *FileBrowser) readDirectory(path string) {
-	// TODO: list latestFiles and directories in "real" $path as well as all (or a small subset) of the snaphots in a merged view, with an indication of
-	//  - whether the file was deleted (compared to the "real" state)
-	//  - how many versions there are of this file in snapshots
+func (fileBrowser *FileBrowser) updateFileEntries() {
+	path := fileBrowser.path
+	snapshot := fileBrowser.currentSnapshot
 
+	// list files in current directory
 	latestFiles, err := util.ListFilesIn(path)
 	if os.IsPermission(err) {
 		fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
@@ -146,55 +144,95 @@ func (fileBrowser *FileBrowser) readDirectory(path string) {
 	} else if err != nil {
 		logging.Fatal("Cannot list path: %s", err.Error())
 	}
-	mergedFileList := util.UniqueSlice(latestFiles)
 
-	mergedFileEntries := []*FileBrowserEntry{}
-	for _, file := range mergedFileList {
-		_, name := path2.Split(file)
+	// list files in currently directory with currently selected snapshot
+	var snapshotPath = ""
+	var snapshotFiles []string
+	if snapshot != nil {
+		snapshotPath = snapshot.GetSnapshotPath(path)
+		snapshotFiles, err = util.ListFilesIn(snapshotPath)
+		if os.IsPermission(err) {
+			fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
+			return
+		} else if err != nil {
+			logging.Error("Cannot list path: %s", err.Error())
+		}
+	}
 
-		stat, err := os.Stat(file)
+	fileEntries := []*FileBrowserEntry{}
+
+	// add entries for files which are present on the "real" location (and possibly within a snapshot as well)
+	for _, latestFilePath := range latestFiles {
+		_, latestFileName := path2.Split(latestFilePath)
+		latestFileStat, err := os.Stat(latestFilePath)
 		if err != nil {
 			logging.Error(err.Error())
 			continue
 		}
 
-		matchingFilesInSnapshots := []*zfs.SnapshotFile{}
-		for _, snapshot := range fileBrowser.snapshots {
-			snapshotPath := snapshot.GetSnapshotPath(file)
-			stat, err := os.Stat(snapshotPath)
-			if os.IsNotExist(err) {
-				continue
-			} else if err != nil {
+		var snapshotFile *SnapshotFile = nil
+		if snapshot != nil {
+			snapshotFilePath := snapshot.GetSnapshotPath(latestFilePath)
+			statSnap, err := os.Stat(snapshotFilePath)
+			if err != nil {
 				logging.Error(err.Error())
-				continue
+				slices.DeleteFunc(snapshotFiles, func(s string) bool {
+					return s == snapshotFilePath
+				})
 			} else {
-				matchingFilesInSnapshots = append(matchingFilesInSnapshots, &zfs.SnapshotFile{
+				snapshotFile = &SnapshotFile{
 					Path:         snapshotPath,
-					OriginalPath: file,
-					Stat:         stat,
+					OriginalPath: latestFilePath,
+					Stat:         statSnap,
 					Snapshot:     snapshot,
+				}
+				slices.DeleteFunc(snapshotFiles, func(s string) bool {
+					return s == snapshotFilePath
 				})
 			}
 		}
 
-		mergedFileEntries = append(
-			mergedFileEntries,
-			NewFileBrowserEntry(
-				name, file, stat,
-				// TODO: include entries for items, which are only found in a snapshot
-				false, matchingFilesInSnapshots,
-			),
-		)
+		snapshotFiles := []*SnapshotFile{}
+		if snapshotFile != nil {
+			snapshotFiles = append(snapshotFiles, snapshotFile)
+		}
+
+		latestFile := &RealFile{
+			Name: latestFileName,
+			Path: latestFilePath,
+			Stat: latestFileStat,
+		}
+
+		fileEntries = append(fileEntries, NewFileBrowserEntry(latestFileName, latestFile, snapshotFiles))
 	}
 
-	fileBrowser.fileEntries = mergedFileEntries
-	fileBrowser.filesInLatest = latestFiles
+	// add remaining entries for files which are only present in the snapshot
+	for _, snapshotFilePath := range snapshotFiles {
+		_, snapshotFileName := path2.Split(snapshotFilePath)
 
+		statSnap, err := os.Stat(snapshotFilePath)
+		if err != nil {
+			logging.Error(err.Error())
+			continue
+		}
+
+		snapshotFile := &SnapshotFile{
+			Path:         snapshotPath,
+			OriginalPath: snapshot.GetRealPath(snapshotFilePath),
+			Stat:         statSnap,
+			Snapshot:     snapshot,
+		}
+
+		snapshotFiles := []*SnapshotFile{}
+		if snapshotFile != nil {
+			snapshotFiles = append(snapshotFiles, snapshotFile)
+		}
+
+		fileEntries = append(fileEntries, NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles))
+	}
+
+	fileBrowser.fileEntries = fileEntries
 	fileBrowser.SortEntries()
-}
-
-func (fileBrowser *FileBrowser) GetView() {
-
 }
 
 func (fileBrowser *FileBrowser) goUp() {
@@ -211,7 +249,7 @@ func (fileBrowser *FileBrowser) enterDir(name string) {
 func (fileBrowser *FileBrowser) SetPathWithSelection(newPath string, selection string) {
 	fileBrowser.SetPath(newPath)
 	for i, entry := range fileBrowser.fileEntries {
-		if strings.Contains(entry.Path, selection) {
+		if strings.Contains(entry.GetRealPath(), selection) {
 			fileBrowser.SelectEntry(i)
 			return
 		}
@@ -239,18 +277,14 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 	}
 
 	fileBrowser.path = newPath
-	fileBrowser.updateZfsInfo()
-	fileBrowser.readDirectory(fileBrowser.path)
-	fileBrowser.updateTableContents()
-
-	fileBrowser.updateFileWatcher(newPath)
+	fileBrowser.refresh()
 }
 
 func (fileBrowser *FileBrowser) openActionDialog(selection string) {
 
 }
 
-func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *FileBrowserEntry, snapshotFile *zfs.SnapshotFile) bool {
+func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *RealFile, snapshotFile *SnapshotFile) bool {
 	return originalFile.Stat.IsDir() != snapshotFile.Stat.IsDir() ||
 		originalFile.Stat.Mode() != snapshotFile.Stat.Mode() ||
 		originalFile.Stat.ModTime() != snapshotFile.Stat.ModTime() ||
@@ -258,27 +292,10 @@ func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *FileBrowserE
 		originalFile.Stat.Name() != snapshotFile.Stat.Name()
 }
 
-func (fileBrowser *FileBrowser) updateSelectedSnapshot(index int) {
-	fileBrowser.currentSnapshot = fileBrowser.snapshots[index]
-}
-
-func (fileBrowser *FileBrowser) updateZfsInfo() {
-	fileBrowser.currentDataset, _ = zfs.FindHostDataset(fileBrowser.path)
-
-	if fileBrowser.currentDataset != nil {
-		snapshots, err := fileBrowser.currentDataset.GetSnapshots()
-		if err != nil {
-			logging.Fatal(err.Error())
-		}
-		fileBrowser.snapshots = snapshots
-	} else {
-		fileBrowser.snapshots = []*zfs.Snapshot{}
-	}
-
-	if len(fileBrowser.snapshots) > 0 {
-		fileBrowser.currentSnapshot = fileBrowser.snapshots[0]
-	} else {
-		fileBrowser.currentSnapshot = nil
+func (fileBrowser *FileBrowser) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
+	if fileBrowser.currentSnapshot != snapshot {
+		fileBrowser.currentSnapshot = snapshot
+		fileBrowser.refresh()
 	}
 }
 
@@ -330,19 +347,19 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			continue
 		}
 
-		currentFilePath := fileBrowser.fileEntries[fileIndex]
+		currentFileEntry := fileBrowser.fileEntries[fileIndex]
 
 		var status = "U"
 		var statusColor = tcell.ColorGray
-		if currentFilePath.HasSnapshots() && !slices.Contains(fileBrowser.filesInLatest, currentFilePath.Path) {
+		if currentFileEntry.HasSnapshots() && !currentFileEntry.HasLatest() {
 			// file only exists in snapshot but not in latest
 			statusColor = tcell.ColorRed
 			status = "D"
-		} else if !currentFilePath.HasSnapshots() && slices.Contains(fileBrowser.filesInLatest, currentFilePath.Path) {
+		} else if !currentFileEntry.HasSnapshots() && currentFileEntry.HasLatest() {
 			// file only exists in latest but not in snapshot
 			statusColor = tcell.ColorGreen
 			status = "N"
-		} else if fileBrowser.checkIfFileHasChanged(currentFilePath, currentFilePath.Snapshots[0]) {
+		} else if fileBrowser.checkIfFileHasChanged(currentFileEntry.LatestFile, currentFileEntry.SnapshotFiles[0]) {
 			statusColor = tcell.ColorYellow
 			status = "M"
 		}
@@ -355,9 +372,9 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			var cellExpansion = 0
 
 			if columnTitle == Name {
-				cellText = fmt.Sprintf("%s", currentFilePath.Name)
+				cellText = fmt.Sprintf("%s", currentFileEntry.Name)
 				var nameColor = cellColor
-				if currentFilePath.Stat.IsDir() {
+				if currentFileEntry.GetStat().IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
 					nameColor = tcell.ColorSteelBlue
 				}
@@ -367,9 +384,9 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				cellColor = statusColor
 				cellAlignment = tview.AlignCenter
 			} else if columnTitle == ModTime {
-				cellText = currentFilePath.Stat.ModTime().Format(time.DateTime)
+				cellText = currentFileEntry.GetStat().ModTime().Format(time.DateTime)
 			} else if columnTitle == Size {
-				cellText = humanize.IBytes(uint64(currentFilePath.Stat.Size()))
+				cellText = humanize.IBytes(uint64(currentFileEntry.GetStat().Size()))
 				if strings.HasSuffix(cellText, " B") {
 					withoutSuffix := strings.TrimSuffix(cellText, " B")
 					cellText = fmt.Sprintf("%s   B", withoutSuffix)
@@ -415,10 +432,10 @@ func (fileBrowser *FileBrowser) SelectEntry(i int) {
 
 func (fileBrowser *FileBrowser) SortEntries() {
 	slices.SortFunc(fileBrowser.fileEntries, func(a, b *FileBrowserEntry) int {
-		if a.Stat.IsDir() == b.Stat.IsDir() {
+		if a.GetStat().IsDir() == b.GetStat().IsDir() {
 			return strings.Compare(a.Name, b.Name)
 		} else {
-			if a.Stat.IsDir() {
+			if a.GetStat().IsDir() {
 				return -1
 			} else {
 				return 1
@@ -451,11 +468,14 @@ func (fileBrowser *FileBrowser) setSelectionIndex(path string, index int) {
 	fileBrowser.selectionIndexMap[path] = index
 }
 
-func (fileBrowser *FileBrowser) Refresh() {
-	fileBrowser.SetPath(fileBrowser.path)
+func (fileBrowser *FileBrowser) refresh() {
+	fileBrowser.updateFileEntries()
+	fileBrowser.updateTableContents()
+	fileBrowser.updateFileWatcher()
 }
 
-func (fileBrowser *FileBrowser) updateFileWatcher(path string) {
+func (fileBrowser *FileBrowser) updateFileWatcher() {
+	path := fileBrowser.path
 	if fileBrowser.fileWatcher != nil {
 		fileBrowser.fileWatcher.Stop()
 		fileBrowser.fileWatcher = nil
@@ -463,7 +483,7 @@ func (fileBrowser *FileBrowser) updateFileWatcher(path string) {
 	fileBrowser.fileWatcher = util.NewFileWatcher(path)
 	action := func(s string) {
 		fileBrowser.application.QueueUpdateDraw(func() {
-			fileBrowser.Refresh()
+			fileBrowser.refresh()
 		})
 	}
 	err := fileBrowser.fileWatcher.Watch(action)

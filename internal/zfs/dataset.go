@@ -88,11 +88,8 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	for _, file := range snapshotDirs {
 		_, name := path2.Split(file)
 
-		result = append(result, &Snapshot{
-			Name:          name,
-			Path:          file,
-			ParentDataset: dataset,
-		})
+		// TODO: figure out date somehow
+		result = append(result, NewSnapshot(name, file, dataset, nil))
 	}
 
 	return result, nil
