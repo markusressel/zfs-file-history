@@ -40,24 +40,26 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			select {
 			case newSnapshotSelection := <-snapshotBrowser.selectedSnapshotChanged:
 				// update file browser based on currently selected snapshot
-				fileBrowser.SetSelectedSnapshot(newSnapshotSelection)
-			case newFileSelection := <-fileBrowser.selectedFileEntryChanged:
-				// update Snapshot Browser path
-				snapshotBrowser.SetFileEntry(newFileSelection)
-				if newFileSelection != nil {
-					snapshotBrowser.SetPath(newFileSelection.GetRealPath())
-				} else {
-					snapshotBrowser.SetPath("")
-				}
-
-				// update Dataset Info path
-				var datasetPath string
-				if newFileSelection != nil {
-					datasetPath = newFileSelection.GetRealPath()
-				} else {
-					datasetPath = ""
-				}
 				application.QueueUpdateDraw(func() {
+					fileBrowser.SetSelectedSnapshot(newSnapshotSelection)
+				})
+			case newFileSelection := <-fileBrowser.selectedFileEntryChanged:
+				application.QueueUpdateDraw(func() {
+					// update Snapshot Browser path
+					snapshotBrowser.SetFileEntry(newFileSelection)
+					if newFileSelection != nil {
+						snapshotBrowser.SetPath(newFileSelection.GetRealPath())
+					} else {
+						snapshotBrowser.SetPath("")
+					}
+
+					// update Dataset Info path
+					var datasetPath string
+					if newFileSelection != nil {
+						datasetPath = newFileSelection.GetRealPath()
+					} else {
+						datasetPath = ""
+					}
 					datasetInfo.SetPath(datasetPath)
 				})
 			}

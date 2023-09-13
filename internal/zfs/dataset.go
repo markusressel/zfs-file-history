@@ -1,6 +1,7 @@
 package zfs
 
 import (
+	"errors"
 	gozfs "github.com/mistifyio/go-zfs"
 	"os"
 	path2 "path"
@@ -34,6 +35,9 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 
 // FindHostDataset returns the root path of the dataset containing this path
 func FindHostDataset(path string) (*Dataset, error) {
+	if path == "" {
+		return nil, errors.New("Cannot find host dataset for empty path")
+	}
 	var dataset *string = nil
 
 	var currentPath = path

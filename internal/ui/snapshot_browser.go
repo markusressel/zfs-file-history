@@ -33,6 +33,10 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowser {
 }
 
 func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
+	if path == "" {
+		snapshotBrowser.Clear()
+		return
+	}
 	if snapshotBrowser.path == path {
 		return
 	}
@@ -46,14 +50,19 @@ func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
 				snapshotBrowser.setSnapshots(snapshots)
 				if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
 					snapshotBrowser.SelectSnapshot(snapshots[0])
+				} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
+					return snapshotBrowser.currentSnapshot.Path == snapshot.Path
+				}) {
+					snapshotBrowser.SelectSnapshot(nil)
 				}
 			} else {
 				logging.Error(err.Error())
+				snapshotBrowser.Clear()
 			}
 		}
 	} else {
 		logging.Error(err.Error())
-		snapshotBrowser.setSnapshots([]*zfs.Snapshot{})
+		snapshotBrowser.Clear()
 	}
 
 	snapshotBrowser.updateZfsInfo()
@@ -95,12 +104,14 @@ func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 }
 
 func (snapshotBrowser *SnapshotBrowser) setSnapshots(snapshots []*zfs.Snapshot) {
-	snapshotBrowser.snapshots = slices.Clone(snapshots)
-	slices.SortFunc(snapshotBrowser.snapshots, func(a, b *zfs.Snapshot) int {
+	snapshotsClone := slices.Clone(snapshots)
+	slices.SortFunc(snapshotsClone, func(a, b *zfs.Snapshot) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	if len(snapshots) <= 0 {
+	snapshotBrowser.snapshots = snapshotsClone
+
+	if len(snapshotBrowser.snapshots) <= 0 {
 		snapshotBrowser.SelectSnapshot(nil)
 	}
 
@@ -124,7 +135,6 @@ func (snapshotBrowser *SnapshotBrowser) updateUi() {
 			tview.NewTableCell(cellText),
 		)
 	}
-	table.ScrollToBeginning()
 }
 
 func (snapshotBrowser *SnapshotBrowser) updateZfsInfo() {
@@ -168,4 +178,8 @@ func (snapshotBrowser *SnapshotBrowser) SelectSnapshot(snapshot *zfs.Snapshot) {
 	go func() {
 		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.currentSnapshot
 	}()
+}
+
+func (snapshotBrowser *SnapshotBrowser) Clear() {
+	snapshotBrowser.setSnapshots([]*zfs.Snapshot{})
 }
