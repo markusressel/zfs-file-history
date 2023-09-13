@@ -5,6 +5,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/navidys/tvxwidgets"
 	"github.com/rivo/tview"
+	"math"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
@@ -23,9 +24,12 @@ type RestoreFileProgressDialog struct {
 
 	layout              *tview.Flex
 	descriptionTextView *tview.TextView
-	progress            *tvxwidgets.PercentageModeGauge
+	abortTextView       *tview.TextView
 
-	running chan bool
+	progress      *tvxwidgets.PercentageModeGauge
+	progressValue int
+
+	isRunning bool
 }
 
 func NewRestoreFileProgressDialog(application *tview.Application, fileSelection *data.FileBrowserEntry) *RestoreFileProgressDialog {
@@ -33,7 +37,6 @@ func NewRestoreFileProgressDialog(application *tview.Application, fileSelection 
 		application:   application,
 		fileSelection: fileSelection,
 		actionChannel: make(chan DialogAction),
-		running:       make(chan bool),
 	}
 
 	dialog.createLayout()
@@ -43,7 +46,7 @@ func NewRestoreFileProgressDialog(application *tview.Application, fileSelection 
 }
 
 func (d *RestoreFileProgressDialog) createLayout() {
-	dialogTitle := " Restoring... "
+	dialogTitle := "Restore"
 
 	fileToRestore := d.fileSelection.SnapshotFiles[0]
 
@@ -57,6 +60,9 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		for {
 			select {
 			case <-tick.C:
+				if !d.isRunning {
+					return
+				}
 				spinner.Pulse()
 				d.application.Draw()
 			}
@@ -68,7 +74,8 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		AddItem(spinner, 2, 0, false).
 		AddItem(descriptionTextView, 0, 1, false)
 
-	abortTextView := uiutil.CreateAttentionText("Press 'q' to abort")
+	abortTextView := uiutil.CreateAttentionTextView("Press 'q' to abort")
+	d.abortTextView = abortTextView
 
 	progress := tvxwidgets.NewPercentageModeGauge()
 	progressTitle := theme.CreateTitleText("Progress")
@@ -113,6 +120,7 @@ func (d *RestoreFileProgressDialog) Close() {
 
 func (d *RestoreFileProgressDialog) runAction() {
 	go func() {
+		d.isRunning = true
 		snapshot := d.fileSelection.SnapshotFiles[0].Snapshot
 
 		snapshotFile := d.fileSelection.SnapshotFiles[0]
@@ -120,23 +128,29 @@ func (d *RestoreFileProgressDialog) runAction() {
 
 		if snapshotFile.Stat.IsDir() {
 			err := snapshot.RestoreDirRecursive(srcFilePath)
-			d.handleError(err)
+			d.application.QueueUpdateDraw(func() {
+				d.handleError(err)
+			})
 			if err != nil {
 				logging.Error(err.Error())
 				return
 			}
 		} else {
 			err := snapshot.RestoreFile(srcFilePath)
-			d.handleError(err)
+			d.application.QueueUpdateDraw(func() {
+				d.handleError(err)
+			})
 			if err != nil {
 				logging.Error(err.Error())
 				return
 			}
 		}
-
-		d.handleDone()
+		d.application.QueueUpdateDraw(func() {
+			d.handleDone()
+		})
 	}()
-	value := 0
+
+	d.progressValue = 0
 	d.progress.SetMaxValue(100)
 
 	progressUpdate := func() {
@@ -144,17 +158,12 @@ func (d *RestoreFileProgressDialog) runAction() {
 		for {
 			select {
 			case <-tick.C:
-				if value > d.progress.GetMaxValue() {
-					d.handleDone()
-				} else {
-					value = value + 1
+				if !d.isRunning {
+					return
 				}
-				d.progress.SetValue(value)
+				d.progressValue = int(math.Min(float64(d.progress.GetMaxValue()), float64(d.progressValue)))
+				d.progress.SetValue(d.progressValue)
 				d.application.Draw()
-			case isRunning := <-d.running:
-				if !isRunning {
-					break
-				}
 			}
 		}
 	}
@@ -163,21 +172,18 @@ func (d *RestoreFileProgressDialog) runAction() {
 
 func (d *RestoreFileProgressDialog) handleError(err error) {
 	if err != nil {
+		d.isRunning = false
 		d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
 		d.progress.SetTitle(theme.CreateTitleText("Failed!"))
 		d.progress.SetTitleColor(tcell.ColorRed)
-		go func() {
-			d.running <- false
-		}()
 	}
 }
 
 func (d *RestoreFileProgressDialog) handleDone() {
-	go func() {
-		d.running <- false
-	}()
-	d.progress.SetValue(100)
+	d.isRunning = false
+	finishedValue := d.progress.GetMaxValue()
+	d.progress.SetValue(finishedValue)
 	d.progress.SetTitle(theme.CreateTitleText("Done!"))
 	d.progress.SetTitleColor(tcell.ColorGreen)
-	d.application.Draw()
+	d.abortTextView.SetText(uiutil.CreateAttentionText("Press 'q' to close"))
 }

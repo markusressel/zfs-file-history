@@ -52,7 +52,7 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	versionTextView.SetText(versionText)
 	versionTextView.SetTextAlign(tview.AlignCenter)
 
-	helpTextView := uiutil.CreateAttentionText("Press '?' for help")
+	helpTextView := uiutil.CreateAttentionTextView("Press '?' for help")
 
 	layout.AddItem(nameTextView, len(nameText), 0, false)
 	layout.AddItem(versionTextView, len(versionText), 0, false)

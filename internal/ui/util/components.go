@@ -8,7 +8,11 @@ import (
 
 type Page string
 
-func CreateAttentionText(text string) *tview.TextView {
-	abortText := fmt.Sprintf("  %s  ", text)
+func CreateAttentionText(text string) string {
+	return fmt.Sprintf("  %s  ", text)
+}
+
+func CreateAttentionTextView(text string) *tview.TextView {
+	abortText := CreateAttentionText(text)
 	return tview.NewTextView().SetText(abortText).SetTextColor(tcell.ColorYellow).SetTextAlign(tview.AlignRight)
 }
