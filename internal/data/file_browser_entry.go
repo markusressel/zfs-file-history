@@ -31,21 +31,42 @@ func (file *SnapshotFile) HasChanged() bool {
 	return file.Snapshot.CheckIfFileHasChanged(file.Path)
 }
 
+type FileBrowserEntryType int
+
+const (
+	File FileBrowserEntryType = iota + 1
+	Directory
+	Link
+)
+
+type FileBrowserEntryStatus int
+
+const (
+	Equal FileBrowserEntryStatus = iota
+	Deleted
+	Added
+	Modified
+	Unknown
+)
+
 type FileBrowserEntry struct {
 	Name          string
 	RealFile      *RealFile
 	SnapshotFiles []*SnapshotFile
+	Type          FileBrowserEntryType
+	Status        FileBrowserEntryStatus
 }
 
 func (entry *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
 	return entry.Name == e.Name && entry.RealFile == e.RealFile && slices.Equal(entry.SnapshotFiles, e.SnapshotFiles)
 }
 
-func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*SnapshotFile) *FileBrowserEntry {
+func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*SnapshotFile, entryType FileBrowserEntryType) *FileBrowserEntry {
 	return &FileBrowserEntry{
 		Name:          name,
 		RealFile:      latestFile,
 		SnapshotFiles: snapshots,
+		Type:          entryType,
 	}
 }
 

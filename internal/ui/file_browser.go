@@ -7,6 +7,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
+	"math"
 	"os"
 	path2 "path"
 	"strings"
@@ -19,14 +20,14 @@ import (
 	"zfs-file-history/internal/zfs"
 )
 
-type FileBrowserColumn string
+type FileBrowserColumn int
 
 const (
-	Name    FileBrowserColumn = "Name"
-	Size    FileBrowserColumn = "Size"
-	ModTime FileBrowserColumn = "DateTime"
-	Type    FileBrowserColumn = "Type"
-	Status  FileBrowserColumn = "Status"
+	Name FileBrowserColumn = iota + 1
+	Size
+	ModTime
+	Type
+	Status
 
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
@@ -40,6 +41,7 @@ type FileBrowser struct {
 	fileEntries              []*data.FileBrowserEntry
 	fileSelection            *data.FileBrowserEntry
 	selectedFileEntryChanged chan *data.FileBrowserEntry
+	sortByColumn             FileBrowserColumn
 
 	application *tview.Application
 	layout      *tview.Pages
@@ -54,6 +56,7 @@ func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 		application:              application,
 		pathChanged:              make(chan string),
 		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
+		sortByColumn:             Status,
 	}
 
 	fileBrowser.createLayout(application)
@@ -196,6 +199,17 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			continue
 		}
 
+		var entryType data.FileBrowserEntryType
+
+		lstat, err := os.Lstat(latestFilePath)
+		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
+			entryType = data.Link
+		} else if lstat.IsDir() {
+			entryType = data.Directory
+		} else {
+			entryType = data.File
+		}
+
 		var snapshotFile *data.SnapshotFile = nil
 		if snapshot != nil {
 			snapshotFilePath := snapshot.GetSnapshotPath(latestFilePath)
@@ -229,7 +243,8 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			Stat: latestFileStat,
 		}
 
-		fileEntries = append(fileEntries, data.NewFileBrowserEntry(latestFileName, latestFile, snapshotFiles))
+		fileBrowserEntry := data.NewFileBrowserEntry(latestFileName, latestFile, snapshotFiles, entryType)
+		fileEntries = append(fileEntries, fileBrowserEntry)
 	}
 
 	// add remaining entries for files which are only present in the snapshot
@@ -241,6 +256,16 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			logging.Error(err.Error())
 			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
 			continue
+		}
+
+		var entryType data.FileBrowserEntryType
+		lstat, err := os.Lstat(snapshotFilePath)
+		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
+			entryType = data.Link
+		} else if lstat.IsDir() {
+			entryType = data.Directory
+		} else {
+			entryType = data.File
 		}
 
 		snapshotFile := &data.SnapshotFile{
@@ -255,7 +280,24 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			snapshotFiles = append(snapshotFiles, snapshotFile)
 		}
 
-		fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles))
+		fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles, entryType))
+	}
+
+	for _, entry := range fileEntries {
+		// figure out status
+		var status = data.Equal
+		if fileBrowser.currentSnapshot == nil {
+			status = data.Unknown
+		} else if entry.HasSnapshot() && !entry.HasReal() {
+			// file only exists in snapshot but not in latest
+			status = data.Deleted
+		} else if !entry.HasSnapshot() && entry.HasReal() {
+			// file only exists in latest but not in snapshot
+			status = data.Added
+		} else if entry.SnapshotFiles[0].HasChanged() {
+			status = data.Modified
+		}
+		entry.Status = status
 	}
 
 	fileBrowser.fileEntries = fileEntries
@@ -349,33 +391,45 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 	title := fmt.Sprintf("Path: %s", fileBrowser.path)
 	uiutil.SetupWindow(table, title)
 
-	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)+1
+	tableEntries := slices.Clone(fileBrowser.fileEntries)
+
+	sortedTableEntries := sortTableEntries(tableEntries, fileBrowser.sortByColumn)
+
+	cols, rows := len(columnTitles), len(sortedTableEntries)+1
 	fileIndex := 0
 	for row := 0; row < rows; row++ {
 		if (row) == 0 {
 			// Draw Table Column Headers
 			for column := 0; column < cols; column++ {
-				columnTitle := columnTitles[column]
+				columnId := columnTitles[column]
 				var cellColor = tcell.ColorWhite
 				var cellText string
 				var cellAlignment = tview.AlignLeft
 				var cellExpansion = 0
 
-				if columnTitle == Name {
+				if columnId == Name {
 					cellText = "Name"
-				} else if columnTitle == ModTime {
+				} else if columnId == ModTime {
 					cellText = "Date/Time"
-				} else if columnTitle == Type {
+				} else if columnId == Type {
 					cellText = "Type"
 					cellAlignment = tview.AlignCenter
-				} else if columnTitle == Status {
+				} else if columnId == Status {
 					cellText = "Diff"
 					cellAlignment = tview.AlignCenter
-				} else if columnTitle == Size {
+				} else if columnId == Size {
 					cellText = "Size"
 					cellAlignment = tview.AlignCenter
 				} else {
 					panic("Unknown column")
+				}
+
+				if columnId == FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn))) {
+					var sortDirectionIndicator = "↓"
+					if fileBrowser.sortByColumn > 0 {
+						sortDirectionIndicator = "↑"
+					}
+					cellText = fmt.Sprintf("%s %s", cellText, sortDirectionIndicator)
 				}
 
 				table.SetCell(row, column,
@@ -388,58 +442,65 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			continue
 		}
 
-		currentFileEntry := fileBrowser.fileEntries[fileIndex]
+		currentFileEntry := sortedTableEntries[fileIndex]
 
 		var status = "="
 		var statusColor = tcell.ColorGray
-		if fileBrowser.currentSnapshot == nil {
+		switch currentFileEntry.Status {
+		case data.Equal:
+			status = "="
 			statusColor = tcell.ColorGray
-			status = "N/A"
-		} else if currentFileEntry.HasSnapshot() && !currentFileEntry.HasReal() {
-			// file only exists in snapshot but not in latest
-			statusColor = tcell.ColorRed
+		case data.Deleted:
 			status = "-"
-		} else if !currentFileEntry.HasSnapshot() && currentFileEntry.HasReal() {
-			// file only exists in latest but not in snapshot
-			statusColor = tcell.ColorGreen
+			statusColor = tcell.ColorRed
+		case data.Added:
 			status = "+"
-		} else if currentFileEntry.SnapshotFiles[0].HasChanged() {
-			statusColor = tcell.ColorYellow
+			statusColor = tcell.ColorGreen
+		case data.Modified:
 			status = "≠"
+			statusColor = tcell.ColorYellow
+		case data.Unknown:
+			status = "N/A"
+			statusColor = tcell.ColorGray
+		}
+
+		var typeCellText = "?"
+		var typeCellColor = tcell.ColorGray
+		switch currentFileEntry.Type {
+		case data.File:
+			typeCellText = "F"
+		case data.Directory:
+			typeCellText = "D"
+			typeCellColor = tcell.ColorSteelBlue
+		case data.Link:
+			typeCellText = "L"
+			typeCellColor = tcell.ColorYellow
 		}
 
 		for column := 0; column < cols; column++ {
-			columnTitle := columnTitles[column]
+			columnId := columnTitles[column]
 			var cellColor = tcell.ColorWhite
 			var cellText string
 			var cellAlignment = tview.AlignLeft
 			var cellExpansion = 0
 
-			if columnTitle == Name {
+			if columnId == Name {
 				cellText = fmt.Sprintf("%s", currentFileEntry.Name)
 				if currentFileEntry.GetStat().IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
 				}
 				cellColor = statusColor
-			} else if columnTitle == Type {
-				lstat, err := os.Lstat(currentFileEntry.GetRealPath())
-				if err == nil && lstat.Mode().Type() == os.ModeSymlink {
-					cellText = "L"
-					cellColor = tcell.ColorYellow
-				} else if currentFileEntry.GetStat().IsDir() {
-					cellText = "D"
-					cellColor = tcell.ColorSteelBlue
-				} else {
-					cellText = "F"
-				}
+			} else if columnId == Type {
+				cellText = typeCellText
+				cellColor = typeCellColor
 				cellAlignment = tview.AlignCenter
-			} else if columnTitle == Status {
+			} else if columnId == Status {
 				cellText = status
 				cellColor = statusColor
 				cellAlignment = tview.AlignCenter
-			} else if columnTitle == ModTime {
+			} else if columnId == ModTime {
 				cellText = currentFileEntry.GetStat().ModTime().Format(time.DateTime)
-			} else if columnTitle == Size {
+			} else if columnId == Size {
 				cellText = humanize.IBytes(uint64(currentFileEntry.GetStat().Size()))
 				if strings.HasSuffix(cellText, " B") {
 					withoutSuffix := strings.TrimSuffix(cellText, " B")
@@ -473,6 +534,33 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
 	}
 	fileBrowser.fileTable.Select(selectionIndex, 0)
+}
+
+func sortTableEntries(entries []*data.FileBrowserEntry, column FileBrowserColumn) []*data.FileBrowserEntry {
+	result := slices.Clone(entries)
+	slices.SortFunc(result, func(a, b *data.FileBrowserEntry) int {
+		var result int
+		switch FileBrowserColumn(math.Abs(float64(column))) {
+		case Name:
+			result = strings.Compare(a.Name, b.Name)
+		case ModTime:
+			result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
+		case Type:
+			result = int(a.Type - b.Type)
+		case Size:
+			result = int(a.GetStat().Size() - b.GetStat().Size())
+		case Status:
+			result = int(a.Status - b.Status)
+		}
+
+		if column < 0 {
+			result *= -1
+		}
+
+		return result
+	})
+
+	return result
 }
 
 func (fileBrowser *FileBrowser) SelectEntry(i int) {
