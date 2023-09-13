@@ -391,7 +391,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			status = "+"
 		} else if currentFileEntry.SnapshotFiles[0].HasChanged() {
 			statusColor = tcell.ColorYellow
-			status = "M"
+			status = "≠"
 		}
 
 		for column := 0; column < cols; column++ {
@@ -405,10 +405,8 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				cellText = fmt.Sprintf("%s", currentFileEntry.Name)
 				if currentFileEntry.GetStat().IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
-					cellColor = tcell.ColorSteelBlue
-				} else {
-					cellColor = statusColor
 				}
+				cellColor = statusColor
 			} else if columnTitle == Type {
 				lstat, err := os.Lstat(currentFileEntry.GetRealPath())
 				if err == nil && lstat.Mode().Type() == os.ModeSymlink {
