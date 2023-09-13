@@ -53,6 +53,7 @@ func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
 		}
 	} else {
 		logging.Error(err.Error())
+		snapshotBrowser.setSnapshots([]*zfs.Snapshot{})
 	}
 
 	snapshotBrowser.updateZfsInfo()
@@ -98,6 +99,11 @@ func (snapshotBrowser *SnapshotBrowser) setSnapshots(snapshots []*zfs.Snapshot) 
 	slices.SortFunc(snapshotBrowser.snapshots, func(a, b *zfs.Snapshot) int {
 		return strings.Compare(a.Name, b.Name)
 	})
+
+	if len(snapshots) <= 0 {
+		snapshotBrowser.SelectSnapshot(nil)
+	}
+
 	snapshotBrowser.updateUi()
 }
 

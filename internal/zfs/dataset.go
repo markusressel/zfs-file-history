@@ -23,11 +23,9 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	datasets, err := gozfs.Filesystems(path)
 	if err != nil {
 		return dataset, err
-	}
-	for _, d := range datasets {
-		if d.Mountpoint == path {
-			dataset.ZfsData = d
-			break
+	} else {
+		if len(datasets) > 0 {
+			dataset.ZfsData = datasets[0]
 		}
 	}
 

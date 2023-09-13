@@ -46,6 +46,8 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				snapshotBrowser.SetFileEntry(newFileSelection)
 				if newFileSelection != nil {
 					snapshotBrowser.SetPath(newFileSelection.GetRealPath())
+				} else {
+					snapshotBrowser.SetPath("")
 				}
 
 				// update Dataset Info path
