@@ -127,13 +127,17 @@ func (d *RestoreFileProgressDialog) runAction() {
 		srcFilePath := snapshotFile.Path
 
 		if snapshotFile.Stat.IsDir() {
-			err := snapshot.RestoreDirRecursive(srcFilePath)
-			d.application.QueueUpdateDraw(func() {
-				d.handleError(err)
-			})
-			if err != nil {
-				logging.Error(err.Error())
-				return
+			// TODO: this loops two times currently to ensure folder modtime properties are correct.
+			//  See implementation for what we need to do to fix this
+			for i := 0; i < 2; i++ {
+				err := snapshot.RestoreDirRecursive(srcFilePath)
+				d.application.QueueUpdateDraw(func() {
+					d.handleError(err)
+				})
+				if err != nil {
+					logging.Error(err.Error())
+					return
+				}
 			}
 		} else {
 			err := snapshot.RestoreFile(srcFilePath)

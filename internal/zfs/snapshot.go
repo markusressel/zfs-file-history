@@ -69,7 +69,7 @@ func (s *Snapshot) RestoreDirRecursive(srcPath string) error {
 			return err
 		}
 		if stat.IsDir() {
-			err = s.RestoreDirRecursive(s.GetRealPath(file))
+			err = s.RestoreDirRecursive(file)
 			if err != nil {
 				return err
 			}
@@ -80,6 +80,9 @@ func (s *Snapshot) RestoreDirRecursive(srcPath string) error {
 			}
 		}
 	}
+
+	// TODO: we have to sync file properties from bottom to top, to avoid
+	//  affecting the modtime of folders due to changes of files within them
 
 	return err
 }
@@ -94,9 +97,18 @@ func (s *Snapshot) RestoreDir(dstPath string, stat os.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
 
-	err = syncFiles(dstPath, destFile, stat)
+	err = destFile.Sync()
+	if err != nil {
+		return err
+	}
+
+	err = destFile.Close()
+	if err != nil {
+		return err
+	}
+
+	err = syncFileProperties(dstPath, stat)
 	if err != nil {
 		return err
 	}
@@ -112,21 +124,32 @@ func (s *Snapshot) RestoreFile(srcPath string) error {
 		return err
 	}
 
-	defer srcFile.Close()
-
 	dstPath := s.GetRealPath(srcPath)
 	destFile, err := os.Create(dstPath) // creates if file doesn't exist
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
 
 	_, err = io.Copy(destFile, srcFile) // check first var for number of bytes copied
 	if err != nil {
 		return err
 	}
 
-	err = syncFiles(dstPath, destFile, stat)
+	err = destFile.Sync()
+	if err != nil {
+		return err
+	}
+
+	err = destFile.Close()
+	if err != nil {
+		return err
+	}
+	err = srcFile.Close()
+	if err != nil {
+		return err
+	}
+
+	err = syncFileProperties(dstPath, stat)
 	if err != nil {
 		return err
 	}
@@ -164,13 +187,8 @@ func (s *Snapshot) IsSnapshotPath(path string) bool {
 	return strings.HasPrefix(path, s.Path)
 }
 
-func syncFiles(dstPath string, destFile *os.File, stat os.FileInfo) error {
-	err := destFile.Sync()
-	if err != nil {
-		return err
-	}
-
-	err = os.Chmod(dstPath, stat.Mode())
+func syncFileProperties(dstPath string, stat os.FileInfo) error {
+	err := os.Chmod(dstPath, stat.Mode())
 	if err != nil {
 		return err
 	}
@@ -186,6 +204,8 @@ func syncFiles(dstPath string, destFile *os.File, stat os.FileInfo) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		logging.Error("Could not sync timestamps")
 	}
 
 	return nil
