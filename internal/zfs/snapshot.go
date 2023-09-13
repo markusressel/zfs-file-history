@@ -13,8 +13,8 @@ type Snapshot struct {
 	Date          *time.Time
 }
 
-func (v *Snapshot) Equal(e Snapshot) bool {
-	return v.Name == e.Name && v.Path == e.Path
+func (s *Snapshot) Equal(e Snapshot) bool {
+	return s.Name == e.Name && s.Path == e.Path
 }
 
 func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Time) *Snapshot {

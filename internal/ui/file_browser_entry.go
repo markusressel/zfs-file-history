@@ -12,8 +12,8 @@ type RealFile struct {
 	Stat os.FileInfo
 }
 
-func (v *RealFile) Equal(e RealFile) bool {
-	return v.Name == e.Name && v.Path == e.Path
+func (file *RealFile) Equal(e RealFile) bool {
+	return file.Name == e.Name && file.Path == e.Path
 }
 
 type SnapshotFile struct {
@@ -23,8 +23,8 @@ type SnapshotFile struct {
 	Snapshot     *zfs.Snapshot
 }
 
-func (v *SnapshotFile) Equal(e SnapshotFile) bool {
-	return v.Path == e.Path && v.OriginalPath == e.OriginalPath && v.Snapshot == e.Snapshot
+func (file *SnapshotFile) Equal(e SnapshotFile) bool {
+	return file.Path == e.Path && file.OriginalPath == e.OriginalPath && file.Snapshot == e.Snapshot
 }
 
 type FileBrowserEntry struct {
@@ -33,8 +33,8 @@ type FileBrowserEntry struct {
 	SnapshotFiles []*SnapshotFile
 }
 
-func (v *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
-	return v.Name == e.Name && v.LatestFile == e.LatestFile && slices.Equal(v.SnapshotFiles, e.SnapshotFiles)
+func (entry *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
+	return entry.Name == e.Name && entry.LatestFile == e.LatestFile && slices.Equal(entry.SnapshotFiles, e.SnapshotFiles)
 }
 
 func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*SnapshotFile) *FileBrowserEntry {
@@ -45,26 +45,26 @@ func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*Snapsho
 	}
 }
 
-func (fileBrowserEntry *FileBrowserEntry) GetRealPath() string {
-	if fileBrowserEntry.HasLatest() {
-		return fileBrowserEntry.LatestFile.Path
+func (entry *FileBrowserEntry) GetRealPath() string {
+	if entry.HasLatest() {
+		return entry.LatestFile.Path
 	} else {
-		return fileBrowserEntry.SnapshotFiles[0].OriginalPath
+		return entry.SnapshotFiles[0].OriginalPath
 	}
 }
 
-func (fileBrowserEntry *FileBrowserEntry) GetStat() os.FileInfo {
-	if fileBrowserEntry.HasLatest() {
-		return fileBrowserEntry.LatestFile.Stat
+func (entry *FileBrowserEntry) GetStat() os.FileInfo {
+	if entry.HasLatest() {
+		return entry.LatestFile.Stat
 	} else {
-		return fileBrowserEntry.SnapshotFiles[0].Stat
+		return entry.SnapshotFiles[0].Stat
 	}
 }
 
-func (fileBrowserEntry *FileBrowserEntry) HasSnapshots() bool {
-	return len(fileBrowserEntry.SnapshotFiles) > 0
+func (entry *FileBrowserEntry) HasSnapshots() bool {
+	return len(entry.SnapshotFiles) > 0
 }
 
-func (fileBrowserEntry *FileBrowserEntry) HasLatest() bool {
-	return fileBrowserEntry.LatestFile != nil
+func (entry *FileBrowserEntry) HasLatest() bool {
+	return entry.LatestFile != nil
 }
