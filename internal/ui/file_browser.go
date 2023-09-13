@@ -25,6 +25,7 @@ const (
 	Name    FileBrowserColumn = "Name"
 	Size    FileBrowserColumn = "Size"
 	ModTime FileBrowserColumn = "DateTime"
+	Type    FileBrowserColumn = "Type"
 	Status  FileBrowserColumn = "Status"
 
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
@@ -322,7 +323,7 @@ func (fileBrowser *FileBrowser) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
 }
 
 func (fileBrowser *FileBrowser) updateTableContents() {
-	columnTitles := []FileBrowserColumn{Size, ModTime, Status, Name}
+	columnTitles := []FileBrowserColumn{Size, ModTime, Type, Status, Name}
 
 	table := fileBrowser.fileTable
 	if table == nil {
@@ -350,6 +351,9 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 					cellText = "Name"
 				} else if columnTitle == ModTime {
 					cellText = "Date/Time"
+				} else if columnTitle == Type {
+					cellText = "Type"
+					cellAlignment = tview.AlignCenter
 				} else if columnTitle == Status {
 					cellText = "Diff"
 					cellAlignment = tview.AlignCenter
@@ -405,6 +409,17 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				} else {
 					cellColor = statusColor
 				}
+			} else if columnTitle == Type {
+				lstat, err := os.Lstat(currentFileEntry.GetRealPath())
+				if err == nil && lstat.Mode().Type() == os.ModeSymlink {
+					cellText = "SL"
+				} else if currentFileEntry.GetStat().IsDir() {
+					cellText = "D"
+					cellColor = tcell.ColorSteelBlue
+				} else {
+					cellText = "F"
+				}
+				cellAlignment = tview.AlignCenter
 			} else if columnTitle == Status {
 				cellText = status
 				cellColor = statusColor
