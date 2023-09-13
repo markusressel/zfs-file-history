@@ -297,10 +297,11 @@ func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *RealFile, sn
 }
 
 func (fileBrowser *FileBrowser) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
-	if fileBrowser.currentSnapshot != snapshot {
-		fileBrowser.currentSnapshot = snapshot
-		fileBrowser.refresh()
+	if fileBrowser.currentSnapshot == snapshot {
+		return
 	}
+	fileBrowser.currentSnapshot = snapshot
+	fileBrowser.refresh()
 }
 
 func (fileBrowser *FileBrowser) updateTableContents() {

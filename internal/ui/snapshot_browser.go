@@ -33,28 +33,29 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowser {
 }
 
 func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
-	if snapshotBrowser.path != path {
-		snapshotBrowser.path = path
-
-		hostDataset, err := zfs.FindHostDataset(path)
-		if err == nil {
-			if hostDataset != nil {
-				snapshots, err := hostDataset.GetSnapshots()
-				if err == nil {
-					snapshotBrowser.setSnapshots(snapshots)
-					if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
-						snapshotBrowser.SelectSnapshot(snapshots[0])
-					}
-				} else {
-					logging.Error(err.Error())
-				}
-			}
-		} else {
-			logging.Error(err.Error())
-		}
-
-		snapshotBrowser.updateZfsInfo()
+	if snapshotBrowser.path == path {
+		return
 	}
+	snapshotBrowser.path = path
+
+	hostDataset, err := zfs.FindHostDataset(path)
+	if err == nil {
+		if hostDataset != nil {
+			snapshots, err := hostDataset.GetSnapshots()
+			if err == nil {
+				snapshotBrowser.setSnapshots(snapshots)
+				if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
+					snapshotBrowser.SelectSnapshot(snapshots[0])
+				}
+			} else {
+				logging.Error(err.Error())
+			}
+		}
+	} else {
+		logging.Error(err.Error())
+	}
+
+	snapshotBrowser.updateZfsInfo()
 }
 
 func (snapshotBrowser *SnapshotBrowser) SetFileEntry(fileEntry *FileBrowserEntry) {
@@ -84,8 +85,6 @@ func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 		} else {
 			newSelection = snapshotBrowser.snapshots[selectionIndex]
 		}
-		// TODO: like in the file_browser, save the selected snapshot on a "dataset" basis
-		//  to prevent "resetting" the selected snapshot when changing the selected FilBrowserEntry
 		snapshotBrowser.SelectSnapshot(newSelection)
 	})
 
@@ -139,7 +138,9 @@ func (snapshotBrowser *SnapshotBrowser) updateZfsInfo() {
 	}
 
 	if len(snapshotBrowser.snapshots) > 0 {
-		snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
+		if snapshotBrowser.currentSnapshot == nil {
+			snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
+		}
 	} else {
 		snapshotBrowser.SelectSnapshot(nil)
 	}
@@ -154,10 +155,11 @@ func (snapshotBrowser *SnapshotBrowser) updateZfsInfo() {
 }
 
 func (snapshotBrowser *SnapshotBrowser) SelectSnapshot(snapshot *zfs.Snapshot) {
-	if snapshotBrowser.currentSnapshot != snapshot {
-		snapshotBrowser.currentSnapshot = snapshot
-		go func() {
-			snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.currentSnapshot
-		}()
+	if snapshotBrowser.currentSnapshot == snapshot {
+		return
 	}
+	snapshotBrowser.currentSnapshot = snapshot
+	go func() {
+		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.currentSnapshot
+	}()
 }
