@@ -45,8 +45,10 @@ const (
 func (d *FileActionDialog) createLayout() {
 	dialogTitle := " Select Action "
 
+	textDesctiption := fmt.Sprintf("What do you want to do with '%s'?", d.file.Name)
+	textDesctiptionView := tview.NewTextView().SetText(textDesctiption)
+
 	optionTable := tview.NewTable()
-	optionTable.SetBorderPadding(0, 0, 1, 1)
 	optionTable.SetSelectable(true, false)
 	optionTable.Select(0, 0)
 	optionTable.SetSelectedFunc(func(row, column int) {
@@ -63,7 +65,7 @@ func (d *FileActionDialog) createLayout() {
 	if d.file.HasReal() {
 		option := &DialogOption{
 			Id:   DeleteFileDialogOption,
-			Name: fmt.Sprintf("Delete '%s'", d.file.RealFile.Path),
+			Name: fmt.Sprintf("Delete '%s'", d.file.RealFile.Name),
 		}
 		dialogOptions = slices.Insert(dialogOptions, 0, option)
 	}
@@ -97,7 +99,12 @@ func (d *FileActionDialog) createLayout() {
 		fileIndex = (fileIndex + 1) % rows
 	}
 
-	dialog := createModal(dialogTitle, optionTable, 40, 10)
+	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
+	dialogContent.SetBorderPadding(0, 0, 1, 1)
+	dialogContent.AddItem(textDesctiptionView, 0, 1, false)
+	dialogContent.AddItem(optionTable, 0, 1, true)
+
+	dialog := createModal(dialogTitle, dialogContent, 50, 15)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
 			d.Close()
