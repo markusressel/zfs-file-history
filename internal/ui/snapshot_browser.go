@@ -84,6 +84,8 @@ func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 		} else {
 			newSelection = snapshotBrowser.snapshots[selectionIndex]
 		}
+		// TODO: like in the file_browser, save the selected snapshot on a "dataset" basis
+		//  to prevent "resetting" the selected snapshot when changing the selected FilBrowserEntry
 		snapshotBrowser.SelectSnapshot(newSelection)
 	})
 
