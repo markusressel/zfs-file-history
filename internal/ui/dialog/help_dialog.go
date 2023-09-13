@@ -31,6 +31,7 @@ func (p *HelpPage) createLayout() {
 		{Key: "down, j", Value: "Move cursor down"},
 		{Key: "left, h", Value: "Open parent directory"},
 		{Key: "right", Value: "Open selected directory"},
+		{Key: "enter", Value: "Open file action dialog"},
 		{Key: "tab, backtab", Value: "Switch focus"},
 	}
 

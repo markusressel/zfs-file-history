@@ -306,7 +306,13 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 
 func (fileBrowser *FileBrowser) openActionDialog(selection *data.FileBrowserEntry) {
 	actionDialogLayout := dialog.NewFileActionDialog(selection)
-	fileBrowser.showDialog(actionDialogLayout)
+	actionHandler := func(action dialog.DialogAction) {
+		if action == dialog.RestoreAction {
+			d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, fileBrowser.fileSelection)
+			fileBrowser.showDialog(d, func(action dialog.DialogAction) {})
+		}
+	}
+	fileBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
 func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *data.RealFile, snapshotFile *data.SnapshotFile) bool {
@@ -527,7 +533,7 @@ func (fileBrowser *FileBrowser) HasFocus() bool {
 	return fileBrowser.fileTable.HasFocus()
 }
 
-func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog) {
+func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction)) {
 	layout := d.GetLayout()
 	go func() {
 		for {
@@ -536,6 +542,9 @@ func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog) {
 				if action == dialog.ActionClose {
 					fileBrowser.layout.HidePage(d.GetName())
 					fileBrowser.layout.RemovePage(d.GetName())
+					break
+				} else {
+					actionHandler(action)
 				}
 			}
 		}

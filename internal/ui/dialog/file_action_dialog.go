@@ -22,7 +22,8 @@ type FileActionDialog struct {
 
 func NewFileActionDialog(file *data.FileBrowserEntry) *FileActionDialog {
 	dialog := &FileActionDialog{
-		file: file,
+		file:          file,
+		actionChannel: make(chan DialogAction),
 	}
 
 	dialog.createLayout()

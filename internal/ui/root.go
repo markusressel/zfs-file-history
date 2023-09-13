@@ -25,7 +25,8 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// ignore events, if some other page is open
 		name, _ := pagesLayout.GetFrontPage()
-		if name != string(Main) {
+		fileBrowserPage, _ := mainPage.fileBrowser.layout.GetFrontPage()
+		if name != string(Main) || fileBrowserPage != string(FileBrowserPage) {
 			return event
 		}
 

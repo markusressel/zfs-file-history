@@ -5,6 +5,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/navidys/tvxwidgets"
 	"github.com/rivo/tview"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/page"
 )
@@ -14,14 +15,17 @@ const (
 )
 
 type RestoreFileProgressDialog struct {
+	application   *tview.Application
 	fileSelection *data.FileBrowserEntry
 	layout        *tview.Flex
 	actionChannel chan DialogAction
 }
 
-func NewRestoreFileProgressDialog(fileSelection *data.FileBrowserEntry) *RestoreFileProgressDialog {
+func NewRestoreFileProgressDialog(application *tview.Application, fileSelection *data.FileBrowserEntry) *RestoreFileProgressDialog {
 	dialog := &RestoreFileProgressDialog{
+		application:   application,
 		fileSelection: fileSelection,
+		actionChannel: make(chan DialogAction),
 	}
 
 	dialog.createLayout()
@@ -34,15 +38,54 @@ func (d *RestoreFileProgressDialog) createLayout() {
 
 	fileToRestore := d.fileSelection.SnapshotFiles[0]
 
-	text := fmt.Sprintf("Restoring '%s' to '%s'", fileToRestore.Path, fileToRestore.OriginalPath)
+	text := fmt.Sprintf("Restoring '%s' from snapshot '%s'", d.fileSelection.Name, fileToRestore.Snapshot.Name)
 	textDescription := tview.NewTextView().SetText(text)
-	spinner := tvxwidgets.NewSpinner()
+	spinner := tvxwidgets.NewSpinner().SetStyle(tvxwidgets.SpinnerCircleQuarters)
 
-	progressLayout := tview.NewFlex().
+	update := func() {
+		tick := time.NewTicker(100 * time.Millisecond)
+		for {
+			select {
+			case <-tick.C:
+				spinner.Pulse()
+				d.application.Draw()
+			}
+		}
+	}
+	go update()
+
+	progress := tvxwidgets.NewPercentageModeGauge()
+	progressTitle := fmt.Sprintf(" %s ... ", d.fileSelection.Name)
+	progress.SetTitle(progressTitle)
+	progress.SetBorder(true)
+
+	value := 0
+	progress.SetMaxValue(100)
+
+	progressUpdate := func() {
+		tick := time.NewTicker(100 * time.Millisecond)
+		for {
+			select {
+			case <-tick.C:
+				if value > progress.GetMaxValue() {
+					value = 0
+				} else {
+					value = value + 1
+				}
+				progress.SetValue(value)
+				d.application.Draw()
+			}
+		}
+	}
+	go progressUpdate()
+
+	progressLayout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(textDescription, 0, 1, false).
-		AddItem(spinner, 0, 1, false)
+		AddItem(spinner, 1, 0, false).
+		AddItem(progress, 3, 0, false)
+	progressLayout.SetBorderPadding(0, 0, 1, 1)
 
-	dialog := createModal(dialogTitle, progressLayout, 40, 10)
+	dialog := createModal(dialogTitle, progressLayout, 60, 10)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
 			d.Close()
