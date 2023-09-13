@@ -135,9 +135,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 			}
 			return nil
 		} else if key == tcell.KeyEnter {
-			if fileBrowser.fileSelection != nil {
-				fileBrowser.openActionDialog(fileBrowser.fileSelection)
-			}
+			fileBrowser.openActionDialog(fileBrowser.fileSelection)
 		}
 		if key == tcell.KeyCtrlR {
 			fileBrowser.refresh()
@@ -317,7 +315,10 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 }
 
 func (fileBrowser *FileBrowser) openActionDialog(selection *data.FileBrowserEntry) {
-	actionDialogLayout := dialog.NewFileActionDialog(selection)
+	if fileBrowser.fileSelection == nil {
+		return
+	}
+	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
 	actionHandler := func(action dialog.DialogAction) {
 		if action == dialog.RestoreAction {
 			d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, fileBrowser.fileSelection)

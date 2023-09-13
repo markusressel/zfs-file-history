@@ -18,13 +18,15 @@ const (
 )
 
 type FileActionDialog struct {
+	application   *tview.Application
 	file          *data.FileBrowserEntry
 	layout        *tview.Flex
 	actionChannel chan DialogAction
 }
 
-func NewFileActionDialog(file *data.FileBrowserEntry) *FileActionDialog {
+func NewFileActionDialog(application *tview.Application, file *data.FileBrowserEntry) *FileActionDialog {
 	dialog := &FileActionDialog{
+		application:   application,
 		file:          file,
 		actionChannel: make(chan DialogAction),
 	}
@@ -51,9 +53,6 @@ func (d *FileActionDialog) createLayout() {
 	optionTable := tview.NewTable()
 	optionTable.SetSelectable(true, false)
 	optionTable.Select(0, 0)
-	optionTable.SetSelectedFunc(func(row, column int) {
-
-	})
 
 	dialogOptions := []*DialogOption{
 		{
@@ -77,6 +76,21 @@ func (d *FileActionDialog) createLayout() {
 		}
 		dialogOptions = slices.Insert(dialogOptions, 0, option)
 	}
+
+	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		switch action {
+		case tview.MouseLeftDoubleClick:
+			go func() {
+				d.application.QueueUpdateDraw(func() {
+					row, _ := optionTable.GetSelection()
+					dialogOption := dialogOptions[row]
+					d.selectAction(dialogOption)
+				})
+			}()
+			return action, nil
+		}
+		return action, event
+	})
 
 	_, rows := 1, len(dialogOptions)
 	fileIndex := 0
@@ -112,14 +126,7 @@ func (d *FileActionDialog) createLayout() {
 		} else if event.Key() == tcell.KeyEnter {
 			row, _ := optionTable.GetSelection()
 			dialogOption := dialogOptions[row]
-			switch dialogOption.Id {
-			case RestoreFileDialogOption:
-				d.RestoreFile()
-			case DeleteFileDialogOption:
-				d.DeleteFile()
-			case CloseDialogOption:
-				d.Close()
-			}
+			d.selectAction(dialogOption)
 			return nil
 		}
 		return event
@@ -162,4 +169,15 @@ func (d *FileActionDialog) DeleteFile() {
 
 		d.actionChannel <- ActionClose
 	}()
+}
+
+func (d *FileActionDialog) selectAction(option *DialogOption) {
+	switch option.Id {
+	case RestoreFileDialogOption:
+		d.RestoreFile()
+	case DeleteFileDialogOption:
+		d.DeleteFile()
+	case CloseDialogOption:
+		d.Close()
+	}
 }
