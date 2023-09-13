@@ -78,8 +78,7 @@ func (d *FileActionDialog) createLayout() {
 			row, _ := optionTable.GetSelection()
 			dialogOption := dialogOptions[row]
 			if dialogOption.Name == "Restore" {
-				fileToRestore := d.file.SnapshotFiles[0]
-				d.RestoreFile(fileToRestore)
+				d.RestoreFile()
 			}
 			return nil
 		}
@@ -106,7 +105,7 @@ func (d *FileActionDialog) Close() {
 	}()
 }
 
-func (d *FileActionDialog) RestoreFile(restore *data.SnapshotFile) {
+func (d *FileActionDialog) RestoreFile() {
 	go func() {
 		d.actionChannel <- ActionClose
 		d.actionChannel <- RestoreAction

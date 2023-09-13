@@ -43,8 +43,8 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	versionText.SetTextAlign(tview.AlignCenter)
 
 	helpText := tview.NewTextView()
-	helpText.SetText("  Press `?` for help  ")
-	helpText.SetTextColor(tcell.ColorWhite)
+	helpText.SetText("  Press '?' for help  ")
+	helpText.SetTextColor(tcell.ColorYellow)
 	helpText.SetTextAlign(tview.AlignRight)
 
 	layout.AddItem(nameText, 20, 0, false)

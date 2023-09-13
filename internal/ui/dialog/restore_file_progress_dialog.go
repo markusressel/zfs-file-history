@@ -58,7 +58,7 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		AddItem(spinner, 2, 0, false).
 		AddItem(descriptionTextView, 0, 1, false)
 
-	abortText := fmt.Sprintf("Press 'q' to abort")
+	abortText := fmt.Sprintf("  Press 'q' to abort  ")
 	abortTextView := tview.NewTextView().SetText(abortText).SetTextColor(tcell.ColorYellow).SetTextAlign(tview.AlignRight)
 
 	progress := tvxwidgets.NewPercentageModeGauge()
