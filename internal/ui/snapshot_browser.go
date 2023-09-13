@@ -5,6 +5,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
+	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -15,7 +16,7 @@ type SnapshotBrowser struct {
 	snapshotTable *tview.Table
 
 	path            string
-	currentFileEnty *FileBrowserEntry
+	currentFileEnty *data.FileBrowserEntry
 
 	snapshots               []*zfs.Snapshot
 	currentSnapshot         *zfs.Snapshot
@@ -78,7 +79,7 @@ func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
 	snapshotBrowser.updateUi()
 }
 
-func (snapshotBrowser *SnapshotBrowser) SetFileEntry(fileEntry *FileBrowserEntry) {
+func (snapshotBrowser *SnapshotBrowser) SetFileEntry(fileEntry *data.FileBrowserEntry) {
 	snapshotBrowser.currentFileEnty = fileEntry
 	snapshotBrowser.updateUi()
 }

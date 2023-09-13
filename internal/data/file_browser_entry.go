@@ -1,4 +1,4 @@
-package ui
+package data
 
 import (
 	"golang.org/x/exp/slices"

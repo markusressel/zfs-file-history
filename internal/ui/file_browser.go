@@ -11,7 +11,10 @@ import (
 	path2 "path"
 	"strings"
 	"time"
+	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/page"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
@@ -23,6 +26,8 @@ const (
 	Size    FileBrowserColumn = "Size"
 	ModTime FileBrowserColumn = "DateTime"
 	Status  FileBrowserColumn = "Status"
+
+	FileBrowserPage page.Page = "FileBrowserPage"
 )
 
 type FileBrowser struct {
@@ -31,12 +36,12 @@ type FileBrowser struct {
 
 	currentSnapshot *zfs.Snapshot
 
-	fileEntries              []*FileBrowserEntry
-	fileSelection            *FileBrowserEntry
-	selectedFileEntryChanged chan *FileBrowserEntry
+	fileEntries              []*data.FileBrowserEntry
+	fileSelection            *data.FileBrowserEntry
+	selectedFileEntryChanged chan *data.FileBrowserEntry
 
 	application *tview.Application
-	layout      *tview.Flex
+	layout      *tview.Pages
 	fileTable   *tview.Table
 
 	selectionIndexMap map[string]int
@@ -47,7 +52,7 @@ func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 	fileBrowser := &FileBrowser{
 		application:              application,
 		pathChanged:              make(chan string),
-		selectedFileEntryChanged: make(chan *FileBrowserEntry),
+		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
 	}
 
 	fileBrowser.createLayout(application)
@@ -88,7 +93,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
 		selectionIndex := util.Coerce(row-1, -1, len(fileBrowser.fileEntries)-1)
-		var newSelection *FileBrowserEntry
+		var newSelection *data.FileBrowserEntry
 		if selectionIndex < 0 {
 			newSelection = nil
 		} else {
@@ -117,7 +122,12 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 				fileBrowser.goUp()
 			}
 			return nil
-		} else if key == tcell.KeyCtrlR {
+		} else if key == tcell.KeyEnter {
+			if fileBrowser.fileSelection != nil {
+				fileBrowser.openActionDialog(fileBrowser.fileSelection)
+			}
+		}
+		if key == tcell.KeyCtrlR {
 			fileBrowser.refresh()
 		}
 		return event
@@ -131,7 +141,10 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 
 	fileBrowserLayout.AddItem(table, 0, 1, true)
 
-	fileBrowser.layout = fileBrowserLayout
+	fileBrowserPages := tview.NewPages()
+	fileBrowserPages.AddPage(string(FileBrowserPage), fileBrowserLayout, true, true)
+
+	fileBrowser.layout = fileBrowserPages
 }
 
 func (fileBrowser *FileBrowser) updateFileEntries() {
@@ -161,7 +174,7 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 		}
 	}
 
-	fileEntries := []*FileBrowserEntry{}
+	fileEntries := []*data.FileBrowserEntry{}
 
 	// add entries for files which are present on the "real" location (and possibly within a snapshot as well)
 	for _, latestFilePath := range latestFiles {
@@ -173,7 +186,7 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			continue
 		}
 
-		var snapshotFile *SnapshotFile = nil
+		var snapshotFile *data.SnapshotFile = nil
 		if snapshot != nil {
 			snapshotFilePath := snapshot.GetSnapshotPath(latestFilePath)
 			statSnap, err := os.Stat(snapshotFilePath)
@@ -183,7 +196,7 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 					return s == snapshotFilePath
 				})
 			} else {
-				snapshotFile = &SnapshotFile{
+				snapshotFile = &data.SnapshotFile{
 					Path:         snapshotFilePath,
 					OriginalPath: latestFilePath,
 					Stat:         statSnap,
@@ -195,18 +208,18 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			}
 		}
 
-		snapshotFiles := []*SnapshotFile{}
+		snapshotFiles := []*data.SnapshotFile{}
 		if snapshotFile != nil {
 			snapshotFiles = append(snapshotFiles, snapshotFile)
 		}
 
-		latestFile := &RealFile{
+		latestFile := &data.RealFile{
 			Name: latestFileName,
 			Path: latestFilePath,
 			Stat: latestFileStat,
 		}
 
-		fileEntries = append(fileEntries, NewFileBrowserEntry(latestFileName, latestFile, snapshotFiles))
+		fileEntries = append(fileEntries, data.NewFileBrowserEntry(latestFileName, latestFile, snapshotFiles))
 	}
 
 	// add remaining entries for files which are only present in the snapshot
@@ -220,19 +233,19 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			continue
 		}
 
-		snapshotFile := &SnapshotFile{
+		snapshotFile := &data.SnapshotFile{
 			Path:         snapshotFilePath,
 			OriginalPath: snapshot.GetRealPath(snapshotFilePath),
 			Stat:         statSnap,
 			Snapshot:     snapshot,
 		}
 
-		snapshotFiles := []*SnapshotFile{}
+		snapshotFiles := []*data.SnapshotFile{}
 		if snapshotFile != nil {
 			snapshotFiles = append(snapshotFiles, snapshotFile)
 		}
 
-		fileEntries = append(fileEntries, NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles))
+		fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles))
 	}
 
 	fileBrowser.fileEntries = fileEntries
@@ -291,11 +304,12 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 	}
 }
 
-func (fileBrowser *FileBrowser) openActionDialog(selection string) {
-
+func (fileBrowser *FileBrowser) openActionDialog(selection *data.FileBrowserEntry) {
+	actionDialogLayout := dialog.NewFileActionDialog(selection)
+	fileBrowser.showDialog(actionDialogLayout)
 }
 
-func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *RealFile, snapshotFile *SnapshotFile) bool {
+func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *data.RealFile, snapshotFile *data.SnapshotFile) bool {
 	return originalFile.Stat.IsDir() != snapshotFile.Stat.IsDir() ||
 		originalFile.Stat.Mode() != snapshotFile.Stat.Mode() ||
 		originalFile.Stat.ModTime() != snapshotFile.Stat.ModTime() ||
@@ -444,7 +458,7 @@ func (fileBrowser *FileBrowser) SelectEntry(i int) {
 }
 
 func (fileBrowser *FileBrowser) SortEntries() {
-	slices.SortFunc(fileBrowser.fileEntries, func(a, b *FileBrowserEntry) int {
+	slices.SortFunc(fileBrowser.fileEntries, func(a, b *data.FileBrowserEntry) int {
 		if a.GetStat().IsDir() == b.GetStat().IsDir() {
 			return strings.Compare(a.Name, b.Name)
 		} else {
@@ -511,4 +525,20 @@ func (fileBrowser *FileBrowser) ListIsEmpty() bool {
 
 func (fileBrowser *FileBrowser) HasFocus() bool {
 	return fileBrowser.fileTable.HasFocus()
+}
+
+func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog) {
+	layout := d.GetLayout()
+	go func() {
+		for {
+			select {
+			case action := <-d.GetActionChannel():
+				if action == dialog.ActionClose {
+					fileBrowser.layout.HidePage(d.GetName())
+					fileBrowser.layout.RemovePage(d.GetName())
+				}
+			}
+		}
+	}()
+	fileBrowser.layout.AddPage(d.GetName(), layout, true, true)
 }

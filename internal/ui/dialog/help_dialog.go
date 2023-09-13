@@ -1,4 +1,4 @@
-package ui
+package dialog
 
 import (
 	"fmt"
@@ -60,4 +60,8 @@ func (p *HelpPage) createLayout() {
 	}
 
 	p.layout = createModal(" Help ", helpTable, 40, 10)
+}
+
+func (p *HelpPage) GetLayout() *tview.Flex {
+	return p.layout
 }

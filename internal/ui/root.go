@@ -3,24 +3,24 @@ package ui
 import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/page"
 )
 
-type Page string
-
 const (
-	Main       Page = "main"
-	HelpDialog Page = "help"
+	Main       page.Page = "main"
+	HelpDialog page.Page = "help"
 )
 
 func CreateUi(path string, fullscreen bool) *tview.Application {
 	application := tview.NewApplication()
 
 	mainPage := NewMainPage(application, path)
-	helpPage := NewHelpPage()
+	helpPage := dialog.NewHelpPage()
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
-		AddPage(string(HelpDialog), helpPage.layout, true, false)
+		AddPage(string(HelpDialog), helpPage.GetLayout(), true, false)
 
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// ignore events, if some other page is open
@@ -39,7 +39,7 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		return event
 	})
 
-	helpPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	helpPage.GetLayout().SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
 			pagesLayout.HidePage(string(HelpDialog))
 			return nil
