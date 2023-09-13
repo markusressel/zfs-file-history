@@ -12,12 +12,14 @@ import (
 )
 
 type SnapshotBrowser struct {
-	application             *tview.Application
+	application   *tview.Application
+	snapshotTable *tview.Table
+
+	path            string
+	currentFileEnty *FileBrowserEntry
+
 	snapshots               []*zfs.Snapshot
-	snapshotTable           *tview.Table
-	path                    string
 	currentSnapshot         *zfs.Snapshot
-	currentFileEnty         *FileBrowserEntry
 	selectedSnapshotChanged chan *zfs.Snapshot
 }
 
@@ -43,29 +45,38 @@ func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
 	snapshotBrowser.path = path
 
 	hostDataset, err := zfs.FindHostDataset(path)
-	if err == nil {
-		if hostDataset != nil {
-			snapshots, err := hostDataset.GetSnapshots()
-			if err == nil {
-				snapshotBrowser.setSnapshots(snapshots)
-				if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
-					snapshotBrowser.SelectSnapshot(snapshots[0])
-				} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
-					return snapshotBrowser.currentSnapshot.Path == snapshot.Path
-				}) {
-					snapshotBrowser.SelectSnapshot(nil)
-				}
-			} else {
-				logging.Error(err.Error())
-				snapshotBrowser.Clear()
-			}
-		}
-	} else {
+	if err != nil {
 		logging.Error(err.Error())
 		snapshotBrowser.Clear()
+		return
 	}
 
-	snapshotBrowser.updateZfsInfo()
+	if hostDataset != nil {
+		snapshots, err := hostDataset.GetSnapshots()
+		if err != nil {
+			logging.Error(err.Error())
+			snapshotBrowser.Clear()
+			return
+		}
+
+		snapshotBrowser.setSnapshots(snapshots)
+		if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
+			snapshotBrowser.SelectSnapshot(snapshots[0])
+		} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
+			return snapshotBrowser.currentSnapshot.Path == snapshot.Path
+		}) {
+			snapshotBrowser.SelectSnapshot(nil)
+		}
+	}
+
+	snapshotsContainingSelection := []*zfs.Snapshot{}
+	if snapshotBrowser.path != "" && snapshotBrowser.currentFileEnty != nil {
+		for _, snapshot := range snapshotBrowser.currentFileEnty.SnapshotFiles {
+			snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
+		}
+	}
+
+	snapshotBrowser.updateUi()
 }
 
 func (snapshotBrowser *SnapshotBrowser) SetFileEntry(fileEntry *FileBrowserEntry) {
@@ -114,8 +125,6 @@ func (snapshotBrowser *SnapshotBrowser) setSnapshots(snapshots []*zfs.Snapshot) 
 	if len(snapshotBrowser.snapshots) <= 0 {
 		snapshotBrowser.SelectSnapshot(nil)
 	}
-
-	snapshotBrowser.updateUi()
 }
 
 func (snapshotBrowser *SnapshotBrowser) updateUi() {
@@ -137,39 +146,6 @@ func (snapshotBrowser *SnapshotBrowser) updateUi() {
 	}
 }
 
-func (snapshotBrowser *SnapshotBrowser) updateZfsInfo() {
-	var dataset *zfs.Dataset
-	if snapshotBrowser.currentSnapshot != nil {
-		dataset = snapshotBrowser.currentSnapshot.ParentDataset
-	}
-
-	if dataset != nil {
-		snapshots, err := dataset.GetSnapshots()
-		if err != nil {
-			logging.Fatal(err.Error())
-		}
-		snapshotBrowser.snapshots = snapshots
-	} else {
-		snapshotBrowser.snapshots = []*zfs.Snapshot{}
-	}
-
-	if len(snapshotBrowser.snapshots) > 0 {
-		if snapshotBrowser.currentSnapshot == nil {
-			snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
-		}
-	} else {
-		snapshotBrowser.SelectSnapshot(nil)
-	}
-
-	snapshotsContainingSelection := []*zfs.Snapshot{}
-	if snapshotBrowser.path != "" && snapshotBrowser.currentFileEnty != nil {
-		for _, snapshot := range snapshotBrowser.currentFileEnty.SnapshotFiles {
-			snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
-		}
-	}
-	snapshotBrowser.setSnapshots(snapshotBrowser.snapshots)
-}
-
 func (snapshotBrowser *SnapshotBrowser) SelectSnapshot(snapshot *zfs.Snapshot) {
 	if snapshotBrowser.currentSnapshot == snapshot {
 		return
@@ -178,8 +154,11 @@ func (snapshotBrowser *SnapshotBrowser) SelectSnapshot(snapshot *zfs.Snapshot) {
 	go func() {
 		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.currentSnapshot
 	}()
+	snapshotBrowser.updateUi()
 }
 
 func (snapshotBrowser *SnapshotBrowser) Clear() {
+	snapshotBrowser.path = ""
 	snapshotBrowser.setSnapshots([]*zfs.Snapshot{})
+	snapshotBrowser.updateUi()
 }

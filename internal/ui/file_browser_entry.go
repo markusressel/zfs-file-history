@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"golang.org/x/exp/slices"
 	"os"
 	"zfs-file-history/internal/zfs"
 )
@@ -11,6 +12,10 @@ type RealFile struct {
 	Stat os.FileInfo
 }
 
+func (v *RealFile) Equal(e RealFile) bool {
+	return v.Name == e.Name && v.Path == e.Path
+}
+
 type SnapshotFile struct {
 	Path         string
 	OriginalPath string
@@ -18,10 +23,18 @@ type SnapshotFile struct {
 	Snapshot     *zfs.Snapshot
 }
 
+func (v *SnapshotFile) Equal(e SnapshotFile) bool {
+	return v.Path == e.Path && v.OriginalPath == e.OriginalPath && v.Snapshot == e.Snapshot
+}
+
 type FileBrowserEntry struct {
 	Name          string
 	LatestFile    *RealFile
 	SnapshotFiles []*SnapshotFile
+}
+
+func (v *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
+	return v.Name == e.Name && v.LatestFile == e.LatestFile && slices.Equal(v.SnapshotFiles, e.SnapshotFiles)
 }
 
 func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*SnapshotFile) *FileBrowserEntry {

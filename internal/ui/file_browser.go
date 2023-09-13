@@ -26,7 +26,8 @@ const (
 )
 
 type FileBrowser struct {
-	path string
+	path        string
+	pathChanged chan string
 
 	currentSnapshot *zfs.Snapshot
 
@@ -45,6 +46,7 @@ type FileBrowser struct {
 func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 	fileBrowser := &FileBrowser{
 		application:              application,
+		pathChanged:              make(chan string),
 		selectedFileEntryChanged: make(chan *FileBrowserEntry),
 	}
 
@@ -280,8 +282,13 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 		return
 	}
 
-	fileBrowser.path = newPath
-	fileBrowser.refresh()
+	if fileBrowser.path != newPath {
+		fileBrowser.path = newPath
+		go func() {
+			fileBrowser.pathChanged <- newPath
+		}()
+		fileBrowser.refresh()
+	}
 }
 
 func (fileBrowser *FileBrowser) openActionDialog(selection string) {
