@@ -298,11 +298,7 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			Snapshot:     snapshot,
 		}
 
-		snapshotFiles := []*data.SnapshotFile{}
-		if snapshotFile != nil {
-			snapshotFiles = append(snapshotFiles, snapshotFile)
-		}
-
+		snapshotFiles := []*data.SnapshotFile{snapshotFile}
 		fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles, entryType))
 	}
 
