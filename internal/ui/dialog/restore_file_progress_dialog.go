@@ -39,10 +39,10 @@ func (d *RestoreFileProgressDialog) createLayout() {
 	fileToRestore := d.fileSelection.SnapshotFiles[0]
 
 	text := fmt.Sprintf("Restoring '%s' from snapshot '%s'", d.fileSelection.Name, fileToRestore.Snapshot.Name)
-	textDescription := tview.NewTextView().SetText(text)
-	spinner := tvxwidgets.NewSpinner().SetStyle(tvxwidgets.SpinnerCircleQuarters)
+	descriptionTextView := tview.NewTextView().SetText(text)
 
-	update := func() {
+	spinner := tvxwidgets.NewSpinner().SetStyle(tvxwidgets.SpinnerCircleQuarters)
+	updateSpinner := func() {
 		tick := time.NewTicker(100 * time.Millisecond)
 		for {
 			select {
@@ -52,7 +52,14 @@ func (d *RestoreFileProgressDialog) createLayout() {
 			}
 		}
 	}
-	go update()
+	go updateSpinner()
+
+	descriptionLayout := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(spinner, 2, 0, false).
+		AddItem(descriptionTextView, 0, 1, false)
+
+	abortText := fmt.Sprintf("Press 'q' to abort")
+	abortTextView := tview.NewTextView().SetText(abortText).SetTextColor(tcell.ColorYellow).SetTextAlign(tview.AlignRight)
 
 	progress := tvxwidgets.NewPercentageModeGauge()
 	progressTitle := fmt.Sprintf(" %s ... ", d.fileSelection.Name)
@@ -80,9 +87,9 @@ func (d *RestoreFileProgressDialog) createLayout() {
 	go progressUpdate()
 
 	progressLayout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(textDescription, 0, 1, false).
-		AddItem(spinner, 1, 0, false).
-		AddItem(progress, 3, 0, false)
+		AddItem(descriptionLayout, 0, 1, false).
+		AddItem(progress, 3, 0, false).
+		AddItem(abortTextView, 1, 0, false)
 	progressLayout.SetBorderPadding(0, 0, 1, 1)
 
 	dialog := createModal(dialogTitle, progressLayout, 60, 10)
