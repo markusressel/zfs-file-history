@@ -5,9 +5,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/navidys/tvxwidgets"
 	"github.com/rivo/tview"
-	"io"
-	"os"
-	"syscall"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
@@ -116,19 +113,20 @@ func (d *RestoreFileProgressDialog) Close() {
 
 func (d *RestoreFileProgressDialog) runAction() {
 	go func() {
+		snapshot := d.fileSelection.SnapshotFiles[0].Snapshot
+
 		snapshotFile := d.fileSelection.SnapshotFiles[0]
 		srcFilePath := snapshotFile.Path
-		dstFilePath := snapshotFile.OriginalPath
 
 		if snapshotFile.Stat.IsDir() {
-			err := d.copyDir(snapshotFile, srcFilePath, dstFilePath)
+			err := snapshot.RestoreDirRecursive(srcFilePath)
 			d.handleError(err)
 			if err != nil {
 				logging.Error(err.Error())
 				return
 			}
 		} else {
-			err := d.copyFile(snapshotFile, srcFilePath, dstFilePath)
+			err := snapshot.RestoreFile(srcFilePath)
 			d.handleError(err)
 			if err != nil {
 				logging.Error(err.Error())
@@ -182,51 +180,4 @@ func (d *RestoreFileProgressDialog) handleDone() {
 	d.progress.SetTitle(theme.CreateTitleText("Done!"))
 	d.progress.SetTitleColor(tcell.ColorGreen)
 	d.application.Draw()
-}
-
-func (d *RestoreFileProgressDialog) copyDir(snapshotFile *data.SnapshotFile, srcPath string, dstPath string) error {
-	err := os.MkdirAll(dstPath, snapshotFile.Stat.Mode())
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (d *RestoreFileProgressDialog) copyFile(snapshotFile *data.SnapshotFile, srcPath string, dstPath string) error {
-	srcFile, err := os.Open(srcPath)
-	d.handleError(err)
-	defer srcFile.Close()
-
-	destFile, err := os.Create(dstPath) // creates if file doesn't exist
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, srcFile) // check first var for number of bytes copied
-	if err != nil {
-		return err
-	}
-
-	err = destFile.Sync()
-	if err != nil {
-		return err
-	}
-
-	err = os.Chmod(dstPath, snapshotFile.Stat.Mode())
-	if err != nil {
-		return err
-	}
-
-	if stat, ok := snapshotFile.Stat.Sys().(*syscall.Stat_t); ok {
-		err = os.Chown(dstPath, int(stat.Uid), int(stat.Gid))
-		if err != nil {
-			return err
-		}
-	}
-
-	// TODO: sync timestamps
-
-	return err
 }

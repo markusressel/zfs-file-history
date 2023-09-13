@@ -27,6 +27,10 @@ func (file *SnapshotFile) Equal(e SnapshotFile) bool {
 	return file.Path == e.Path && file.OriginalPath == e.OriginalPath && file.Snapshot == e.Snapshot
 }
 
+func (file *SnapshotFile) HasChanged() bool {
+	return file.Snapshot.CheckIfFileHasChanged(file.Path)
+}
+
 type FileBrowserEntry struct {
 	Name          string
 	RealFile      *RealFile

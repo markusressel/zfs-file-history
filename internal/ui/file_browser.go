@@ -313,14 +313,6 @@ func (fileBrowser *FileBrowser) openActionDialog(selection *data.FileBrowserEntr
 	fileBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
-func (fileBrowser *FileBrowser) checkIfFileHasChanged(originalFile *data.RealFile, snapshotFile *data.SnapshotFile) bool {
-	return originalFile.Stat.IsDir() != snapshotFile.Stat.IsDir() ||
-		originalFile.Stat.Mode() != snapshotFile.Stat.Mode() ||
-		originalFile.Stat.ModTime() != snapshotFile.Stat.ModTime() ||
-		originalFile.Stat.Size() != snapshotFile.Stat.Size() ||
-		originalFile.Stat.Name() != snapshotFile.Stat.Name()
-}
-
 func (fileBrowser *FileBrowser) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
 	if fileBrowser.currentSnapshot == snapshot {
 		return
@@ -393,7 +385,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			// file only exists in latest but not in snapshot
 			statusColor = tcell.ColorGreen
 			status = "+"
-		} else if fileBrowser.checkIfFileHasChanged(currentFileEntry.RealFile, currentFileEntry.SnapshotFiles[0]) {
+		} else if currentFileEntry.SnapshotFiles[0].HasChanged() {
 			statusColor = tcell.ColorYellow
 			status = "M"
 		}

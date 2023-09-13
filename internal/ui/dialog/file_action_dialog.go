@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"golang.org/x/exp/slices"
 	"os"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
@@ -38,6 +39,7 @@ type DialogOptionId int
 const (
 	RestoreFileDialogOption DialogOptionId = iota
 	DeleteFileDialogOption
+	CloseDialogOption
 )
 
 func (d *FileActionDialog) createLayout() {
@@ -51,22 +53,27 @@ func (d *FileActionDialog) createLayout() {
 
 	})
 
-	dialogOptions := []*DialogOption{}
-
-	if d.file.HasSnapshot() {
-		restoreOption := &DialogOption{
-			Id:   RestoreFileDialogOption,
-			Name: fmt.Sprintf("Restore from '%s'", d.file.SnapshotFiles[0].Snapshot.Name),
-		}
-		dialogOptions = append(dialogOptions, restoreOption)
+	dialogOptions := []*DialogOption{
+		{
+			Id:   CloseDialogOption,
+			Name: fmt.Sprintf("Close"),
+		},
 	}
 
 	if d.file.HasReal() {
-		restoreOption := &DialogOption{
+		option := &DialogOption{
 			Id:   DeleteFileDialogOption,
 			Name: fmt.Sprintf("Delete '%s'", d.file.RealFile.Path),
 		}
-		dialogOptions = append(dialogOptions, restoreOption)
+		dialogOptions = slices.Insert(dialogOptions, 0, option)
+	}
+
+	if d.file.HasSnapshot() {
+		option := &DialogOption{
+			Id:   RestoreFileDialogOption,
+			Name: fmt.Sprintf("Restore from '%s'", d.file.SnapshotFiles[0].Snapshot.Name),
+		}
+		dialogOptions = slices.Insert(dialogOptions, 0, option)
 	}
 
 	_, rows := 1, len(dialogOptions)
@@ -103,6 +110,8 @@ func (d *FileActionDialog) createLayout() {
 				d.RestoreFile()
 			case DeleteFileDialogOption:
 				d.DeleteFile()
+			case CloseDialogOption:
+				d.Close()
 			}
 			return nil
 		}
