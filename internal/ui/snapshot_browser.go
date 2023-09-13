@@ -135,7 +135,7 @@ func (snapshotBrowser *SnapshotBrowser) updateUi() {
 		title = fmt.Sprintf("Snapshot: %s", snapshotBrowser.currentSnapshot.Name)
 	}
 
-	uiutil.SetupWindowTitle(table, title)
+	uiutil.SetupWindow(table, title)
 
 	for i, snapshot := range snapshotBrowser.snapshots {
 		cellText := snapshot.Name

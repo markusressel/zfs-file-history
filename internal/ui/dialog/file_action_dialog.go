@@ -87,7 +87,8 @@ func (d *FileActionDialog) createLayout() {
 		} else if event.Key() == tcell.KeyEnter {
 			row, _ := optionTable.GetSelection()
 			dialogOption := dialogOptions[row]
-			if dialogOption.Name == "Restore" {
+			switch dialogOption.Id {
+			case RestoreFileDialogOption:
 				d.RestoreFile()
 			}
 			return nil

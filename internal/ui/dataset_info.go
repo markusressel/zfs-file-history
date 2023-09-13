@@ -53,7 +53,7 @@ type DatasetInfoTableEntry struct {
 func (datasetInfo *DatasetInfo) createLayout() {
 	layout := tview.NewTable()
 	layout.SetBorder(true)
-	uiutil.SetupWindowTitle(layout, "Dataset")
+	uiutil.SetupWindow(layout, "Dataset")
 
 	datasetInfo.layout = layout
 	datasetInfo.updateUi()
@@ -65,12 +65,12 @@ func (datasetInfo *DatasetInfo) updateUi() {
 	titleText := "Dataset"
 	if dataset == nil {
 		datasetInfo.layout.Clear()
-		uiutil.SetupWindowTitle(datasetInfo.layout, titleText)
+		uiutil.SetupWindow(datasetInfo.layout, titleText)
 		return
 	}
 
 	titleText = fmt.Sprintf("%s: %s", titleText, dataset.Path)
-	uiutil.SetupWindowTitle(datasetInfo.layout, titleText)
+	uiutil.SetupWindow(datasetInfo.layout, titleText)
 
 	properties := []*DatasetInfoTableEntry{}
 	if dataset.ZfsData != nil {

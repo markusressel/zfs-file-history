@@ -83,7 +83,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 	// fixed header row
 	table.SetFixed(1, 0)
 
-	uiutil.SetupWindowTitle(table, fileBrowserHeaderText)
+	uiutil.SetupWindow(table, fileBrowserHeaderText)
 
 	table.SetSelectable(true, false)
 	// TODO: remember the selected index for a given path and automatically update the fileSelection when entering and exiting a path
@@ -341,7 +341,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 	table.Clear()
 
 	title := fmt.Sprintf("Path: %s", fileBrowser.path)
-	uiutil.SetupWindowTitle(table, title)
+	uiutil.SetupWindow(table, title)
 
 	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)+1
 	fileIndex := 0

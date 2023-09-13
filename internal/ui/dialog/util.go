@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"github.com/rivo/tview"
-	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
@@ -26,8 +25,7 @@ type DialogOption struct {
 func createModal(title string, content tview.Primitive, width int, height int) *tview.Flex {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
-	uiutil.SetupWindowTitle(dialogFrame, title)
-	dialogFrame.SetBorderColor(theme.GetDialogBorderColor())
+	uiutil.SetupDialogWindow(dialogFrame, title)
 	dialogFrame.AddItem(content, 0, 1, true)
 
 	dialogContentColumnWrapper := tview.NewFlex()

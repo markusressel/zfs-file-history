@@ -15,6 +15,10 @@ func GetTitleColor() tcell.Color {
 	return tcell.ColorBlue
 }
 
+func GetDialogTitleAlign() int {
+	return tview.AlignCenter
+}
+
 func GetTitleAlign() int {
 	return tview.AlignLeft
 }
