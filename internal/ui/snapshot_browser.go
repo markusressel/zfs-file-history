@@ -73,6 +73,7 @@ func (snapshotBrowser *SnapshotBrowser) HasFocus() bool {
 func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 	table := tview.NewTable()
 	table.SetBorder(true)
+	table.SetBorderPadding(0, 0, 1, 1)
 	table.SetSelectable(true, false)
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
