@@ -2,9 +2,13 @@ package zfs
 
 import (
 	"errors"
+	golibzfs "github.com/bicomsystems/go-libzfs"
 	gozfs "github.com/mistifyio/go-zfs"
 	"os"
 	path2 "path"
+	"strconv"
+	"strings"
+	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 )
@@ -80,6 +84,12 @@ func (dataset *Dataset) GetSnapshotsDir() string {
 func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	var result []*Snapshot
 
+	all, err := golibzfs.DatasetOpenAll()
+	if err != nil {
+		return nil, err
+	}
+	ds := findDataset(all, dataset.Path)
+
 	snapshotDirs, err := util.ListFilesIn(dataset.GetSnapshotsDir())
 	if err != nil {
 		return []*Snapshot{}, err
@@ -87,9 +97,46 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	for _, file := range snapshotDirs {
 		_, name := path2.Split(file)
 
-		// TODO: figure out date somehow
-		result = append(result, NewSnapshot(name, file, dataset, nil))
+		ss, err := ds.Snapshots()
+		if err != nil {
+			logging.Error(err.Error())
+		}
+		s := findSnapshot(ss, name)
+		creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
+		creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
+		creationDate := time.Unix(creationDateTimestamp, 0)
+
+		result = append(result, NewSnapshot(name, file, dataset, &creationDate))
 	}
 
 	return result, nil
+}
+
+func findDataset(datasets []golibzfs.Dataset, path string) *golibzfs.Dataset {
+	for _, dataset := range datasets {
+		mountPoint := dataset.Properties[golibzfs.DatasetPropMountpoint]
+		if mountPoint.Value == path {
+			return &dataset
+		}
+		dataset := findDataset(dataset.Children, path)
+		if dataset != nil {
+			return dataset
+		}
+	}
+	return nil
+}
+
+func findSnapshot(snapshots []golibzfs.Dataset, name string) *golibzfs.Dataset {
+	for _, snapshot := range snapshots {
+		nameProperty := snapshot.Properties[golibzfs.DatasetPropName]
+		currentName := strings.Split(nameProperty.Value, "@")[1]
+		if currentName == name {
+			return &snapshot
+		}
+		snapshot := findSnapshot(snapshot.Children, name)
+		if snapshot != nil {
+			return snapshot
+		}
+	}
+	return nil
 }

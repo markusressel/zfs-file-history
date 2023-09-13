@@ -5,7 +5,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
-	"strings"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -61,7 +60,7 @@ func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
 
 		snapshotBrowser.setSnapshots(snapshots)
 		if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
-			snapshotBrowser.SelectSnapshot(snapshots[0])
+			snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
 		} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
 			return snapshotBrowser.currentSnapshot.Path == snapshot.Path
 		}) {
@@ -117,13 +116,12 @@ func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 func (snapshotBrowser *SnapshotBrowser) setSnapshots(snapshots []*zfs.Snapshot) {
 	snapshotsClone := slices.Clone(snapshots)
 	slices.SortFunc(snapshotsClone, func(a, b *zfs.Snapshot) int {
-		return strings.Compare(a.Name, b.Name)
+		return a.Date.Compare(*b.Date) * -1
 	})
 
 	snapshotBrowser.snapshots = snapshotsClone
-
 	if len(snapshotBrowser.snapshots) <= 0 {
-		snapshotBrowser.SelectSnapshot(nil)
+		snapshotBrowser.currentSnapshot = nil
 	}
 }
 
