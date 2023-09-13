@@ -64,7 +64,7 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	layout.AddItem(nameTextView, len(nameText), 0, false)
 	layout.AddItem(versionTextView, len(versionText), 0, false)
 	layout.AddItem(statusTextView, 0, 1, false)
-	layout.AddItem(helpTextView, len(helpText)+2, 0, false)
+	layout.AddItem(helpTextView, len(helpText)+4, 0, false)
 
 	applicationHeader.statusTextView = statusTextView
 	applicationHeader.layout = layout
