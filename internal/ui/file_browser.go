@@ -523,6 +523,21 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				cellAlignment = tview.AlignCenter
 			} else if columnId == ModTime {
 				cellText = currentFileEntry.GetStat().ModTime().Format(time.DateTime)
+
+				switch currentFileEntry.Status {
+				case data.Added, data.Deleted:
+					cellColor = statusColor
+				case data.Modified:
+					if currentFileEntry.RealFile.Stat.ModTime() != currentFileEntry.SnapshotFiles[0].Stat.ModTime() {
+						cellColor = statusColor
+					} else {
+						cellColor = tcell.ColorWhite
+					}
+				default:
+					cellColor = tcell.ColorGray
+				}
+
+				cellColor = tcell.ColorGray
 			} else if columnId == Size {
 				cellText = humanize.IBytes(uint64(currentFileEntry.GetStat().Size()))
 				if strings.HasSuffix(cellText, " B") {
@@ -532,6 +547,20 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				if len(cellText) < 10 {
 					cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
 				}
+
+				switch currentFileEntry.Status {
+				case data.Added, data.Deleted:
+					cellColor = statusColor
+				case data.Modified:
+					if currentFileEntry.RealFile.Stat.Size() != currentFileEntry.SnapshotFiles[0].Stat.Size() {
+						cellColor = statusColor
+					} else {
+						cellColor = tcell.ColorWhite
+					}
+				default:
+					cellColor = tcell.ColorGray
+				}
+
 				cellAlignment = tview.AlignRight
 			} else {
 				panic("Unknown column")
