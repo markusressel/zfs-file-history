@@ -536,8 +536,6 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				default:
 					cellColor = tcell.ColorGray
 				}
-
-				cellColor = tcell.ColorGray
 			} else if columnId == Size {
 				cellText = humanize.IBytes(uint64(currentFileEntry.GetStat().Size()))
 				if strings.HasSuffix(cellText, " B") {
