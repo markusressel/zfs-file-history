@@ -384,7 +384,10 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 		var status = "="
 		var statusColor = tcell.ColorGray
-		if currentFileEntry.HasSnapshots() && !currentFileEntry.HasLatest() {
+		if fileBrowser.currentSnapshot == nil {
+			statusColor = tcell.ColorGray
+			status = "N/A"
+		} else if currentFileEntry.HasSnapshots() && !currentFileEntry.HasLatest() {
 			// file only exists in snapshot but not in latest
 			statusColor = tcell.ColorRed
 			status = "-"
