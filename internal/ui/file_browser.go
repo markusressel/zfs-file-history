@@ -60,7 +60,7 @@ func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
 		application:              application,
 		pathChanged:              make(chan string),
 		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
-		sortByColumn:             Status,
+		sortByColumn:             -Type,
 	}
 
 	fileBrowser.createLayout(application)
@@ -557,21 +557,36 @@ func sortTableEntries(entries []*data.FileBrowserEntry, column FileBrowserColumn
 	result := slices.Clone(entries)
 	slices.SortFunc(result, func(a, b *data.FileBrowserEntry) int {
 		var result int
-		switch FileBrowserColumn(math.Abs(float64(column))) {
+		columnToSortBy := FileBrowserColumn(math.Abs(float64(column)))
+		switch columnToSortBy {
 		case Name:
 			result = strings.Compare(a.Name, b.Name)
 		case ModTime:
 			result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
 		case Type:
-			result = int(a.Type - b.Type)
+			result = int(b.Type - a.Type)
 		case Size:
 			result = int(a.GetStat().Size() - b.GetStat().Size())
 		case Status:
-			result = int(a.Status - b.Status)
+			result = int(b.Status - a.Status)
 		}
 
 		if column < 0 {
 			result *= -1
+		}
+
+		if result != 0 {
+			return result
+		}
+
+		result = int(b.Type - a.Type)
+		if result != 0 {
+			return result
+		}
+
+		result = strings.Compare(a.Name, b.Name)
+		if result != 0 {
+			return result
 		}
 
 		return result

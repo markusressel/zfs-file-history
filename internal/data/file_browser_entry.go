@@ -34,18 +34,18 @@ func (file *SnapshotFile) HasChanged() bool {
 type FileBrowserEntryType int
 
 const (
-	File FileBrowserEntryType = iota + 1
-	Directory
+	Directory FileBrowserEntryType = iota + 1
 	Link
+	File
 )
 
 type FileBrowserEntryStatus int
 
 const (
-	Equal FileBrowserEntryStatus = iota
+	Added FileBrowserEntryStatus = iota
 	Deleted
-	Added
 	Modified
+	Equal
 	Unknown
 )
 
