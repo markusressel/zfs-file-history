@@ -2,11 +2,11 @@ package ui
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
@@ -130,11 +130,12 @@ func (snapshotBrowser *SnapshotBrowser) updateUi() {
 	table := snapshotBrowser.snapshotTable
 	table.Clear()
 
-	title := " Snapshots "
+	title := "Snapshots"
 	if snapshotBrowser.currentSnapshot != nil {
-		title = fmt.Sprintf(" Snapshot: %s ", snapshotBrowser.currentSnapshot.Name)
+		title = fmt.Sprintf("Snapshot: %s", snapshotBrowser.currentSnapshot.Name)
 	}
-	table.SetTitle(title).SetTitleAlign(tview.AlignLeft).SetTitleColor(tcell.ColorBlue)
+
+	uiutil.SetupWindowTitle(table, title)
 
 	for i, snapshot := range snapshotBrowser.snapshots {
 		cellText := snapshot.Name

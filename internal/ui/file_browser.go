@@ -15,6 +15,7 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/page"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
@@ -67,7 +68,7 @@ func (fileBrowser *FileBrowser) Focus() {
 
 func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
-	fileBrowserHeaderText := fmt.Sprintf(" %s ", fileBrowser.path)
+	fileBrowserHeaderText := fileBrowser.path
 
 	// TODO: insert "/.." cell, if path is not /
 	// TODO: use arrow keys to navigate up and down the paths
@@ -82,9 +83,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 	// fixed header row
 	table.SetFixed(1, 0)
 
-	table.SetTitle(fileBrowserHeaderText)
-	table.SetTitleColor(tcell.ColorBlue)
-	table.SetTitleAlign(tview.AlignLeft)
+	uiutil.SetupWindowTitle(table, fileBrowserHeaderText)
 
 	table.SetSelectable(true, false)
 	// TODO: remember the selected index for a given path and automatically update the fileSelection when entering and exiting a path
@@ -341,8 +340,8 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 	table.Clear()
 
-	title := fmt.Sprintf(" Path: %s ", fileBrowser.path)
-	table.SetTitle(title)
+	title := fmt.Sprintf("Path: %s", fileBrowser.path)
+	uiutil.SetupWindowTitle(table, title)
 
 	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)+1
 	fileIndex := 0

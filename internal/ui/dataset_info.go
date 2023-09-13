@@ -6,6 +6,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/logging"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -52,7 +53,7 @@ type DatasetInfoTableEntry struct {
 func (datasetInfo *DatasetInfo) createLayout() {
 	layout := tview.NewTable()
 	layout.SetBorder(true)
-	layout.SetTitle(" Dataset ")
+	uiutil.SetupWindowTitle(layout, "Dataset")
 
 	datasetInfo.layout = layout
 	datasetInfo.updateUi()
@@ -61,10 +62,15 @@ func (datasetInfo *DatasetInfo) createLayout() {
 func (datasetInfo *DatasetInfo) updateUi() {
 	dataset := datasetInfo.dataset
 
+	titleText := "Dataset"
 	if dataset == nil {
 		datasetInfo.layout.Clear()
+		uiutil.SetupWindowTitle(datasetInfo.layout, titleText)
 		return
 	}
+
+	titleText = fmt.Sprintf("%s: %s", titleText, dataset.Path)
+	uiutil.SetupWindowTitle(datasetInfo.layout, titleText)
 
 	properties := []*DatasetInfoTableEntry{}
 	if dataset.ZfsData != nil {

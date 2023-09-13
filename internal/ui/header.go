@@ -32,6 +32,7 @@ func NewApplicationHeader() *ApplicationHeader {
 
 func (applicationHeader *ApplicationHeader) createLayout() {
 	layout := tview.NewFlex().SetDirection(tview.FlexColumn)
+	// TODO: check colors
 	layout.SetBackgroundColor(tcell.ColorRed)
 	layout.SetTitleColor(tcell.ColorRed)
 	layout.SetBorderColor(tcell.ColorGreen)
