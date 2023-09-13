@@ -60,7 +60,7 @@ func (p *HelpPage) createLayout() {
 		}
 	}
 
-	p.layout = createModal(" Help ", helpTable, 40, 10)
+	p.layout = createModal(" Help ", helpTable, 60, 10)
 }
 
 func (p *HelpPage) GetLayout() *tview.Flex {

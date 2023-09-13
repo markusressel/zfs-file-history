@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/cmd/global"
@@ -13,9 +14,14 @@ type ApplicationHeader struct {
 }
 
 func NewApplicationHeader() *ApplicationHeader {
+	versionText := global.Version
+	if versionText == "dev" {
+		versionText = fmt.Sprintf("%s-(#%s)-%s", global.Version, global.Commit, global.Date)
+	}
+
 	applicationHeader := &ApplicationHeader{
 		name:    "zfs-file-history",
-		version: global.Version,
+		version: versionText,
 	}
 
 	applicationHeader.createLayout()
@@ -30,26 +36,28 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	layout.SetTitleColor(tcell.ColorRed)
 	layout.SetBorderColor(tcell.ColorGreen)
 
-	nameText := tview.NewTextView()
-	nameText.SetTextColor(tcell.ColorWhite)
-	nameText.SetBackgroundColor(tcell.ColorDodgerBlue)
-	nameText.SetText(applicationHeader.name)
-	nameText.SetTextAlign(tview.AlignCenter)
+	nameTextView := tview.NewTextView()
+	nameTextView.SetTextColor(tcell.ColorWhite)
+	nameTextView.SetBackgroundColor(tcell.ColorDodgerBlue)
+	nameText := fmt.Sprintf(" %s ", applicationHeader.name)
+	nameTextView.SetText(nameText)
+	nameTextView.SetTextAlign(tview.AlignCenter)
 
-	versionText := tview.NewTextView()
-	versionText.SetBackgroundColor(tcell.ColorGreenYellow)
-	versionText.SetTextColor(tcell.ColorBlack)
-	versionText.SetText(applicationHeader.version)
-	versionText.SetTextAlign(tview.AlignCenter)
+	versionTextView := tview.NewTextView()
+	versionTextView.SetBackgroundColor(tcell.ColorGreenYellow)
+	versionTextView.SetTextColor(tcell.ColorBlack)
+	versionText := fmt.Sprintf("  %s  ", applicationHeader.version)
+	versionTextView.SetText(versionText)
+	versionTextView.SetTextAlign(tview.AlignCenter)
 
-	helpText := tview.NewTextView()
-	helpText.SetText("  Press '?' for help  ")
-	helpText.SetTextColor(tcell.ColorYellow)
-	helpText.SetTextAlign(tview.AlignRight)
+	helpTextView := tview.NewTextView()
+	helpTextView.SetText("  Press '?' for help  ")
+	helpTextView.SetTextColor(tcell.ColorYellow)
+	helpTextView.SetTextAlign(tview.AlignRight)
 
-	layout.AddItem(nameText, 20, 0, false)
-	layout.AddItem(versionText, 10, 0, false)
-	layout.AddItem(helpText, 0, 1, false)
+	layout.AddItem(nameTextView, len(nameText), 0, false)
+	layout.AddItem(versionTextView, len(versionText), 0, false)
+	layout.AddItem(helpTextView, 0, 1, false)
 
 	applicationHeader.layout = layout
 }
