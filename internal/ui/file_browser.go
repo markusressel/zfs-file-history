@@ -387,15 +387,15 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 		if fileBrowser.currentSnapshot == nil {
 			statusColor = tcell.ColorGray
 			status = "N/A"
-		} else if currentFileEntry.HasSnapshots() && !currentFileEntry.HasLatest() {
+		} else if currentFileEntry.HasSnapshot() && !currentFileEntry.HasReal() {
 			// file only exists in snapshot but not in latest
 			statusColor = tcell.ColorRed
 			status = "-"
-		} else if !currentFileEntry.HasSnapshots() && currentFileEntry.HasLatest() {
+		} else if !currentFileEntry.HasSnapshot() && currentFileEntry.HasReal() {
 			// file only exists in latest but not in snapshot
 			statusColor = tcell.ColorGreen
 			status = "+"
-		} else if fileBrowser.checkIfFileHasChanged(currentFileEntry.LatestFile, currentFileEntry.SnapshotFiles[0]) {
+		} else if fileBrowser.checkIfFileHasChanged(currentFileEntry.RealFile, currentFileEntry.SnapshotFiles[0]) {
 			statusColor = tcell.ColorYellow
 			status = "M"
 		}

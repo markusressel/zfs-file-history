@@ -29,42 +29,46 @@ func (file *SnapshotFile) Equal(e SnapshotFile) bool {
 
 type FileBrowserEntry struct {
 	Name          string
-	LatestFile    *RealFile
+	RealFile      *RealFile
 	SnapshotFiles []*SnapshotFile
 }
 
 func (entry *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
-	return entry.Name == e.Name && entry.LatestFile == e.LatestFile && slices.Equal(entry.SnapshotFiles, e.SnapshotFiles)
+	return entry.Name == e.Name && entry.RealFile == e.RealFile && slices.Equal(entry.SnapshotFiles, e.SnapshotFiles)
 }
 
 func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*SnapshotFile) *FileBrowserEntry {
 	return &FileBrowserEntry{
 		Name:          name,
-		LatestFile:    latestFile,
+		RealFile:      latestFile,
 		SnapshotFiles: snapshots,
 	}
 }
 
 func (entry *FileBrowserEntry) GetRealPath() string {
-	if entry.HasLatest() {
-		return entry.LatestFile.Path
+	if entry.HasReal() {
+		return entry.RealFile.Path
 	} else {
 		return entry.SnapshotFiles[0].OriginalPath
 	}
 }
 
 func (entry *FileBrowserEntry) GetStat() os.FileInfo {
-	if entry.HasLatest() {
-		return entry.LatestFile.Stat
+	if entry.HasReal() {
+		return entry.RealFile.Stat
 	} else {
 		return entry.SnapshotFiles[0].Stat
 	}
 }
 
-func (entry *FileBrowserEntry) HasSnapshots() bool {
+// HasSnapshot indicated whether a snapshot file exists on the dataset for this entry.
+// See HasReal if you are looking for the real file.
+func (entry *FileBrowserEntry) HasSnapshot() bool {
 	return len(entry.SnapshotFiles) > 0
 }
 
-func (entry *FileBrowserEntry) HasLatest() bool {
-	return entry.LatestFile != nil
+// HasReal indicated whether a real file exists on the dataset for this entry
+// See HasSnapshot if you are looking for a snapshot file.
+func (entry *FileBrowserEntry) HasReal() bool {
+	return entry.RealFile != nil
 }
