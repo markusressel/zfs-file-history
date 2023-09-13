@@ -76,6 +76,19 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 	table := tview.NewTable()
 	fileBrowser.fileTable = table
 
+	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		switch action {
+		case tview.MouseLeftDoubleClick:
+			go func() {
+				fileBrowser.application.QueueUpdateDraw(func() {
+					fileBrowser.openActionDialog(fileBrowser.fileSelection)
+				})
+			}()
+			return action, nil
+		}
+		return action, event
+	})
+
 	table.SetBorder(true)
 	table.SetBorders(false)
 	table.SetBorderPadding(0, 0, 1, 1)
