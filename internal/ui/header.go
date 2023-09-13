@@ -53,7 +53,7 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	versionTextView.SetText(versionText)
 	versionTextView.SetTextAlign(tview.AlignCenter)
 
-	statusTextView := tview.NewTextView().SetText("Ready")
+	statusTextView := tview.NewTextView()
 	statusTextView.SetBorderPadding(0, 0, 1, 1)
 	statusTextView.SetTextColor(tcell.ColorGray)
 	statusTextView.SetTextAlign(tview.AlignLeft)

@@ -54,10 +54,10 @@ type FileBrowser struct {
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
-	statusChannel     chan string
+	statusChannel     chan StatusMessage
 }
 
-func NewFileBrowser(application *tview.Application, statusChannel chan string, path string) *FileBrowser {
+func NewFileBrowser(application *tview.Application, statusChannel chan StatusMessage, path string) *FileBrowser {
 	fileBrowser := &FileBrowser{
 		application:              application,
 		pathChanged:              make(chan string),
@@ -615,7 +615,10 @@ func (fileBrowser *FileBrowser) SortEntries() {
 
 func (fileBrowser *FileBrowser) showError(err error) {
 	go func() {
-		fileBrowser.statusChannel <- err.Error()
+		fileBrowser.statusChannel <- StatusMessage{
+			Message:  err.Error(),
+			Duration: StatusMessageDurationInfinite,
+		}
 	}()
 }
 

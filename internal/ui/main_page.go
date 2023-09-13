@@ -3,8 +3,18 @@ package ui
 import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"time"
 	"zfs-file-history/internal/logging"
 )
+
+const (
+	StatusMessageDurationInfinite = -1 * time.Second
+)
+
+type StatusMessage struct {
+	Message  string
+	Duration time.Duration
+}
 
 type MainPage struct {
 	application     *tview.Application
@@ -13,11 +23,11 @@ type MainPage struct {
 	datasetInfo     *DatasetInfo
 	snapshotBrowser *SnapshotBrowser
 	layout          *tview.Flex
-	statusChannel   chan string
+	statusChannel   chan StatusMessage
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
-	statusChannel := make(chan string, 1)
+	statusChannel := make(chan StatusMessage, 1)
 
 	fileBrowser := NewFileBrowser(application, statusChannel, path)
 
@@ -64,11 +74,20 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 					//}
 				})
 			case statusMessage := <-statusChannel:
-				mainPage.showStatusMessage(statusMessage)
+				mainPage.showStatusMessage(statusMessage.Message)
+				go func() {
+					if statusMessage.Duration > 0 {
+						time.Sleep(statusMessage.Duration)
+						application.QueueUpdateDraw(func() {
+							mainPage.showStatusMessage("")
+						})
+					}
+				}()
 			}
-
 		}
 	}()
+
+	mainPage.SendStatusMessage("Ready")
 
 	return mainPage
 }
@@ -118,4 +137,13 @@ func (mainPage *MainPage) ToggleFocus() {
 
 func (mainPage *MainPage) showStatusMessage(message string) {
 	mainPage.header.SetStatus(message)
+}
+
+func (mainPage *MainPage) SendStatusMessage(s string) {
+	go func() {
+		mainPage.statusChannel <- StatusMessage{
+			Message:  s,
+			Duration: 3 * time.Second,
+		}
+	}()
 }
