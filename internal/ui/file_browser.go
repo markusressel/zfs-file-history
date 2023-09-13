@@ -410,7 +410,8 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			} else if columnTitle == Type {
 				lstat, err := os.Lstat(currentFileEntry.GetRealPath())
 				if err == nil && lstat.Mode().Type() == os.ModeSymlink {
-					cellText = "SL"
+					cellText = "L"
+					cellColor = tcell.ColorYellow
 				} else if currentFileEntry.GetStat().IsDir() {
 					cellText = "D"
 					cellColor = tcell.ColorSteelBlue
