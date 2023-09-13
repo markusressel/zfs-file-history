@@ -128,3 +128,11 @@ func (datasetInfo *DatasetInfo) updateUi() {
 		}
 	}
 }
+
+func (datasetInfo *DatasetInfo) HasFocus() bool {
+	return datasetInfo.layout.HasFocus()
+}
+
+func (datasetInfo *DatasetInfo) Focus() {
+	datasetInfo.application.SetFocus(datasetInfo.layout)
+}

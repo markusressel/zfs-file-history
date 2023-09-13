@@ -96,9 +96,11 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 func (mainPage *MainPage) ToggleFocus() {
 	if mainPage.fileBrowser.HasFocus() {
-		mainPage.snapshotBrowser.Focus()
+		mainPage.datasetInfo.Focus()
 	} else if mainPage.snapshotBrowser.HasFocus() {
 		mainPage.fileBrowser.Focus()
+	} else if mainPage.datasetInfo.HasFocus() {
+		mainPage.snapshotBrowser.Focus()
 	} else {
 		logging.Warning("Unexpected focus state")
 	}
