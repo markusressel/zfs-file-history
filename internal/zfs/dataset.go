@@ -13,6 +13,38 @@ import (
 	"zfs-file-history/internal/util"
 )
 
+var (
+	allDatasets  = []golibzfs.Dataset{}
+	AllSnapshots = map[string][]golibzfs.Dataset{}
+)
+
+func init() {
+	loadDatasets()
+	loadSnapshots(allDatasets)
+}
+
+func loadDatasets() {
+	datasets, err := golibzfs.DatasetOpenAll()
+	if err != nil {
+		logging.Error(err.Error())
+	} else {
+		allDatasets = datasets
+	}
+}
+
+func loadSnapshots(datasets []golibzfs.Dataset) {
+	for _, dataset := range datasets {
+		mountPointProperty := dataset.Properties[golibzfs.DatasetPropMountpoint]
+		snapshots, err := dataset.Snapshots()
+		if err != nil {
+			logging.Error(err.Error())
+		} else {
+			AllSnapshots[mountPointProperty.Value] = snapshots
+		}
+		loadSnapshots(dataset.Children)
+	}
+}
+
 type Dataset struct {
 	Path          string
 	HiddenZfsPath string
@@ -84,12 +116,6 @@ func (dataset *Dataset) GetSnapshotsDir() string {
 func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	var result []*Snapshot
 
-	all, err := golibzfs.DatasetOpenAll()
-	if err != nil {
-		return nil, err
-	}
-	ds := findDataset(all, dataset.Path)
-
 	snapshotDirs, err := util.ListFilesIn(dataset.GetSnapshotsDir())
 	if err != nil {
 		return []*Snapshot{}, err
@@ -97,14 +123,18 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	for _, file := range snapshotDirs {
 		_, name := path2.Split(file)
 
-		ss, err := ds.Snapshots()
-		if err != nil {
-			logging.Error(err.Error())
+		var creationDate time.Time
+		s := findSnapshot(AllSnapshots[dataset.Path], name)
+		if s != nil {
+			creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
+			creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
+
+			if err != nil {
+				logging.Error(err.Error())
+			} else {
+				creationDate = time.Unix(creationDateTimestamp, 0)
+			}
 		}
-		s := findSnapshot(ss, name)
-		creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
-		creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
-		creationDate := time.Unix(creationDateTimestamp, 0)
 
 		result = append(result, NewSnapshot(name, file, dataset, &creationDate))
 	}
