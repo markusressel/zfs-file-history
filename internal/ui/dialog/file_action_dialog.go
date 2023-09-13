@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"os"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/util"
 )
 
@@ -35,6 +37,7 @@ type DialogOptionId int
 
 const (
 	RestoreFileDialogOption DialogOptionId = iota
+	DeleteFileDialogOption
 )
 
 func (d *FileActionDialog) createLayout() {
@@ -50,10 +53,18 @@ func (d *FileActionDialog) createLayout() {
 
 	dialogOptions := []*DialogOption{}
 
-	if len(d.file.SnapshotFiles) > 0 {
+	if d.file.HasSnapshot() {
 		restoreOption := &DialogOption{
 			Id:   RestoreFileDialogOption,
 			Name: fmt.Sprintf("Restore from '%s'", d.file.SnapshotFiles[0].Snapshot.Name),
+		}
+		dialogOptions = append(dialogOptions, restoreOption)
+	}
+
+	if d.file.HasReal() {
+		restoreOption := &DialogOption{
+			Id:   DeleteFileDialogOption,
+			Name: fmt.Sprintf("Delete '%s'", d.file.RealFile.Path),
 		}
 		dialogOptions = append(dialogOptions, restoreOption)
 	}
@@ -90,6 +101,8 @@ func (d *FileActionDialog) createLayout() {
 			switch dialogOption.Id {
 			case RestoreFileDialogOption:
 				d.RestoreFile()
+			case DeleteFileDialogOption:
+				d.DeleteFile()
 			}
 			return nil
 		}
@@ -120,5 +133,17 @@ func (d *FileActionDialog) RestoreFile() {
 	go func() {
 		d.actionChannel <- ActionClose
 		d.actionChannel <- RestoreAction
+	}()
+}
+
+func (d *FileActionDialog) DeleteFile() {
+	go func() {
+		path := d.file.RealFile.Path
+		err := os.RemoveAll(path)
+		if err != nil {
+			logging.Error(err.Error())
+		}
+
+		d.actionChannel <- ActionClose
 	}()
 }
