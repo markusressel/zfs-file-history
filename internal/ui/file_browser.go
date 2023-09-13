@@ -21,7 +21,7 @@ type FileBrowserColumn string
 const (
 	Name    FileBrowserColumn = "Name"
 	Size    FileBrowserColumn = "Size"
-	ModTime FileBrowserColumn = "ModTime"
+	ModTime FileBrowserColumn = "DateTime"
 	Status  FileBrowserColumn = "Status"
 )
 
@@ -313,7 +313,8 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 	table.Clear()
 
-	table.SetTitle(fileBrowser.path)
+	title := fmt.Sprintf(" Current Path: %s ", fileBrowser.path)
+	table.SetTitle(title)
 
 	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)+1
 	fileIndex := 0
@@ -330,9 +331,9 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 				if columnTitle == Name {
 					cellText = "Name"
 				} else if columnTitle == ModTime {
-					cellText = "ModTime"
+					cellText = "Date/Time"
 				} else if columnTitle == Status {
-					cellText = "Status"
+					cellText = "Diff"
 					cellAlignment = tview.AlignCenter
 				} else if columnTitle == Size {
 					cellText = "Size"
@@ -353,16 +354,16 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 		currentFileEntry := fileBrowser.fileEntries[fileIndex]
 
-		var status = "U"
+		var status = "="
 		var statusColor = tcell.ColorGray
 		if currentFileEntry.HasSnapshots() && !currentFileEntry.HasLatest() {
 			// file only exists in snapshot but not in latest
 			statusColor = tcell.ColorRed
-			status = "D"
+			status = "-"
 		} else if !currentFileEntry.HasSnapshots() && currentFileEntry.HasLatest() {
 			// file only exists in latest but not in snapshot
 			statusColor = tcell.ColorGreen
-			status = "N"
+			status = "+"
 		} else if fileBrowser.checkIfFileHasChanged(currentFileEntry.LatestFile, currentFileEntry.SnapshotFiles[0]) {
 			statusColor = tcell.ColorYellow
 			status = "M"
@@ -377,12 +378,12 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 			if columnTitle == Name {
 				cellText = fmt.Sprintf("%s", currentFileEntry.Name)
-				var nameColor = cellColor
 				if currentFileEntry.GetStat().IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
-					nameColor = tcell.ColorSteelBlue
+					cellColor = tcell.ColorSteelBlue
+				} else {
+					cellColor = statusColor
 				}
-				cellColor = nameColor
 			} else if columnTitle == Status {
 				cellText = status
 				cellColor = statusColor
