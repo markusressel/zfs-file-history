@@ -8,14 +8,18 @@ import (
 
 type MainPage struct {
 	application     *tview.Application
+	header          *ApplicationHeader
 	fileBrowser     *FileBrowser
 	datasetInfo     *DatasetInfo
 	snapshotBrowser *SnapshotBrowser
 	layout          *tview.Flex
+	statusChannel   chan string
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
-	fileBrowser := NewFileBrowser(application, path)
+	statusChannel := make(chan string, 1)
+
+	fileBrowser := NewFileBrowser(application, statusChannel, path)
 
 	datasetInfo := NewDatasetInfo(application)
 	datasetInfo.SetPath(path)
@@ -29,6 +33,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		fileBrowser:     fileBrowser,
 		datasetInfo:     datasetInfo,
 		snapshotBrowser: snapshotBrowser,
+		statusChannel:   statusChannel,
 	}
 
 	mainPage.layout = mainPage.createLayout()
@@ -58,7 +63,10 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 					//	snapshotBrowser.Clear()
 					//}
 				})
+			case statusMessage := <-statusChannel:
+				mainPage.showStatusMessage(statusMessage)
 			}
+
 		}
 	}()
 
@@ -91,6 +99,8 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 		return event
 	})
 
+	mainPage.header = header
+
 	return mainPageLayout
 }
 
@@ -104,4 +114,8 @@ func (mainPage *MainPage) ToggleFocus() {
 	} else {
 		logging.Warning("Unexpected focus state")
 	}
+}
+
+func (mainPage *MainPage) showStatusMessage(message string) {
+	mainPage.header.SetStatus(message)
 }

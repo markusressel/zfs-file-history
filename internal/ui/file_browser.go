@@ -47,20 +47,23 @@ type FileBrowser struct {
 	selectedFileEntryChanged chan *data.FileBrowserEntry
 	sortByColumn             FileBrowserColumn
 
-	application *tview.Application
-	layout      *tview.Pages
-	fileTable   *tview.Table
+	application    *tview.Application
+	layout         *tview.Pages
+	statusTextView *tview.TextView
+	fileTable      *tview.Table
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
+	statusChannel     chan string
 }
 
-func NewFileBrowser(application *tview.Application, path string) *FileBrowser {
+func NewFileBrowser(application *tview.Application, statusChannel chan string, path string) *FileBrowser {
 	fileBrowser := &FileBrowser{
 		application:              application,
 		pathChanged:              make(chan string),
 		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
 		sortByColumn:             -Type,
+		statusChannel:            statusChannel,
 	}
 
 	fileBrowser.createLayout(application)
@@ -346,6 +349,8 @@ func (fileBrowser *FileBrowser) SetPathWithSelection(newPath string, selection s
 }
 
 func (fileBrowser *FileBrowser) SetPath(newPath string) {
+	// TODO: allow entering a path, if it only exists within a snapshot,
+	//  be careful about "restore" action from nested folders though!
 	stat, err := os.Stat(newPath)
 	if err != nil {
 		logging.Error(err.Error())
@@ -609,7 +614,9 @@ func (fileBrowser *FileBrowser) SortEntries() {
 }
 
 func (fileBrowser *FileBrowser) showError(err error) {
-	fileBrowser.fileTable.SetTitle(err.Error())
+	go func() {
+		fileBrowser.statusChannel <- err.Error()
+	}()
 }
 
 func (fileBrowser *FileBrowser) getSelectionIndex(path string) int {

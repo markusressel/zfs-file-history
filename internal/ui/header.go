@@ -9,9 +9,10 @@ import (
 )
 
 type ApplicationHeader struct {
-	layout  *tview.Flex
-	name    string
-	version string
+	layout         *tview.Flex
+	name           string
+	version        string
+	statusTextView *tview.TextView
 }
 
 func NewApplicationHeader() *ApplicationHeader {
@@ -52,15 +53,27 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	versionTextView.SetText(versionText)
 	versionTextView.SetTextAlign(tview.AlignCenter)
 
-	helpTextView := uiutil.CreateAttentionTextView("Press '?' for help")
+	statusTextView := tview.NewTextView().SetText("Ready")
+	statusTextView.SetBorderPadding(0, 0, 1, 1)
+	statusTextView.SetTextColor(tcell.ColorGray)
+	statusTextView.SetTextAlign(tview.AlignLeft)
+
+	helpText := "Press '?' for help"
+	helpTextView := uiutil.CreateAttentionTextView(helpText)
 
 	layout.AddItem(nameTextView, len(nameText), 0, false)
 	layout.AddItem(versionTextView, len(versionText), 0, false)
-	layout.AddItem(helpTextView, 0, 1, false)
+	layout.AddItem(statusTextView, 0, 1, false)
+	layout.AddItem(helpTextView, len(helpText)+2, 0, false)
 
+	applicationHeader.statusTextView = statusTextView
 	applicationHeader.layout = layout
 }
 
 func (applicationHeader *ApplicationHeader) updateUi() {
 	// no changing data
+}
+
+func (applicationHeader *ApplicationHeader) SetStatus(text string) {
+	applicationHeader.statusTextView.SetText(text)
 }
