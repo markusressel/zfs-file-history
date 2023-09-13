@@ -674,7 +674,7 @@ func (fileBrowser *FileBrowser) toggleSortOrder() {
 }
 
 func (fileBrowser *FileBrowser) nextSortOrder() {
-	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn + 1)))
+	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn)) + 1)
 	if column.IsValid() {
 		if fileBrowser.sortByColumn < 0 {
 			column *= -1
@@ -691,7 +691,7 @@ func (fileBrowser *FileBrowser) nextSortOrder() {
 }
 
 func (fileBrowser *FileBrowser) previousSortOrder() {
-	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn - 1)))
+	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn)) - 1)
 	if column.IsValid() {
 		if fileBrowser.sortByColumn < 0 {
 			column *= -1
