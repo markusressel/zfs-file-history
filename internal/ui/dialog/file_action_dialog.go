@@ -5,11 +5,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/data"
-	"zfs-file-history/internal/ui/page"
+	"zfs-file-history/internal/ui/util"
 )
 
 const (
-	ActionDialog page.Page = "ActionDialog"
+	ActionDialog util.Page = "ActionDialog"
 
 	RestoreAction DialogAction = iota
 )

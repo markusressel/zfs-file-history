@@ -7,12 +7,11 @@ import (
 	"github.com/rivo/tview"
 	"time"
 	"zfs-file-history/internal/data"
-	"zfs-file-history/internal/ui/page"
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
 const (
-	RestoreFileProgress page.Page = "RestoreFileProgressDialog"
+	RestoreFileProgress uiutil.Page = "RestoreFileProgressDialog"
 )
 
 type RestoreFileProgressDialog struct {

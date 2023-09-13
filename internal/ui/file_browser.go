@@ -14,7 +14,6 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
-	"zfs-file-history/internal/ui/page"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -28,7 +27,7 @@ const (
 	ModTime FileBrowserColumn = "DateTime"
 	Status  FileBrowserColumn = "Status"
 
-	FileBrowserPage page.Page = "FileBrowserPage"
+	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
 
 type FileBrowser struct {

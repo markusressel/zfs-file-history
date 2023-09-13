@@ -4,12 +4,12 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/ui/dialog"
-	"zfs-file-history/internal/ui/page"
+	"zfs-file-history/internal/ui/util"
 )
 
 const (
-	Main       page.Page = "main"
-	HelpDialog page.Page = "help"
+	Main       util.Page = "main"
+	HelpDialog util.Page = "help"
 )
 
 func CreateUi(path string, fullscreen bool) *tview.Application {
