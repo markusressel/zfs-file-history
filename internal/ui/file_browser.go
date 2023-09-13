@@ -146,10 +146,10 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 	}
 
 	// list files in currently directory with currently selected snapshot
-	var snapshotPath = ""
+
 	var snapshotFiles []string
 	if snapshot != nil {
-		snapshotPath = snapshot.GetSnapshotPath(path)
+		snapshotPath := snapshot.GetSnapshotPath(path)
 		snapshotFiles, err = util.ListFilesIn(snapshotPath)
 		if os.IsPermission(err) {
 			fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
@@ -177,17 +177,17 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 			statSnap, err := os.Stat(snapshotFilePath)
 			if err != nil {
 				logging.Error(err.Error())
-				slices.DeleteFunc(snapshotFiles, func(s string) bool {
+				snapshotFiles = slices.DeleteFunc(snapshotFiles, func(s string) bool {
 					return s == snapshotFilePath
 				})
 			} else {
 				snapshotFile = &SnapshotFile{
-					Path:         snapshotPath,
+					Path:         snapshotFilePath,
 					OriginalPath: latestFilePath,
 					Stat:         statSnap,
 					Snapshot:     snapshot,
 				}
-				slices.DeleteFunc(snapshotFiles, func(s string) bool {
+				snapshotFiles = slices.DeleteFunc(snapshotFiles, func(s string) bool {
 					return s == snapshotFilePath
 				})
 			}
@@ -219,7 +219,7 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 		}
 
 		snapshotFile := &SnapshotFile{
-			Path:         snapshotPath,
+			Path:         snapshotFilePath,
 			OriginalPath: snapshot.GetRealPath(snapshotFilePath),
 			Stat:         statSnap,
 			Snapshot:     snapshot,
