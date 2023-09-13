@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
 	"strings"
@@ -71,7 +73,6 @@ func (snapshotBrowser *SnapshotBrowser) HasFocus() bool {
 func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 	table := tview.NewTable()
 	table.SetBorder(true)
-	table.SetTitle(" Snapshots ")
 	table.SetSelectable(true, false)
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
@@ -99,15 +100,23 @@ func (snapshotBrowser *SnapshotBrowser) setSnapshots(snapshots []*zfs.Snapshot) 
 }
 
 func (snapshotBrowser *SnapshotBrowser) updateUi() {
-	snapshotBrowser.snapshotTable.Clear()
+	table := snapshotBrowser.snapshotTable
+	table.Clear()
+
+	title := " Snapshots "
+	if snapshotBrowser.currentSnapshot != nil {
+		title = fmt.Sprintf(" Snapshot: %s ", snapshotBrowser.currentSnapshot.Name)
+	}
+	table.SetTitle(title).SetTitleAlign(tview.AlignLeft).SetTitleColor(tcell.ColorBlue)
+
 	for i, snapshot := range snapshotBrowser.snapshots {
 		cellText := snapshot.Name
-		snapshotBrowser.snapshotTable.SetCell(
+		table.SetCell(
 			i, 0,
 			tview.NewTableCell(cellText),
 		)
 	}
-	snapshotBrowser.snapshotTable.ScrollToBeginning()
+	table.ScrollToBeginning()
 }
 
 func (snapshotBrowser *SnapshotBrowser) updateZfsInfo() {

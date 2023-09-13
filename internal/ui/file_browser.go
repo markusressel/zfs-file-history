@@ -313,7 +313,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 	table.Clear()
 
-	title := fmt.Sprintf(" Current Path: %s ", fileBrowser.path)
+	title := fmt.Sprintf(" Path: %s ", fileBrowser.path)
 	table.SetTitle(title)
 
 	cols, rows := len(columnTitles), len(fileBrowser.fileEntries)+1
