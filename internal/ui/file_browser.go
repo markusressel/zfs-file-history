@@ -32,6 +32,10 @@ const (
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
 
+func (c FileBrowserColumn) IsValid() bool {
+	return c <= Status && c >= Name
+}
+
 type FileBrowser struct {
 	path        string
 	pathChanged chan string
@@ -130,15 +134,31 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 		if key == tcell.KeyRight {
 			if fileBrowser.fileSelection != nil {
 				fileBrowser.SetPath(fileBrowser.fileSelection.GetRealPath())
+			} else {
+				fileBrowser.nextSortOrder()
 			}
 			return nil
 		} else if key == tcell.KeyLeft {
-			if fileBrowser.fileSelection != nil || fileBrowser.ListIsEmpty() {
+			if fileBrowser.ListIsEmpty() {
 				fileBrowser.goUp()
+			} else if fileBrowser.fileSelection != nil {
+				fileBrowser.goUp()
+			} else if fileBrowser.fileSelection == nil {
+				fileBrowser.previousSortOrder()
 			}
 			return nil
 		} else if key == tcell.KeyEnter {
-			fileBrowser.openActionDialog(fileBrowser.fileSelection)
+			if fileBrowser.fileSelection == nil {
+				fileBrowser.toggleSortOrder()
+			} else {
+				fileBrowser.openActionDialog(fileBrowser.fileSelection)
+			}
+			return nil
+		} else if key == tcell.KeyUp {
+			if fileBrowser.fileSelection == nil {
+				fileBrowser.toggleSortOrder()
+				return nil
+			}
 		}
 		if key == tcell.KeyCtrlR {
 			fileBrowser.refresh()
@@ -393,9 +413,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 
 	tableEntries := slices.Clone(fileBrowser.fileEntries)
 
-	sortedTableEntries := sortTableEntries(tableEntries, fileBrowser.sortByColumn)
-
-	cols, rows := len(columnTitles), len(sortedTableEntries)+1
+	cols, rows := len(columnTitles), len(tableEntries)+1
 	fileIndex := 0
 	for row := 0; row < rows; row++ {
 		if (row) == 0 {
@@ -442,7 +460,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			continue
 		}
 
-		currentFileEntry := sortedTableEntries[fileIndex]
+		currentFileEntry := tableEntries[fileIndex]
 
 		var status = "="
 		var statusColor = tcell.ColorGray
@@ -572,17 +590,7 @@ func (fileBrowser *FileBrowser) SelectEntry(i int) {
 }
 
 func (fileBrowser *FileBrowser) SortEntries() {
-	slices.SortFunc(fileBrowser.fileEntries, func(a, b *data.FileBrowserEntry) int {
-		if a.GetStat().IsDir() == b.GetStat().IsDir() {
-			return strings.Compare(a.Name, b.Name)
-		} else {
-			if a.GetStat().IsDir() {
-				return -1
-			} else {
-				return 1
-			}
-		}
-	})
+	fileBrowser.fileEntries = sortTableEntries(fileBrowser.fileEntries, fileBrowser.sortByColumn)
 }
 
 func (fileBrowser *FileBrowser) showError(err error) {
@@ -658,4 +666,43 @@ func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog, actionHandler func(a
 		}
 	}()
 	fileBrowser.layout.AddPage(d.GetName(), layout, true, true)
+}
+
+func (fileBrowser *FileBrowser) toggleSortOrder() {
+	fileBrowser.sortByColumn *= -1
+	fileBrowser.refresh()
+}
+
+func (fileBrowser *FileBrowser) nextSortOrder() {
+	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn + 1)))
+	if column.IsValid() {
+		if fileBrowser.sortByColumn < 0 {
+			column *= -1
+		}
+		fileBrowser.sortByColumn = column
+	} else {
+		column = 1
+		if fileBrowser.sortByColumn < 0 {
+			column *= -1
+		}
+		fileBrowser.sortByColumn = column
+	}
+	fileBrowser.refresh()
+}
+
+func (fileBrowser *FileBrowser) previousSortOrder() {
+	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn - 1)))
+	if column.IsValid() {
+		if fileBrowser.sortByColumn < 0 {
+			column *= -1
+		}
+		fileBrowser.sortByColumn = column
+	} else {
+		column = 5
+		if fileBrowser.sortByColumn < 0 {
+			column *= -1
+		}
+		fileBrowser.sortByColumn = column
+	}
+	fileBrowser.refresh()
 }
