@@ -510,7 +510,6 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 					cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
 				}
 				cellAlignment = tview.AlignRight
-				cellExpansion = 0
 			} else {
 				panic("Unknown column")
 			}
