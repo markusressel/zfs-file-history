@@ -27,7 +27,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 
 	snapshotBrowser := NewSnapshotBrowser(application)
 	snapshotBrowser.SetPath(path)
-	snapshotBrowser.SetFileEntry(fileBrowser.fileSelection)
+	snapshotBrowser.SetFileEntry(fileBrowser.selectedFileEntry)
 
 	mainPage := &MainPage{
 		application:     application,

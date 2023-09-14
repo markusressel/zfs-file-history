@@ -43,7 +43,7 @@ type FileBrowserComponent struct {
 	currentSnapshot *zfs.Snapshot
 
 	fileEntries              []*data.FileBrowserEntry
-	fileSelection            *data.FileBrowserEntry
+	selectedFileEntry        *data.FileBrowserEntry
 	selectedFileEntryChanged chan *data.FileBrowserEntry
 	sortByColumn             FileBrowserColumn
 
@@ -87,7 +87,7 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 		case tview.MouseLeftDoubleClick:
 			go func() {
 				fileBrowser.application.QueueUpdateDraw(func() {
-					fileBrowser.openActionDialog(fileBrowser.fileSelection)
+					fileBrowser.openActionDialog(fileBrowser.selectedFileEntry)
 				})
 			}()
 			return action, nil
@@ -117,21 +117,14 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 			newSelection = fileBrowser.fileEntries[selectionIndex]
 		}
 
-		if fileBrowser.fileSelection != newSelection {
-			fileBrowser.fileSelection = newSelection
-			go func() {
-				fileBrowser.selectedFileEntryChanged <- newSelection
-			}()
-		}
-
-		fileBrowser.setSelectionIndex(fileBrowser.path, row)
+		fileBrowser.selectFileEntry(newSelection)
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if key == tcell.KeyRight {
-			if fileBrowser.fileSelection != nil {
-				fileBrowser.enterFileEntry(fileBrowser.fileSelection)
+			if fileBrowser.selectedFileEntry != nil {
+				fileBrowser.enterFileEntry(fileBrowser.selectedFileEntry)
 			} else {
 				fileBrowser.nextSortOrder()
 			}
@@ -139,21 +132,21 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 		} else if key == tcell.KeyLeft {
 			if fileBrowser.ListIsEmpty() {
 				fileBrowser.goUp()
-			} else if fileBrowser.fileSelection != nil {
+			} else if fileBrowser.selectedFileEntry != nil {
 				fileBrowser.goUp()
-			} else if fileBrowser.fileSelection == nil {
+			} else if fileBrowser.selectedFileEntry == nil {
 				fileBrowser.previousSortOrder()
 			}
 			return nil
 		} else if key == tcell.KeyEnter {
-			if fileBrowser.fileSelection == nil {
+			if fileBrowser.selectedFileEntry == nil {
 				fileBrowser.toggleSortOrder()
 			} else {
-				fileBrowser.openActionDialog(fileBrowser.fileSelection)
+				fileBrowser.openActionDialog(fileBrowser.selectedFileEntry)
 			}
 			return nil
 		} else if key == tcell.KeyUp {
-			if fileBrowser.fileSelection == nil {
+			if fileBrowser.selectedFileEntry == nil {
 				fileBrowser.toggleSortOrder()
 				return nil
 			}
@@ -365,13 +358,13 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 }
 
 func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBrowserEntry) {
-	if fileBrowser.fileSelection == nil {
+	if fileBrowser.selectedFileEntry == nil {
 		return
 	}
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
 	actionHandler := func(action dialog.DialogAction) {
 		if action == dialog.RestoreAction {
-			d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, fileBrowser.fileSelection)
+			d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, fileBrowser.selectedFileEntry)
 			fileBrowser.showDialog(d, func(action dialog.DialogAction) {})
 		}
 	}
@@ -612,10 +605,10 @@ func sortTableEntries(entries []*data.FileBrowserEntry, column FileBrowserColumn
 
 func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
 	if len(fileBrowser.fileEntries) > 0 {
-		fileBrowser.fileSelection = fileBrowser.fileEntries[i]
+		fileBrowser.selectedFileEntry = fileBrowser.fileEntries[i]
 		fileBrowser.fileTable.Select(i+1, 0)
 	} else {
-		fileBrowser.fileSelection = nil
+		fileBrowser.selectedFileEntry = nil
 	}
 }
 
@@ -643,17 +636,29 @@ func (fileBrowser *FileBrowserComponent) getSelectionIndex(path string) int {
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) setSelectionIndex(path string, index int) {
+func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
+	if fileBrowser.selectedFileEntry == newSelection {
+		return
+	}
+
+	fileBrowser.selectedFileEntry = newSelection
+	go func() {
+		fileBrowser.selectedFileEntryChanged <- newSelection
+	}()
+
+	// remember selection index
 	if fileBrowser.selectionIndexMap == nil {
 		fileBrowser.selectionIndexMap = map[string]int{}
 	}
-	fileBrowser.selectionIndexMap[path] = index
+	newIndex := slices.Index(fileBrowser.fileEntries, newSelection)
+	fileBrowser.selectionIndexMap[fileBrowser.path] = newIndex
 }
 
 func (fileBrowser *FileBrowserComponent) refresh() {
 	fileBrowser.updateFileEntries()
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
+	fileBrowser.selectFileEntry(fileBrowser.selectedFileEntry)
 }
 
 func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
@@ -690,7 +695,6 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 			if action == dialog.ActionClose {
 				fileBrowser.layout.HidePage(d.GetName())
 				fileBrowser.layout.RemovePage(d.GetName())
-				break
 			} else {
 				actionHandler(action)
 			}

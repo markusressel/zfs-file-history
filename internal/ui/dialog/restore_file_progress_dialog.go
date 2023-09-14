@@ -60,7 +60,7 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		for {
 			<-tick.C
 			if !d.isRunning {
-				return
+				break
 			}
 			spinner.Pulse()
 			d.application.Draw()
@@ -160,7 +160,7 @@ func (d *RestoreFileProgressDialog) runAction() {
 		for {
 			<-tick.C
 			if !d.isRunning {
-				return
+				break
 			}
 			d.progressValue = int(math.Min(float64(d.progress.GetMaxValue()), float64(d.progressValue)))
 			d.progress.SetValue(d.progressValue)

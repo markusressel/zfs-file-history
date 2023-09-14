@@ -47,13 +47,13 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 				if err != nil {
 					logging.Error(err.Error())
 				}
-				return
+				break
 			// watch for events
 			case event := <-fileWatcher.watcher.Events:
 				if event.Name != "" {
 					action(event.Name)
 				} else {
-					return
+					break
 				}
 			// watch for errors
 			case err := <-fileWatcher.watcher.Errors:
@@ -86,7 +86,7 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 				if err != nil {
 					logging.Error(err.Error())
 				}
-				return
+				break
 			}
 		}
 	}()
