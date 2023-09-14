@@ -362,11 +362,12 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		return
 	}
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
-	actionHandler := func(action dialog.DialogAction) {
+	actionHandler := func(action dialog.DialogAction) bool {
 		if action == dialog.RestoreAction {
-			d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, fileBrowser.selectedFileEntry)
-			fileBrowser.showDialog(d, func(action dialog.DialogAction) {})
+			fileBrowser.runRestoreFileAction(fileBrowser.selectedFileEntry)
+			return true
 		}
+		return false
 	}
 	fileBrowser.showDialog(actionDialogLayout, actionHandler)
 }
@@ -687,16 +688,17 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.fileTable.HasFocus()
 }
 
-func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction)) {
+func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction) bool) {
 	layout := d.GetLayout()
 	go func() {
 		for {
 			action := <-d.GetActionChannel()
+			if actionHandler(action) {
+				return
+			}
 			if action == dialog.ActionClose {
 				fileBrowser.layout.HidePage(d.GetName())
 				fileBrowser.layout.RemovePage(d.GetName())
-			} else {
-				actionHandler(action)
 			}
 		}
 	}()
@@ -748,4 +750,15 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 	} else if selection.HasReal() {
 		fileBrowser.SetPath(selection.GetRealPath(), true)
 	}
+}
+
+func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry) {
+	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry)
+	fileBrowser.showDialog(d, func(action dialog.DialogAction) bool {
+		switch action {
+		case dialog.ActionClose:
+			fileBrowser.refresh()
+		}
+		return false
+	})
 }
