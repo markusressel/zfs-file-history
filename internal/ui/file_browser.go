@@ -66,7 +66,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan StatusMes
 	}
 
 	fileBrowser.createLayout(application)
-	fileBrowser.SetPath(path)
+	fileBrowser.SetPath(path, false)
 
 	return fileBrowser
 }
@@ -131,7 +131,7 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 		key := event.Key()
 		if key == tcell.KeyRight {
 			if fileBrowser.fileSelection != nil {
-				fileBrowser.SetPath(fileBrowser.fileSelection.GetRealPath())
+				fileBrowser.enterFileEntry(fileBrowser.fileSelection)
 			} else {
 				fileBrowser.nextSortOrder()
 			}
@@ -185,7 +185,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 		fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
 		return
 	} else if err != nil {
-		logging.Fatal("Cannot list path: %s", err.Error())
+		fileBrowser.showError(errors.New("Cannot list path: " + err.Error()))
 	}
 
 	// list files in currently directory with currently selected snapshot
@@ -322,7 +322,7 @@ func (fileBrowser *FileBrowserComponent) goUp() {
 }
 
 func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, selection string) {
-	fileBrowser.SetPath(newPath)
+	fileBrowser.SetPath(newPath, false)
 	for i, entry := range fileBrowser.fileEntries {
 		if strings.Contains(entry.GetRealPath(), selection) {
 			fileBrowser.SelectEntry(i)
@@ -331,28 +331,30 @@ func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, se
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) SetPath(newPath string) {
+func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists bool) {
 	// TODO: allow entering a path, even if it only exists within a snapshot,
 	//  be careful about "restore" action from nested folders though!
-	stat, err := os.Stat(newPath)
-	if err != nil {
-		logging.Error(err.Error())
-		// cannot enter path, ignoring
-		fileBrowser.showError(err)
-		return
-	}
+	if checkExists {
+		stat, err := os.Stat(newPath)
+		if err != nil {
+			logging.Error(err.Error())
+			// cannot enter path, ignoring
+			fileBrowser.showError(err)
+			return
+		}
 
-	if !stat.IsDir() {
-		logging.Warning("Tried to enter path which is not a directory: %s", newPath)
-		fileBrowser.SetPath(path2.Dir(newPath))
-		return
-	}
+		if !stat.IsDir() {
+			logging.Warning("Tried to enter path which is not a directory: %s", newPath)
+			fileBrowser.SetPath(path2.Dir(newPath), false)
+			return
+		}
 
-	_, err = os.ReadDir(newPath)
-	if err != nil {
-		logging.Error(err.Error())
-		fileBrowser.showError(err)
-		return
+		_, err = os.ReadDir(newPath)
+		if err != nil {
+			logging.Error(err.Error())
+			fileBrowser.showError(err)
+			return
+		}
 	}
 
 	if fileBrowser.path != newPath {
@@ -625,10 +627,7 @@ func (fileBrowser *FileBrowserComponent) SortEntries() {
 
 func (fileBrowser *FileBrowserComponent) showError(err error) {
 	go func() {
-		fileBrowser.statusChannel <- StatusMessage{
-			Message:  err.Error(),
-			Duration: StatusMessageDurationInfinite,
-		}
+		fileBrowser.statusChannel <- NewErrorStatusMessage(err.Error())
 	}()
 }
 
@@ -738,4 +737,12 @@ func (fileBrowser *FileBrowserComponent) previousSortOrder() {
 		fileBrowser.sortByColumn = column
 	}
 	fileBrowser.refresh()
+}
+
+func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
+	if !selection.HasReal() && selection.HasSnapshot() {
+		fileBrowser.SetPath(selection.GetRealPath(), false)
+	} else if selection.HasReal() {
+		fileBrowser.SetPath(selection.GetRealPath(), true)
+	}
 }

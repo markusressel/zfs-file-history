@@ -74,6 +74,6 @@ func (applicationHeader *ApplicationHeaderComponent) updateUi() {
 	// no changing data
 }
 
-func (applicationHeader *ApplicationHeaderComponent) SetStatus(text string) {
-	applicationHeader.statusTextView.SetText(text)
+func (applicationHeader *ApplicationHeaderComponent) SetStatus(text string, color tcell.Color) {
+	applicationHeader.statusTextView.SetText(text).SetTextColor(color)
 }

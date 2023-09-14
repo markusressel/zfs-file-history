@@ -7,15 +7,6 @@ import (
 	"zfs-file-history/internal/logging"
 )
 
-const (
-	StatusMessageDurationInfinite = -1 * time.Second
-)
-
-type StatusMessage struct {
-	Message  string
-	Duration time.Duration
-}
-
 type MainPage struct {
 	application     *tview.Application
 	header          *ApplicationHeaderComponent
@@ -90,12 +81,12 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 					//}
 				})
 			case statusMessage := <-statusChannel:
-				mainPage.showStatusMessage(statusMessage.Message)
+				mainPage.showStatusMessage(statusMessage.Message, statusMessage.Color)
 				go func() {
 					if statusMessage.Duration > 0 {
 						time.Sleep(statusMessage.Duration)
 						application.QueueUpdateDraw(func() {
-							mainPage.showStatusMessage("")
+							mainPage.showStatusMessage("", 0)
 						})
 					}
 				}()
@@ -143,15 +134,12 @@ func (mainPage *MainPage) ToggleFocus() {
 	}
 }
 
-func (mainPage *MainPage) showStatusMessage(message string) {
-	mainPage.header.SetStatus(message)
+func (mainPage *MainPage) showStatusMessage(message string, color tcell.Color) {
+	mainPage.header.SetStatus(message, color)
 }
 
 func (mainPage *MainPage) SendStatusMessage(s string) {
 	go func() {
-		mainPage.statusChannel <- StatusMessage{
-			Message:  s,
-			Duration: 3 * time.Second,
-		}
+		mainPage.statusChannel <- NewInfoStatusMessage(s).SetDuration(3 * time.Second)
 	}()
 }
