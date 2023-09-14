@@ -79,9 +79,6 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	fileBrowserHeaderText := fileBrowser.path
 
-	// TODO: insert "/.." cell, if path is not /
-	// TODO: use arrow keys to navigate up and down the paths
-
 	table := tview.NewTable()
 	fileBrowser.fileTable = table
 
@@ -108,7 +105,6 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 	uiutil.SetupWindow(table, fileBrowserHeaderText)
 
 	table.SetSelectable(true, false)
-	// TODO: remember the selected index for a given path and automatically update the fileSelection when entering and exiting a path
 	selectionIndex := fileBrowser.getSelectionIndex(fileBrowser.path)
 	table.Select(selectionIndex+1, 0)
 
@@ -339,7 +335,7 @@ func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, se
 }
 
 func (fileBrowser *FileBrowserComponent) SetPath(newPath string) {
-	// TODO: allow entering a path, if it only exists within a snapshot,
+	// TODO: allow entering a path, even if it only exists within a snapshot,
 	//  be careful about "restore" action from nested folders though!
 	stat, err := os.Stat(newPath)
 	if err != nil {

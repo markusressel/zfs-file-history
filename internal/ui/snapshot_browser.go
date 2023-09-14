@@ -60,6 +60,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
 		}
 
 		snapshotBrowser.setSnapshots(snapshots)
+
+		// TODO: remember snapshot selection on a "per-dataset" basis
 		if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
 			snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
 		} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
@@ -67,6 +69,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
 		}) {
 			snapshotBrowser.SelectSnapshot(nil)
 		}
+	} else {
+		snapshotBrowser.Clear()
+		return
 	}
 
 	// TODO: highlight snapshots which contain the given file
