@@ -102,7 +102,7 @@ func (d *FileActionDialog) createLayout() {
 		var cellAlignment = tview.AlignLeft
 		var cellExpansion = 0
 
-		cellText = fmt.Sprintf("%s", columnTitle.Name)
+		cellText = columnTitle.Name
 
 		optionTable.SetCell(row, 0,
 			tview.NewTableCell(cellText).

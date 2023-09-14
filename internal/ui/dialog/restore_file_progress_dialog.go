@@ -58,14 +58,12 @@ func (d *RestoreFileProgressDialog) createLayout() {
 	updateSpinner := func() {
 		tick := time.NewTicker(100 * time.Millisecond)
 		for {
-			select {
-			case <-tick.C:
-				if !d.isRunning {
-					return
-				}
-				spinner.Pulse()
-				d.application.Draw()
+			<-tick.C
+			if !d.isRunning {
+				return
 			}
+			spinner.Pulse()
+			d.application.Draw()
 		}
 	}
 	go updateSpinner()
@@ -160,15 +158,13 @@ func (d *RestoreFileProgressDialog) runAction() {
 	progressUpdate := func() {
 		tick := time.NewTicker(100 * time.Millisecond)
 		for {
-			select {
-			case <-tick.C:
-				if !d.isRunning {
-					return
-				}
-				d.progressValue = int(math.Min(float64(d.progress.GetMaxValue()), float64(d.progressValue)))
-				d.progress.SetValue(d.progressValue)
-				d.application.Draw()
+			<-tick.C
+			if !d.isRunning {
+				return
 			}
+			d.progressValue = int(math.Min(float64(d.progress.GetMaxValue()), float64(d.progressValue)))
+			d.progress.SetValue(d.progressValue)
+			d.application.Draw()
 		}
 	}
 	go progressUpdate()

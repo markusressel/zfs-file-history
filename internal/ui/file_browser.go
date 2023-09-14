@@ -47,10 +47,9 @@ type FileBrowser struct {
 	selectedFileEntryChanged chan *data.FileBrowserEntry
 	sortByColumn             FileBrowserColumn
 
-	application    *tview.Application
-	layout         *tview.Pages
-	statusTextView *tview.TextView
-	fileTable      *tview.Table
+	application *tview.Application
+	layout      *tview.Pages
+	fileTable   *tview.Table
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
@@ -327,11 +326,6 @@ func (fileBrowser *FileBrowser) goUp() {
 	newSelection := fileBrowser.path
 	newPath := path2.Dir(fileBrowser.path)
 	fileBrowser.SetPathWithSelection(newPath, newSelection)
-}
-
-func (fileBrowser *FileBrowser) enterDir(name string) {
-	newPath := path2.Join(fileBrowser.path, name)
-	fileBrowser.SetPath(newPath)
 }
 
 func (fileBrowser *FileBrowser) SetPathWithSelection(newPath string, selection string) {
@@ -701,15 +695,13 @@ func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog, actionHandler func(a
 	layout := d.GetLayout()
 	go func() {
 		for {
-			select {
-			case action := <-d.GetActionChannel():
-				if action == dialog.ActionClose {
-					fileBrowser.layout.HidePage(d.GetName())
-					fileBrowser.layout.RemovePage(d.GetName())
-					break
-				} else {
-					actionHandler(action)
-				}
+			action := <-d.GetActionChannel()
+			if action == dialog.ActionClose {
+				fileBrowser.layout.HidePage(d.GetName())
+				fileBrowser.layout.RemovePage(d.GetName())
+				break
+			} else {
+				actionHandler(action)
 			}
 		}
 	}()

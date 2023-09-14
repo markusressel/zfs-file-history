@@ -142,19 +142,19 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	return result, nil
 }
 
-func findDataset(datasets []golibzfs.Dataset, path string) *golibzfs.Dataset {
-	for _, dataset := range datasets {
-		mountPoint := dataset.Properties[golibzfs.DatasetPropMountpoint]
-		if mountPoint.Value == path {
-			return &dataset
-		}
-		dataset := findDataset(dataset.Children, path)
-		if dataset != nil {
-			return dataset
-		}
-	}
-	return nil
-}
+//func findDataset(datasets []golibzfs.Dataset, path string) *golibzfs.Dataset {
+//	for _, dataset := range datasets {
+//		mountPoint := dataset.Properties[golibzfs.DatasetPropMountpoint]
+//		if mountPoint.Value == path {
+//			return &dataset
+//		}
+//		dataset := findDataset(dataset.Children, path)
+//		if dataset != nil {
+//			return dataset
+//		}
+//	}
+//	return nil
+//}
 
 func findSnapshot(snapshots []golibzfs.Dataset, name string) *golibzfs.Dataset {
 	for _, snapshot := range snapshots {
