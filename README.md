@@ -1,4 +1,4 @@
-# zfs-file-history
+<h1 align="center">zfs-file-history</h1>
 <h4 align="center">Terminal UI for inspecting and restoring file history on ZFS snapshots.</h4>
 
 <div align="center">
