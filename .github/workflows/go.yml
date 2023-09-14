@@ -12,7 +12,8 @@ jobs:
   generate:
     name: Generate cross-platform builds
     runs-on: ubuntu-latest
-
+    container:
+      image: ixsystems/zfs:latest
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v4
