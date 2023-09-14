@@ -8,8 +8,7 @@ import (
 )
 
 type Configuration struct {
-	Statistics StatisticsConfig `json:"statistics"`
-	Profiling  ProfilingConfig  `json:"profiling"`
+	Profiling ProfilingConfig `json:"profiling"`
 }
 
 var CurrentConfig Configuration
@@ -40,12 +39,6 @@ func InitConfig(cfgFile string) {
 }
 
 func setDefaultValues() {
-	viper.SetDefault("Statistics", StatisticsConfig{
-		Enabled: false,
-		Port:    9000,
-	})
-	viper.SetDefault("Statistics.Port", 9000)
-
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,
 		Host:    "localhost",
