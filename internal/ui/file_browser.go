@@ -328,7 +328,6 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 	if checkExists {
 		stat, err := os.Stat(newPath)
 		if err != nil {
-			logging.Error(err.Error())
 			// cannot enter path, ignoring
 			fileBrowser.showError(err)
 			return
@@ -342,7 +341,6 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 
 		_, err = os.ReadDir(newPath)
 		if err != nil {
-			logging.Error(err.Error())
 			fileBrowser.showError(err)
 			return
 		}
@@ -363,8 +361,15 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	}
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
 	actionHandler := func(action dialog.DialogAction) bool {
-		if action == dialog.RestoreAction {
-			fileBrowser.runRestoreFileAction(fileBrowser.selectedFileEntry)
+		switch action {
+		case dialog.RestoreRecursiveDialogAction:
+			fileBrowser.runRestoreFileAction(fileBrowser.selectedFileEntry, true)
+			return true
+		case dialog.RestoreFileDialogAction:
+			fileBrowser.runRestoreFileAction(fileBrowser.selectedFileEntry, false)
+			return true
+		case dialog.DeleteDialogAction:
+			fileBrowser.delete(fileBrowser.selectedFileEntry)
 			return true
 		}
 		return false
@@ -697,7 +702,6 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 				return
 			}
 			if action == dialog.ActionClose {
-				fileBrowser.layout.HidePage(d.GetName())
 				fileBrowser.layout.RemovePage(d.GetName())
 			}
 		}
@@ -752,8 +756,8 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry) {
-	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry)
+func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
+	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
 	fileBrowser.showDialog(d, func(action dialog.DialogAction) bool {
 		switch action {
 		case dialog.ActionClose:
@@ -761,4 +765,14 @@ func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBr
 		}
 		return false
 	})
+}
+
+func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
+	go func() {
+		path := entry.RealFile.Path
+		err := os.RemoveAll(path)
+		if err != nil {
+			fileBrowser.showError(err)
+		}
+	}()
 }

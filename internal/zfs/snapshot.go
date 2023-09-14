@@ -47,43 +47,70 @@ func (s *Snapshot) GetRealPath(path string) string {
 	return realPath
 }
 
-func (s *Snapshot) RestoreDirRecursive(srcPath string) error {
+func (s *Snapshot) RestoreRecursive(srcPath string) error {
 	stat, err := os.Stat(srcPath)
 	if err != nil {
 		return err
 	}
 	dstPath := s.GetRealPath(srcPath)
-	err = s.RestoreDir(dstPath, stat)
-	if err != nil {
-		return err
-	}
-
-	files, err := util.ListFilesIn(srcPath)
-	if err != nil {
-		logging.Fatal("Cannot list path: %s", err.Error())
-		return err
-	}
-	for _, file := range files {
-		stat, err = os.Stat(file)
+	if stat.IsDir() {
+		err = s.RestoreDir(dstPath, stat)
 		if err != nil {
 			return err
 		}
-		if stat.IsDir() {
-			err = s.RestoreDirRecursive(file)
+
+		files, err := util.ListFilesIn(srcPath)
+		if err != nil {
+			logging.Fatal("Cannot list path: %s", err.Error())
+			return err
+		}
+		for _, file := range files {
+			stat, err = os.Stat(file)
 			if err != nil {
 				return err
 			}
-		} else {
-			err = s.RestoreFile(file)
-			if err != nil {
-				return err
+			if stat.IsDir() {
+				err = s.RestoreRecursive(file)
+				if err != nil {
+					return err
+				}
+			} else {
+				err = s.RestoreFile(file)
+				if err != nil {
+					return err
+				}
 			}
+		}
+	} else {
+		err = s.RestoreFile(srcPath)
+		if err != nil {
+			return err
 		}
 	}
 
 	// TODO: we have to sync file properties from bottom to top, to avoid
 	//  affecting the modtime of folders due to changes of files within them
 
+	return err
+}
+
+func (s *Snapshot) Restore(srcPath string) error {
+	stat, err := os.Stat(srcPath)
+	if err != nil {
+		return err
+	}
+	dstPath := s.GetRealPath(srcPath)
+	if stat.IsDir() {
+		err = s.RestoreDir(dstPath, stat)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = s.RestoreFile(srcPath)
+		if err != nil {
+			return err
+		}
+	}
 	return err
 }
 

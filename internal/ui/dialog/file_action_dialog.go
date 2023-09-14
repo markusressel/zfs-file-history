@@ -5,16 +5,17 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
-	"os"
 	"zfs-file-history/internal/data"
-	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/util"
 )
 
 const (
 	ActionDialog util.Page = "ActionDialog"
 
-	RestoreAction DialogAction = iota
+	// recursively restores all files and folders top to bottom starting with the given entry
+	RestoreFileDialogAction DialogAction = iota
+	RestoreRecursiveDialogAction
+	DeleteDialogAction
 )
 
 type FileActionDialog struct {
@@ -39,8 +40,9 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 type DialogOptionId int
 
 const (
-	RestoreFileDialogOption DialogOptionId = iota
-	DeleteFileDialogOption
+	RestoreSingleDialogOption DialogOptionId = iota
+	RestoreRecursiveDialogOption
+	DeleteDialogOption
 	CloseDialogOption
 )
 
@@ -62,19 +64,30 @@ func (d *FileActionDialog) createLayout() {
 	}
 
 	if d.file.HasReal() {
-		option := &DialogOption{
-			Id:   DeleteFileDialogOption,
+		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+			Id:   DeleteDialogOption,
 			Name: fmt.Sprintf("Delete '%s'", d.file.RealFile.Name),
-		}
-		dialogOptions = slices.Insert(dialogOptions, 0, option)
+		})
 	}
 
 	if d.file.HasSnapshot() {
-		option := &DialogOption{
-			Id:   RestoreFileDialogOption,
-			Name: fmt.Sprintf("Restore from '%s'", d.file.SnapshotFiles[0].Snapshot.Name),
+		if d.file.Type == data.Directory {
+			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+				Id:   RestoreRecursiveDialogOption,
+				Name: fmt.Sprintf("Restore directory recursively"),
+			})
+			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+				Id:   RestoreSingleDialogOption,
+				Name: fmt.Sprintf("Restore directory only"),
+			})
 		}
-		dialogOptions = slices.Insert(dialogOptions, 0, option)
+
+		if d.file.Type == data.File {
+			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+				Id:   RestoreSingleDialogOption,
+				Name: fmt.Sprintf("Restore file"),
+			})
+		}
 	}
 
 	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
@@ -155,29 +168,33 @@ func (d *FileActionDialog) Close() {
 func (d *FileActionDialog) RestoreFile() {
 	go func() {
 		d.actionChannel <- ActionClose
-		d.actionChannel <- RestoreAction
-	}()
-}
-
-func (d *FileActionDialog) DeleteFile() {
-	go func() {
-		path := d.file.RealFile.Path
-		err := os.RemoveAll(path)
-		if err != nil {
-			logging.Error(err.Error())
-		}
-
-		d.actionChannel <- ActionClose
+		d.actionChannel <- RestoreFileDialogAction
 	}()
 }
 
 func (d *FileActionDialog) selectAction(option *DialogOption) {
 	switch option.Id {
-	case RestoreFileDialogOption:
+	case RestoreSingleDialogOption:
 		d.RestoreFile()
-	case DeleteFileDialogOption:
+	case RestoreRecursiveDialogOption:
+		d.RestoreRecursive()
+	case DeleteDialogOption:
 		d.DeleteFile()
 	case CloseDialogOption:
 		d.Close()
 	}
+}
+
+func (d *FileActionDialog) RestoreRecursive() {
+	go func() {
+		d.actionChannel <- ActionClose
+		d.actionChannel <- RestoreRecursiveDialogAction
+	}()
+}
+
+func (d *FileActionDialog) DeleteFile() {
+	go func() {
+		d.actionChannel <- ActionClose
+		d.actionChannel <- DeleteDialogAction
+	}()
 }

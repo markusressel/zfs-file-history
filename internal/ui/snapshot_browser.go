@@ -178,7 +178,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *zfs.Sn
 		return
 	}
 	snapshotBrowser.currentSnapshot = snapshot
-	snapshotBrowser.selectedSnapshotMap[snapshot.ParentDataset.Path] = snapshot
+	if snapshot != nil {
+		snapshotBrowser.selectedSnapshotMap[snapshot.ParentDataset.Path] = snapshot
+	}
 	go func() {
 		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.currentSnapshot
 	}()

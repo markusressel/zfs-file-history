@@ -32,7 +32,7 @@ type RestoreFileProgressDialog struct {
 	isRunning bool
 }
 
-func NewRestoreFileProgressDialog(application *tview.Application, fileSelection *data.FileBrowserEntry) *RestoreFileProgressDialog {
+func NewRestoreFileProgressDialog(application *tview.Application, fileSelection *data.FileBrowserEntry, recursive bool) *RestoreFileProgressDialog {
 	dialog := &RestoreFileProgressDialog{
 		application:   application,
 		fileSelection: fileSelection,
@@ -40,7 +40,7 @@ func NewRestoreFileProgressDialog(application *tview.Application, fileSelection 
 	}
 
 	dialog.createLayout()
-	dialog.runAction()
+	dialog.runAction(recursive)
 
 	return dialog
 }
@@ -116,7 +116,7 @@ func (d *RestoreFileProgressDialog) Close() {
 	}()
 }
 
-func (d *RestoreFileProgressDialog) runAction() {
+func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 	go func() {
 		d.isRunning = true
 		snapshot := d.fileSelection.SnapshotFiles[0].Snapshot
@@ -124,11 +124,11 @@ func (d *RestoreFileProgressDialog) runAction() {
 		snapshotFile := d.fileSelection.SnapshotFiles[0]
 		srcFilePath := snapshotFile.Path
 
-		if snapshotFile.Stat.IsDir() {
+		if recursive {
 			// TODO: this loops two times currently to ensure folder modtime properties are correct.
 			//  See implementation for what we need to do to fix this
 			for i := 0; i < 2; i++ {
-				err := snapshot.RestoreDirRecursive(srcFilePath)
+				err := snapshot.RestoreRecursive(srcFilePath)
 				d.application.QueueUpdateDraw(func() {
 					d.handleError(err)
 				})
@@ -138,7 +138,7 @@ func (d *RestoreFileProgressDialog) runAction() {
 				}
 			}
 		} else {
-			err := snapshot.RestoreFile(srcFilePath)
+			err := snapshot.Restore(srcFilePath)
 			d.application.QueueUpdateDraw(func() {
 				d.handleError(err)
 			})
@@ -147,6 +147,7 @@ func (d *RestoreFileProgressDialog) runAction() {
 				return
 			}
 		}
+
 		d.application.QueueUpdateDraw(func() {
 			d.handleDone()
 		})
