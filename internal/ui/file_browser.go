@@ -53,10 +53,10 @@ type FileBrowserComponent struct {
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
-	statusChannel     chan StatusMessage
+	statusChannel     chan *StatusMessage
 }
 
-func NewFileBrowser(application *tview.Application, statusChannel chan StatusMessage, path string) *FileBrowserComponent {
+func NewFileBrowser(application *tview.Application, statusChannel chan *StatusMessage, path string) *FileBrowserComponent {
 	fileBrowser := &FileBrowserComponent{
 		application:              application,
 		pathChanged:              make(chan string),
@@ -130,7 +130,7 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 			}
 			return nil
 		} else if key == tcell.KeyLeft {
-			if fileBrowser.ListIsEmpty() {
+			if fileBrowser.listIsEmpty() {
 				fileBrowser.goUp()
 			} else if fileBrowser.selectedFileEntry != nil {
 				fileBrowser.goUp()
@@ -303,7 +303,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 	}
 
 	fileBrowser.fileEntries = fileEntries
-	fileBrowser.SortEntries()
+	fileBrowser.sortEntries()
 }
 
 func (fileBrowser *FileBrowserComponent) goUp() {
@@ -362,6 +362,9 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
 	actionHandler := func(action dialog.DialogAction) bool {
 		switch action {
+		case dialog.CreateSnapshotDialogAction:
+			fileBrowser.createSnapshot(fileBrowser.selectedFileEntry)
+			return true
 		case dialog.RestoreRecursiveDialogAction:
 			fileBrowser.runRestoreFileAction(fileBrowser.selectedFileEntry, true)
 			return true
@@ -559,7 +562,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 	table.ScrollToBeginning()
 
 	var selectionIndex int
-	if fileBrowser.ListIsEmpty() {
+	if fileBrowser.listIsEmpty() {
 		selectionIndex = 0
 	} else {
 		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
@@ -618,15 +621,8 @@ func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) SortEntries() {
+func (fileBrowser *FileBrowserComponent) sortEntries() {
 	fileBrowser.fileEntries = sortTableEntries(fileBrowser.fileEntries, fileBrowser.sortByColumn)
-}
-
-func (fileBrowser *FileBrowserComponent) showError(err error) {
-	logging.Error(err.Error())
-	go func() {
-		fileBrowser.statusChannel <- NewErrorStatusMessage(err.Error())
-	}()
 }
 
 func (fileBrowser *FileBrowserComponent) getSelectionIndex(path string) int {
@@ -685,7 +681,7 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) ListIsEmpty() bool {
+func (fileBrowser *FileBrowserComponent) listIsEmpty() bool {
 	return len(fileBrowser.fileEntries) <= 0
 }
 
@@ -774,5 +770,27 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 		if err != nil {
 			fileBrowser.showError(err)
 		}
+	}()
+}
+
+func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
+	fileBrowser.showWarning("Sorry, creating snapshots is not yet supported :(")
+}
+
+func (fileBrowser *FileBrowserComponent) showError(err error) {
+	logging.Error(err.Error())
+	go func() {
+		fileBrowser.application.QueueUpdateDraw(func() {
+			fileBrowser.statusChannel <- NewErrorStatusMessage(err.Error())
+		})
+	}()
+}
+
+func (fileBrowser *FileBrowserComponent) showWarning(message string) {
+	logging.Warning(message)
+	go func() {
+		fileBrowser.application.QueueUpdateDraw(func() {
+			fileBrowser.statusChannel <- NewWarningStatusMessage(message).SetDuration(5 * time.Second)
+		})
 	}()
 }

@@ -14,11 +14,11 @@ type MainPage struct {
 	datasetInfo     *DatasetInfoComponent
 	snapshotBrowser *SnapshotBrowserComponent
 	layout          *tview.Flex
-	statusChannel   chan StatusMessage
+	statusChannel   chan *StatusMessage
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
-	statusChannel := make(chan StatusMessage, 1)
+	statusChannel := make(chan *StatusMessage, 1)
 
 	fileBrowser := NewFileBrowser(application, statusChannel, path)
 
@@ -50,7 +50,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		return event
 	})
 
-	var lastMessage StatusMessage
+	var lastMessage *StatusMessage
 
 	// listen for selection changes within the file browser
 	go func() {

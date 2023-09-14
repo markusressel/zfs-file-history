@@ -15,32 +15,32 @@ type StatusMessage struct {
 	Color    tcell.Color
 }
 
-func newStatusMessage(message string) StatusMessage {
-	return StatusMessage{
+func newStatusMessage(message string) *StatusMessage {
+	return &StatusMessage{
 		Message:  message,
 		Duration: StatusMessageDurationInfinite,
 		Color:    tcell.ColorWhite,
 	}
 }
 
-func (statusMessage StatusMessage) SetDuration(duration time.Duration) StatusMessage {
+func (statusMessage *StatusMessage) SetDuration(duration time.Duration) *StatusMessage {
 	statusMessage.Duration = duration
 	return statusMessage
 }
 
-func (statusMessage StatusMessage) SetColor(color tcell.Color) StatusMessage {
+func (statusMessage *StatusMessage) SetColor(color tcell.Color) *StatusMessage {
 	statusMessage.Color = color
 	return statusMessage
 }
 
-func NewErrorStatusMessage(message string) StatusMessage {
+func NewErrorStatusMessage(message string) *StatusMessage {
 	return newStatusMessage(message).SetColor(tcell.ColorRed)
 }
 
-func NewWarningStatusMessage(message string) StatusMessage {
+func NewWarningStatusMessage(message string) *StatusMessage {
 	return newStatusMessage(message).SetColor(tcell.ColorYellow)
 }
 
-func NewInfoStatusMessage(message string) StatusMessage {
+func NewInfoStatusMessage(message string) *StatusMessage {
 	return newStatusMessage(message)
 }

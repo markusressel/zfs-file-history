@@ -16,6 +16,7 @@ const (
 	RestoreFileDialogAction DialogAction = iota
 	RestoreRecursiveDialogAction
 	DeleteDialogAction
+	CreateSnapshotDialogAction
 )
 
 type FileActionDialog struct {
@@ -43,6 +44,7 @@ const (
 	RestoreSingleDialogOption DialogOptionId = iota
 	RestoreRecursiveDialogOption
 	DeleteDialogOption
+	CreateSnapshotDialogOption
 	CloseDialogOption
 )
 
@@ -89,6 +91,11 @@ func (d *FileActionDialog) createLayout() {
 			})
 		}
 	}
+
+	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+		Id:   CreateSnapshotDialogOption,
+		Name: fmt.Sprintf("Create Snapshot"),
+	})
 
 	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {
@@ -180,6 +187,8 @@ func (d *FileActionDialog) selectAction(option *DialogOption) {
 		d.RestoreRecursive()
 	case DeleteDialogOption:
 		d.DeleteFile()
+	case CreateSnapshotDialogOption:
+		d.CreateSnapshot()
 	case CloseDialogOption:
 		d.Close()
 	}
@@ -196,5 +205,12 @@ func (d *FileActionDialog) DeleteFile() {
 	go func() {
 		d.actionChannel <- ActionClose
 		d.actionChannel <- DeleteDialogAction
+	}()
+}
+
+func (d *FileActionDialog) CreateSnapshot() {
+	go func() {
+		d.actionChannel <- ActionClose
+		d.actionChannel <- CreateSnapshotDialogAction
 	}()
 }
