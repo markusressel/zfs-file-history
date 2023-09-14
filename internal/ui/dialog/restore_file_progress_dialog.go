@@ -36,7 +36,7 @@ func NewRestoreFileProgressDialog(application *tview.Application, fileSelection 
 	dialog := &RestoreFileProgressDialog{
 		application:   application,
 		fileSelection: fileSelection,
-		actionChannel: make(chan DialogAction),
+		actionChannel: make(chan DialogAction, 10),
 	}
 
 	dialog.createLayout()

@@ -59,8 +59,8 @@ type FileBrowserComponent struct {
 func NewFileBrowser(application *tview.Application, statusChannel chan *StatusMessage, path string) *FileBrowserComponent {
 	fileBrowser := &FileBrowserComponent{
 		application:              application,
-		pathChanged:              make(chan string),
-		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
+		pathChanged:              make(chan string, 10),
+		selectedFileEntryChanged: make(chan *data.FileBrowserEntry, 10),
 		sortByColumn:             -Type,
 		statusChannel:            statusChannel,
 	}
