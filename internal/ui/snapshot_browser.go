@@ -51,27 +51,27 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
 		return
 	}
 
-	if hostDataset != nil {
-		snapshots, err := hostDataset.GetSnapshots()
-		if err != nil {
-			logging.Error(err.Error())
-			snapshotBrowser.Clear()
-			return
-		}
-
-		snapshotBrowser.setSnapshots(snapshots)
-
-		// TODO: remember snapshot selection on a "per-dataset" basis
-		if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
-			snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
-		} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
-			return snapshotBrowser.currentSnapshot.Path == snapshot.Path
-		}) {
-			snapshotBrowser.SelectSnapshot(nil)
-		}
-	} else {
+	if hostDataset == nil {
 		snapshotBrowser.Clear()
 		return
+	}
+
+	snapshots, err := hostDataset.GetSnapshots()
+	if err != nil {
+		logging.Error(err.Error())
+		snapshotBrowser.Clear()
+		return
+	}
+
+	snapshotBrowser.setSnapshots(snapshots)
+
+	// TODO: remember snapshot selection on a "per-dataset" basis
+	if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
+		snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
+	} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
+		return snapshotBrowser.currentSnapshot.Path == snapshot.Path
+	}) {
+		snapshotBrowser.SelectSnapshot(nil)
 	}
 
 	// TODO: highlight snapshots which contain the given file
