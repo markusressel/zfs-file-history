@@ -179,26 +179,24 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 	path := fileBrowser.path
 	snapshot := fileBrowser.currentSnapshot
 
-	// list files in current directory
+	// list files in current path
 	latestFiles, err := util.ListFilesIn(path)
 	if os.IsPermission(err) {
 		fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
 		return
 	} else if err != nil {
-		fileBrowser.showError(errors.New("Cannot list path: " + err.Error()))
+		fileBrowser.showError(errors.New("Cannot list real path: " + err.Error()))
 	}
 
-	// list files in currently directory with currently selected snapshot
-
+	// list snapshot files in currently path with currently selected snapshot
 	var snapshotFiles []string
 	if snapshot != nil {
 		snapshotPath := snapshot.GetSnapshotPath(path)
 		snapshotFiles, err = util.ListFilesIn(snapshotPath)
 		if os.IsPermission(err) {
 			fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
-			return
 		} else if err != nil {
-			logging.Error("Cannot list path: %s", err.Error())
+			fileBrowser.showError(errors.New("Cannot list snapshot path: " + err.Error()))
 		}
 	}
 
@@ -210,7 +208,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 		latestFileStat, err := os.Stat(latestFilePath)
 		if err != nil {
 			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
-			logging.Error(err.Error())
+			fileBrowser.showError(err)
 			continue
 		}
 
@@ -230,7 +228,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 			snapshotFilePath := snapshot.GetSnapshotPath(latestFilePath)
 			statSnap, err := os.Stat(snapshotFilePath)
 			if err != nil {
-				logging.Error(err.Error())
+				fileBrowser.showError(err)
 				snapshotFiles = slices.DeleteFunc(snapshotFiles, func(s string) bool {
 					return s == snapshotFilePath
 				})
@@ -268,7 +266,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 
 		statSnap, err := os.Stat(snapshotFilePath)
 		if err != nil {
-			logging.Error(err.Error())
+			fileBrowser.showError(err)
 			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
 			continue
 		}
@@ -626,6 +624,7 @@ func (fileBrowser *FileBrowserComponent) SortEntries() {
 }
 
 func (fileBrowser *FileBrowserComponent) showError(err error) {
+	logging.Error(err.Error())
 	go func() {
 		fileBrowser.statusChannel <- NewErrorStatusMessage(err.Error())
 	}()
@@ -671,7 +670,7 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 	}
 	err := fileBrowser.fileWatcher.Watch(action)
 	if err != nil {
-		logging.Fatal(err.Error())
+		fileBrowser.showError(err)
 	}
 }
 

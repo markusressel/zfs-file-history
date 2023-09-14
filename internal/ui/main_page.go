@@ -50,6 +50,8 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		return event
 	})
 
+	var lastMessage StatusMessage
+
 	// listen for selection changes within the file browser
 	go func() {
 		for {
@@ -81,10 +83,14 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 					//}
 				})
 			case statusMessage := <-statusChannel:
+				lastMessage = statusMessage
 				mainPage.showStatusMessage(statusMessage.Message, statusMessage.Color)
 				go func() {
 					if statusMessage.Duration > 0 {
 						time.Sleep(statusMessage.Duration)
+						if lastMessage != statusMessage {
+							return
+						}
 						application.QueueUpdateDraw(func() {
 							mainPage.showStatusMessage("", 0)
 						})
