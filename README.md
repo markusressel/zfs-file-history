@@ -11,9 +11,11 @@ zfs-file-history
 
 # Features
 
-* [x] File Explorer
-  * [x] Easy visualization in "git diff" style
-  * [x] Restore files from any snapshot
+* [x] Full fledged File Explorer
+* [x] Intuitive navigation using arrow keys (and vim bindings)
+* [x] Colorful visualization "git diff" style
+* [x] Browse through Snapshots and get to the right version quickly
+* [x] Restore any file from any snapshot with two keytrokes 
 
 # How to use
 
