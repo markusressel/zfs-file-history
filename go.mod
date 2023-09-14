@@ -10,6 +10,7 @@ require (
 	github.com/mistifyio/go-zfs v2.1.1+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/navidys/tvxwidgets v0.3.0
+	github.com/oklog/run v1.1.0
 	github.com/pterm/pterm v0.12.67
 	github.com/rivo/tview v0.0.0-20230909130259-ba6a2a345459
 	github.com/spf13/cobra v1.7.0

@@ -42,21 +42,19 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 	go func() {
 		for {
 			select {
-			case <-fileWatcher.stop:
-				err := fileWatcher.watcher.Close()
+			// watch for events
+			case event, ok := <-fileWatcher.watcher.Events:
+				if !ok {
+					return
+				}
+				action(event.Name)
+			// watch for errors
+			case err := <-fileWatcher.watcher.Errors:
 				if err != nil {
 					logging.Error(err.Error())
 				}
-				break
-			// watch for events
-			case event := <-fileWatcher.watcher.Events:
-				if event.Name != "" {
-					action(event.Name)
-				} else {
-					break
-				}
-			// watch for errors
-			case err := <-fileWatcher.watcher.Errors:
+			case <-fileWatcher.stop:
+				err := fileWatcher.watcher.Close()
 				if err != nil {
 					logging.Error(err.Error())
 				}
@@ -76,7 +74,10 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 		for {
 			select {
 			// watch for events
-			case event := <-fileWatcher.watcher.Events:
+			case event, ok := <-fileWatcher.watcher.Events:
+				if !ok {
+					return
+				}
 				action(event.Name)
 			// watch for errors
 			case err := <-fileWatcher.watcher.Errors:
@@ -86,7 +87,6 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 				if err != nil {
 					logging.Error(err.Error())
 				}
-				break
 			}
 		}
 	}()
