@@ -25,7 +25,7 @@ func InitConfig(cfgFile string) {
 		// Find home directory.
 		home, err := homedir.Dir()
 		if err != nil {
-			logging.Error("Path Error", "Couldn't detect home directory: %v", err)
+			logging.Error("Path Error: Couldn't detect home directory: %v", err)
 			os.Exit(1)
 		}
 
@@ -57,11 +57,8 @@ func setDefaultValues() {
 
 // DetectAndReadConfigFile detects the path of the first existing config file
 func DetectAndReadConfigFile() string {
-	err := readInConfig()
-	if err != nil {
-		// TODO: ignore for now
-		//ui.FatalWithoutStacktrace("Error reading config file, %s", err)
-	}
+	// TODO: no config for now
+	_ = readInConfig()
 	return GetFilePath()
 }
 

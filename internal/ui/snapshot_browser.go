@@ -69,12 +69,13 @@ func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
 		}
 	}
 
-	snapshotsContainingSelection := []*zfs.Snapshot{}
-	if snapshotBrowser.path != "" && snapshotBrowser.currentFileEnty != nil {
-		for _, snapshot := range snapshotBrowser.currentFileEnty.SnapshotFiles {
-			snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
-		}
-	}
+	// TODO: highlight snapshots which contain the given file
+	//snapshotsContainingSelection := []*zfs.Snapshot{}
+	//if snapshotBrowser.path != "" && snapshotBrowser.currentFileEnty != nil {
+	//	for _, snapshot := range snapshotBrowser.currentFileEnty.SnapshotFiles {
+	//		snapshotsContainingSelection = append(snapshotsContainingSelection, snapshot.Snapshot)
+	//	}
+	//}
 
 	snapshotBrowser.updateUi()
 }

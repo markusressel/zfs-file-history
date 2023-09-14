@@ -118,6 +118,9 @@ func (s *Snapshot) RestoreDir(dstPath string, stat os.FileInfo) error {
 
 func (s *Snapshot) RestoreFile(srcPath string) error {
 	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
 
 	stat, err := os.Stat(srcPath)
 	if err != nil {

@@ -57,7 +57,7 @@ func (d *FileActionDialog) createLayout() {
 	dialogOptions := []*DialogOption{
 		{
 			Id:   CloseDialogOption,
-			Name: fmt.Sprintf("Close"),
+			Name: "Close",
 		},
 	}
 
