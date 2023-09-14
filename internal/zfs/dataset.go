@@ -19,6 +19,10 @@ var (
 )
 
 func init() {
+	RefreshZfsData()
+}
+
+func RefreshZfsData() {
 	loadDatasets()
 	loadSnapshots(allDatasets)
 }

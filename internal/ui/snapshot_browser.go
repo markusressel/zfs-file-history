@@ -18,9 +18,13 @@ type SnapshotBrowserComponent struct {
 	path            string
 	currentFileEnty *data.FileBrowserEntry
 
+	dataset *zfs.Dataset
+
 	snapshots               []*zfs.Snapshot
 	currentSnapshot         *zfs.Snapshot
 	selectedSnapshotChanged chan *zfs.Snapshot
+
+	selectedSnapshotMap map[string]*zfs.Snapshot
 }
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
@@ -28,6 +32,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		application:             application,
 		snapshots:               []*zfs.Snapshot{},
 		selectedSnapshotChanged: make(chan *zfs.Snapshot),
+		selectedSnapshotMap:     map[string]*zfs.Snapshot{},
 	}
 	snapshotsBrowser.createLayout()
 
@@ -67,11 +72,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
 
 	// TODO: remember snapshot selection on a "per-dataset" basis
 	if snapshotBrowser.currentSnapshot == nil && len(snapshots) > 0 {
-		snapshotBrowser.SelectSnapshot(snapshotBrowser.snapshots[0])
+		snapshotBrowser.selectSnapshot(snapshotBrowser.snapshots[0])
 	} else if !slices.ContainsFunc(snapshotBrowser.snapshots, func(snapshot *zfs.Snapshot) bool {
 		return snapshotBrowser.currentSnapshot.Path == snapshot.Path
 	}) {
-		snapshotBrowser.SelectSnapshot(nil)
+		snapshotBrowser.selectSnapshot(nil)
 	}
 
 	// TODO: highlight snapshots which contain the given file
@@ -112,7 +117,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Table {
 		} else {
 			newSelection = snapshotBrowser.snapshots[selectionIndex]
 		}
-		snapshotBrowser.SelectSnapshot(newSelection)
+		snapshotBrowser.selectSnapshot(newSelection)
 	})
 
 	snapshotBrowser.snapshotTable = table
@@ -130,6 +135,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) setSnapshots(snapshots []*zfs.S
 	if len(snapshotBrowser.snapshots) <= 0 {
 		snapshotBrowser.currentSnapshot = nil
 	}
+
+	snapshotBrowser.restoreSnapshotSelection()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) updateUi() {
@@ -152,11 +159,26 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateUi() {
 	}
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) SelectSnapshot(snapshot *zfs.Snapshot) {
+func (snapshotBrowser *SnapshotBrowserComponent) restoreSnapshotSelection() {
+	if snapshotBrowser.dataset == nil {
+		return
+	}
+	lastSelectedSnapshot, ok := snapshotBrowser.selectedSnapshotMap[snapshotBrowser.dataset.Path]
+	if ok && slices.Contains(snapshotBrowser.snapshots, lastSelectedSnapshot) {
+		snapshotBrowser.selectSnapshot(lastSelectedSnapshot)
+	}
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) SetDataset(dataset *zfs.Dataset) {
+	snapshotBrowser.dataset = dataset
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *zfs.Snapshot) {
 	if snapshotBrowser.currentSnapshot == snapshot {
 		return
 	}
 	snapshotBrowser.currentSnapshot = snapshot
+	snapshotBrowser.selectedSnapshotMap[snapshot.ParentDataset.Path] = snapshot
 	go func() {
 		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.currentSnapshot
 	}()
@@ -167,4 +189,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) Clear() {
 	snapshotBrowser.path = ""
 	snapshotBrowser.setSnapshots([]*zfs.Snapshot{})
 	snapshotBrowser.updateUi()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) refresh() {
+	zfs.RefreshZfsData()
+	snapshotBrowser.SetPath(snapshotBrowser.path)
 }

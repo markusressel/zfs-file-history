@@ -158,9 +158,6 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 				return nil
 			}
 		}
-		if key == tcell.KeyCtrlR {
-			fileBrowser.refresh()
-		}
 		return event
 	})
 

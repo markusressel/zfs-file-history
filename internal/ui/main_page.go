@@ -47,11 +47,27 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	}
 
 	mainPage.layout = mainPage.createLayout()
+	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		key := event.Key()
+		if key == tcell.KeyTab || key == tcell.KeyBacktab {
+			mainPage.ToggleFocus()
+		} else if key == tcell.KeyCtrlR {
+			fileBrowser.refresh()
+			snapshotBrowser.refresh()
+			fileBrowser.refresh()
+		}
+		return event
+	})
 
 	// listen for selection changes within the file browser
 	go func() {
 		for {
 			select {
+			case newDataset := <-datasetInfo.datasetChanged:
+				// update file browser based on currently selected snapshot
+				application.QueueUpdateDraw(func() {
+					snapshotBrowser.SetDataset(newDataset)
+				})
 			case newSnapshotSelection := <-snapshotBrowser.selectedSnapshotChanged:
 				// update file browser based on currently selected snapshot
 				application.QueueUpdateDraw(func() {
@@ -109,14 +125,6 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	windowLayout.AddItem(infoLayout, 0, 1, false)
 
 	mainPageLayout.AddItem(windowLayout, 0, 1, true)
-
-	mainPageLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		key := event.Key()
-		if key == tcell.KeyTab || key == tcell.KeyBacktab {
-			mainPage.ToggleFocus()
-		}
-		return event
-	})
 
 	mainPage.header = header
 

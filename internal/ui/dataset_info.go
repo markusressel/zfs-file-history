@@ -11,14 +11,16 @@ import (
 )
 
 type DatasetInfoComponent struct {
-	application *tview.Application
-	dataset     *zfs.Dataset
-	layout      *tview.Table
+	application    *tview.Application
+	dataset        *zfs.Dataset
+	layout         *tview.Table
+	datasetChanged chan *zfs.Dataset
 }
 
 func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 	datasetInfo := &DatasetInfoComponent{
-		application: application,
+		application:    application,
+		datasetChanged: make(chan *zfs.Dataset),
 	}
 
 	datasetInfo.createLayout()
@@ -41,7 +43,13 @@ func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 }
 
 func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {
+	if datasetInfo.dataset == dataset {
+		return
+	}
 	datasetInfo.dataset = dataset
+	go func() {
+		datasetInfo.datasetChanged <- dataset
+	}()
 	datasetInfo.updateUi()
 }
 
