@@ -8,20 +8,20 @@ import (
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
-type ApplicationHeader struct {
+type ApplicationHeaderComponent struct {
 	layout         *tview.Flex
 	name           string
 	version        string
 	statusTextView *tview.TextView
 }
 
-func NewApplicationHeader() *ApplicationHeader {
+func NewApplicationHeader() *ApplicationHeaderComponent {
 	versionText := global.Version
 	if versionText == "dev" {
 		versionText = fmt.Sprintf("%s-(#%s)-%s", global.Version, global.Commit, global.Date)
 	}
 
-	applicationHeader := &ApplicationHeader{
+	applicationHeader := &ApplicationHeaderComponent{
 		name:    "zfs-file-history",
 		version: versionText,
 	}
@@ -32,7 +32,7 @@ func NewApplicationHeader() *ApplicationHeader {
 	return applicationHeader
 }
 
-func (applicationHeader *ApplicationHeader) createLayout() {
+func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	layout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	// TODO: check colors
 	layout.SetBackgroundColor(tcell.ColorRed)
@@ -70,10 +70,10 @@ func (applicationHeader *ApplicationHeader) createLayout() {
 	applicationHeader.layout = layout
 }
 
-func (applicationHeader *ApplicationHeader) updateUi() {
+func (applicationHeader *ApplicationHeaderComponent) updateUi() {
 	// no changing data
 }
 
-func (applicationHeader *ApplicationHeader) SetStatus(text string) {
+func (applicationHeader *ApplicationHeaderComponent) SetStatus(text string) {
 	applicationHeader.statusTextView.SetText(text)
 }

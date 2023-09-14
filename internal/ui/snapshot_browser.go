@@ -11,7 +11,7 @@ import (
 	"zfs-file-history/internal/zfs"
 )
 
-type SnapshotBrowser struct {
+type SnapshotBrowserComponent struct {
 	application   *tview.Application
 	snapshotTable *tview.Table
 
@@ -23,8 +23,8 @@ type SnapshotBrowser struct {
 	selectedSnapshotChanged chan *zfs.Snapshot
 }
 
-func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowser {
-	snapshotsBrowser := &SnapshotBrowser{
+func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
+	snapshotsBrowser := &SnapshotBrowserComponent{
 		application:             application,
 		snapshots:               []*zfs.Snapshot{},
 		selectedSnapshotChanged: make(chan *zfs.Snapshot),
@@ -34,7 +34,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowser {
 	return snapshotsBrowser
 }
 
-func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
+func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
 	if path == "" {
 		snapshotBrowser.Clear()
 		return
@@ -80,20 +80,20 @@ func (snapshotBrowser *SnapshotBrowser) SetPath(path string) {
 	snapshotBrowser.updateUi()
 }
 
-func (snapshotBrowser *SnapshotBrowser) SetFileEntry(fileEntry *data.FileBrowserEntry) {
+func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.FileBrowserEntry) {
 	snapshotBrowser.currentFileEnty = fileEntry
 	snapshotBrowser.updateUi()
 }
 
-func (snapshotBrowser *SnapshotBrowser) Focus() {
+func (snapshotBrowser *SnapshotBrowserComponent) Focus() {
 	snapshotBrowser.application.SetFocus(snapshotBrowser.snapshotTable)
 }
 
-func (snapshotBrowser *SnapshotBrowser) HasFocus() bool {
+func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
 	return snapshotBrowser.snapshotTable.HasFocus()
 }
 
-func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
+func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Table {
 	table := tview.NewTable()
 	table.SetBorder(true)
 	table.SetBorderPadding(0, 0, 1, 1)
@@ -115,7 +115,7 @@ func (snapshotBrowser *SnapshotBrowser) createLayout() *tview.Table {
 	return table
 }
 
-func (snapshotBrowser *SnapshotBrowser) setSnapshots(snapshots []*zfs.Snapshot) {
+func (snapshotBrowser *SnapshotBrowserComponent) setSnapshots(snapshots []*zfs.Snapshot) {
 	snapshotsClone := slices.Clone(snapshots)
 	slices.SortFunc(snapshotsClone, func(a, b *zfs.Snapshot) int {
 		return a.Date.Compare(*b.Date) * -1
@@ -127,7 +127,7 @@ func (snapshotBrowser *SnapshotBrowser) setSnapshots(snapshots []*zfs.Snapshot) 
 	}
 }
 
-func (snapshotBrowser *SnapshotBrowser) updateUi() {
+func (snapshotBrowser *SnapshotBrowserComponent) updateUi() {
 	table := snapshotBrowser.snapshotTable
 	table.Clear()
 
@@ -147,7 +147,7 @@ func (snapshotBrowser *SnapshotBrowser) updateUi() {
 	}
 }
 
-func (snapshotBrowser *SnapshotBrowser) SelectSnapshot(snapshot *zfs.Snapshot) {
+func (snapshotBrowser *SnapshotBrowserComponent) SelectSnapshot(snapshot *zfs.Snapshot) {
 	if snapshotBrowser.currentSnapshot == snapshot {
 		return
 	}
@@ -158,7 +158,7 @@ func (snapshotBrowser *SnapshotBrowser) SelectSnapshot(snapshot *zfs.Snapshot) {
 	snapshotBrowser.updateUi()
 }
 
-func (snapshotBrowser *SnapshotBrowser) Clear() {
+func (snapshotBrowser *SnapshotBrowserComponent) Clear() {
 	snapshotBrowser.path = ""
 	snapshotBrowser.setSnapshots([]*zfs.Snapshot{})
 	snapshotBrowser.updateUi()

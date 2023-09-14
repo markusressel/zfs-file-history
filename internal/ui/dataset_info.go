@@ -10,14 +10,14 @@ import (
 	"zfs-file-history/internal/zfs"
 )
 
-type DatasetInfo struct {
+type DatasetInfoComponent struct {
 	application *tview.Application
 	dataset     *zfs.Dataset
 	layout      *tview.Table
 }
 
-func NewDatasetInfo(application *tview.Application) *DatasetInfo {
-	datasetInfo := &DatasetInfo{
+func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
+	datasetInfo := &DatasetInfoComponent{
 		application: application,
 	}
 
@@ -26,7 +26,7 @@ func NewDatasetInfo(application *tview.Application) *DatasetInfo {
 	return datasetInfo
 }
 
-func (datasetInfo *DatasetInfo) SetPath(path string) {
+func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 	if path == "" {
 		datasetInfo.SetDataset(nil)
 		return
@@ -40,7 +40,7 @@ func (datasetInfo *DatasetInfo) SetPath(path string) {
 	}
 }
 
-func (datasetInfo *DatasetInfo) SetDataset(dataset *zfs.Dataset) {
+func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {
 	datasetInfo.dataset = dataset
 	datasetInfo.updateUi()
 }
@@ -50,7 +50,7 @@ type DatasetInfoTableEntry struct {
 	Value string
 }
 
-func (datasetInfo *DatasetInfo) createLayout() {
+func (datasetInfo *DatasetInfoComponent) createLayout() {
 	layout := tview.NewTable()
 	layout.SetBorder(true)
 	uiutil.SetupWindow(layout, "Dataset")
@@ -59,7 +59,7 @@ func (datasetInfo *DatasetInfo) createLayout() {
 	datasetInfo.updateUi()
 }
 
-func (datasetInfo *DatasetInfo) updateUi() {
+func (datasetInfo *DatasetInfoComponent) updateUi() {
 	dataset := datasetInfo.dataset
 
 	titleText := "Dataset"
@@ -135,10 +135,10 @@ func (datasetInfo *DatasetInfo) updateUi() {
 	}
 }
 
-func (datasetInfo *DatasetInfo) HasFocus() bool {
+func (datasetInfo *DatasetInfoComponent) HasFocus() bool {
 	return datasetInfo.layout.HasFocus()
 }
 
-func (datasetInfo *DatasetInfo) Focus() {
+func (datasetInfo *DatasetInfoComponent) Focus() {
 	datasetInfo.application.SetFocus(datasetInfo.layout)
 }

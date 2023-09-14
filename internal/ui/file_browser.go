@@ -36,7 +36,7 @@ func (c FileBrowserColumn) IsValid() bool {
 	return c <= Status && c >= Name
 }
 
-type FileBrowser struct {
+type FileBrowserComponent struct {
 	path        string
 	pathChanged chan string
 
@@ -56,8 +56,8 @@ type FileBrowser struct {
 	statusChannel     chan StatusMessage
 }
 
-func NewFileBrowser(application *tview.Application, statusChannel chan StatusMessage, path string) *FileBrowser {
-	fileBrowser := &FileBrowser{
+func NewFileBrowser(application *tview.Application, statusChannel chan StatusMessage, path string) *FileBrowserComponent {
+	fileBrowser := &FileBrowserComponent{
 		application:              application,
 		pathChanged:              make(chan string),
 		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
@@ -71,11 +71,11 @@ func NewFileBrowser(application *tview.Application, statusChannel chan StatusMes
 	return fileBrowser
 }
 
-func (fileBrowser *FileBrowser) Focus() {
+func (fileBrowser *FileBrowserComponent) Focus() {
 	fileBrowser.application.SetFocus(fileBrowser.fileTable)
 }
 
-func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
+func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Application) {
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	fileBrowserHeaderText := fileBrowser.path
 
@@ -182,7 +182,7 @@ func (fileBrowser *FileBrowser) createLayout(application *tview.Application) {
 	fileBrowser.layout = fileBrowserPages
 }
 
-func (fileBrowser *FileBrowser) updateFileEntries() {
+func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 	path := fileBrowser.path
 	snapshot := fileBrowser.currentSnapshot
 
@@ -322,13 +322,13 @@ func (fileBrowser *FileBrowser) updateFileEntries() {
 	fileBrowser.SortEntries()
 }
 
-func (fileBrowser *FileBrowser) goUp() {
+func (fileBrowser *FileBrowserComponent) goUp() {
 	newSelection := fileBrowser.path
 	newPath := path2.Dir(fileBrowser.path)
 	fileBrowser.SetPathWithSelection(newPath, newSelection)
 }
 
-func (fileBrowser *FileBrowser) SetPathWithSelection(newPath string, selection string) {
+func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, selection string) {
 	fileBrowser.SetPath(newPath)
 	for i, entry := range fileBrowser.fileEntries {
 		if strings.Contains(entry.GetRealPath(), selection) {
@@ -338,7 +338,7 @@ func (fileBrowser *FileBrowser) SetPathWithSelection(newPath string, selection s
 	}
 }
 
-func (fileBrowser *FileBrowser) SetPath(newPath string) {
+func (fileBrowser *FileBrowserComponent) SetPath(newPath string) {
 	// TODO: allow entering a path, if it only exists within a snapshot,
 	//  be careful about "restore" action from nested folders though!
 	stat, err := os.Stat(newPath)
@@ -371,7 +371,7 @@ func (fileBrowser *FileBrowser) SetPath(newPath string) {
 	}
 }
 
-func (fileBrowser *FileBrowser) openActionDialog(selection *data.FileBrowserEntry) {
+func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBrowserEntry) {
 	if fileBrowser.fileSelection == nil {
 		return
 	}
@@ -385,7 +385,7 @@ func (fileBrowser *FileBrowser) openActionDialog(selection *data.FileBrowserEntr
 	fileBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
-func (fileBrowser *FileBrowser) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
+func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
 	if fileBrowser.currentSnapshot == snapshot {
 		return
 	}
@@ -393,7 +393,7 @@ func (fileBrowser *FileBrowser) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
 	fileBrowser.refresh()
 }
 
-func (fileBrowser *FileBrowser) updateTableContents() {
+func (fileBrowser *FileBrowserComponent) updateTableContents() {
 	columnTitles := []FileBrowserColumn{Size, ModTime, Type, Status, Name}
 
 	table := fileBrowser.fileTable
@@ -617,7 +617,7 @@ func sortTableEntries(entries []*data.FileBrowserEntry, column FileBrowserColumn
 	return result
 }
 
-func (fileBrowser *FileBrowser) SelectEntry(i int) {
+func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
 	if len(fileBrowser.fileEntries) > 0 {
 		fileBrowser.fileSelection = fileBrowser.fileEntries[i]
 		fileBrowser.fileTable.Select(i+1, 0)
@@ -626,11 +626,11 @@ func (fileBrowser *FileBrowser) SelectEntry(i int) {
 	}
 }
 
-func (fileBrowser *FileBrowser) SortEntries() {
+func (fileBrowser *FileBrowserComponent) SortEntries() {
 	fileBrowser.fileEntries = sortTableEntries(fileBrowser.fileEntries, fileBrowser.sortByColumn)
 }
 
-func (fileBrowser *FileBrowser) showError(err error) {
+func (fileBrowser *FileBrowserComponent) showError(err error) {
 	go func() {
 		fileBrowser.statusChannel <- StatusMessage{
 			Message:  err.Error(),
@@ -639,7 +639,7 @@ func (fileBrowser *FileBrowser) showError(err error) {
 	}()
 }
 
-func (fileBrowser *FileBrowser) getSelectionIndex(path string) int {
+func (fileBrowser *FileBrowserComponent) getSelectionIndex(path string) int {
 	if fileBrowser.selectionIndexMap == nil {
 		fileBrowser.selectionIndexMap = map[string]int{}
 	}
@@ -652,20 +652,20 @@ func (fileBrowser *FileBrowser) getSelectionIndex(path string) int {
 	}
 }
 
-func (fileBrowser *FileBrowser) setSelectionIndex(path string, index int) {
+func (fileBrowser *FileBrowserComponent) setSelectionIndex(path string, index int) {
 	if fileBrowser.selectionIndexMap == nil {
 		fileBrowser.selectionIndexMap = map[string]int{}
 	}
 	fileBrowser.selectionIndexMap[path] = index
 }
 
-func (fileBrowser *FileBrowser) refresh() {
+func (fileBrowser *FileBrowserComponent) refresh() {
 	fileBrowser.updateFileEntries()
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
 }
 
-func (fileBrowser *FileBrowser) updateFileWatcher() {
+func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 	path := fileBrowser.path
 	if fileBrowser.fileWatcher != nil {
 		fileBrowser.fileWatcher.Stop()
@@ -683,15 +683,15 @@ func (fileBrowser *FileBrowser) updateFileWatcher() {
 	}
 }
 
-func (fileBrowser *FileBrowser) ListIsEmpty() bool {
+func (fileBrowser *FileBrowserComponent) ListIsEmpty() bool {
 	return len(fileBrowser.fileEntries) <= 0
 }
 
-func (fileBrowser *FileBrowser) HasFocus() bool {
+func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.fileTable.HasFocus()
 }
 
-func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction)) {
+func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction)) {
 	layout := d.GetLayout()
 	go func() {
 		for {
@@ -708,12 +708,12 @@ func (fileBrowser *FileBrowser) showDialog(d dialog.Dialog, actionHandler func(a
 	fileBrowser.layout.AddPage(d.GetName(), layout, true, true)
 }
 
-func (fileBrowser *FileBrowser) toggleSortOrder() {
+func (fileBrowser *FileBrowserComponent) toggleSortOrder() {
 	fileBrowser.sortByColumn *= -1
 	fileBrowser.refresh()
 }
 
-func (fileBrowser *FileBrowser) nextSortOrder() {
+func (fileBrowser *FileBrowserComponent) nextSortOrder() {
 	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn)) + 1)
 	if column.IsValid() {
 		if fileBrowser.sortByColumn < 0 {
@@ -730,7 +730,7 @@ func (fileBrowser *FileBrowser) nextSortOrder() {
 	fileBrowser.refresh()
 }
 
-func (fileBrowser *FileBrowser) previousSortOrder() {
+func (fileBrowser *FileBrowserComponent) previousSortOrder() {
 	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn)) - 1)
 	if column.IsValid() {
 		if fileBrowser.sortByColumn < 0 {

@@ -18,10 +18,10 @@ type StatusMessage struct {
 
 type MainPage struct {
 	application     *tview.Application
-	header          *ApplicationHeader
-	fileBrowser     *FileBrowser
-	datasetInfo     *DatasetInfo
-	snapshotBrowser *SnapshotBrowser
+	header          *ApplicationHeaderComponent
+	fileBrowser     *FileBrowserComponent
+	datasetInfo     *DatasetInfoComponent
+	snapshotBrowser *SnapshotBrowserComponent
 	layout          *tview.Flex
 	statusChannel   chan StatusMessage
 }
