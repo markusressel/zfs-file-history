@@ -498,7 +498,7 @@ func (fileBrowser *FileBrowser) updateTableContents() {
 			var cellExpansion = 0
 
 			if columnId == Name {
-				cellText = fmt.Sprintf("%s", currentFileEntry.Name)
+				cellText = currentFileEntry.Name
 				if currentFileEntry.GetStat().IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
 				}
