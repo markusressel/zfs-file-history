@@ -653,7 +653,7 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 		fileBrowser.selectionIndexMap = map[string]int{}
 	}
 	newIndex := slices.Index(fileBrowser.fileEntries, newSelection)
-	fileBrowser.selectionIndexMap[fileBrowser.path] = newIndex
+	fileBrowser.selectionIndexMap[fileBrowser.path] = newIndex + 1
 }
 
 func (fileBrowser *FileBrowserComponent) refresh() {
