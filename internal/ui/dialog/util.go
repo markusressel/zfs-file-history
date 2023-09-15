@@ -14,7 +14,7 @@ const (
 type Dialog interface {
 	GetName() string
 	GetLayout() *tview.Flex
-	GetActionChannel() chan DialogAction
+	GetActionChannel() <-chan DialogAction
 }
 
 type DialogOption struct {

@@ -106,7 +106,7 @@ func (d *RestoreFileProgressDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *RestoreFileProgressDialog) GetActionChannel() chan DialogAction {
+func (d *RestoreFileProgressDialog) GetActionChannel() <-chan DialogAction {
 	return d.actionChannel
 }
 

@@ -53,10 +53,10 @@ type FileBrowserComponent struct {
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
-	statusChannel     chan *StatusMessage
+	statusChannel     chan<- *StatusMessage
 }
 
-func NewFileBrowser(application *tview.Application, statusChannel chan *StatusMessage, path string) *FileBrowserComponent {
+func NewFileBrowser(application *tview.Application, statusChannel chan<- *StatusMessage, path string) *FileBrowserComponent {
 	fileBrowser := &FileBrowserComponent{
 		application:              application,
 		pathChanged:              make(chan string, 10),
@@ -793,4 +793,12 @@ func (fileBrowser *FileBrowserComponent) showWarning(message string) {
 			fileBrowser.statusChannel <- NewWarningStatusMessage(message).SetDuration(5 * time.Second)
 		})
 	}()
+}
+
+func (fileBrowser *FileBrowserComponent) OnPathChanged() <-chan string {
+	return fileBrowser.pathChanged
+}
+
+func (fileBrowser *FileBrowserComponent) OnSelectedFileEntryChanged() <-chan *data.FileBrowserEntry {
+	return fileBrowser.selectedFileEntryChanged
 }

@@ -162,7 +162,7 @@ func (d *FileActionDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *FileActionDialog) GetActionChannel() chan DialogAction {
+func (d *FileActionDialog) GetActionChannel() <-chan DialogAction {
 	return d.actionChannel
 }
 

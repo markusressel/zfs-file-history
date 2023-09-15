@@ -150,3 +150,7 @@ func (datasetInfo *DatasetInfoComponent) HasFocus() bool {
 func (datasetInfo *DatasetInfoComponent) Focus() {
 	datasetInfo.application.SetFocus(datasetInfo.layout)
 }
+
+func (datasetInfo *DatasetInfoComponent) onDatasetChanged() <-chan *zfs.Dataset {
+	return datasetInfo.datasetChanged
+}

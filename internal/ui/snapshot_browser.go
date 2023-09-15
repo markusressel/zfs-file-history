@@ -197,3 +197,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) refresh() {
 	zfs.RefreshZfsData()
 	snapshotBrowser.SetPath(snapshotBrowser.path)
 }
+
+func (snapshotBrowser *SnapshotBrowserComponent) OnSelectedSnapshotChanged() <-chan *zfs.Snapshot {
+	return snapshotBrowser.selectedSnapshotChanged
+}
