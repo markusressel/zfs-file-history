@@ -63,6 +63,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 		selectedFileEntryChanged: make(chan *data.FileBrowserEntry, 10),
 		sortByColumn:             -Type,
 		statusChannel:            statusChannel,
+		selectionIndexMap:        map[string]int{},
 	}
 
 	fileBrowser.createLayout(application)
@@ -559,15 +560,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 		fileIndex = (fileIndex + 1) % rows
 	}
 
-	table.ScrollToBeginning()
-
-	var selectionIndex int
-	if fileBrowser.listIsEmpty() {
-		selectionIndex = 0
-	} else {
-		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
-	}
-	fileBrowser.fileTable.Select(selectionIndex, 0)
+	fileBrowser.restoreSelection()
 }
 
 func sortTableEntries(entries []*data.FileBrowserEntry, column FileBrowserColumn) []*data.FileBrowserEntry {
@@ -626,13 +619,11 @@ func (fileBrowser *FileBrowserComponent) sortEntries() {
 }
 
 func (fileBrowser *FileBrowserComponent) getSelectionIndex(path string) int {
-	if fileBrowser.selectionIndexMap == nil {
-		fileBrowser.selectionIndexMap = map[string]int{}
-	}
-
-	index := fileBrowser.selectionIndexMap[path]
-	if index <= 1 {
+	index, ok := fileBrowser.selectionIndexMap[path]
+	if !ok {
 		return 1
+	} else if index < 0 {
+		return 0
 	} else {
 		return index
 	}
@@ -649,9 +640,6 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 	}()
 
 	// remember selection index
-	if fileBrowser.selectionIndexMap == nil {
-		fileBrowser.selectionIndexMap = map[string]int{}
-	}
 	newIndex := slices.Index(fileBrowser.fileEntries, newSelection)
 	fileBrowser.selectionIndexMap[fileBrowser.path] = newIndex + 1
 }
@@ -796,4 +784,14 @@ func (fileBrowser *FileBrowserComponent) OnPathChanged() <-chan string {
 
 func (fileBrowser *FileBrowserComponent) OnSelectedFileEntryChanged() <-chan *data.FileBrowserEntry {
 	return fileBrowser.selectedFileEntryChanged
+}
+
+func (fileBrowser *FileBrowserComponent) restoreSelection() {
+	var selectionIndex int
+	if fileBrowser.listIsEmpty() {
+		selectionIndex = 0
+	} else {
+		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
+	}
+	fileBrowser.fileTable.Select(selectionIndex, 0)
 }
