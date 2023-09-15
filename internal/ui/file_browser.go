@@ -644,11 +644,23 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 	fileBrowser.selectionIndexMap[fileBrowser.path] = newIndex + 1
 }
 
+func (fileBrowser *FileBrowserComponent) restoreSelection() {
+	var selectionIndex int
+	if fileBrowser.listIsEmpty() {
+		selectionIndex = 0
+	} else {
+		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
+	}
+	fileBrowser.fileTable.Select(selectionIndex, 0)
+}
+
 func (fileBrowser *FileBrowserComponent) refresh() {
+	fileBrowser.showWarning(NewWarningStatusMessage("Refreshing..."))
 	fileBrowser.updateFileEntries()
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
 	fileBrowser.selectFileEntry(fileBrowser.selectedFileEntry)
+	fileBrowser.showInfo(NewInfoStatusMessage(""))
 }
 
 func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
@@ -761,21 +773,7 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.showWarning("Sorry, creating snapshots is not yet supported :(")
-}
-
-func (fileBrowser *FileBrowserComponent) showError(err error) {
-	logging.Error(err.Error())
-	go func() {
-		fileBrowser.statusChannel <- NewErrorStatusMessage(err.Error())
-	}()
-}
-
-func (fileBrowser *FileBrowserComponent) showWarning(message string) {
-	logging.Warning(message)
-	go func() {
-		fileBrowser.statusChannel <- NewWarningStatusMessage(message).SetDuration(5 * time.Second)
-	}()
+	fileBrowser.showWarning(NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
 }
 
 func (fileBrowser *FileBrowserComponent) OnPathChanged() <-chan string {
@@ -786,12 +784,23 @@ func (fileBrowser *FileBrowserComponent) OnSelectedFileEntryChanged() <-chan *da
 	return fileBrowser.selectedFileEntryChanged
 }
 
-func (fileBrowser *FileBrowserComponent) restoreSelection() {
-	var selectionIndex int
-	if fileBrowser.listIsEmpty() {
-		selectionIndex = 0
-	} else {
-		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
-	}
-	fileBrowser.fileTable.Select(selectionIndex, 0)
+func (fileBrowser *FileBrowserComponent) showInfo(message *StatusMessage) {
+	logging.Info(message.Message)
+	fileBrowser.sendStatusMessage(message)
+}
+
+func (fileBrowser *FileBrowserComponent) showWarning(message *StatusMessage) {
+	logging.Warning(message.Message)
+	fileBrowser.sendStatusMessage(message)
+}
+
+func (fileBrowser *FileBrowserComponent) showError(err error) {
+	logging.Error(err.Error())
+	fileBrowser.sendStatusMessage(NewErrorStatusMessage(err.Error()))
+}
+
+func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *StatusMessage) {
+	go func() {
+		fileBrowser.statusChannel <- message
+	}()
 }
