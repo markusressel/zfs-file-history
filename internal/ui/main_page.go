@@ -50,52 +50,26 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		return event
 	})
 
-	var lastMessage *StatusMessage
-
 	// listen for selection changes within the file browser
 	go func() {
 		for {
 			select {
 			case newDataset := <-datasetInfo.OnDatasetChanged():
 				// update file browser based on currently selected snapshot
-				application.QueueUpdateDraw(func() {
-					snapshotBrowser.SetDataset(newDataset)
-				})
+				snapshotBrowser.SetDataset(newDataset)
+				application.Draw()
 			case newSnapshotSelection := <-snapshotBrowser.OnSelectedSnapshotChanged():
-				// update file browser based on currently selected snapshot
-				application.QueueUpdateDraw(func() {
-					fileBrowser.SetSelectedSnapshot(newSnapshotSelection)
-				})
+				fileBrowser.SetSelectedSnapshot(newSnapshotSelection)
+				application.Draw()
 			case newPath := <-fileBrowser.OnPathChanged():
-				application.QueueUpdateDraw(func() {
-					snapshotBrowser.SetPath(newPath)
-					datasetInfo.SetPath(newPath)
-				})
+				snapshotBrowser.SetPath(newPath)
+				datasetInfo.SetPath(newPath)
+				application.Draw()
 			case newFileSelection := <-fileBrowser.OnSelectedFileEntryChanged():
-				application.QueueUpdateDraw(func() {
-					// update Snapshot Browser path
-					snapshotBrowser.SetFileEntry(newFileSelection)
-					//if newFileSelection != nil {
-					//parent := path2.Dir(newFileSelection.GetRealPath())
-					//snapshotBrowser.SetPath(parent)
-					//} else {
-					//	snapshotBrowser.Clear()
-					//}
-				})
+				snapshotBrowser.SetFileEntry(newFileSelection)
+				application.Draw()
 			case statusMessage := <-statusChannel:
-				lastMessage = statusMessage
-				mainPage.showStatusMessage(statusMessage.Message, statusMessage.Color)
-				go func() {
-					if statusMessage.Duration > 0 {
-						time.Sleep(statusMessage.Duration)
-						if lastMessage != statusMessage {
-							return
-						}
-						application.QueueUpdateDraw(func() {
-							mainPage.showStatusMessage("", 0)
-						})
-					}
-				}()
+				mainPage.showStatusMessage(statusMessage)
 			}
 		}
 	}()
@@ -108,7 +82,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 func (mainPage *MainPage) createLayout() *tview.Flex {
 	mainPageLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	header := NewApplicationHeader()
+	header := NewApplicationHeader(mainPage.application)
 	mainPageLayout.AddItem(header.layout, 1, 0, false)
 
 	windowLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
@@ -140,8 +114,8 @@ func (mainPage *MainPage) ToggleFocus() {
 	}
 }
 
-func (mainPage *MainPage) showStatusMessage(message string, color tcell.Color) {
-	mainPage.header.SetStatus(message, color)
+func (mainPage *MainPage) showStatusMessage(status *StatusMessage) {
+	mainPage.header.SetStatus(status)
 }
 
 func (mainPage *MainPage) SendStatusMessage(s string) {

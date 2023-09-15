@@ -129,9 +129,8 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 			//  See implementation for what we need to do to fix this
 			for i := 0; i < 2; i++ {
 				err := snapshot.RestoreRecursive(srcFilePath)
-				d.application.QueueUpdateDraw(func() {
-					d.handleError(err)
-				})
+				d.handleError(err)
+				d.application.Draw()
 				if err != nil {
 					logging.Error(err.Error())
 					return
@@ -139,18 +138,16 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 			}
 		} else {
 			err := snapshot.Restore(srcFilePath)
-			d.application.QueueUpdateDraw(func() {
-				d.handleError(err)
-			})
+			d.handleError(err)
+			d.application.Draw()
 			if err != nil {
 				logging.Error(err.Error())
 				return
 			}
 		}
 
-		d.application.QueueUpdateDraw(func() {
-			d.handleDone()
-		})
+		d.handleDone()
+		d.application.Draw()
 	}()
 
 	d.progressValue = 0

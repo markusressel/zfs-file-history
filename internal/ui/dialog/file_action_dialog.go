@@ -101,11 +101,10 @@ func (d *FileActionDialog) createLayout() {
 		switch action {
 		case tview.MouseLeftDoubleClick:
 			go func() {
-				d.application.QueueUpdateDraw(func() {
-					row, _ := optionTable.GetSelection()
-					dialogOption := dialogOptions[row]
-					d.selectAction(dialogOption)
-				})
+				row, _ := optionTable.GetSelection()
+				dialogOption := dialogOptions[row]
+				d.selectAction(dialogOption)
+				d.application.Draw()
 			}()
 			return action, nil
 		}

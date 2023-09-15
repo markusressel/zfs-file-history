@@ -71,10 +71,6 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 	return fileBrowser
 }
 
-func (fileBrowser *FileBrowserComponent) Focus() {
-	fileBrowser.application.SetFocus(fileBrowser.fileTable)
-}
-
 func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Application) {
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	fileBrowserHeaderText := fileBrowser.path
@@ -86,9 +82,8 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 		switch action {
 		case tview.MouseLeftDoubleClick:
 			go func() {
-				fileBrowser.application.QueueUpdateDraw(func() {
-					fileBrowser.openActionDialog(fileBrowser.selectedFileEntry)
-				})
+				fileBrowser.openActionDialog(fileBrowser.selectedFileEntry)
+				application.Draw()
 			}()
 			return action, nil
 		}
@@ -168,12 +163,16 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 	fileBrowser.layout = fileBrowserPages
 }
 
+func (fileBrowser *FileBrowserComponent) Focus() {
+	fileBrowser.application.SetFocus(fileBrowser.fileTable)
+}
+
 func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 	path := fileBrowser.path
 	snapshot := fileBrowser.currentSnapshot
 
 	// list files in current path
-	latestFiles, err := util.ListFilesIn(path)
+	realFiles, err := util.ListFilesIn(path)
 	if os.IsPermission(err) {
 		fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
 		return
@@ -182,10 +181,10 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 	}
 
 	// list snapshot files in currently path with currently selected snapshot
-	var snapshotFiles []string
+	var snapshotFilePaths []string
 	if snapshot != nil {
 		snapshotPath := snapshot.GetSnapshotPath(path)
-		snapshotFiles, err = util.ListFilesIn(snapshotPath)
+		snapshotFilePaths, err = util.ListFilesIn(snapshotPath)
 		if os.IsPermission(err) {
 			fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
 		} else if err != nil {
@@ -196,9 +195,9 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 	fileEntries := []*data.FileBrowserEntry{}
 
 	// add entries for files which are present on the "real" location (and possibly within a snapshot as well)
-	for _, latestFilePath := range latestFiles {
-		_, latestFileName := path2.Split(latestFilePath)
-		latestFileStat, err := os.Stat(latestFilePath)
+	for _, realFilePath := range realFiles {
+		_, realFileName := path2.Split(realFilePath)
+		realFileStat, err := os.Stat(realFilePath)
 		if err != nil {
 			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
 			fileBrowser.showError(err)
@@ -207,7 +206,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 
 		var entryType data.FileBrowserEntryType
 
-		lstat, err := os.Lstat(latestFilePath)
+		lstat, err := os.Lstat(realFilePath)
 		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
 			entryType = data.Link
 		} else if lstat.IsDir() {
@@ -218,43 +217,44 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 
 		var snapshotFile *data.SnapshotFile = nil
 		if snapshot != nil {
-			snapshotFilePath := snapshot.GetSnapshotPath(latestFilePath)
+			snapshotFilePath := snapshot.GetSnapshotPath(realFilePath)
+			snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
+				return s == snapshotFilePath
+			})
 			statSnap, err := os.Stat(snapshotFilePath)
 			if err != nil {
-				fileBrowser.showError(err)
-				snapshotFiles = slices.DeleteFunc(snapshotFiles, func(s string) bool {
-					return s == snapshotFilePath
-				})
+				if !os.IsNotExist(err) {
+					snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
+						return s == snapshotFilePath
+					})
+				}
 			} else {
 				snapshotFile = &data.SnapshotFile{
 					Path:         snapshotFilePath,
-					OriginalPath: latestFilePath,
+					OriginalPath: realFilePath,
 					Stat:         statSnap,
 					Snapshot:     snapshot,
 				}
-				snapshotFiles = slices.DeleteFunc(snapshotFiles, func(s string) bool {
-					return s == snapshotFilePath
-				})
 			}
 		}
 
-		snapshotFiles := []*data.SnapshotFile{}
+		var snapshotFiles []*data.SnapshotFile
 		if snapshotFile != nil {
 			snapshotFiles = append(snapshotFiles, snapshotFile)
 		}
 
-		latestFile := &data.RealFile{
-			Name: latestFileName,
-			Path: latestFilePath,
-			Stat: latestFileStat,
+		realFile := &data.RealFile{
+			Name: realFileName,
+			Path: realFilePath,
+			Stat: realFileStat,
 		}
 
-		fileBrowserEntry := data.NewFileBrowserEntry(latestFileName, latestFile, snapshotFiles, entryType)
+		fileBrowserEntry := data.NewFileBrowserEntry(realFileName, realFile, snapshotFiles, entryType)
 		fileEntries = append(fileEntries, fileBrowserEntry)
 	}
 
 	// add remaining entries for files which are only present in the snapshot
-	for _, snapshotFilePath := range snapshotFiles {
+	for _, snapshotFilePath := range snapshotFilePaths {
 		_, snapshotFileName := path2.Split(snapshotFilePath)
 
 		statSnap, err := os.Stat(snapshotFilePath)
@@ -291,10 +291,10 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 		if fileBrowser.currentSnapshot == nil {
 			status = data.Unknown
 		} else if entry.HasSnapshot() && !entry.HasReal() {
-			// file only exists in snapshot but not in latest
+			// file only exists in snapshot but not in real
 			status = data.Deleted
 		} else if !entry.HasSnapshot() && entry.HasReal() {
-			// file only exists in latest but not in snapshot
+			// file only exists in real but not in snapshot
 			status = data.Added
 		} else if entry.SnapshotFiles[0].HasChanged() {
 			status = data.Modified
@@ -671,9 +671,8 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 	}
 	fileBrowser.fileWatcher = util.NewFileWatcher(path)
 	action := func(s string) {
-		fileBrowser.application.QueueUpdateDraw(func() {
-			fileBrowser.refresh()
-		})
+		fileBrowser.refresh()
+		fileBrowser.application.Draw()
 	}
 	err := fileBrowser.fileWatcher.Watch(action)
 	if err != nil {
@@ -780,18 +779,14 @@ func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserE
 func (fileBrowser *FileBrowserComponent) showError(err error) {
 	logging.Error(err.Error())
 	go func() {
-		fileBrowser.application.QueueUpdateDraw(func() {
-			fileBrowser.statusChannel <- NewErrorStatusMessage(err.Error())
-		})
+		fileBrowser.statusChannel <- NewErrorStatusMessage(err.Error())
 	}()
 }
 
 func (fileBrowser *FileBrowserComponent) showWarning(message string) {
 	logging.Warning(message)
 	go func() {
-		fileBrowser.application.QueueUpdateDraw(func() {
-			fileBrowser.statusChannel <- NewWarningStatusMessage(message).SetDuration(5 * time.Second)
-		})
+		fileBrowser.statusChannel <- NewWarningStatusMessage(message).SetDuration(5 * time.Second)
 	}()
 }
 

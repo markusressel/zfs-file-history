@@ -4,26 +4,30 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"time"
 	"zfs-file-history/cmd/global"
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
 type ApplicationHeaderComponent struct {
+	application    *tview.Application
 	layout         *tview.Flex
 	name           string
 	version        string
 	statusTextView *tview.TextView
+	lastStatus     *StatusMessage
 }
 
-func NewApplicationHeader() *ApplicationHeaderComponent {
+func NewApplicationHeader(application *tview.Application) *ApplicationHeaderComponent {
 	versionText := global.Version
 	if versionText == "dev" {
 		versionText = fmt.Sprintf("%s-(#%s)-%s", global.Version, global.Commit, global.Date)
 	}
 
 	applicationHeader := &ApplicationHeaderComponent{
-		name:    "zfs-file-history",
-		version: versionText,
+		application: application,
+		name:        "zfs-file-history",
+		version:     versionText,
 	}
 
 	applicationHeader.createLayout()
@@ -74,6 +78,21 @@ func (applicationHeader *ApplicationHeaderComponent) updateUi() {
 	// no changing data
 }
 
-func (applicationHeader *ApplicationHeaderComponent) SetStatus(text string, color tcell.Color) {
-	applicationHeader.statusTextView.SetText(text).SetTextColor(color)
+func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *StatusMessage) {
+	applicationHeader.statusTextView.SetText(status.Message).SetTextColor(status.Color)
+	if status.Duration > 0 {
+		go func() {
+			time.Sleep(status.Duration)
+			if applicationHeader.lastStatus != status {
+				return
+			}
+			applicationHeader.ResetStatus()
+		}()
+	}
+	applicationHeader.lastStatus = status
+}
+
+func (applicationHeader *ApplicationHeaderComponent) ResetStatus() {
+	applicationHeader.statusTextView.SetText("").SetTextColor(tcell.ColorWhite)
+	applicationHeader.application.Draw()
 }
