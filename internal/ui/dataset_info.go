@@ -151,6 +151,6 @@ func (datasetInfo *DatasetInfoComponent) Focus() {
 	datasetInfo.application.SetFocus(datasetInfo.layout)
 }
 
-func (datasetInfo *DatasetInfoComponent) onDatasetChanged() <-chan *zfs.Dataset {
+func (datasetInfo *DatasetInfoComponent) OnDatasetChanged() <-chan *zfs.Dataset {
 	return datasetInfo.datasetChanged
 }

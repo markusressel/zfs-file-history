@@ -56,7 +56,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	go func() {
 		for {
 			select {
-			case newDataset := <-datasetInfo.onDatasetChanged():
+			case newDataset := <-datasetInfo.OnDatasetChanged():
 				// update file browser based on currently selected snapshot
 				application.QueueUpdateDraw(func() {
 					snapshotBrowser.SetDataset(newDataset)
