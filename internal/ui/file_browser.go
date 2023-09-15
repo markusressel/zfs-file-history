@@ -101,8 +101,6 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 	uiutil.SetupWindow(table, fileBrowserHeaderText)
 
 	table.SetSelectable(true, false)
-	selectionIndex := fileBrowser.getSelectionIndex(fileBrowser.path)
-	table.Select(selectionIndex+1, 0)
 
 	table.SetSelectionChangedFunc(func(row int, column int) {
 		selectionIndex := util.Coerce(row-1, -1, len(fileBrowser.fileEntries)-1)
