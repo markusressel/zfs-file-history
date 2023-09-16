@@ -199,6 +199,8 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 		} else {
 			index += 1
 		}
+	} else {
+		c.layout.ScrollToBeginning()
 	}
 	c.layout.Select(index, 0)
 }
