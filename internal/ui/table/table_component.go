@@ -20,8 +20,7 @@ type Column struct {
 type RowSelectionTable[T any] struct {
 	application *tview.Application
 
-	rootLayout  *tview.Flex
-	tableLayout *tview.Table
+	layout *tview.Table
 
 	entries       []*T
 	selectedEntry *T
@@ -48,9 +47,7 @@ func NewTableContainer[T any](
 }
 
 func (c *RowSelectionTable[T]) createLayout() {
-	flex := tview.NewFlex()
 	table := tview.NewTable()
-	flex.AddItem(table, 0, 1, true)
 
 	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {
@@ -103,16 +100,15 @@ func (c *RowSelectionTable[T]) createLayout() {
 		return event
 	})
 
-	c.tableLayout = table
-	c.rootLayout = flex
+	c.layout = table
 }
 
-func (c *RowSelectionTable[T]) GetLayout() *tview.Flex {
-	return c.rootLayout
+func (c *RowSelectionTable[T]) GetLayout() *tview.Table {
+	return c.layout
 }
 
 func (c *RowSelectionTable[T]) SetTitle(title string) {
-	uiutil.SetupWindow(c.tableLayout, title)
+	uiutil.SetupWindow(c.layout, title)
 }
 
 func (c *RowSelectionTable[T]) SetData(columns []*Column, entries []*T) {
@@ -156,7 +152,7 @@ func (c *RowSelectionTable[T]) toggleSortDirection() {
 }
 
 func (c *RowSelectionTable[T]) updateTableContents() {
-	table := c.tableLayout
+	table := c.layout
 	if table == nil {
 		return
 	}
@@ -204,11 +200,11 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 			index += 1
 		}
 	}
-	c.tableLayout.Select(index, 0)
+	c.layout.Select(index, 0)
 }
 
 func (c *RowSelectionTable[T]) HasFocus() bool {
-	return c.tableLayout.HasFocus()
+	return c.layout.HasFocus()
 }
 
 func (c *RowSelectionTable[T]) GetEntries() []*T {
@@ -216,7 +212,7 @@ func (c *RowSelectionTable[T]) GetEntries() []*T {
 }
 
 func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
-	row, _ := c.tableLayout.GetSelection()
+	row, _ := c.layout.GetSelection()
 	if row >= 1 {
 		return c.entries[row-1]
 	} else {
