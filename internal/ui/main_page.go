@@ -61,11 +61,11 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			case newSnapshotSelection := <-snapshotBrowser.OnSelectedSnapshotChanged():
 				fileBrowser.SetSelectedSnapshot(newSnapshotSelection)
 				application.Draw()
-			case newPath := <-fileBrowser.OnPathChanged():
+			case newPath := <-fileBrowser.PathChangedChannel():
 				snapshotBrowser.SetPath(newPath)
 				datasetInfo.SetPath(newPath)
 				application.Draw()
-			case newFileSelection := <-fileBrowser.OnSelectedFileEntryChanged():
+			case newFileSelection := <-fileBrowser.SelectedFileEntryChangedChannel():
 				snapshotBrowser.SetFileEntry(newFileSelection)
 				application.Draw()
 			case statusMessage := <-statusChannel:

@@ -774,11 +774,11 @@ func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserE
 	fileBrowser.showWarning(NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
 }
 
-func (fileBrowser *FileBrowserComponent) OnPathChanged() <-chan string {
+func (fileBrowser *FileBrowserComponent) PathChangedChannel() <-chan string {
 	return fileBrowser.pathChanged
 }
 
-func (fileBrowser *FileBrowserComponent) OnSelectedFileEntryChanged() <-chan *data.FileBrowserEntry {
+func (fileBrowser *FileBrowserComponent) SelectedFileEntryChangedChannel() <-chan *data.FileBrowserEntry {
 	return fileBrowser.selectedFileEntryChanged
 }
 
