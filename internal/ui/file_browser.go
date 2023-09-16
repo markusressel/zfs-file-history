@@ -7,7 +7,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
-	"math"
 	"os"
 	path2 "path"
 	"strings"
@@ -15,26 +14,51 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
 
-type FileBrowserColumn int
-
 const (
-	Name FileBrowserColumn = iota + 1
-	Size
-	ModTime
-	Type
-	Status
-
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
 
-func (c FileBrowserColumn) IsValid() bool {
-	return c <= Status && c >= Name
-}
+var (
+	sizeColumn = &table.Column{
+		Id:        0,
+		Title:     "Size",
+		Alignment: tview.AlignRight,
+	}
+	datetimeColumn = &table.Column{
+		Id:        1,
+		Title:     "Date/Time",
+		Alignment: tview.AlignLeft,
+	}
+	typeColumn = &table.Column{
+		Id:        2,
+		Title:     "Type",
+		Alignment: tview.AlignCenter,
+	}
+	diffColumn = &table.Column{
+		Id:        3,
+		Title:     "Diff",
+		Alignment: tview.AlignCenter,
+	}
+	nameColumn = &table.Column{
+		Id:        4,
+		Title:     "Name",
+		Alignment: tview.AlignLeft,
+	}
+
+	fileBrowserTableColumns = []*table.Column{
+		sizeColumn,
+		datetimeColumn,
+		typeColumn,
+		diffColumn,
+		nameColumn,
+	}
+)
 
 type FileBrowserComponent struct {
 	path        string
@@ -42,14 +66,13 @@ type FileBrowserComponent struct {
 
 	currentSnapshot *zfs.Snapshot
 
-	fileEntries              []*data.FileBrowserEntry
 	selectedFileEntry        *data.FileBrowserEntry
 	selectedFileEntryChanged chan *data.FileBrowserEntry
-	sortByColumn             FileBrowserColumn
 
 	application *tview.Application
 	layout      *tview.Pages
-	fileTable   *tview.Table
+
+	tableContainer *table.RowSelectionTable[data.FileBrowserEntry]
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
@@ -57,13 +80,168 @@ type FileBrowserComponent struct {
 }
 
 func NewFileBrowser(application *tview.Application, statusChannel chan<- *StatusMessage, path string) *FileBrowserComponent {
+	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
+		var status = "="
+		var statusColor = tcell.ColorGray
+		switch entry.Status {
+		case data.Equal:
+			status = "="
+			statusColor = tcell.ColorGray
+		case data.Deleted:
+			status = "-"
+			statusColor = tcell.ColorRed
+		case data.Added:
+			status = "+"
+			statusColor = tcell.ColorGreen
+		case data.Modified:
+			status = "≠"
+			statusColor = tcell.ColorYellow
+		case data.Unknown:
+			status = "N/A"
+			statusColor = tcell.ColorGray
+		}
+
+		var typeCellText = "?"
+		var typeCellColor = tcell.ColorGray
+		switch entry.Type {
+		case data.File:
+			typeCellText = "F"
+		case data.Directory:
+			typeCellText = "D"
+			typeCellColor = tcell.ColorSteelBlue
+		case data.Link:
+			typeCellText = "L"
+			typeCellColor = tcell.ColorYellow
+		}
+
+		for _, column := range columns {
+			var cellColor = tcell.ColorWhite
+			var cellText string
+			var cellAlignment = tview.AlignLeft
+			var cellExpansion = 0
+
+			if column == nameColumn {
+				cellText = entry.Name
+				if entry.GetStat().IsDir() {
+					cellText = fmt.Sprintf("/%s", cellText)
+				}
+				cellColor = statusColor
+			} else if column == typeColumn {
+				cellText = typeCellText
+				cellColor = typeCellColor
+				cellAlignment = tview.AlignCenter
+			} else if column == diffColumn {
+				cellText = status
+				cellColor = statusColor
+				cellAlignment = tview.AlignCenter
+			} else if column == datetimeColumn {
+				cellText = entry.GetStat().ModTime().Format(time.DateTime)
+
+				switch entry.Status {
+				case data.Added, data.Deleted:
+					cellColor = statusColor
+				case data.Modified:
+					if entry.RealFile.Stat.ModTime() != entry.SnapshotFiles[0].Stat.ModTime() {
+						cellColor = statusColor
+					} else {
+						cellColor = tcell.ColorWhite
+					}
+				default:
+					cellColor = tcell.ColorGray
+				}
+			} else if column == sizeColumn {
+				cellText = humanize.IBytes(uint64(entry.GetStat().Size()))
+				if strings.HasSuffix(cellText, " B") {
+					withoutSuffix := strings.TrimSuffix(cellText, " B")
+					cellText = fmt.Sprintf("%s   B", withoutSuffix)
+				}
+				if len(cellText) < 10 {
+					cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
+				}
+
+				switch entry.Status {
+				case data.Added, data.Deleted:
+					cellColor = statusColor
+				case data.Modified:
+					if entry.RealFile.Stat.Size() != entry.SnapshotFiles[0].Stat.Size() {
+						cellColor = statusColor
+					} else {
+						cellColor = tcell.ColorWhite
+					}
+				default:
+					cellColor = tcell.ColorGray
+				}
+
+				cellAlignment = tview.AlignRight
+			} else {
+				panic("Unknown column")
+			}
+
+			cell := tview.NewTableCell(cellText).
+				SetTextColor(cellColor).
+				SetAlign(cellAlignment).
+				SetExpansion(cellExpansion)
+			cells = append(cells, cell)
+		}
+
+		return cells
+	}
+
+	tableEntrySortFunction := func(entries []*data.FileBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.FileBrowserEntry {
+		result := slices.Clone(entries)
+		slices.SortFunc(result, func(a, b *data.FileBrowserEntry) int {
+			var result int
+			switch columnToSortBy {
+			case nameColumn:
+				result = strings.Compare(a.Name, b.Name)
+			case datetimeColumn:
+				result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
+			case typeColumn:
+				result = int(b.Type - a.Type)
+			case sizeColumn:
+				result = int(a.GetStat().Size() - b.GetStat().Size())
+			case diffColumn:
+				result = int(b.Status - a.Status)
+			}
+
+			if inverted {
+				result *= -1
+			}
+
+			if result != 0 {
+				return result
+			}
+
+			result = int(b.Type - a.Type)
+			if result != 0 {
+				return result
+			}
+
+			result = strings.Compare(a.Name, b.Name)
+			if result != 0 {
+				return result
+			}
+
+			return result
+		})
+
+		return result
+	}
+
+	tableContainer := table.NewTableContainer[data.FileBrowserEntry](
+		application,
+		toTableCellsFunction,
+		tableEntrySortFunction,
+	)
+
 	fileBrowser := &FileBrowserComponent{
 		application:              application,
 		pathChanged:              make(chan string, 10),
 		selectedFileEntryChanged: make(chan *data.FileBrowserEntry, 10),
-		sortByColumn:             -Type,
 		statusChannel:            statusChannel,
 		selectionIndexMap:        map[string]int{},
+
+		tableContainer: tableContainer,
 	}
 
 	fileBrowser.createLayout(application)
@@ -74,12 +252,10 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 
 func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Application) {
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
-	fileBrowserHeaderText := fileBrowser.path
 
-	table := tview.NewTable()
-	fileBrowser.fileTable = table
+	tableContainer := fileBrowser.tableContainer.GetLayout()
 
-	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	tableContainer.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {
 		case tview.MouseLeftDoubleClick:
 			go func() {
@@ -91,79 +267,35 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 		return action, event
 	})
 
-	table.SetBorder(true)
-	table.SetBorders(false)
-	table.SetBorderPadding(0, 0, 1, 1)
-
-	// fixed header row
-	table.SetFixed(1, 0)
-
-	uiutil.SetupWindow(table, fileBrowserHeaderText)
-
-	table.SetSelectable(true, false)
-
-	table.SetSelectionChangedFunc(func(row int, column int) {
-		selectionIndex := util.Coerce(row-1, -1, len(fileBrowser.fileEntries)-1)
-		var newSelection *data.FileBrowserEntry
-		if selectionIndex < 0 {
-			newSelection = nil
-		} else {
-			newSelection = fileBrowser.fileEntries[selectionIndex]
-		}
-
-		fileBrowser.selectFileEntry(newSelection)
-	})
-
-	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
-		if key == tcell.KeyRight {
-			if fileBrowser.selectedFileEntry != nil {
+		if fileBrowser.selectedFileEntry != nil {
+			if key == tcell.KeyRight {
 				fileBrowser.enterFileEntry(fileBrowser.selectedFileEntry)
-			} else {
-				fileBrowser.nextSortOrder()
-			}
-			return nil
-		} else if key == tcell.KeyLeft {
-			if fileBrowser.listIsEmpty() {
-				fileBrowser.goUp()
-			} else if fileBrowser.selectedFileEntry != nil {
-				fileBrowser.goUp()
-			} else if fileBrowser.selectedFileEntry == nil {
-				fileBrowser.previousSortOrder()
-			}
-			return nil
-		} else if key == tcell.KeyEnter {
-			if fileBrowser.selectedFileEntry == nil {
-				fileBrowser.toggleSortOrder()
-			} else {
+				return nil
+			} else if key == tcell.KeyEnter {
 				fileBrowser.openActionDialog(fileBrowser.selectedFileEntry)
-			}
-			return nil
-		} else if key == tcell.KeyUp {
-			if fileBrowser.selectedFileEntry == nil {
-				fileBrowser.toggleSortOrder()
 				return nil
 			}
+		}
+
+		if key == tcell.KeyLeft {
+			fileBrowser.goUp()
+			return nil
 		}
 		return event
 	})
 
-	table.SetDoneFunc(func(key tcell.Key) {
-		if key == tcell.KeyEscape {
-			application.Stop()
-		}
-	})
-
-	fileBrowserLayout.AddItem(table, 0, 1, true)
+	fileBrowserLayout.AddItem(tableContainer, 0, 1, true)
 
 	fileBrowserPages := tview.NewPages()
-	fileBrowserPages.AddPage(string(FileBrowserPage), fileBrowserLayout, true, true)
+	fileBrowserPages.AddPage(string(FileBrowserPage), tableContainer, true, true)
 
 	fileBrowser.layout = fileBrowserPages
 }
 
 func (fileBrowser *FileBrowserComponent) Focus() {
-	fileBrowser.application.SetFocus(fileBrowser.fileTable)
+	fileBrowser.application.SetFocus(fileBrowser.tableContainer.GetLayout())
 }
 
 func (fileBrowser *FileBrowserComponent) updateFileEntries() {
@@ -301,8 +433,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 		entry.Status = status
 	}
 
-	fileBrowser.fileEntries = fileEntries
-	fileBrowser.sortEntries()
+	fileBrowser.tableContainer.SetData(fileBrowserTableColumns, fileEntries)
 }
 
 func (fileBrowser *FileBrowserComponent) goUp() {
@@ -313,7 +444,7 @@ func (fileBrowser *FileBrowserComponent) goUp() {
 
 func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, selection string) {
 	fileBrowser.SetPath(newPath, false)
-	for i, entry := range fileBrowser.fileEntries {
+	for i, entry := range fileBrowser.tableContainer.GetEntries() {
 		if strings.Contains(entry.GetRealPath(), selection) {
 			fileBrowser.SelectEntry(i)
 			return
@@ -388,232 +519,18 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *zfs.Snaps
 }
 
 func (fileBrowser *FileBrowserComponent) updateTableContents() {
-	columnTitles := []FileBrowserColumn{Size, ModTime, Type, Status, Name}
-
-	table := fileBrowser.fileTable
-	if table == nil {
-		return
-	}
-
-	table.Clear()
-
 	title := fmt.Sprintf("Path: %s", fileBrowser.path)
-	uiutil.SetupWindow(table, title)
-
-	tableEntries := slices.Clone(fileBrowser.fileEntries)
-
-	cols, rows := len(columnTitles), len(tableEntries)+1
-	fileIndex := 0
-	for row := 0; row < rows; row++ {
-		if (row) == 0 {
-			// Draw Table Column Headers
-			for column := 0; column < cols; column++ {
-				columnId := columnTitles[column]
-				var cellColor = tcell.ColorWhite
-				var cellText string
-				var cellAlignment = tview.AlignLeft
-				var cellExpansion = 0
-
-				if columnId == Name {
-					cellText = "Name"
-				} else if columnId == ModTime {
-					cellText = "Date/Time"
-				} else if columnId == Type {
-					cellText = "Type"
-					cellAlignment = tview.AlignCenter
-				} else if columnId == Status {
-					cellText = "Diff"
-					cellAlignment = tview.AlignCenter
-				} else if columnId == Size {
-					cellText = "Size"
-					cellAlignment = tview.AlignCenter
-				} else {
-					panic("Unknown column")
-				}
-
-				if columnId == FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn))) {
-					var sortDirectionIndicator = "↓"
-					if fileBrowser.sortByColumn > 0 {
-						sortDirectionIndicator = "↑"
-					}
-					cellText = fmt.Sprintf("%s %s", cellText, sortDirectionIndicator)
-				}
-
-				table.SetCell(row, column,
-					tview.NewTableCell(cellText).
-						SetTextColor(cellColor).
-						SetAlign(cellAlignment).
-						SetExpansion(cellExpansion),
-				)
-			}
-			continue
-		}
-
-		currentFileEntry := tableEntries[fileIndex]
-
-		var status = "="
-		var statusColor = tcell.ColorGray
-		switch currentFileEntry.Status {
-		case data.Equal:
-			status = "="
-			statusColor = tcell.ColorGray
-		case data.Deleted:
-			status = "-"
-			statusColor = tcell.ColorRed
-		case data.Added:
-			status = "+"
-			statusColor = tcell.ColorGreen
-		case data.Modified:
-			status = "≠"
-			statusColor = tcell.ColorYellow
-		case data.Unknown:
-			status = "N/A"
-			statusColor = tcell.ColorGray
-		}
-
-		var typeCellText = "?"
-		var typeCellColor = tcell.ColorGray
-		switch currentFileEntry.Type {
-		case data.File:
-			typeCellText = "F"
-		case data.Directory:
-			typeCellText = "D"
-			typeCellColor = tcell.ColorSteelBlue
-		case data.Link:
-			typeCellText = "L"
-			typeCellColor = tcell.ColorYellow
-		}
-
-		for column := 0; column < cols; column++ {
-			columnId := columnTitles[column]
-			var cellColor = tcell.ColorWhite
-			var cellText string
-			var cellAlignment = tview.AlignLeft
-			var cellExpansion = 0
-
-			if columnId == Name {
-				cellText = currentFileEntry.Name
-				if currentFileEntry.GetStat().IsDir() {
-					cellText = fmt.Sprintf("/%s", cellText)
-				}
-				cellColor = statusColor
-			} else if columnId == Type {
-				cellText = typeCellText
-				cellColor = typeCellColor
-				cellAlignment = tview.AlignCenter
-			} else if columnId == Status {
-				cellText = status
-				cellColor = statusColor
-				cellAlignment = tview.AlignCenter
-			} else if columnId == ModTime {
-				cellText = currentFileEntry.GetStat().ModTime().Format(time.DateTime)
-
-				switch currentFileEntry.Status {
-				case data.Added, data.Deleted:
-					cellColor = statusColor
-				case data.Modified:
-					if currentFileEntry.RealFile.Stat.ModTime() != currentFileEntry.SnapshotFiles[0].Stat.ModTime() {
-						cellColor = statusColor
-					} else {
-						cellColor = tcell.ColorWhite
-					}
-				default:
-					cellColor = tcell.ColorGray
-				}
-			} else if columnId == Size {
-				cellText = humanize.IBytes(uint64(currentFileEntry.GetStat().Size()))
-				if strings.HasSuffix(cellText, " B") {
-					withoutSuffix := strings.TrimSuffix(cellText, " B")
-					cellText = fmt.Sprintf("%s   B", withoutSuffix)
-				}
-				if len(cellText) < 10 {
-					cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
-				}
-
-				switch currentFileEntry.Status {
-				case data.Added, data.Deleted:
-					cellColor = statusColor
-				case data.Modified:
-					if currentFileEntry.RealFile.Stat.Size() != currentFileEntry.SnapshotFiles[0].Stat.Size() {
-						cellColor = statusColor
-					} else {
-						cellColor = tcell.ColorWhite
-					}
-				default:
-					cellColor = tcell.ColorGray
-				}
-
-				cellAlignment = tview.AlignRight
-			} else {
-				panic("Unknown column")
-			}
-
-			table.SetCell(row, column,
-				tview.NewTableCell(cellText).
-					SetTextColor(cellColor).
-					SetAlign(cellAlignment).
-					SetExpansion(cellExpansion),
-			)
-		}
-		fileIndex = (fileIndex + 1) % rows
-	}
-
+	fileBrowser.tableContainer.SetTitle(title)
 	fileBrowser.restoreSelection()
 }
 
-func sortTableEntries(entries []*data.FileBrowserEntry, column FileBrowserColumn) []*data.FileBrowserEntry {
-	result := slices.Clone(entries)
-	slices.SortFunc(result, func(a, b *data.FileBrowserEntry) int {
-		var result int
-		columnToSortBy := FileBrowserColumn(math.Abs(float64(column)))
-		switch columnToSortBy {
-		case Name:
-			result = strings.Compare(a.Name, b.Name)
-		case ModTime:
-			result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
-		case Type:
-			result = int(b.Type - a.Type)
-		case Size:
-			result = int(a.GetStat().Size() - b.GetStat().Size())
-		case Status:
-			result = int(b.Status - a.Status)
-		}
-
-		if column < 0 {
-			result *= -1
-		}
-
-		if result != 0 {
-			return result
-		}
-
-		result = int(b.Type - a.Type)
-		if result != 0 {
-			return result
-		}
-
-		result = strings.Compare(a.Name, b.Name)
-		if result != 0 {
-			return result
-		}
-
-		return result
-	})
-
-	return result
-}
-
 func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
-	if len(fileBrowser.fileEntries) > 0 {
-		fileBrowser.selectedFileEntry = fileBrowser.fileEntries[i]
-		fileBrowser.fileTable.Select(i+1, 0)
+	if len(fileBrowser.tableContainer.GetEntries()) > 0 {
+		fileBrowser.selectedFileEntry = fileBrowser.tableContainer.GetEntries()[i]
+		fileBrowser.SelectIndex(i + 1)
 	} else {
 		fileBrowser.selectedFileEntry = nil
 	}
-}
-
-func (fileBrowser *FileBrowserComponent) sortEntries() {
-	fileBrowser.fileEntries = sortTableEntries(fileBrowser.fileEntries, fileBrowser.sortByColumn)
 }
 
 func (fileBrowser *FileBrowserComponent) getSelectionIndex(path string) int {
@@ -638,7 +555,7 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 	}()
 
 	// remember selection index
-	newIndex := slices.Index(fileBrowser.fileEntries, newSelection)
+	newIndex := slices.Index(fileBrowser.tableContainer.GetEntries(), newSelection)
 	fileBrowser.selectionIndexMap[fileBrowser.path] = newIndex + 1
 }
 
@@ -649,7 +566,7 @@ func (fileBrowser *FileBrowserComponent) restoreSelection() {
 	} else {
 		selectionIndex = fileBrowser.getSelectionIndex(fileBrowser.path)
 	}
-	fileBrowser.fileTable.Select(selectionIndex, 0)
+	fileBrowser.SelectIndex(selectionIndex)
 }
 
 func (fileBrowser *FileBrowserComponent) refresh() {
@@ -679,11 +596,11 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 }
 
 func (fileBrowser *FileBrowserComponent) listIsEmpty() bool {
-	return len(fileBrowser.fileEntries) <= 0
+	return len(fileBrowser.tableContainer.GetEntries()) <= 0
 }
 
 func (fileBrowser *FileBrowserComponent) HasFocus() bool {
-	return fileBrowser.fileTable.HasFocus()
+	return fileBrowser.tableContainer.HasFocus()
 }
 
 func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction) bool) {
@@ -700,45 +617,6 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 		}
 	}()
 	fileBrowser.layout.AddPage(d.GetName(), layout, true, true)
-}
-
-func (fileBrowser *FileBrowserComponent) toggleSortOrder() {
-	fileBrowser.sortByColumn *= -1
-	fileBrowser.refresh()
-}
-
-func (fileBrowser *FileBrowserComponent) nextSortOrder() {
-	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn)) + 1)
-	if column.IsValid() {
-		if fileBrowser.sortByColumn < 0 {
-			column *= -1
-		}
-		fileBrowser.sortByColumn = column
-	} else {
-		column = 1
-		if fileBrowser.sortByColumn < 0 {
-			column *= -1
-		}
-		fileBrowser.sortByColumn = column
-	}
-	fileBrowser.refresh()
-}
-
-func (fileBrowser *FileBrowserComponent) previousSortOrder() {
-	column := FileBrowserColumn(math.Abs(float64(fileBrowser.sortByColumn)) - 1)
-	if column.IsValid() {
-		if fileBrowser.sortByColumn < 0 {
-			column *= -1
-		}
-		fileBrowser.sortByColumn = column
-	} else {
-		column = 5
-		if fileBrowser.sortByColumn < 0 {
-			column *= -1
-		}
-		fileBrowser.sortByColumn = column
-	}
-	fileBrowser.refresh()
 }
 
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
@@ -801,4 +679,8 @@ func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *StatusMessag
 	go func() {
 		fileBrowser.statusChannel <- message
 	}()
+}
+
+func (fileBrowser *FileBrowserComponent) SelectIndex(index int) {
+	fileBrowser.tableContainer.Select(index)
 }

@@ -49,5 +49,5 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		return event
 	})
 
-	return application.SetRoot(pagesLayout, fullscreen).SetFocus(mainPage.fileBrowser.fileTable)
+	return application.SetRoot(pagesLayout, fullscreen).SetFocus(mainPage.fileBrowser.tableContainer.GetLayout())
 }
