@@ -277,7 +277,7 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 				return nil
 			}
 		}
-		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.listIsEmpty()) {
+		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
 			fileBrowser.goUp()
 			return nil
 		}
@@ -296,7 +296,7 @@ func (fileBrowser *FileBrowserComponent) Focus() {
 	fileBrowser.application.SetFocus(fileBrowser.tableContainer.GetLayout())
 }
 
-func (fileBrowser *FileBrowserComponent) updateFileEntries() {
+func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrowserEntry {
 	path := fileBrowser.path
 	snapshot := fileBrowser.currentSnapshot
 
@@ -304,7 +304,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 	realFiles, err := util.ListFilesIn(path)
 	if os.IsPermission(err) {
 		fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
-		return
+		return nil
 	} else if err != nil {
 		fileBrowser.showError(errors.New("Cannot list real path: " + err.Error()))
 	}
@@ -431,7 +431,7 @@ func (fileBrowser *FileBrowserComponent) updateFileEntries() {
 		entry.Status = status
 	}
 
-	fileBrowser.tableContainer.SetData(fileBrowserTableColumns, fileEntries)
+	return fileEntries
 }
 
 func (fileBrowser *FileBrowserComponent) goUp() {
@@ -516,9 +516,18 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *zfs.Snaps
 	fileBrowser.refresh()
 }
 
+func (fileBrowser *FileBrowserComponent) refresh() {
+	fileBrowser.showWarning(NewWarningStatusMessage("Refreshing..."))
+	fileBrowser.updateTableContents()
+	fileBrowser.updateFileWatcher()
+	fileBrowser.showInfo(NewInfoStatusMessage(""))
+}
+
 func (fileBrowser *FileBrowserComponent) updateTableContents() {
 	title := fmt.Sprintf("Path: %s", fileBrowser.path)
 	fileBrowser.tableContainer.SetTitle(title)
+	newEntries := fileBrowser.computeTableEntries()
+	fileBrowser.tableContainer.SetData(fileBrowserTableColumns, newEntries)
 	fileBrowser.restoreSelection()
 }
 
@@ -540,13 +549,12 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 		fileBrowser.selectedFileEntryChanged <- newSelection
 	}()
 
-	// remember selection index
-	newIndex := slices.Index(fileBrowser.tableContainer.GetEntries(), newSelection)
-	fileBrowser.rememberSelectionIndex(fileBrowser.path, newIndex)
+	// TODO: update remembered selection even when not changing dirs
+	fileBrowser.rememberSelectionForCurrentPath()
 }
 
 func (fileBrowser *FileBrowserComponent) restoreSelection() {
-	if fileBrowser.listIsEmpty() {
+	if fileBrowser.isEmpty() {
 		fileBrowser.tableContainer.Select(nil)
 	} else {
 		entries := fileBrowser.tableContainer.GetEntries()
@@ -560,8 +568,9 @@ func (fileBrowser *FileBrowserComponent) restoreSelection() {
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) rememberSelectionIndex(path string, index int) {
-	fileBrowser.selectionIndexMap[path] = index
+func (fileBrowser *FileBrowserComponent) rememberSelectionForCurrentPath() {
+	index := slices.Index(fileBrowser.tableContainer.GetEntries(), fileBrowser.tableContainer.GetSelectedEntry())
+	fileBrowser.selectionIndexMap[fileBrowser.path] = index
 }
 
 func (fileBrowser *FileBrowserComponent) getRememberedSelectionIndex(path string) int {
@@ -575,14 +584,12 @@ func (fileBrowser *FileBrowserComponent) getRememberedSelectionIndex(path string
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) refresh() {
-	fileBrowser.showWarning(NewWarningStatusMessage("Refreshing..."))
-	fileBrowser.updateFileEntries()
-	fileBrowser.updateTableContents()
-	fileBrowser.updateFileWatcher()
-	// TODO: restore selection after refresh
-	//fileBrowser.selectFileEntry(fileBrowser.selectedFileEntry)
-	fileBrowser.showInfo(NewInfoStatusMessage(""))
+func (fileBrowser *FileBrowserComponent) getSelection() *data.FileBrowserEntry {
+	return fileBrowser.tableContainer.GetSelectedEntry()
+}
+
+func (fileBrowser *FileBrowserComponent) isEmpty() bool {
+	return fileBrowser.tableContainer.IsEmpty()
 }
 
 func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
@@ -600,10 +607,6 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 	if err != nil {
 		fileBrowser.showError(err)
 	}
-}
-
-func (fileBrowser *FileBrowserComponent) listIsEmpty() bool {
-	return len(fileBrowser.tableContainer.GetEntries()) <= 0
 }
 
 func (fileBrowser *FileBrowserComponent) HasFocus() bool {
@@ -686,8 +689,4 @@ func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *StatusMessag
 	go func() {
 		fileBrowser.statusChannel <- message
 	}()
-}
-
-func (fileBrowser *FileBrowserComponent) getSelection() *data.FileBrowserEntry {
-	return fileBrowser.tableContainer.GetSelectedEntry()
 }

@@ -219,3 +219,7 @@ func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
 		return nil
 	}
 }
+
+func (c *RowSelectionTable[T]) IsEmpty() bool {
+	return len(c.entries) <= 0
+}
