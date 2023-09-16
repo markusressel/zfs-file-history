@@ -243,6 +243,24 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 		tableContainer: tableContainer,
 	}
 
+	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		key := event.Key()
+		if fileBrowser.getSelection() != nil {
+			if key == tcell.KeyRight {
+				fileBrowser.enterFileEntry(fileBrowser.getSelection())
+				return nil
+			} else if key == tcell.KeyEnter {
+				fileBrowser.openActionDialog(fileBrowser.getSelection())
+				return nil
+			}
+		}
+		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
+			fileBrowser.goUp()
+			return nil
+		}
+		return event
+	})
+
 	fileBrowser.createLayout(application)
 	fileBrowser.SetPath(path, false)
 
@@ -264,24 +282,6 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 			return action, nil
 		}
 		return action, event
-	})
-
-	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		key := event.Key()
-		if fileBrowser.getSelection() != nil {
-			if key == tcell.KeyRight {
-				fileBrowser.enterFileEntry(fileBrowser.getSelection())
-				return nil
-			} else if key == tcell.KeyEnter {
-				fileBrowser.openActionDialog(fileBrowser.getSelection())
-				return nil
-			}
-		}
-		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
-			fileBrowser.goUp()
-			return nil
-		}
-		return event
 	})
 
 	fileBrowserLayout.AddItem(tableContainer, 0, 1, true)

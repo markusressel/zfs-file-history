@@ -6,7 +6,6 @@ import (
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
 	uiutil "zfs-file-history/internal/ui/util"
-	"zfs-file-history/internal/util"
 )
 
 type ColumnId int
@@ -22,12 +21,12 @@ type RowSelectionTable[T any] struct {
 
 	layout *tview.Table
 
-	entries       []*T
-	selectedEntry *T
+	entries []*T
 
 	sortByColumn     *Column
 	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T
 	toTableCells     func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
+	inputCapture     func(event *tcell.EventKey) *tcell.EventKey
 	columnSpec       []*Column
 	sortInverted     bool
 }
@@ -41,6 +40,9 @@ func NewTableContainer[T any](
 		application:      application,
 		toTableCells:     toTableCells,
 		sortTableEntries: sortTableEntries,
+		inputCapture: func(event *tcell.EventKey) *tcell.EventKey {
+			return event
+		},
 	}
 	tableContainer.createLayout()
 	return tableContainer
@@ -71,21 +73,9 @@ func (c *RowSelectionTable[T]) createLayout() {
 
 	table.SetSelectable(true, false)
 
-	table.SetSelectionChangedFunc(func(row int, column int) {
-		selectionIndex := util.Coerce(row-1, -1, len(c.entries)-1)
-		var newSelection *T
-		if selectionIndex < 0 {
-			newSelection = nil
-		} else {
-			newSelection = c.entries[selectionIndex]
-		}
-
-		c.selectEntry(newSelection)
-	})
-
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
-		if c.selectedEntry == nil {
+		if c.GetSelectedEntry() == nil {
 			if key == tcell.KeyRight {
 				c.nextSortOrder()
 				return nil
@@ -97,7 +87,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 				return nil
 			}
 		}
-		return event
+		return c.inputCapture(event)
 	})
 
 	c.layout = table
@@ -123,10 +113,6 @@ func (c *RowSelectionTable[T]) SetData(columns []*Column, entries []*T) {
 
 func (c *RowSelectionTable[T]) onItemDoubleClicked() {
 	// TODO: implement
-}
-
-func (c *RowSelectionTable[T]) selectEntry(selection *T) {
-	c.selectedEntry = selection
 }
 
 func (c *RowSelectionTable[T]) nextSortOrder() {
@@ -224,4 +210,8 @@ func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
 
 func (c *RowSelectionTable[T]) IsEmpty() bool {
 	return len(c.entries) <= 0
+}
+
+func (c *RowSelectionTable[T]) SetInputCapture(inputCapture func(event *tcell.EventKey) *tcell.EventKey) {
+	c.inputCapture = inputCapture
 }
