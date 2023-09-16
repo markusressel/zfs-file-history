@@ -530,17 +530,6 @@ func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) getRememberedSelectionIndex(path string) int {
-	index, ok := fileBrowser.selectionIndexMap[path]
-	if !ok {
-		return -1
-	} else if index < 0 {
-		return 0
-	} else {
-		return index
-	}
-}
-
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
 	if fileBrowser.getSelection() == newSelection {
 		return
@@ -553,20 +542,36 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 
 	// remember selection index
 	newIndex := slices.Index(fileBrowser.tableContainer.GetEntries(), newSelection)
-	fileBrowser.selectionIndexMap[fileBrowser.path] = newIndex + 1
+	fileBrowser.rememberSelectionIndex(fileBrowser.path, newIndex)
 }
 
 func (fileBrowser *FileBrowserComponent) restoreSelection() {
 	if fileBrowser.listIsEmpty() {
 		fileBrowser.tableContainer.Select(nil)
 	} else {
+		entries := fileBrowser.tableContainer.GetEntries()
 		rememberedIndex := fileBrowser.getRememberedSelectionIndex(fileBrowser.path)
-		if rememberedIndex > 0 {
-			entry := fileBrowser.tableContainer.GetEntries()[rememberedIndex]
+		if rememberedIndex > 0 && rememberedIndex < len(entries) {
+			entry := entries[rememberedIndex]
 			fileBrowser.tableContainer.Select(entry)
 		} else {
-			fileBrowser.tableContainer.Select(fileBrowser.tableContainer.GetEntries()[0])
+			fileBrowser.tableContainer.Select(entries[0])
 		}
+	}
+}
+
+func (fileBrowser *FileBrowserComponent) rememberSelectionIndex(path string, index int) {
+	fileBrowser.selectionIndexMap[path] = index
+}
+
+func (fileBrowser *FileBrowserComponent) getRememberedSelectionIndex(path string) int {
+	index, ok := fileBrowser.selectionIndexMap[path]
+	if !ok {
+		return -1
+	} else if index < 0 {
+		return 0
+	} else {
+		return index
 	}
 }
 
