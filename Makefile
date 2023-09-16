@@ -19,6 +19,9 @@ run:
 	go build -o ${OUTPUT_BIN} main.go
 	./${OUTPUT_BIN}
 
+deploy: build
+	cp ./${OUTPUT_BIN} ~/.custom/bin/
+
 clean:
 	go clean
 	rm ${OUTPUT_BIN}
