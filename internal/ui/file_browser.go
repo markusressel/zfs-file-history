@@ -28,7 +28,7 @@ var (
 	sizeColumn = &table.Column{
 		Id:        0,
 		Title:     "Size",
-		Alignment: tview.AlignRight,
+		Alignment: tview.AlignLeft,
 	}
 	datetimeColumn = &table.Column{
 		Id:        1,

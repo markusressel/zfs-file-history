@@ -162,31 +162,31 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 
 	tableEntries := c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
 
-	for row, entry := range tableEntries {
-		// Table Header
-		for column, tableColumn := range c.tableColumns {
-			columnId := tableColumn
-			cellColor := tcell.ColorWhite
-			cellAlignment := tableColumn.Alignment
-			cellExpansion := 0
+	// Table Header
+	for column, tableColumn := range c.tableColumns {
+		columnId := tableColumn
+		cellColor := tcell.ColorWhite
+		cellAlignment := tableColumn.Alignment
+		cellExpansion := 0
 
-			var cellText string
-			if columnId == c.sortByColumn {
-				var sortDirectionIndicator = "↓"
-				if !c.sortInverted {
-					sortDirectionIndicator = "↑"
-				}
-				cellText = fmt.Sprintf("%s %s", cellText, sortDirectionIndicator)
+		cellText := tableColumn.Title
+		if columnId == c.sortByColumn {
+			var sortDirectionIndicator = "↓"
+			if !c.sortInverted {
+				sortDirectionIndicator = "↑"
 			}
-
-			cell := tview.NewTableCell(cellText).
-				SetTextColor(cellColor).
-				SetAlign(cellAlignment).
-				SetExpansion(cellExpansion)
-			table.SetCell(row, column, cell)
+			cellText = fmt.Sprintf("%s %s", cellText, sortDirectionIndicator)
 		}
 
-		// Table Content
+		cell := tview.NewTableCell(cellText).
+			SetTextColor(cellColor).
+			SetAlign(cellAlignment).
+			SetExpansion(cellExpansion)
+		table.SetCell(0, column, cell)
+	}
+
+	// Table Content
+	for row, entry := range tableEntries {
 		cells := c.toTableCells(row, c.tableColumns, entry)
 		for column, cell := range cells {
 			table.SetCell(row+1, column, cell)
