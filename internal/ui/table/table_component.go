@@ -25,12 +25,11 @@ type RowSelectionTable[T any] struct {
 
 	entries       []*T
 	selectedEntry *T
-	title         string
 
 	sortByColumn     *Column
 	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T
 	toTableCells     func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
-	tableColumns     []*Column
+	columnSpec       []*Column
 	sortInverted     bool
 }
 
@@ -71,7 +70,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	// fixed header row
 	table.SetFixed(1, 0)
 
-	uiutil.SetupWindow(table, c.title)
+	uiutil.SetupWindow(table, "")
 
 	table.SetSelectable(true, false)
 
@@ -113,13 +112,16 @@ func (c *RowSelectionTable[T]) GetLayout() *tview.Flex {
 }
 
 func (c *RowSelectionTable[T]) SetTitle(title string) {
-	c.title = title
-	c.updateTableContents()
+	uiutil.SetupWindow(c.tableLayout, title)
 }
 
 func (c *RowSelectionTable[T]) SetData(columns []*Column, entries []*T) {
-	c.tableColumns = columns
+	c.columnSpec = columns
 	c.entries = entries
+
+	c.sortByColumn = columns[0]
+	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
+
 	c.updateTableContents()
 }
 
@@ -132,21 +134,24 @@ func (c *RowSelectionTable[T]) selectEntry(selection *T) {
 }
 
 func (c *RowSelectionTable[T]) nextSortOrder() {
-	currentIndex := slices.Index(c.tableColumns, c.sortByColumn)
-	nextIndex := currentIndex + 1%len(c.tableColumns)
-	c.sortByColumn = c.tableColumns[nextIndex]
+	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
+	nextIndex := (currentIndex + 1) % len(c.columnSpec)
+	c.sortByColumn = c.columnSpec[nextIndex]
+	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
 	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) previousSortOrder() {
-	currentIndex := slices.Index(c.tableColumns, c.sortByColumn)
-	nextIndex := currentIndex - 1%len(c.tableColumns)
-	c.sortByColumn = c.tableColumns[nextIndex]
+	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
+	nextIndex := (len(c.columnSpec) + currentIndex - 1) % len(c.columnSpec)
+	c.sortByColumn = c.columnSpec[nextIndex]
+	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
 	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) toggleSortDirection() {
 	c.sortInverted = !c.sortInverted
+	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
 	c.updateTableContents()
 }
 
@@ -158,19 +163,14 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 
 	table.Clear()
 
-	uiutil.SetupWindow(table, c.title)
-
-	tableEntries := c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
-
 	// Table Header
-	for column, tableColumn := range c.tableColumns {
-		columnId := tableColumn
+	for column, tableColumn := range c.columnSpec {
 		cellColor := tcell.ColorWhite
 		cellAlignment := tableColumn.Alignment
 		cellExpansion := 0
 
 		cellText := tableColumn.Title
-		if columnId == c.sortByColumn {
+		if tableColumn == c.sortByColumn {
 			var sortDirectionIndicator = "↓"
 			if !c.sortInverted {
 				sortDirectionIndicator = "↑"
@@ -186,16 +186,25 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	}
 
 	// Table Content
-	for row, entry := range tableEntries {
-		cells := c.toTableCells(row, c.tableColumns, entry)
+	for row, entry := range c.entries {
+		cells := c.toTableCells(row, c.columnSpec, entry)
 		for column, cell := range cells {
 			table.SetCell(row+1, column, cell)
 		}
 	}
 }
 
-func (c *RowSelectionTable[T]) Select(row int) {
-	c.tableLayout.Select(row, 0)
+func (c *RowSelectionTable[T]) Select(entry *T) {
+	index := 0
+	if entry != nil {
+		index = slices.Index(c.entries, entry)
+		if index < 0 {
+			return
+		} else {
+			index += 1
+		}
+	}
+	c.tableLayout.Select(index, 0)
 }
 
 func (c *RowSelectionTable[T]) HasFocus() bool {
@@ -204,4 +213,13 @@ func (c *RowSelectionTable[T]) HasFocus() bool {
 
 func (c *RowSelectionTable[T]) GetEntries() []*T {
 	return c.entries
+}
+
+func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
+	row, _ := c.tableLayout.GetSelection()
+	if row >= 1 {
+		return c.entries[row-1]
+	} else {
+		return nil
+	}
 }
