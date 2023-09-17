@@ -139,7 +139,7 @@ func (d *FileActionDialog) createLayout() {
 
 	dialog := createModal(dialogTitle, dialogContent, 50, 15)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+		if event.Key() == tcell.KeyEscape {
 			d.Close()
 			return nil
 		} else if event.Key() == tcell.KeyEnter {

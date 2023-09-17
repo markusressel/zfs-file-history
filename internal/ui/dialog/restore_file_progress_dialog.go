@@ -89,7 +89,7 @@ func (d *RestoreFileProgressDialog) createLayout() {
 
 	dialog := createModal(dialogTitle, progressLayout, 60, 10)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+		if event.Key() == tcell.KeyEscape {
 			d.Close()
 			return nil
 		}
@@ -183,5 +183,5 @@ func (d *RestoreFileProgressDialog) handleDone() {
 	d.progress.SetValue(finishedValue)
 	d.progress.SetTitle(theme.CreateTitleText("Done!"))
 	d.progress.SetTitleColor(tcell.ColorGreen)
-	d.abortTextView.SetText(uiutil.CreateAttentionText("Press 'q' to close"))
+	d.abortTextView.SetText(uiutil.CreateAttentionText("Press 'esc' to close"))
 }

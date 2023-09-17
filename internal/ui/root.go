@@ -31,10 +31,10 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 			return event
 		}
 
-		if event.Rune() == 'q' || event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
+		if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
 			application.Stop()
 			return nil
-		} else if event.Rune() == '?' {
+		} else if event.Rune() == '?' || event.Key() == tcell.KeyF1 {
 			pagesLayout.ShowPage(string(HelpDialog))
 			return nil
 		}
@@ -42,7 +42,7 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 	})
 
 	helpPage.GetLayout().SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+		if event.Key() == tcell.KeyEscape {
 			pagesLayout.HidePage(string(HelpDialog))
 			return nil
 		}

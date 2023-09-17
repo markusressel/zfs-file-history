@@ -265,13 +265,13 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 		return event
 	})
 
-	fileBrowser.createLayout(application)
+	fileBrowser.createLayout()
 	fileBrowser.SetPath(path, false)
 
 	return fileBrowser
 }
 
-func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Application) {
+func (fileBrowser *FileBrowserComponent) createLayout() {
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 
 	tableContainer := fileBrowser.tableContainer.GetLayout()
@@ -443,8 +443,6 @@ func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, se
 }
 
 func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists bool) {
-	// TODO: allow entering a path, even if it only exists within a snapshot,
-	//  be careful about "restore" action from nested folders though!
 	if checkExists {
 		stat, err := os.Stat(newPath)
 		if err != nil {

@@ -23,16 +23,25 @@ type TableEntry struct {
 	Value string
 }
 
+var (
+	emptyEntry = &TableEntry{Key: "", Value: ""}
+)
+
 func (p *HelpPage) createLayout() {
 	helpTable := tview.NewTable()
 
 	helpTableEntries := []*TableEntry{
-		{Key: "up, k", Value: "Move cursor up"},
-		{Key: "down, j", Value: "Move cursor down"},
-		{Key: "left, h", Value: "Open parent directory"},
-		{Key: "right", Value: "Open selected directory"},
-		{Key: "enter", Value: "Open file action dialog"},
-		{Key: "tab, backtab", Value: "Switch focus"},
+		{Key: "F1, ?", Value: "Opens help dialog"},
+		{Key: "up, k", Value: "Moves cursor up"},
+		{Key: "down, j", Value: "Moves cursor down"},
+		{Key: "left, h", Value: "Opens parent directory"},
+		{Key: "right", Value: "Enters selected directory"},
+		{Key: "enter", Value: "Opens file action dialog"},
+		{Key: "tab, backtab", Value: "Cycles window focus"},
+		{Key: "ctrl+r", Value: "Refreshes all data"},
+		emptyEntry,
+		{Key: "esc", Value: "Closes any currently open dialog"},
+		{Key: "ctrl+q", Value: "Quits zfs-file-history"},
 	}
 
 	columns, rows := 2, len(helpTableEntries)
@@ -44,7 +53,7 @@ func (p *HelpPage) createLayout() {
 				var text string
 				var cellAlignment int
 				var cellColor = tcell.ColorWhite
-				if col == 0 {
+				if col == 0 && entry != emptyEntry {
 					text = fmt.Sprintf("%s:", entry.Key)
 					cellAlignment = tview.AlignRight
 					cellColor = tcell.ColorSteelBlue
@@ -60,7 +69,7 @@ func (p *HelpPage) createLayout() {
 		}
 	}
 
-	p.layout = createModal(" Help ", helpTable, 60, 10)
+	p.layout = createModal(" Help ", helpTable, 60, 13)
 }
 
 func (p *HelpPage) GetLayout() *tview.Flex {
