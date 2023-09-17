@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 	"zfs-file-history/internal/logging"
 )
 
@@ -13,6 +14,7 @@ type FileWatcher struct {
 	stop       chan bool
 	actionLock sync.Mutex
 	watcher    *fsnotify.Watcher
+	newEvent   *fsnotify.Event
 }
 
 func NewFileWatcher(path string) *FileWatcher {
@@ -46,17 +48,26 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 		return err
 	}
 
+	t := time.NewTicker(1 * time.Second)
+
 	go func() {
 		for {
 			select {
+			case <-t.C:
+				if fileWatcher.newEvent == nil {
+					continue
+				}
+
+				fileWatcher.actionLock.Lock()
+				event := fileWatcher.newEvent
+				action(event.Name)
+				fileWatcher.actionLock.Unlock()
 			// watch for events
 			case event, ok := <-fileWatcher.watcher.Events:
 				if !ok {
 					return
 				}
-				fileWatcher.actionLock.Lock()
-				action(event.Name)
-				fileWatcher.actionLock.Unlock()
+				fileWatcher.newEvent = &event
 			// watch for errors
 			case err := <-fileWatcher.watcher.Errors:
 				if err != nil {
@@ -67,6 +78,7 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 				if err != nil {
 					logging.Error(err.Error())
 				}
+				return
 			}
 		}
 	}()
@@ -103,6 +115,7 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 				if err != nil {
 					logging.Error(err.Error())
 				}
+				return
 			}
 		}
 	}()
