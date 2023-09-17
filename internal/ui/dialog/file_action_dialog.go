@@ -30,7 +30,7 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 	dialog := &FileActionDialog{
 		application:   application,
 		file:          file,
-		actionChannel: make(chan DialogAction, 10),
+		actionChannel: make(chan DialogAction),
 	}
 
 	dialog.createLayout()

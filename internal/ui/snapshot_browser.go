@@ -31,7 +31,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 	snapshotsBrowser := &SnapshotBrowserComponent{
 		application:             application,
 		snapshots:               []*zfs.Snapshot{},
-		selectedSnapshotChanged: make(chan *zfs.Snapshot, 10),
+		selectedSnapshotChanged: make(chan *zfs.Snapshot),
 		selectedSnapshotMap:     map[string]*zfs.Snapshot{},
 	}
 	snapshotsBrowser.createLayout()

@@ -108,36 +108,37 @@ func (c *RowSelectionTable[T]) SetData(columns []*Column, entries []*T) {
 	c.columnSpec = columns
 	c.entries = entries
 
-	c.sortByColumn = columns[0]
-	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
-
-	c.updateTableContents()
+	c.SortBy(columns[0], false)
 }
 
 func (c *RowSelectionTable[T]) SetDoubleClickCallback(f func()) {
 	c.doubleClickCallback = f
 }
 
+func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {
+	c.sortByColumn = sortOption
+	c.sortInverted = inverted
+	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
+	c.updateTableContents()
+}
+
 func (c *RowSelectionTable[T]) nextSortOrder() {
 	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
 	nextIndex := (currentIndex + 1) % len(c.columnSpec)
-	c.sortByColumn = c.columnSpec[nextIndex]
-	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
-	c.updateTableContents()
+	column := c.columnSpec[nextIndex]
+	c.SortBy(column, c.sortInverted)
 }
 
 func (c *RowSelectionTable[T]) previousSortOrder() {
 	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
 	nextIndex := (len(c.columnSpec) + currentIndex - 1) % len(c.columnSpec)
-	c.sortByColumn = c.columnSpec[nextIndex]
-	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
-	c.updateTableContents()
+	column := c.columnSpec[nextIndex]
+	c.SortBy(column, c.sortInverted)
 }
 
 func (c *RowSelectionTable[T]) toggleSortDirection() {
 	c.sortInverted = !c.sortInverted
-	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
-	c.updateTableContents()
+	c.SortBy(c.sortByColumn, c.sortInverted)
 }
 
 func (c *RowSelectionTable[T]) updateTableContents() {

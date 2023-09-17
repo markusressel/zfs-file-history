@@ -235,8 +235,8 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 
 	fileBrowser := &FileBrowserComponent{
 		application:              application,
-		pathChanged:              make(chan string, 10),
-		selectedFileEntryChanged: make(chan *data.FileBrowserEntry, 10),
+		pathChanged:              make(chan string),
+		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
 		statusChannel:            statusChannel,
 		selectionIndexMap:        map[string]int{},
 

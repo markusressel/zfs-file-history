@@ -20,7 +20,7 @@ type DatasetInfoComponent struct {
 func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 	datasetInfo := &DatasetInfoComponent{
 		application:    application,
-		datasetChanged: make(chan *zfs.Dataset, 10),
+		datasetChanged: make(chan *zfs.Dataset),
 	}
 
 	datasetInfo.createLayout()
