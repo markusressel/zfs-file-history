@@ -540,12 +540,10 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_
 }
 
 func (fileBrowser *FileBrowserComponent) Refresh() {
-	fileBrowser.lock.Lock()
 	fileBrowser.showWarning(status_message.NewWarningStatusMessage("Refreshing..."))
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
 	fileBrowser.showInfo(status_message.NewInfoStatusMessage(""))
-	fileBrowser.lock.Unlock()
 }
 
 func (fileBrowser *FileBrowserComponent) updateTableContents() {

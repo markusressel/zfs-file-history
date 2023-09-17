@@ -23,7 +23,7 @@ type MainPage struct {
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
-	statusChannel := make(chan *status_message.StatusMessage)
+	statusChannel := make(chan *status_message.StatusMessage, 1000)
 
 	fileBrowser := file_browser.NewFileBrowser(application, statusChannel, path)
 
