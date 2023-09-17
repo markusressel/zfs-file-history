@@ -5,7 +5,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
-	path2 "path"
 	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
@@ -200,7 +199,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*Snapsh
 	for _, snapshot := range snapshots {
 		containsFile := false
 		if snapshotBrowser.currentFileEntry != nil {
-			filePath := path2.Join(snapshot.Path, snapshotBrowser.currentFileEntry.Name)
+			filePath := snapshotBrowser.currentFileEntry.GetRealPath()
 			containsFile, err = snapshot.ContainsFile(filePath)
 			if err != nil {
 				logging.Error(err.Error())
