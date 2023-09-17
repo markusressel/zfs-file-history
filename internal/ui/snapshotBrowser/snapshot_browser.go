@@ -16,16 +16,12 @@ type SnapshotBrowserComponent struct {
 
 	tableContainer *table.RowSelectionTable[zfs.Snapshot]
 
-	path            string
-	currentFileEnty *data.FileBrowserEntry
+	path             string
+	currentFileEntry *data.FileBrowserEntry
 
-	dataset *zfs.Dataset
-
-	snapshots               []*zfs.Snapshot
-	currentSnapshot         *zfs.Snapshot
+	dataset                 *zfs.Dataset
 	selectedSnapshotChanged chan *zfs.Snapshot
-
-	selectedSnapshotMap map[string]*zfs.Snapshot
+	selectedSnapshotMap     map[string]*zfs.Snapshot
 }
 
 var (
@@ -84,7 +80,6 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 
 	snapshotsBrowser := &SnapshotBrowserComponent{
 		application:             application,
-		snapshots:               []*zfs.Snapshot{},
 		selectedSnapshotChanged: make(chan *zfs.Snapshot),
 		selectedSnapshotMap:     map[string]*zfs.Snapshot{},
 		tableContainer:          tableContainer,
@@ -110,7 +105,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.FileBrowserEntry) {
-	snapshotBrowser.currentFileEnty = fileEntry
+	snapshotBrowser.currentFileEntry = fileEntry
 	snapshotBrowser.updateTableContents()
 }
 
@@ -128,8 +123,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetDataset(dataset *zfs.Dataset
 
 func (snapshotBrowser *SnapshotBrowserComponent) updateTableContents() {
 	title := "Snapshots"
-	if snapshotBrowser.currentSnapshot != nil {
-		title = fmt.Sprintf("Snapshot: %s", snapshotBrowser.currentSnapshot.Name)
+	if snapshotBrowser.getSelection() != nil {
+		title = fmt.Sprintf("Snapshot: %s", snapshotBrowser.getSelection().Name)
 	}
 	snapshotBrowser.tableContainer.SetTitle(title)
 
@@ -177,23 +172,28 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 		return
 	}
 	lastSelectedSnapshot, ok := snapshotBrowser.selectedSnapshotMap[snapshotBrowser.dataset.Path]
-	if ok && slices.Contains(snapshotBrowser.snapshots, lastSelectedSnapshot) {
+	if ok && slices.Contains(snapshotBrowser.currentEntries(), lastSelectedSnapshot) {
 		snapshotBrowser.selectSnapshot(lastSelectedSnapshot)
+	} else {
+		if len(snapshotBrowser.currentEntries()) > 0 {
+			snapshotBrowser.selectSnapshot(snapshotBrowser.currentEntries()[0])
+		} else {
+			snapshotBrowser.selectSnapshot(nil)
+		}
 	}
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *zfs.Snapshot) {
-	if snapshotBrowser.currentSnapshot == snapshot {
+	if snapshotBrowser.getSelection() == snapshot {
 		return
 	}
-	snapshotBrowser.currentSnapshot = snapshot
+	snapshotBrowser.tableContainer.Select(snapshot)
 	if snapshot != nil {
 		snapshotBrowser.selectedSnapshotMap[snapshot.ParentDataset.Path] = snapshot
 	}
 	go func() {
-		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.currentSnapshot
+		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.getSelection()
 	}()
-	snapshotBrowser.updateTableContents()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) OnSelectedSnapshotChanged() <-chan *zfs.Snapshot {
@@ -202,4 +202,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) OnSelectedSnapshotChanged() <-c
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetLayout() tview.Primitive {
 	return snapshotBrowser.tableContainer.GetLayout()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) getSelection() *zfs.Snapshot {
+	return snapshotBrowser.tableContainer.GetSelectedEntry()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) currentEntries() []*zfs.Snapshot {
+	return snapshotBrowser.tableContainer.GetEntries()
 }
