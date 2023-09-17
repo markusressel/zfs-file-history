@@ -57,6 +57,9 @@ func Fatal(format string, a ...interface{}) {
 }
 
 func writeToLogFile(format string, a ...interface{}) {
+	if len(format) <= 0 {
+		return
+	}
 	file := openLogFile()
 	defer file.Close()
 	log.SetOutput(file)
