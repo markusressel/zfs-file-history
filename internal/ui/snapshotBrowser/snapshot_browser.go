@@ -19,9 +19,10 @@ type SnapshotBrowserComponent struct {
 	path             string
 	currentFileEntry *data.FileBrowserEntry
 
-	dataset                 *zfs.Dataset
-	selectedSnapshotChanged chan *zfs.Snapshot
-	selectedSnapshotMap     map[string]*zfs.Snapshot
+	dataset             *zfs.Dataset
+	selectedSnapshotMap map[string]*zfs.Snapshot
+
+	selectedSnapshotChangedCallback func(snapshot *zfs.Snapshot)
 }
 
 var (
@@ -79,10 +80,9 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 	)
 
 	snapshotsBrowser := &SnapshotBrowserComponent{
-		application:             application,
-		selectedSnapshotChanged: make(chan *zfs.Snapshot),
-		selectedSnapshotMap:     map[string]*zfs.Snapshot{},
-		tableContainer:          tableContainer,
+		application:         application,
+		selectedSnapshotMap: map[string]*zfs.Snapshot{},
+		tableContainer:      tableContainer,
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnDate, true)
@@ -90,9 +90,7 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 		if snapshot != nil {
 			snapshotsBrowser.selectedSnapshotMap[snapshot.ParentDataset.Path] = snapshot
 		}
-		go func() {
-			snapshotsBrowser.selectedSnapshotChanged <- snapshot
-		}()
+		snapshotsBrowser.selectedSnapshotChangedCallback(snapshot)
 	})
 	snapshotsBrowser.SetPath(path)
 
@@ -199,10 +197,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *zfs.Sn
 	snapshotBrowser.tableContainer.Select(snapshot)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) OnSelectedSnapshotChanged() <-chan *zfs.Snapshot {
-	return snapshotBrowser.selectedSnapshotChanged
-}
-
 func (snapshotBrowser *SnapshotBrowserComponent) GetLayout() tview.Primitive {
 	return snapshotBrowser.tableContainer.GetLayout()
 }
@@ -213,4 +207,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) getSelection() *zfs.Snapshot {
 
 func (snapshotBrowser *SnapshotBrowserComponent) currentEntries() []*zfs.Snapshot {
 	return snapshotBrowser.tableContainer.GetEntries()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) SetSelectedSnapshotChangedCallback(f func(snapshot *zfs.Snapshot)) {
+	snapshotBrowser.selectedSnapshotChangedCallback = f
 }

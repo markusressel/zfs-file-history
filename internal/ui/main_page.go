@@ -4,11 +4,13 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"time"
+	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
 	snapshotBrowser2 "zfs-file-history/internal/ui/snapshotBrowser"
 	"zfs-file-history/internal/ui/status"
+	"zfs-file-history/internal/zfs"
 )
 
 type MainPage struct {
@@ -41,6 +43,14 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		statusChannel:   statusChannel,
 	}
 
+	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
+		snapshotBrowser.SetFileEntry(fileEntry)
+	})
+
+	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *zfs.Snapshot) {
+		fileBrowser.SetSelectedSnapshot(snapshot)
+	})
+
 	mainPage.layout = mainPage.createLayout()
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
@@ -62,15 +72,9 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				// update file browser based on currently selected snapshot
 				snapshotBrowser.SetDataset(newDataset)
 				application.Draw()
-			case newSnapshotSelection := <-snapshotBrowser.OnSelectedSnapshotChanged():
-				fileBrowser.SetSelectedSnapshot(newSnapshotSelection)
-				application.Draw()
 			case newPath := <-fileBrowser.PathChangedChannel():
 				snapshotBrowser.SetPath(newPath)
 				datasetInfo.SetPath(newPath)
-				application.Draw()
-			case newFileSelection := <-fileBrowser.SelectedFileEntryChangedChannel():
-				snapshotBrowser.SetFileEntry(newFileSelection)
 				application.Draw()
 			case statusMessage := <-statusChannel:
 				mainPage.showStatusMessage(statusMessage)

@@ -67,12 +67,11 @@ type FileBrowserComponent struct {
 
 	currentSnapshot *zfs.Snapshot
 
-	selectedFileEntryChanged chan *data.FileBrowserEntry
-
 	application *tview.Application
 	layout      *tview.Pages
 
-	tableContainer *table.RowSelectionTable[data.FileBrowserEntry]
+	tableContainer               *table.RowSelectionTable[data.FileBrowserEntry]
+	selectedEntryChangedCallback func(fileEntry *data.FileBrowserEntry)
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
@@ -235,13 +234,13 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	)
 
 	fileBrowser := &FileBrowserComponent{
-		application:              application,
-		pathChanged:              make(chan string),
-		selectedFileEntryChanged: make(chan *data.FileBrowserEntry),
-		statusChannel:            statusChannel,
-		selectionIndexMap:        map[string]int{},
+		application:       application,
+		pathChanged:       make(chan string),
+		statusChannel:     statusChannel,
+		selectionIndexMap: map[string]int{},
 
-		tableContainer: tableContainer,
+		tableContainer:               tableContainer,
+		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
@@ -265,6 +264,10 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 			return nil
 		}
 		return event
+	})
+	tableContainer.SetSelectionChangedCallback(func(selectedEntry *data.FileBrowserEntry) {
+		fileBrowser.rememberSelectionForCurrentPath()
+		fileBrowser.selectedEntryChangedCallback(selectedEntry)
 	})
 
 	fileBrowser.createLayout()
@@ -537,12 +540,6 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 	}
 
 	fileBrowser.tableContainer.Select(newSelection)
-	go func() {
-		fileBrowser.selectedFileEntryChanged <- newSelection
-	}()
-
-	// TODO: update remembered selection even when not changing dirs
-	fileBrowser.rememberSelectionForCurrentPath()
 }
 
 func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
@@ -658,10 +655,6 @@ func (fileBrowser *FileBrowserComponent) PathChangedChannel() <-chan string {
 	return fileBrowser.pathChanged
 }
 
-func (fileBrowser *FileBrowserComponent) SelectedFileEntryChangedChannel() <-chan *data.FileBrowserEntry {
-	return fileBrowser.selectedFileEntryChanged
-}
-
 func (fileBrowser *FileBrowserComponent) showInfo(message *status.StatusMessage) {
 	logging.Info(message.Message)
 	fileBrowser.sendStatusMessage(message)
@@ -685,4 +678,8 @@ func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *status.Statu
 
 func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
 	return fileBrowser.layout
+}
+
+func (fileBrowser *FileBrowserComponent) SetSelectedFileEntryChangedCallback(f func(fileEntry *data.FileBrowserEntry)) {
+	fileBrowser.selectedEntryChangedCallback = f
 }
