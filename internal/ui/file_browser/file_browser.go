@@ -525,14 +525,6 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 	fileBrowser.restoreSelectionForPath()
 }
 
-func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
-	if len(fileBrowser.tableContainer.GetEntries()) > 0 {
-		fileBrowser.tableContainer.Select(fileBrowser.tableContainer.GetEntries()[i])
-	} else {
-		fileBrowser.tableContainer.Select(nil)
-	}
-}
-
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
 	if fileBrowser.GetSelection() == newSelection {
 		return
