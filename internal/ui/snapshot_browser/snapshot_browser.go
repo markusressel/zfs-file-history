@@ -127,6 +127,7 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 	tableContainer.SetSelectionChangedCallback(func(entry *SnapshotBrowserEntry) {
 		snapshotsBrowser.rememberSelectionForDataset(entry)
 		snapshotsBrowser.selectedSnapshotChangedCallback(entry)
+		snapshotsBrowser.updateTableContents()
 	})
 	snapshotsBrowser.SetPath(path)
 
@@ -170,14 +171,17 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) updateTableContents() {
+	newEntries := snapshotBrowser.computeTableEntries()
+	snapshotBrowser.tableContainer.SetData(newEntries)
+
 	title := "Snapshots"
 	if snapshotBrowser.GetSelection() != nil {
-		title = fmt.Sprintf("Snapshot: %s", snapshotBrowser.GetSelection().Snapshot.Name)
+		currentSelectionIndex := slices.Index(snapshotBrowser.GetEntries(), snapshotBrowser.GetSelection()) + 1
+		totalEntriesCount := len(snapshotBrowser.GetEntries())
+		title = fmt.Sprintf("Snapshot: %s (%d/%d)", snapshotBrowser.GetSelection().Snapshot.Name, currentSelectionIndex, totalEntriesCount)
 	}
 	snapshotBrowser.tableContainer.SetTitle(title)
 
-	newEntries := snapshotBrowser.computeTableEntries()
-	snapshotBrowser.tableContainer.SetData(newEntries)
 	snapshotBrowser.restoreSelectionForDataset()
 }
 
@@ -265,4 +269,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) currentEntries() []*SnapshotBro
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetSelectedSnapshotChangedCallback(f func(snapshot *SnapshotBrowserEntry)) {
 	snapshotBrowser.selectedSnapshotChangedCallback = f
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*SnapshotBrowserEntry {
+	return snapshotBrowser.tableContainer.GetEntries()
 }
