@@ -10,8 +10,14 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
+
+type SelectionInfo[T any] struct {
+	Index int
+	Entry *T
+}
 
 type SnapshotBrowserEntry struct {
 	Snapshot  *zfs.Snapshot
@@ -27,7 +33,7 @@ type SnapshotBrowserComponent struct {
 	hostDataset      *zfs.Dataset
 	currentFileEntry *data.FileBrowserEntry
 
-	selectedSnapshotMap map[string]*SnapshotBrowserEntry
+	selectedSnapshotMap map[string]*SelectionInfo[SnapshotBrowserEntry]
 
 	selectedSnapshotChangedCallback func(snapshot *SnapshotBrowserEntry)
 }
@@ -118,7 +124,7 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 
 	snapshotsBrowser := &SnapshotBrowserComponent{
 		application:                     application,
-		selectedSnapshotMap:             map[string]*SnapshotBrowserEntry{},
+		selectedSnapshotMap:             map[string]*SelectionInfo[SnapshotBrowserEntry]{},
 		tableContainer:                  tableContainer,
 		selectedSnapshotChangedCallback: func(snapshot *SnapshotBrowserEntry) {},
 	}
@@ -228,25 +234,47 @@ func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(sel
 	if snapshotBrowser.hostDataset == nil {
 		return
 	}
-	snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path] = selection
+	snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path] = &SelectionInfo[SnapshotBrowserEntry]{
+		Index: slices.Index(snapshotBrowser.GetEntries(), selection),
+		Entry: selection,
+	}
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *SelectionInfo[SnapshotBrowserEntry] {
+	selectionInfo, ok := snapshotBrowser.selectedSnapshotMap[path]
+	if !ok {
+		return nil
+	} else {
+		return selectionInfo
+	}
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
+	var entryToSelect *SnapshotBrowserEntry
 	if snapshotBrowser.hostDataset == nil {
-		snapshotBrowser.selectSnapshot(nil)
+		snapshotBrowser.selectSnapshot(entryToSelect)
 		return
 	}
-	lastSelectedSnapshot, ok := snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path]
-	if ok && lastSelectedSnapshot != nil && slices.ContainsFunc(snapshotBrowser.currentEntries(), func(s *SnapshotBrowserEntry) bool {
-		return s.Snapshot.Name == lastSelectedSnapshot.Snapshot.Name
-	}) {
-		snapshotBrowser.selectSnapshot(lastSelectedSnapshot)
+
+	entries := snapshotBrowser.tableContainer.GetEntries()
+	rememberedSelectionInfo := snapshotBrowser.getRememberedSelectionInfo(snapshotBrowser.path)
+	if rememberedSelectionInfo == nil {
+		entryToSelect = entries[0]
 	} else {
-		if len(snapshotBrowser.currentEntries()) > 0 {
-			entry := snapshotBrowser.currentEntries()[0]
-			snapshotBrowser.selectSnapshot(entry)
+		var index int
+		if rememberedSelectionInfo.Entry == nil {
+			snapshotBrowser.selectHeader()
+			return
 		} else {
-			snapshotBrowser.selectSnapshot(nil)
+			index = slices.IndexFunc(entries, func(entry *SnapshotBrowserEntry) bool {
+				return entry.Snapshot.Name == rememberedSelectionInfo.Entry.Snapshot.Name
+			})
+		}
+		if index < 0 {
+			closestIndex := util.Coerce(rememberedSelectionInfo.Index, 0, len(entries)-1)
+			entryToSelect = entries[closestIndex]
+		} else {
+			entryToSelect = entries[index]
 		}
 	}
 }
@@ -273,4 +301,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetSelectedSnapshotChangedCallb
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*SnapshotBrowserEntry {
 	return snapshotBrowser.tableContainer.GetEntries()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) selectHeader() {
+	snapshotBrowser.tableContainer.SelectHeader()
 }
