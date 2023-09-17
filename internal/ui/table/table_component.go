@@ -246,7 +246,10 @@ func (c *RowSelectionTable[T]) SetSelectionChangedCallback(f func(selectedEntry 
 }
 
 func (c *RowSelectionTable[T]) SelectHeader() {
-	c.layout.Select(0, 0)
+	row, col := c.layout.GetSelection()
+	if row != 0 || col != 0 {
+		c.layout.Select(0, 0)
+	}
 }
 
 func (c *RowSelectionTable[T]) SelectFirstIfExists() {

@@ -98,8 +98,7 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 	}
 
 	tableEntrySortFunction := func(entries []*SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*SnapshotBrowserEntry {
-		result := slices.Clone(entries)
-		slices.SortFunc(result, func(a, b *SnapshotBrowserEntry) int {
+		slices.SortFunc(entries, func(a, b *SnapshotBrowserEntry) int {
 			result := 0
 			if columnToSortBy == columnName {
 				result = strings.Compare(strings.ToLower(a.Snapshot.Name), strings.ToLower(b.Snapshot.Name))
@@ -113,7 +112,7 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 			}
 			return result
 		})
-		return result
+		return entries
 	}
 
 	tableContainer := table.NewTableContainer[SnapshotBrowserEntry](
@@ -257,7 +256,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 	}
 
 	entries := snapshotBrowser.tableContainer.GetEntries()
-	rememberedSelectionInfo := snapshotBrowser.getRememberedSelectionInfo(snapshotBrowser.path)
+	rememberedSelectionInfo := snapshotBrowser.getRememberedSelectionInfo(snapshotBrowser.hostDataset.Path)
 	if rememberedSelectionInfo == nil {
 		entryToSelect = entries[0]
 	} else {
@@ -277,6 +276,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 			entryToSelect = entries[index]
 		}
 	}
+	snapshotBrowser.selectSnapshot(entryToSelect)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *SnapshotBrowserEntry) {
@@ -305,4 +305,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*SnapshotBrowser
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectHeader() {
 	snapshotBrowser.tableContainer.SelectHeader()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) selectFirstIfExists() {
+	snapshotBrowser.tableContainer.SelectFirstIfExists()
 }
