@@ -261,6 +261,17 @@ func (s *Snapshot) IsSnapshotPath(path string) bool {
 	return strings.HasPrefix(path, s.Path)
 }
 
+func (s *Snapshot) ContainsFile(entry string) (bool, error) {
+	realPath := s.GetSnapshotPath(entry)
+	_, err := os.Stat(realPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func syncFileProperties(dstPath string, stat os.FileInfo) error {
 	err := os.Chmod(dstPath, stat.Mode())
 	if err != nil {

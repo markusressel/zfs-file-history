@@ -14,11 +14,11 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
-	"zfs-file-history/internal/zfs"
 )
 
 const (
@@ -62,10 +62,9 @@ var (
 )
 
 type FileBrowserComponent struct {
-	path        string
-	pathChanged chan string
+	path string
 
-	currentSnapshot *zfs.Snapshot
+	currentSnapshot *snapshot_browser.SnapshotBrowserEntry
 
 	application *tview.Application
 	layout      *tview.Pages
@@ -73,9 +72,10 @@ type FileBrowserComponent struct {
 	tableContainer               *table.RowSelectionTable[data.FileBrowserEntry]
 	selectedEntryChangedCallback func(fileEntry *data.FileBrowserEntry)
 
-	selectionIndexMap map[string]int
-	fileWatcher       *util.FileWatcher
-	statusChannel     chan<- *status.StatusMessage
+	selectionIndexMap   map[string]int
+	fileWatcher         *util.FileWatcher
+	statusChannel       chan<- *status.StatusMessage
+	pathChangedCallback func(path string)
 }
 
 func NewFileBrowser(application *tview.Application, statusChannel chan<- *status.StatusMessage, path string) *FileBrowserComponent {
@@ -235,12 +235,12 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 
 	fileBrowser := &FileBrowserComponent{
 		application:       application,
-		pathChanged:       make(chan string),
 		statusChannel:     statusChannel,
 		selectionIndexMap: map[string]int{},
 
 		tableContainer:               tableContainer,
 		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
+		pathChangedCallback:          func(path string) {},
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
@@ -295,7 +295,7 @@ func (fileBrowser *FileBrowserComponent) Focus() {
 
 func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrowserEntry {
 	path := fileBrowser.path
-	snapshot := fileBrowser.currentSnapshot
+	snapshotEntry := fileBrowser.currentSnapshot
 
 	// list files in current path
 	realFiles, err := util.ListFilesIn(path)
@@ -308,8 +308,8 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 
 	// list snapshot files in currently path with currently selected snapshot
 	var snapshotFilePaths []string
-	if snapshot != nil {
-		snapshotPath := snapshot.GetSnapshotPath(path)
+	if snapshotEntry != nil {
+		snapshotPath := snapshotEntry.Snapshot.GetSnapshotPath(path)
 		snapshotFilePaths, err = util.ListFilesIn(snapshotPath)
 		if os.IsPermission(err) {
 			fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
@@ -342,8 +342,8 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		}
 
 		var snapshotFile *data.SnapshotFile = nil
-		if snapshot != nil {
-			snapshotFilePath := snapshot.GetSnapshotPath(realFilePath)
+		if snapshotEntry != nil {
+			snapshotFilePath := snapshotEntry.Snapshot.GetSnapshotPath(realFilePath)
 			snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
 				return s == snapshotFilePath
 			})
@@ -359,7 +359,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 					Path:         snapshotFilePath,
 					OriginalPath: realFilePath,
 					Stat:         statSnap,
-					Snapshot:     snapshot,
+					Snapshot:     snapshotEntry.Snapshot,
 				}
 			}
 		}
@@ -402,9 +402,9 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 
 		snapshotFile := &data.SnapshotFile{
 			Path:         snapshotFilePath,
-			OriginalPath: snapshot.GetRealPath(snapshotFilePath),
+			OriginalPath: snapshotEntry.Snapshot.GetRealPath(snapshotFilePath),
 			Stat:         statSnap,
-			Snapshot:     snapshot,
+			Snapshot:     snapshotEntry.Snapshot,
 		}
 
 		snapshotFiles := []*data.SnapshotFile{snapshotFile}
@@ -471,9 +471,7 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 
 	if fileBrowser.path != newPath {
 		fileBrowser.path = newPath
-		go func() {
-			fileBrowser.pathChanged <- newPath
-		}()
+		//fileBrowser.selectedEntryChangedCallback(newPath)
 		fileBrowser.Refresh()
 	}
 }
@@ -503,7 +501,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	fileBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
-func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *zfs.Snapshot) {
+func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_browser.SnapshotBrowserEntry) {
 	if fileBrowser.currentSnapshot == snapshot {
 		return
 	}
@@ -651,10 +649,6 @@ func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserE
 	fileBrowser.showWarning(status.NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
 }
 
-func (fileBrowser *FileBrowserComponent) PathChangedChannel() <-chan string {
-	return fileBrowser.pathChanged
-}
-
 func (fileBrowser *FileBrowserComponent) showInfo(message *status.StatusMessage) {
 	logging.Info(message.Message)
 	fileBrowser.sendStatusMessage(message)
@@ -682,4 +676,8 @@ func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
 
 func (fileBrowser *FileBrowserComponent) SetSelectedFileEntryChangedCallback(f func(fileEntry *data.FileBrowserEntry)) {
 	fileBrowser.selectedEntryChangedCallback = f
+}
+
+func (fileBrowser *FileBrowserComponent) SetPathChangedCallback(f func(path string)) {
+	fileBrowser.pathChangedCallback = f
 }

@@ -8,9 +8,8 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
-	snapshotBrowser2 "zfs-file-history/internal/ui/snapshotBrowser"
+	snapshotBrowser2 "zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status"
-	"zfs-file-history/internal/zfs"
 )
 
 type MainPage struct {
@@ -43,13 +42,18 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		statusChannel:   statusChannel,
 	}
 
+	fileBrowser.SetPathChangedCallback(func(path string) {
+		snapshotBrowser.SetPath(path)
+		datasetInfo.SetPath(path)
+	})
 	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
 		snapshotBrowser.SetFileEntry(fileEntry)
 	})
 
-	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *zfs.Snapshot) {
+	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *snapshotBrowser2.SnapshotBrowserEntry) {
 		fileBrowser.SetSelectedSnapshot(snapshot)
 	})
+	fileBrowser.SetSelectedSnapshot(snapshotBrowser.GetSelection())
 
 	mainPage.layout = mainPage.createLayout()
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -68,14 +72,6 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	go func() {
 		for {
 			select {
-			case newDataset := <-datasetInfo.OnDatasetChanged():
-				// update file browser based on currently selected snapshot
-				snapshotBrowser.SetDataset(newDataset)
-				application.Draw()
-			case newPath := <-fileBrowser.PathChangedChannel():
-				snapshotBrowser.SetPath(newPath)
-				datasetInfo.SetPath(newPath)
-				application.Draw()
 			case statusMessage := <-statusChannel:
 				mainPage.showStatusMessage(statusMessage)
 			}

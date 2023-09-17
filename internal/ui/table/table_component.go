@@ -214,8 +214,9 @@ func (c *RowSelectionTable[T]) GetEntries() []*T {
 
 func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
 	row, _ := c.layout.GetSelection()
-	if row >= 1 {
-		return c.entries[row-1]
+	row -= 1
+	if row >= 0 && row < len(c.entries) {
+		return c.entries[row]
 	} else {
 		return nil
 	}

@@ -11,16 +11,14 @@ import (
 )
 
 type DatasetInfoComponent struct {
-	application    *tview.Application
-	dataset        *zfs.Dataset
-	layout         *tview.Table
-	datasetChanged chan *zfs.Dataset
+	application *tview.Application
+	dataset     *zfs.Dataset
+	layout      *tview.Table
 }
 
 func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 	datasetInfo := &DatasetInfoComponent{
-		application:    application,
-		datasetChanged: make(chan *zfs.Dataset),
+		application: application,
 	}
 
 	datasetInfo.createLayout()
@@ -47,9 +45,6 @@ func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {
 		return
 	}
 	datasetInfo.dataset = dataset
-	go func() {
-		datasetInfo.datasetChanged <- dataset
-	}()
 	datasetInfo.updateUi()
 }
 
@@ -149,10 +144,6 @@ func (datasetInfo *DatasetInfoComponent) HasFocus() bool {
 
 func (datasetInfo *DatasetInfoComponent) Focus() {
 	datasetInfo.application.SetFocus(datasetInfo.layout)
-}
-
-func (datasetInfo *DatasetInfoComponent) OnDatasetChanged() <-chan *zfs.Dataset {
-	return datasetInfo.datasetChanged
 }
 
 func (datasetInfo *DatasetInfoComponent) GetLayout() tview.Primitive {
