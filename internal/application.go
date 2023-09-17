@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"os/signal"
+	"syscall"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui"
@@ -56,6 +58,19 @@ func RunApplication(path string) {
 			} else {
 				logging.Debug("Webservers stopped.")
 			}
+		})
+	}
+	{
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+
+		g.Add(func() error {
+			<-sig
+			logging.Info("Received SIGTERM signal, exiting...")
+			return nil
+		}, func(err error) {
+			defer close(sig)
+			cancel()
 		})
 	}
 
