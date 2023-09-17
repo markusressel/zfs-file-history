@@ -7,14 +7,15 @@ import (
 	"golang.org/x/exp/slices"
 	"strings"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/zfs"
 )
 
 type SnapshotBrowserEntry struct {
-	Snapshot                 *zfs.Snapshot
-	ContainsCurrentFileEntry bool
+	Snapshot  *zfs.Snapshot
+	DiffState diff_state.DiffState
 }
 
 type SnapshotBrowserComponent struct {
@@ -42,13 +43,13 @@ var (
 		Title:     "Date",
 		Alignment: tview.AlignLeft,
 	}
-	columnContainsFile = &table.Column{
+	columnDiff = &table.Column{
 		Id:        2,
-		Title:     "Contains File",
-		Alignment: tview.AlignLeft,
+		Title:     "Diff",
+		Alignment: tview.AlignCenter,
 	}
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnContainsFile,
+		columnName, columnDate, columnDiff,
 	}
 )
 
@@ -58,18 +59,27 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 		for _, column := range columns {
 			cellText := "N/A"
 			cellColor := tcell.ColorWhite
-			if entry.ContainsCurrentFileEntry {
-				cellColor = tcell.ColorGreen
-			}
 			if column == columnDate {
 				cellText = entry.Snapshot.Date.Format("2006-01-02 15:04:05")
 			} else if column == columnName {
 				cellText = entry.Snapshot.Name
-			} else if column == columnContainsFile {
-				if entry.ContainsCurrentFileEntry {
-					cellText = "✓"
-				} else {
-					cellText = ""
+			} else if column == columnDiff {
+				switch entry.DiffState {
+				case diff_state.Equal:
+					cellText = "="
+					cellColor = tcell.ColorGray
+				case diff_state.Deleted:
+					cellText = "+"
+					cellColor = tcell.ColorGreen
+				case diff_state.Added:
+					cellText = "-"
+					cellColor = tcell.ColorRed
+				case diff_state.Modified:
+					cellText = "≠"
+					cellColor = tcell.ColorYellow
+				case diff_state.Unknown:
+					cellText = "N/A"
+					cellColor = tcell.ColorGray
 				}
 			}
 			cell := tview.NewTableCell(cellText).
@@ -87,12 +97,8 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 				result = strings.Compare(strings.ToLower(a.Snapshot.Name), strings.ToLower(b.Snapshot.Name))
 			} else if columnToSortBy == columnDate {
 				result = a.Snapshot.Date.Compare(*b.Snapshot.Date)
-			} else if columnToSortBy == columnContainsFile {
-				if a.ContainsCurrentFileEntry && !b.ContainsCurrentFileEntry {
-					return -1
-				} else if !a.ContainsCurrentFileEntry && b.ContainsCurrentFileEntry {
-					return 1
-				}
+			} else if columnToSortBy == columnDiff {
+				result = int(b.DiffState - a.DiffState)
 			}
 			if inverted {
 				result *= -1
@@ -197,18 +203,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*Snapsh
 	}
 
 	for _, snapshot := range snapshots {
-		containsFile := false
+		diffState := diff_state.Unknown
 		if snapshotBrowser.currentFileEntry != nil {
 			filePath := snapshotBrowser.currentFileEntry.GetRealPath()
-			containsFile, err = snapshot.ContainsFile(filePath)
-			if err != nil {
-				logging.Error(err.Error())
-				return result
-			}
+			diffState = snapshot.DetermineDiffState(filePath)
 		}
 		result = append(result, &SnapshotBrowserEntry{
-			Snapshot:                 snapshot,
-			ContainsCurrentFileEntry: containsFile,
+			Snapshot:  snapshot,
+			DiffState: diffState,
 		})
 	}
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/snapshot_browser"
@@ -82,20 +83,20 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
 		var status = "="
 		var statusColor = tcell.ColorGray
-		switch entry.Status {
-		case data.Equal:
+		switch entry.DiffState {
+		case diff_state.Equal:
 			status = "="
 			statusColor = tcell.ColorGray
-		case data.Deleted:
+		case diff_state.Deleted:
 			status = "-"
 			statusColor = tcell.ColorRed
-		case data.Added:
+		case diff_state.Added:
 			status = "+"
 			statusColor = tcell.ColorGreen
-		case data.Modified:
+		case diff_state.Modified:
 			status = "≠"
 			statusColor = tcell.ColorYellow
-		case data.Unknown:
+		case diff_state.Unknown:
 			status = "N/A"
 			statusColor = tcell.ColorGray
 		}
@@ -136,10 +137,10 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 			} else if column == columnDateTime {
 				cellText = entry.GetStat().ModTime().Format(time.DateTime)
 
-				switch entry.Status {
-				case data.Added, data.Deleted:
+				switch entry.DiffState {
+				case diff_state.Added, diff_state.Deleted:
 					cellColor = statusColor
-				case data.Modified:
+				case diff_state.Modified:
 					if entry.RealFile.Stat.ModTime() != entry.SnapshotFiles[0].Stat.ModTime() {
 						cellColor = statusColor
 					} else {
@@ -158,10 +159,10 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 					cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
 				}
 
-				switch entry.Status {
-				case data.Added, data.Deleted:
+				switch entry.DiffState {
+				case diff_state.Added, diff_state.Deleted:
 					cellColor = statusColor
-				case data.Modified:
+				case diff_state.Modified:
 					if entry.RealFile.Stat.Size() != entry.SnapshotFiles[0].Stat.Size() {
 						cellColor = statusColor
 					} else {
@@ -200,7 +201,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 			case columnSize:
 				result = int(a.GetStat().Size() - b.GetStat().Size())
 			case columnDiff:
-				result = int(b.Status - a.Status)
+				result = int(b.DiffState - a.DiffState)
 			}
 
 			if inverted {
@@ -413,19 +414,19 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 
 	for _, entry := range fileEntries {
 		// figure out status
-		var status = data.Equal
+		var status = diff_state.Equal
 		if fileBrowser.currentSnapshot == nil {
-			status = data.Unknown
+			status = diff_state.Unknown
 		} else if entry.HasSnapshot() && !entry.HasReal() {
 			// file only exists in snapshot but not in real
-			status = data.Deleted
+			status = diff_state.Deleted
 		} else if !entry.HasSnapshot() && entry.HasReal() {
 			// file only exists in real but not in snapshot
-			status = data.Added
+			status = diff_state.Added
 		} else if entry.SnapshotFiles[0].HasChanged() {
-			status = data.Modified
+			status = diff_state.Modified
 		}
-		entry.Status = status
+		entry.DiffState = status
 	}
 
 	return fileEntries

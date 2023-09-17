@@ -7,6 +7,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 )
@@ -270,6 +271,23 @@ func (s *Snapshot) ContainsFile(entry string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
+	containsFile, err := s.ContainsFile(path)
+	if err != nil {
+		logging.Error(err.Error())
+		return diff_state.Unknown
+	}
+	if containsFile {
+		if s.CheckIfFileHasChanged(path) {
+			return diff_state.Modified
+		} else {
+			return diff_state.Equal
+		}
+	} else {
+		return diff_state.Added
+	}
 }
 
 func syncFileProperties(dstPath string, stat os.FileInfo) error {

@@ -3,6 +3,7 @@ package data
 import (
 	"golang.org/x/exp/slices"
 	"os"
+	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -39,22 +40,12 @@ const (
 	File
 )
 
-type FileBrowserEntryStatus int
-
-const (
-	Added FileBrowserEntryStatus = iota
-	Deleted
-	Modified
-	Equal
-	Unknown
-)
-
 type FileBrowserEntry struct {
 	Name          string
 	RealFile      *RealFile
 	SnapshotFiles []*SnapshotFile
 	Type          FileBrowserEntryType
-	Status        FileBrowserEntryStatus
+	DiffState     diff_state.DiffState
 }
 
 func (entry *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
