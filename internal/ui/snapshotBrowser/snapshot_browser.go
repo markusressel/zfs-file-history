@@ -119,6 +119,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetDataset(dataset *zfs.Dataset) {
 	snapshotBrowser.dataset = dataset
+	snapshotBrowser.updateTableContents()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) updateTableContents() {
