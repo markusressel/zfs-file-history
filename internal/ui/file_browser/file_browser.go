@@ -26,6 +26,11 @@ const (
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
 
+type FileBrowserSelectionInfo struct {
+	Index int
+	Entry *data.FileBrowserEntry
+}
+
 var (
 	columnSize = &table.Column{
 		Id:        0,
@@ -73,7 +78,7 @@ type FileBrowserComponent struct {
 	tableContainer               *table.RowSelectionTable[data.FileBrowserEntry]
 	selectedEntryChangedCallback func(fileEntry *data.FileBrowserEntry)
 
-	selectionIndexMap   map[string]int
+	selectionIndexMap   map[string]FileBrowserSelectionInfo
 	fileWatcher         *util.FileWatcher
 	statusChannel       chan<- *status_message.StatusMessage
 	pathChangedCallback func(path string)
@@ -237,7 +242,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	fileBrowser := &FileBrowserComponent{
 		application:       application,
 		statusChannel:     statusChannel,
-		selectionIndexMap: map[string]int{},
+		selectionIndexMap: map[string]FileBrowserSelectionInfo{},
 
 		tableContainer:               tableContainer,
 		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
@@ -267,7 +272,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 		return event
 	})
 	tableContainer.SetSelectionChangedCallback(func(selectedEntry *data.FileBrowserEntry) {
-		fileBrowser.rememberSelectionForCurrentPath()
+		fileBrowser.rememberSelectionInfoForCurrentPath()
 		fileBrowser.selectedEntryChangedCallback(selectedEntry)
 	})
 
@@ -540,29 +545,39 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 		entryToSelect = nil
 	} else {
 		entries := fileBrowser.tableContainer.GetEntries()
-		rememberedIndex := fileBrowser.getRememberedSelectionIndex(fileBrowser.path)
-		if rememberedIndex > 0 && rememberedIndex < len(entries) {
-			entryToSelect = entries[rememberedIndex]
-		} else {
+		rememberedSelectionInfo := fileBrowser.getRememberedSelectionInfo(fileBrowser.path)
+		if rememberedSelectionInfo == nil {
 			entryToSelect = entries[0]
+		} else {
+			index := slices.IndexFunc(entries, func(entry *data.FileBrowserEntry) bool {
+				return entry.Name == rememberedSelectionInfo.Entry.Name
+			})
+			if index < 0 {
+				closestIndex := util.Coerce(rememberedSelectionInfo.Index, 0, len(entries)-1)
+				entryToSelect = entries[closestIndex]
+			} else {
+				entryToSelect = entries[index]
+			}
 		}
 	}
 	fileBrowser.selectFileEntry(entryToSelect)
 }
 
-func (fileBrowser *FileBrowserComponent) rememberSelectionForCurrentPath() {
-	index := slices.Index(fileBrowser.tableContainer.GetEntries(), fileBrowser.tableContainer.GetSelectedEntry())
-	fileBrowser.selectionIndexMap[fileBrowser.path] = index
+func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
+	selectedEntry := fileBrowser.tableContainer.GetSelectedEntry()
+	index := slices.Index(fileBrowser.tableContainer.GetEntries(), selectedEntry)
+	fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
+		Index: index,
+		Entry: selectedEntry,
+	}
 }
 
-func (fileBrowser *FileBrowserComponent) getRememberedSelectionIndex(path string) int {
-	index, ok := fileBrowser.selectionIndexMap[path]
+func (fileBrowser *FileBrowserComponent) getRememberedSelectionInfo(path string) *FileBrowserSelectionInfo {
+	selectionInfo, ok := fileBrowser.selectionIndexMap[path]
 	if !ok {
-		return -1
-	} else if index < 0 {
-		return 0
+		return nil
 	} else {
-		return index
+		return &selectionInfo
 	}
 }
 
