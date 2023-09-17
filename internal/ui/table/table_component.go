@@ -104,11 +104,14 @@ func (c *RowSelectionTable[T]) SetTitle(title string) {
 	uiutil.SetupWindow(c.layout, title)
 }
 
-func (c *RowSelectionTable[T]) SetData(columns []*Column, entries []*T) {
+func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColumn *Column, inverted bool) {
 	c.columnSpec = columns
-	c.entries = entries
+	c.SortBy(defaultSortColumn, inverted)
+}
 
-	c.SortBy(columns[0], false)
+func (c *RowSelectionTable[T]) SetData(entries []*T) {
+	c.entries = entries
+	c.SortBy(c.sortByColumn, c.sortInverted)
 }
 
 func (c *RowSelectionTable[T]) SetDoubleClickCallback(f func()) {

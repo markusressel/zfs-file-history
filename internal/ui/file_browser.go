@@ -192,7 +192,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 			var result int
 			switch columnToSortBy {
 			case nameColumn:
-				result = strings.Compare(a.Name, b.Name)
+				result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 			case datetimeColumn:
 				result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
 			case typeColumn:
@@ -216,7 +216,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 				return result
 			}
 
-			result = strings.Compare(a.Name, b.Name)
+			result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 			if result != 0 {
 				return result
 			}
@@ -243,6 +243,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 		tableContainer: tableContainer,
 	}
 
+	tableContainer.SetColumnSpec(fileBrowserTableColumns, typeColumn, true)
 	tableContainer.SetDoubleClickCallback(func() {
 		fileBrowser.openActionDialog(fileBrowser.getSelection())
 		application.Draw()
@@ -517,7 +518,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 	title := fmt.Sprintf("Path: %s", fileBrowser.path)
 	fileBrowser.tableContainer.SetTitle(title)
 	newEntries := fileBrowser.computeTableEntries()
-	fileBrowser.tableContainer.SetData(fileBrowserTableColumns, newEntries)
+	fileBrowser.tableContainer.SetData(newEntries)
 	fileBrowser.restoreSelection()
 }
 
