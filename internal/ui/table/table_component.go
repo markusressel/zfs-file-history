@@ -23,12 +23,14 @@ type RowSelectionTable[T any] struct {
 
 	entries []*T
 
-	sortByColumn     *Column
-	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T
-	toTableCells     func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
-	inputCapture     func(event *tcell.EventKey) *tcell.EventKey
-	columnSpec       []*Column
-	sortInverted     bool
+	sortByColumn        *Column
+	sortTableEntries    func(entries []*T, column *Column, inverted bool) []*T
+	toTableCells        func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
+	inputCapture        func(event *tcell.EventKey) *tcell.EventKey
+	doubleClickCallback func()
+
+	columnSpec   []*Column
+	sortInverted bool
 }
 
 func NewTableContainer[T any](
@@ -43,6 +45,7 @@ func NewTableContainer[T any](
 		inputCapture: func(event *tcell.EventKey) *tcell.EventKey {
 			return event
 		},
+		doubleClickCallback: func() {},
 	}
 	tableContainer.createLayout()
 	return tableContainer
@@ -55,7 +58,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 		switch action {
 		case tview.MouseLeftDoubleClick:
 			go func() {
-				c.onItemDoubleClicked()
+				c.doubleClickCallback()
 			}()
 			return action, nil
 		}
@@ -111,8 +114,8 @@ func (c *RowSelectionTable[T]) SetData(columns []*Column, entries []*T) {
 	c.updateTableContents()
 }
 
-func (c *RowSelectionTable[T]) onItemDoubleClicked() {
-	// TODO: implement
+func (c *RowSelectionTable[T]) SetDoubleClickCallback(f func()) {
+	c.doubleClickCallback = f
 }
 
 func (c *RowSelectionTable[T]) nextSortOrder() {

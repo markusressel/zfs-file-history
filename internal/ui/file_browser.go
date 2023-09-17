@@ -243,6 +243,10 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 		tableContainer: tableContainer,
 	}
 
+	tableContainer.SetDoubleClickCallback(func() {
+		fileBrowser.openActionDialog(fileBrowser.getSelection())
+		application.Draw()
+	})
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if fileBrowser.getSelection() != nil {
@@ -271,18 +275,6 @@ func (fileBrowser *FileBrowserComponent) createLayout(application *tview.Applica
 	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 
 	tableContainer := fileBrowser.tableContainer.GetLayout()
-
-	tableContainer.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		switch action {
-		case tview.MouseLeftDoubleClick:
-			go func() {
-				fileBrowser.openActionDialog(fileBrowser.getSelection())
-				application.Draw()
-			}()
-			return action, nil
-		}
-		return action, event
-	})
 
 	fileBrowserLayout.AddItem(tableContainer, 0, 1, true)
 
