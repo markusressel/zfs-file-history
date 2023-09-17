@@ -190,7 +190,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	tableEntrySortFunction := func(entries []*data.FileBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.FileBrowserEntry {
 		result := slices.Clone(entries)
 		slices.SortFunc(result, func(a, b *data.FileBrowserEntry) int {
-			var result int
+			result := 0
 			switch columnToSortBy {
 			case columnName:
 				result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))

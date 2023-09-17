@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
+	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/table"
@@ -58,10 +59,19 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 		return result
 	}
 
-	tableEntrySortFunction := func(entries []*zfs.Snapshot, column *table.Column, inverted bool) []*zfs.Snapshot {
+	tableEntrySortFunction := func(entries []*zfs.Snapshot, columnToSortBy *table.Column, inverted bool) []*zfs.Snapshot {
 		result := slices.Clone(entries)
 		slices.SortFunc(result, func(a, b *zfs.Snapshot) int {
-			return a.Date.Compare(*b.Date) * -1
+			result := 0
+			if columnToSortBy == columnName {
+				result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+			} else if columnToSortBy == columnDate {
+				result = a.Date.Compare(*b.Date)
+			}
+			if inverted {
+				result *= -1
+			}
+			return result
 		})
 		return result
 	}
@@ -80,7 +90,7 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 		tableContainer:          tableContainer,
 	}
 
-	tableContainer.SetColumnSpec(tableColumns, columnDate, false)
+	tableContainer.SetColumnSpec(tableColumns, columnDate, true)
 	snapshotsBrowser.SetPath(path)
 
 	return snapshotsBrowser
