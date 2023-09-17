@@ -233,6 +233,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(sel
 
 func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 	if snapshotBrowser.hostDataset == nil {
+		snapshotBrowser.selectSnapshot(nil)
 		return
 	}
 	lastSelectedSnapshot, ok := snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path]

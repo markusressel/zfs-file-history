@@ -8,7 +8,7 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
-	snapshotBrowser2 "zfs-file-history/internal/ui/snapshot_browser"
+	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
 )
 
@@ -17,7 +17,7 @@ type MainPage struct {
 	header          *ApplicationHeaderComponent
 	fileBrowser     *file_browser.FileBrowserComponent
 	datasetInfo     *dataset_info.DatasetInfoComponent
-	snapshotBrowser *snapshotBrowser2.SnapshotBrowserComponent
+	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
 	layout          *tview.Flex
 	statusChannel   chan *status_message.StatusMessage
 }
@@ -30,7 +30,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	datasetInfo := dataset_info.NewDatasetInfo(application)
 	datasetInfo.SetPath(path)
 
-	snapshotBrowser := snapshotBrowser2.NewSnapshotBrowser(application, path)
+	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application, path)
 	snapshotBrowser.SetPath(path)
 	snapshotBrowser.SetFileEntry(fileBrowser.GetSelection())
 
@@ -50,7 +50,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		snapshotBrowser.SetFileEntry(fileEntry)
 	})
 
-	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *snapshotBrowser2.SnapshotBrowserEntry) {
+	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *snapshot_browser.SnapshotBrowserEntry) {
 		fileBrowser.SetSelectedSnapshot(snapshot)
 	})
 	fileBrowser.SetSelectedSnapshot(snapshotBrowser.GetSelection())

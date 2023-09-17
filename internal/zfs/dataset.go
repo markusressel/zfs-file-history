@@ -133,7 +133,6 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 		if s != nil {
 			creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
 			creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
-
 			if err != nil {
 				logging.Error(err.Error())
 			} else {
