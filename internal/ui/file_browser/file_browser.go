@@ -490,16 +490,16 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	actionHandler := func(action dialog.DialogAction) bool {
 		switch action {
 		case dialog.CreateSnapshotDialogAction:
-			fileBrowser.createSnapshot(fileBrowser.GetSelection())
+			fileBrowser.createSnapshot(selection)
 			return true
 		case dialog.RestoreRecursiveDialogAction:
-			fileBrowser.runRestoreFileAction(fileBrowser.GetSelection(), true)
+			fileBrowser.runRestoreFileAction(selection, true)
 			return true
 		case dialog.RestoreFileDialogAction:
-			fileBrowser.runRestoreFileAction(fileBrowser.GetSelection(), false)
+			fileBrowser.runRestoreFileAction(selection, false)
 			return true
 		case dialog.DeleteDialogAction:
-			fileBrowser.delete(fileBrowser.GetSelection())
+			fileBrowser.delete(selection)
 			return true
 		}
 		return false
