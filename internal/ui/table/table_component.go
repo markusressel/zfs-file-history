@@ -244,3 +244,13 @@ func (c *RowSelectionTable[T]) SetInputCapture(inputCapture func(event *tcell.Ev
 func (c *RowSelectionTable[T]) SetSelectionChangedCallback(f func(selectedEntry *T)) {
 	c.selectionChangedCallback = f
 }
+
+func (c *RowSelectionTable[T]) SelectHeader() {
+	c.layout.Select(0, 0)
+}
+
+func (c *RowSelectionTable[T]) SelectFirstIfExists() {
+	if len(c.entries) > 0 {
+		c.Select(c.entries[0])
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"os"
 	path2 "path"
 	"strings"
+	"sync"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -74,6 +75,8 @@ type FileBrowserComponent struct {
 
 	application *tview.Application
 	layout      *tview.Pages
+
+	lock *sync.Mutex
 
 	tableContainer               *table.RowSelectionTable[data.FileBrowserEntry]
 	selectedEntryChangedCallback func(fileEntry *data.FileBrowserEntry)
@@ -240,7 +243,10 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	)
 
 	fileBrowser := &FileBrowserComponent{
-		application:       application,
+		application: application,
+
+		lock: &sync.Mutex{},
+
 		statusChannel:     statusChannel,
 		selectionIndexMap: map[string]FileBrowserSelectionInfo{},
 
@@ -516,10 +522,12 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_
 }
 
 func (fileBrowser *FileBrowserComponent) Refresh() {
+	fileBrowser.lock.Lock()
 	fileBrowser.showWarning(status_message.NewWarningStatusMessage("Refreshing..."))
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
 	fileBrowser.showInfo(status_message.NewInfoStatusMessage(""))
+	fileBrowser.lock.Unlock()
 }
 
 func (fileBrowser *FileBrowserComponent) updateTableContents() {
@@ -549,9 +557,15 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 		if rememberedSelectionInfo == nil {
 			entryToSelect = entries[0]
 		} else {
-			index := slices.IndexFunc(entries, func(entry *data.FileBrowserEntry) bool {
-				return entry.Name == rememberedSelectionInfo.Entry.Name
-			})
+			var index int
+			if rememberedSelectionInfo.Entry == nil {
+				fileBrowser.selectHeader()
+				return
+			} else {
+				index = slices.IndexFunc(entries, func(entry *data.FileBrowserEntry) bool {
+					return entry.Name == rememberedSelectionInfo.Entry.Name
+				})
+			}
 			if index < 0 {
 				closestIndex := util.Coerce(rememberedSelectionInfo.Index, 0, len(entries)-1)
 				entryToSelect = entries[closestIndex]
@@ -565,10 +579,17 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 
 func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
 	selectedEntry := fileBrowser.tableContainer.GetSelectedEntry()
-	index := slices.Index(fileBrowser.tableContainer.GetEntries(), selectedEntry)
-	fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
-		Index: index,
-		Entry: selectedEntry,
+	if selectedEntry == nil {
+		fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
+			Index: -1,
+			Entry: nil,
+		}
+	} else {
+		index := slices.Index(fileBrowser.tableContainer.GetEntries(), selectedEntry)
+		fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
+			Index: index,
+			Entry: selectedEntry,
+		}
 	}
 }
 
@@ -635,6 +656,7 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 	} else if selection.HasReal() {
 		fileBrowser.SetPath(selection.GetRealPath(), true)
 	}
+	fileBrowser.selectFirstEntryIfExists()
 }
 
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
@@ -693,4 +715,12 @@ func (fileBrowser *FileBrowserComponent) SetSelectedFileEntryChangedCallback(f f
 
 func (fileBrowser *FileBrowserComponent) SetPathChangedCallback(f func(path string)) {
 	fileBrowser.pathChangedCallback = f
+}
+
+func (fileBrowser *FileBrowserComponent) selectHeader() {
+	fileBrowser.tableContainer.SelectHeader()
+}
+
+func (fileBrowser *FileBrowserComponent) selectFirstEntryIfExists() {
+	fileBrowser.tableContainer.SelectFirstIfExists()
 }
