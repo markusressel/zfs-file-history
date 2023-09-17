@@ -450,7 +450,7 @@ func (fileBrowser *FileBrowserComponent) goUp() {
 
 func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, selection string) {
 	fileBrowser.SetPath(newPath, false)
-	for _, entry := range fileBrowser.tableContainer.GetEntries() {
+	for _, entry := range fileBrowser.GetEntries() {
 		if strings.Contains(entry.GetRealPath(), selection) {
 			fileBrowser.selectFileEntry(entry)
 			return
@@ -551,7 +551,7 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 	if fileBrowser.isEmpty() {
 		entryToSelect = nil
 	} else {
-		entries := fileBrowser.tableContainer.GetEntries()
+		entries := fileBrowser.GetEntries()
 		rememberedSelectionInfo := fileBrowser.getRememberedSelectionInfo(fileBrowser.path)
 		if rememberedSelectionInfo == nil {
 			entryToSelect = entries[0]
@@ -584,7 +584,7 @@ func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
 			Entry: nil,
 		}
 	} else {
-		index := slices.Index(fileBrowser.tableContainer.GetEntries(), selectedEntry)
+		index := slices.Index(fileBrowser.GetEntries(), selectedEntry)
 		fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
 			Index: index,
 			Entry: selectedEntry,
@@ -722,4 +722,8 @@ func (fileBrowser *FileBrowserComponent) selectHeader() {
 
 func (fileBrowser *FileBrowserComponent) selectFirstEntryIfExists() {
 	fileBrowser.tableContainer.SelectFirstIfExists()
+}
+
+func (fileBrowser *FileBrowserComponent) GetEntries() []*data.FileBrowserEntry {
+	return fileBrowser.tableContainer.GetEntries()
 }
