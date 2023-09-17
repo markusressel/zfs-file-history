@@ -23,11 +23,12 @@ type RowSelectionTable[T any] struct {
 
 	entries []*T
 
-	sortByColumn        *Column
-	sortTableEntries    func(entries []*T, column *Column, inverted bool) []*T
-	toTableCells        func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
-	inputCapture        func(event *tcell.EventKey) *tcell.EventKey
-	doubleClickCallback func()
+	sortByColumn             *Column
+	sortTableEntries         func(entries []*T, column *Column, inverted bool) []*T
+	toTableCells             func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
+	inputCapture             func(event *tcell.EventKey) *tcell.EventKey
+	doubleClickCallback      func()
+	selectionChangedCallback func(selectedEntry *T)
 
 	columnSpec   []*Column
 	sortInverted bool
@@ -45,7 +46,8 @@ func NewTableContainer[T any](
 		inputCapture: func(event *tcell.EventKey) *tcell.EventKey {
 			return event
 		},
-		doubleClickCallback: func() {},
+		doubleClickCallback:      func() {},
+		selectionChangedCallback: func(selectedEntry *T) {},
 	}
 	tableContainer.createLayout()
 	return tableContainer
@@ -75,6 +77,10 @@ func (c *RowSelectionTable[T]) createLayout() {
 	uiutil.SetupWindow(table, "")
 
 	table.SetSelectable(true, false)
+	table.SetSelectionChangedFunc(func(row, column int) {
+		selectedEntry := c.GetSelectedEntry()
+		c.selectionChangedCallback(selectedEntry)
+	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
@@ -221,4 +227,8 @@ func (c *RowSelectionTable[T]) IsEmpty() bool {
 
 func (c *RowSelectionTable[T]) SetInputCapture(inputCapture func(event *tcell.EventKey) *tcell.EventKey) {
 	c.inputCapture = inputCapture
+}
+
+func (c *RowSelectionTable[T]) SetSelectionChangedCallback(f func(selectedEntry *T)) {
+	c.selectionChangedCallback = f
 }

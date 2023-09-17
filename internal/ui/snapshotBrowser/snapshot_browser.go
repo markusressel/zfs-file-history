@@ -86,6 +86,14 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnDate, true)
+	tableContainer.SetSelectionChangedCallback(func(snapshot *zfs.Snapshot) {
+		if snapshot != nil {
+			snapshotsBrowser.selectedSnapshotMap[snapshot.ParentDataset.Path] = snapshot
+		}
+		go func() {
+			snapshotsBrowser.selectedSnapshotChanged <- snapshot
+		}()
+	})
 	snapshotsBrowser.SetPath(path)
 
 	return snapshotsBrowser
@@ -189,12 +197,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *zfs.Sn
 		return
 	}
 	snapshotBrowser.tableContainer.Select(snapshot)
-	if snapshot != nil {
-		snapshotBrowser.selectedSnapshotMap[snapshot.ParentDataset.Path] = snapshot
-	}
-	go func() {
-		snapshotBrowser.selectedSnapshotChanged <- snapshotBrowser.getSelection()
-	}()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) OnSelectedSnapshotChanged() <-chan *zfs.Snapshot {
