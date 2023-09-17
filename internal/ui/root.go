@@ -4,6 +4,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/util"
 )
 
@@ -26,8 +27,8 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// ignore events, if some other page is open
 		name, _ := pagesLayout.GetFrontPage()
-		fileBrowserPage, _ := mainPage.fileBrowser.layout.GetFrontPage()
-		if name != string(Main) || fileBrowserPage != string(FileBrowserPage) {
+		fileBrowserPage, _ := mainPage.fileBrowser.GetLayout().GetFrontPage()
+		if name != string(Main) || fileBrowserPage != string(file_browser.FileBrowserPage) {
 			return event
 		}
 
@@ -49,5 +50,5 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		return event
 	})
 
-	return application.SetRoot(pagesLayout, fullscreen).SetFocus(mainPage.fileBrowser.tableContainer.GetLayout())
+	return application.SetRoot(pagesLayout, fullscreen).SetFocus(mainPage.fileBrowser.GetLayout())
 }

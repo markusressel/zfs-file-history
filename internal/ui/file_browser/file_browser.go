@@ -1,4 +1,4 @@
-package ui
+package file_browser
 
 import (
 	"errors"
@@ -14,6 +14,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/status"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
@@ -25,38 +26,38 @@ const (
 )
 
 var (
-	sizeColumn = &table.Column{
+	columnSize = &table.Column{
 		Id:        0,
 		Title:     "Size",
 		Alignment: tview.AlignLeft,
 	}
-	datetimeColumn = &table.Column{
+	columnDateTime = &table.Column{
 		Id:        1,
 		Title:     "Date/Time",
 		Alignment: tview.AlignLeft,
 	}
-	typeColumn = &table.Column{
+	columnType = &table.Column{
 		Id:        2,
 		Title:     "Type",
 		Alignment: tview.AlignCenter,
 	}
-	diffColumn = &table.Column{
+	columnDiff = &table.Column{
 		Id:        3,
 		Title:     "Diff",
 		Alignment: tview.AlignCenter,
 	}
-	nameColumn = &table.Column{
+	columnName = &table.Column{
 		Id:        4,
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
 
-	fileBrowserTableColumns = []*table.Column{
-		sizeColumn,
-		datetimeColumn,
-		typeColumn,
-		diffColumn,
-		nameColumn,
+	tableColumns = []*table.Column{
+		columnSize,
+		columnDateTime,
+		columnType,
+		columnDiff,
+		columnName,
 	}
 )
 
@@ -75,10 +76,10 @@ type FileBrowserComponent struct {
 
 	selectionIndexMap map[string]int
 	fileWatcher       *util.FileWatcher
-	statusChannel     chan<- *StatusMessage
+	statusChannel     chan<- *status.StatusMessage
 }
 
-func NewFileBrowser(application *tview.Application, statusChannel chan<- *StatusMessage, path string) *FileBrowserComponent {
+func NewFileBrowser(application *tview.Application, statusChannel chan<- *status.StatusMessage, path string) *FileBrowserComponent {
 	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
 		var status = "="
 		var statusColor = tcell.ColorGray
@@ -119,21 +120,21 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 			var cellAlignment = tview.AlignLeft
 			var cellExpansion = 0
 
-			if column == nameColumn {
+			if column == columnName {
 				cellText = entry.Name
 				if entry.GetStat().IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
 				}
 				cellColor = statusColor
-			} else if column == typeColumn {
+			} else if column == columnType {
 				cellText = typeCellText
 				cellColor = typeCellColor
 				cellAlignment = tview.AlignCenter
-			} else if column == diffColumn {
+			} else if column == columnDiff {
 				cellText = status
 				cellColor = statusColor
 				cellAlignment = tview.AlignCenter
-			} else if column == datetimeColumn {
+			} else if column == columnDateTime {
 				cellText = entry.GetStat().ModTime().Format(time.DateTime)
 
 				switch entry.Status {
@@ -148,7 +149,7 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 				default:
 					cellColor = tcell.ColorGray
 				}
-			} else if column == sizeColumn {
+			} else if column == columnSize {
 				cellText = humanize.IBytes(uint64(entry.GetStat().Size()))
 				if strings.HasSuffix(cellText, " B") {
 					withoutSuffix := strings.TrimSuffix(cellText, " B")
@@ -191,15 +192,15 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 		slices.SortFunc(result, func(a, b *data.FileBrowserEntry) int {
 			var result int
 			switch columnToSortBy {
-			case nameColumn:
+			case columnName:
 				result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
-			case datetimeColumn:
+			case columnDateTime:
 				result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
-			case typeColumn:
+			case columnType:
 				result = int(b.Type - a.Type)
-			case sizeColumn:
+			case columnSize:
 				result = int(a.GetStat().Size() - b.GetStat().Size())
-			case diffColumn:
+			case columnDiff:
 				result = int(b.Status - a.Status)
 			}
 
@@ -243,19 +244,19 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *Status
 		tableContainer: tableContainer,
 	}
 
-	tableContainer.SetColumnSpec(fileBrowserTableColumns, typeColumn, true)
+	tableContainer.SetColumnSpec(tableColumns, columnType, true)
 	tableContainer.SetDoubleClickCallback(func() {
-		fileBrowser.openActionDialog(fileBrowser.getSelection())
+		fileBrowser.openActionDialog(fileBrowser.GetSelection())
 		application.Draw()
 	})
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
-		if fileBrowser.getSelection() != nil {
+		if fileBrowser.GetSelection() != nil {
 			if key == tcell.KeyRight {
-				fileBrowser.enterFileEntry(fileBrowser.getSelection())
+				fileBrowser.enterFileEntry(fileBrowser.GetSelection())
 				return nil
 			} else if key == tcell.KeyEnter {
-				fileBrowser.openActionDialog(fileBrowser.getSelection())
+				fileBrowser.openActionDialog(fileBrowser.GetSelection())
 				return nil
 			}
 		}
@@ -470,28 +471,28 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 		go func() {
 			fileBrowser.pathChanged <- newPath
 		}()
-		fileBrowser.refresh()
+		fileBrowser.Refresh()
 	}
 }
 
 func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBrowserEntry) {
-	if fileBrowser.getSelection() == nil {
+	if fileBrowser.GetSelection() == nil {
 		return
 	}
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
 	actionHandler := func(action dialog.DialogAction) bool {
 		switch action {
 		case dialog.CreateSnapshotDialogAction:
-			fileBrowser.createSnapshot(fileBrowser.getSelection())
+			fileBrowser.createSnapshot(fileBrowser.GetSelection())
 			return true
 		case dialog.RestoreRecursiveDialogAction:
-			fileBrowser.runRestoreFileAction(fileBrowser.getSelection(), true)
+			fileBrowser.runRestoreFileAction(fileBrowser.GetSelection(), true)
 			return true
 		case dialog.RestoreFileDialogAction:
-			fileBrowser.runRestoreFileAction(fileBrowser.getSelection(), false)
+			fileBrowser.runRestoreFileAction(fileBrowser.GetSelection(), false)
 			return true
 		case dialog.DeleteDialogAction:
-			fileBrowser.delete(fileBrowser.getSelection())
+			fileBrowser.delete(fileBrowser.GetSelection())
 			return true
 		}
 		return false
@@ -504,14 +505,14 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *zfs.Snaps
 		return
 	}
 	fileBrowser.currentSnapshot = snapshot
-	fileBrowser.refresh()
+	fileBrowser.Refresh()
 }
 
-func (fileBrowser *FileBrowserComponent) refresh() {
-	fileBrowser.showWarning(NewWarningStatusMessage("Refreshing..."))
+func (fileBrowser *FileBrowserComponent) Refresh() {
+	fileBrowser.showWarning(status.NewWarningStatusMessage("Refreshing..."))
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
-	fileBrowser.showInfo(NewInfoStatusMessage(""))
+	fileBrowser.showInfo(status.NewInfoStatusMessage(""))
 }
 
 func (fileBrowser *FileBrowserComponent) updateTableContents() {
@@ -519,7 +520,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 	fileBrowser.tableContainer.SetTitle(title)
 	newEntries := fileBrowser.computeTableEntries()
 	fileBrowser.tableContainer.SetData(newEntries)
-	fileBrowser.restoreSelection()
+	fileBrowser.restoreSelectionForPath()
 }
 
 func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
@@ -531,7 +532,7 @@ func (fileBrowser *FileBrowserComponent) SelectEntry(i int) {
 }
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
-	if fileBrowser.getSelection() == newSelection {
+	if fileBrowser.GetSelection() == newSelection {
 		return
 	}
 
@@ -544,7 +545,7 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 	fileBrowser.rememberSelectionForCurrentPath()
 }
 
-func (fileBrowser *FileBrowserComponent) restoreSelection() {
+func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 	if fileBrowser.isEmpty() {
 		fileBrowser.tableContainer.Select(nil)
 	} else {
@@ -575,7 +576,7 @@ func (fileBrowser *FileBrowserComponent) getRememberedSelectionIndex(path string
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) getSelection() *data.FileBrowserEntry {
+func (fileBrowser *FileBrowserComponent) GetSelection() *data.FileBrowserEntry {
 	return fileBrowser.tableContainer.GetSelectedEntry()
 }
 
@@ -591,7 +592,7 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 	}
 	fileBrowser.fileWatcher = util.NewFileWatcher(path)
 	action := func(s string) {
-		fileBrowser.refresh()
+		fileBrowser.Refresh()
 		fileBrowser.application.Draw()
 	}
 	err := fileBrowser.fileWatcher.Watch(action)
@@ -633,7 +634,7 @@ func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBr
 	fileBrowser.showDialog(d, func(action dialog.DialogAction) bool {
 		switch action {
 		case dialog.ActionClose:
-			fileBrowser.refresh()
+			fileBrowser.Refresh()
 		}
 		return false
 	})
@@ -650,7 +651,7 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.showWarning(NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
+	fileBrowser.showWarning(status.NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
 }
 
 func (fileBrowser *FileBrowserComponent) PathChangedChannel() <-chan string {
@@ -661,23 +662,27 @@ func (fileBrowser *FileBrowserComponent) SelectedFileEntryChangedChannel() <-cha
 	return fileBrowser.selectedFileEntryChanged
 }
 
-func (fileBrowser *FileBrowserComponent) showInfo(message *StatusMessage) {
+func (fileBrowser *FileBrowserComponent) showInfo(message *status.StatusMessage) {
 	logging.Info(message.Message)
 	fileBrowser.sendStatusMessage(message)
 }
 
-func (fileBrowser *FileBrowserComponent) showWarning(message *StatusMessage) {
+func (fileBrowser *FileBrowserComponent) showWarning(message *status.StatusMessage) {
 	logging.Warning(message.Message)
 	fileBrowser.sendStatusMessage(message)
 }
 
 func (fileBrowser *FileBrowserComponent) showError(err error) {
 	logging.Error(err.Error())
-	fileBrowser.sendStatusMessage(NewErrorStatusMessage(err.Error()))
+	fileBrowser.sendStatusMessage(status.NewErrorStatusMessage(err.Error()))
 }
 
-func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *StatusMessage) {
+func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *status.StatusMessage) {
 	go func() {
 		fileBrowser.statusChannel <- message
 	}()
+}
+
+func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
+	return fileBrowser.layout
 }

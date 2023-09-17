@@ -1,4 +1,4 @@
-package ui
+package status
 
 import (
 	"github.com/gdamore/tcell/v2"

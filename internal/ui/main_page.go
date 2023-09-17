@@ -5,29 +5,32 @@ import (
 	"github.com/rivo/tview"
 	"time"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/file_browser"
+	snapshotBrowser2 "zfs-file-history/internal/ui/snapshotBrowser"
+	"zfs-file-history/internal/ui/status"
 )
 
 type MainPage struct {
 	application     *tview.Application
 	header          *ApplicationHeaderComponent
-	fileBrowser     *FileBrowserComponent
+	fileBrowser     *file_browser.FileBrowserComponent
 	datasetInfo     *DatasetInfoComponent
-	snapshotBrowser *SnapshotBrowserComponent
+	snapshotBrowser *snapshotBrowser2.SnapshotBrowserComponent
 	layout          *tview.Flex
-	statusChannel   chan *StatusMessage
+	statusChannel   chan *status.StatusMessage
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
-	statusChannel := make(chan *StatusMessage)
+	statusChannel := make(chan *status.StatusMessage)
 
-	fileBrowser := NewFileBrowser(application, statusChannel, path)
+	fileBrowser := file_browser.NewFileBrowser(application, statusChannel, path)
 
 	datasetInfo := NewDatasetInfo(application)
 	datasetInfo.SetPath(path)
 
-	snapshotBrowser := NewSnapshotBrowser(application)
+	snapshotBrowser := snapshotBrowser2.NewSnapshotBrowser(application, path)
 	snapshotBrowser.SetPath(path)
-	snapshotBrowser.SetFileEntry(fileBrowser.getSelection())
+	snapshotBrowser.SetFileEntry(fileBrowser.GetSelection())
 
 	mainPage := &MainPage{
 		application:     application,
@@ -43,9 +46,9 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		if key == tcell.KeyTab || key == tcell.KeyBacktab {
 			mainPage.ToggleFocus()
 		} else if key == tcell.KeyCtrlR {
-			fileBrowser.refresh()
-			snapshotBrowser.refresh()
-			fileBrowser.refresh()
+			fileBrowser.Refresh()
+			snapshotBrowser.Refresh()
+			fileBrowser.Refresh()
 		}
 		return event
 	})
@@ -88,11 +91,11 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	windowLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	//dialog := createFileBrowserActionDialog()
 
-	windowLayout.AddItem(mainPage.fileBrowser.layout, 0, 2, true)
+	windowLayout.AddItem(mainPage.fileBrowser.GetLayout(), 0, 2, true)
 
 	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 	infoLayout.AddItem(mainPage.datasetInfo.layout, 0, 1, false)
-	infoLayout.AddItem(mainPage.snapshotBrowser.snapshotTable, 0, 2, false)
+	infoLayout.AddItem(mainPage.snapshotBrowser.GetLayout(), 0, 2, false)
 	windowLayout.AddItem(infoLayout, 0, 1, false)
 
 	mainPageLayout.AddItem(windowLayout, 0, 1, true)
@@ -114,12 +117,12 @@ func (mainPage *MainPage) ToggleFocus() {
 	}
 }
 
-func (mainPage *MainPage) showStatusMessage(status *StatusMessage) {
+func (mainPage *MainPage) showStatusMessage(status *status.StatusMessage) {
 	mainPage.header.SetStatus(status)
 }
 
 func (mainPage *MainPage) SendStatusMessage(s string) {
 	go func() {
-		mainPage.statusChannel <- NewInfoStatusMessage(s).SetDuration(3 * time.Second)
+		mainPage.statusChannel <- status.NewInfoStatusMessage(s).SetDuration(3 * time.Second)
 	}()
 }
