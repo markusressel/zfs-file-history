@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"log"
 	"os"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal"
@@ -35,7 +34,7 @@ var rootCmd = &cobra.Command{
 		} else {
 			currentWorkingDirectory, err := os.Getwd()
 			if err != nil {
-				log.Fatal(err)
+				logging.Fatal("Couldn't find current working dir: %v", err)
 			}
 			path = currentWorkingDirectory
 		}

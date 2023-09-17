@@ -590,6 +590,9 @@ func (fileBrowser *FileBrowserComponent) isEmpty() bool {
 }
 
 func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
+	if fileBrowser.fileWatcher != nil && fileBrowser.fileWatcher.RootPath == fileBrowser.path {
+		return
+	}
 	path := fileBrowser.path
 	if fileBrowser.fileWatcher != nil {
 		fileBrowser.fileWatcher.Stop()

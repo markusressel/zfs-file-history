@@ -60,6 +60,7 @@ func RunApplication(path string) {
 	}
 
 	if err := g.Run(); err != nil {
+		logging.Error("%v", err)
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	} else {

@@ -4,19 +4,22 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"os"
 	"path/filepath"
+	"sync"
 	"zfs-file-history/internal/logging"
 )
 
 type FileWatcher struct {
-	RootPath string
-	stop     chan bool
-	watcher  *fsnotify.Watcher
+	RootPath   string
+	stop       chan bool
+	actionLock sync.Mutex
+	watcher    *fsnotify.Watcher
 }
 
 func NewFileWatcher(path string) *FileWatcher {
 	return &FileWatcher{
-		RootPath: path,
-		stop:     make(chan bool),
+		RootPath:   path,
+		stop:       make(chan bool),
+		actionLock: sync.Mutex{},
 	}
 }
 
@@ -38,6 +41,10 @@ func (fileWatcher *FileWatcher) Stop() {
 func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) error {
 	// creates a new file watcher
 	fileWatcher.watcher, _ = fsnotify.NewWatcher()
+	err := fileWatcher.watcher.Add(path)
+	if err != nil {
+		return err
+	}
 
 	go func() {
 		for {
@@ -47,7 +54,9 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 				if !ok {
 					return
 				}
+				fileWatcher.actionLock.Lock()
 				action(event.Name)
+				fileWatcher.actionLock.Unlock()
 			// watch for errors
 			case err := <-fileWatcher.watcher.Errors:
 				if err != nil {
@@ -61,14 +70,19 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 			}
 		}
 	}()
-
-	return fileWatcher.watcher.Add(path)
+	return nil
 }
 
 // watches all files and folders in the given path recursively
 func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s string)) {
 	// creates a new file watcher
 	fileWatcher.watcher, _ = fsnotify.NewWatcher()
+
+	// starting at the root of the project, walk each file/directory searching for directories
+	if err := filepath.Walk(path, fileWatcher.addFolderWatch); err != nil {
+		logging.Error(err.Error())
+		return
+	}
 
 	go func() {
 		for {
@@ -78,7 +92,9 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 				if !ok {
 					return
 				}
+				fileWatcher.actionLock.Lock()
 				action(event.Name)
+				fileWatcher.actionLock.Unlock()
 			// watch for errors
 			case err := <-fileWatcher.watcher.Errors:
 				logging.Error(err.Error())
@@ -90,11 +106,6 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 			}
 		}
 	}()
-
-	// starting at the root of the project, walk each file/directory searching for directories
-	if err := filepath.Walk(path, fileWatcher.addFolderWatch); err != nil {
-		logging.Error(err.Error())
-	}
 }
 
 // adds a path to the watcher

@@ -5,6 +5,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
+	"sync"
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
@@ -21,7 +22,8 @@ type RowSelectionTable[T any] struct {
 
 	layout *tview.Table
 
-	entries []*T
+	entries      []*T
+	entriesMutex sync.Mutex
 
 	sortByColumn             *Column
 	sortTableEntries         func(entries []*T, column *Column, inverted bool) []*T
@@ -41,6 +43,7 @@ func NewTableContainer[T any](
 ) *RowSelectionTable[T] {
 	tableContainer := &RowSelectionTable[T]{
 		application:      application,
+		entriesMutex:     sync.Mutex{},
 		toTableCells:     toTableCells,
 		sortTableEntries: sortTableEntries,
 		inputCapture: func(event *tcell.EventKey) *tcell.EventKey {
@@ -116,7 +119,9 @@ func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColum
 }
 
 func (c *RowSelectionTable[T]) SetData(entries []*T) {
+	c.entriesMutex.Lock()
 	c.entries = entries
+	c.entriesMutex.Unlock()
 	c.SortBy(c.sortByColumn, c.sortInverted)
 }
 
@@ -127,7 +132,9 @@ func (c *RowSelectionTable[T]) SetDoubleClickCallback(f func()) {
 func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {
 	c.sortByColumn = sortOption
 	c.sortInverted = inverted
+	c.entriesMutex.Lock()
 	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
+	c.entriesMutex.Unlock()
 	c.updateTableContents()
 }
 
@@ -151,6 +158,7 @@ func (c *RowSelectionTable[T]) toggleSortDirection() {
 }
 
 func (c *RowSelectionTable[T]) updateTableContents() {
+
 	table := c.layout
 	if table == nil {
 		return
@@ -181,12 +189,14 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	}
 
 	// Table Content
+	c.entriesMutex.Lock()
 	for row, entry := range c.entries {
 		cells := c.toTableCells(row, c.columnSpec, entry)
 		for column, cell := range cells {
 			table.SetCell(row+1, column, cell)
 		}
 	}
+	c.entriesMutex.Unlock()
 }
 
 func (c *RowSelectionTable[T]) Select(entry *T) {
