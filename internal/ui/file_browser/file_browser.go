@@ -542,18 +542,20 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 }
 
 func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
+	var entryToSelect *data.FileBrowserEntry
 	if fileBrowser.isEmpty() {
-		fileBrowser.tableContainer.Select(nil)
+		entryToSelect = nil
 	} else {
 		entries := fileBrowser.tableContainer.GetEntries()
 		rememberedIndex := fileBrowser.getRememberedSelectionIndex(fileBrowser.path)
 		if rememberedIndex > 0 && rememberedIndex < len(entries) {
-			entry := entries[rememberedIndex]
-			fileBrowser.tableContainer.Select(entry)
+			entryToSelect = entries[rememberedIndex]
 		} else {
-			fileBrowser.tableContainer.Select(entries[0])
+			entryToSelect = entries[0]
 		}
 	}
+	fileBrowser.tableContainer.Select(entryToSelect)
+	fileBrowser.selectedEntryChangedCallback(entryToSelect)
 }
 
 func (fileBrowser *FileBrowserComponent) rememberSelectionForCurrentPath() {

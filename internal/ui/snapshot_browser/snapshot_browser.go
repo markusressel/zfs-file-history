@@ -138,10 +138,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetLayout() tview.Primitive {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
-	if path == "" {
-		snapshotBrowser.clear()
-		return
-	}
 	if snapshotBrowser.path == path {
 		return
 	}
@@ -252,6 +248,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *SnapshotBrowserEntry) {
+	snapshotBrowser.selectedSnapshotChangedCallback(snapshot)
 	if snapshotBrowser.GetSelection() == snapshot {
 		return
 	}
