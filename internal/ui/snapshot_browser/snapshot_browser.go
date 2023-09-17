@@ -58,12 +58,14 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 		result := []*tview.TableCell{}
 		for _, column := range columns {
 			cellText := "N/A"
+			cellAlign := tview.AlignLeft
 			cellColor := tcell.ColorWhite
 			if column == columnDate {
 				cellText = entry.Snapshot.Date.Format("2006-01-02 15:04:05")
 			} else if column == columnName {
 				cellText = entry.Snapshot.Name
 			} else if column == columnDiff {
+				cellAlign = tview.AlignCenter
 				switch entry.DiffState {
 				case diff_state.Equal:
 					cellText = "="
@@ -83,7 +85,7 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 				}
 			}
 			cell := tview.NewTableCell(cellText).
-				SetTextColor(cellColor)
+				SetTextColor(cellColor).SetAlign(cellAlign)
 			result = append(result, cell)
 		}
 		return result
