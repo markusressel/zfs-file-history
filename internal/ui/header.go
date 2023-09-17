@@ -6,7 +6,7 @@ import (
 	"github.com/rivo/tview"
 	"time"
 	"zfs-file-history/cmd/global"
-	"zfs-file-history/internal/ui/status"
+	"zfs-file-history/internal/ui/status_message"
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
@@ -16,7 +16,7 @@ type ApplicationHeaderComponent struct {
 	name           string
 	version        string
 	statusTextView *tview.TextView
-	lastStatus     *status.StatusMessage
+	lastStatus     *status_message.StatusMessage
 }
 
 func NewApplicationHeader(application *tview.Application) *ApplicationHeaderComponent {
@@ -79,7 +79,7 @@ func (applicationHeader *ApplicationHeaderComponent) updateUi() {
 	// no changing data
 }
 
-func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *status.StatusMessage) {
+func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *status_message.StatusMessage) {
 	applicationHeader.statusTextView.SetText(status.Message).SetTextColor(status.Color)
 	if status.Duration > 0 {
 		go func() {

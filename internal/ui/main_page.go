@@ -9,7 +9,7 @@ import (
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
 	snapshotBrowser2 "zfs-file-history/internal/ui/snapshot_browser"
-	"zfs-file-history/internal/ui/status"
+	"zfs-file-history/internal/ui/status_message"
 )
 
 type MainPage struct {
@@ -19,11 +19,11 @@ type MainPage struct {
 	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshotBrowser2.SnapshotBrowserComponent
 	layout          *tview.Flex
-	statusChannel   chan *status.StatusMessage
+	statusChannel   chan *status_message.StatusMessage
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
-	statusChannel := make(chan *status.StatusMessage)
+	statusChannel := make(chan *status_message.StatusMessage)
 
 	fileBrowser := file_browser.NewFileBrowser(application, statusChannel, path)
 
@@ -118,12 +118,12 @@ func (mainPage *MainPage) ToggleFocus() {
 	}
 }
 
-func (mainPage *MainPage) showStatusMessage(status *status.StatusMessage) {
+func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
 }
 
 func (mainPage *MainPage) SendStatusMessage(s string) {
 	go func() {
-		mainPage.statusChannel <- status.NewInfoStatusMessage(s).SetDuration(3 * time.Second)
+		mainPage.statusChannel <- status_message.NewInfoStatusMessage(s).SetDuration(3 * time.Second)
 	}()
 }

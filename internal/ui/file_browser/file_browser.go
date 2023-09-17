@@ -16,7 +16,7 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/snapshot_browser"
-	"zfs-file-history/internal/ui/status"
+	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
@@ -75,11 +75,11 @@ type FileBrowserComponent struct {
 
 	selectionIndexMap   map[string]int
 	fileWatcher         *util.FileWatcher
-	statusChannel       chan<- *status.StatusMessage
+	statusChannel       chan<- *status_message.StatusMessage
 	pathChangedCallback func(path string)
 }
 
-func NewFileBrowser(application *tview.Application, statusChannel chan<- *status.StatusMessage, path string) *FileBrowserComponent {
+func NewFileBrowser(application *tview.Application, statusChannel chan<- *status_message.StatusMessage, path string) *FileBrowserComponent {
 	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
 		var status = "="
 		var statusColor = tcell.ColorGray
@@ -413,7 +413,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 	}
 
 	for _, entry := range fileEntries {
-		// figure out status
+		// figure out status_message
 		var status = diff_state.Equal
 		if fileBrowser.currentSnapshot == nil {
 			status = diff_state.Unknown
@@ -472,7 +472,7 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 
 	if fileBrowser.path != newPath {
 		fileBrowser.path = newPath
-		//fileBrowser.selectedEntryChangedCallback(newPath)
+		fileBrowser.pathChangedCallback(newPath)
 		fileBrowser.Refresh()
 	}
 }
@@ -511,10 +511,10 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_
 }
 
 func (fileBrowser *FileBrowserComponent) Refresh() {
-	fileBrowser.showWarning(status.NewWarningStatusMessage("Refreshing..."))
+	fileBrowser.showWarning(status_message.NewWarningStatusMessage("Refreshing..."))
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
-	fileBrowser.showInfo(status.NewInfoStatusMessage(""))
+	fileBrowser.showInfo(status_message.NewInfoStatusMessage(""))
 }
 
 func (fileBrowser *FileBrowserComponent) updateTableContents() {
@@ -647,25 +647,25 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.showWarning(status.NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
+	fileBrowser.showWarning(status_message.NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
 }
 
-func (fileBrowser *FileBrowserComponent) showInfo(message *status.StatusMessage) {
+func (fileBrowser *FileBrowserComponent) showInfo(message *status_message.StatusMessage) {
 	logging.Info(message.Message)
 	fileBrowser.sendStatusMessage(message)
 }
 
-func (fileBrowser *FileBrowserComponent) showWarning(message *status.StatusMessage) {
+func (fileBrowser *FileBrowserComponent) showWarning(message *status_message.StatusMessage) {
 	logging.Warning(message.Message)
 	fileBrowser.sendStatusMessage(message)
 }
 
 func (fileBrowser *FileBrowserComponent) showError(err error) {
 	logging.Error(err.Error())
-	fileBrowser.sendStatusMessage(status.NewErrorStatusMessage(err.Error()))
+	fileBrowser.sendStatusMessage(status_message.NewErrorStatusMessage(err.Error()))
 }
 
-func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *status.StatusMessage) {
+func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *status_message.StatusMessage) {
 	go func() {
 		fileBrowser.statusChannel <- message
 	}()

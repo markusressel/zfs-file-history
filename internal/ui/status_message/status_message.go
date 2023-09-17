@@ -1,4 +1,4 @@
-package status
+package status_message
 
 import (
 	"github.com/gdamore/tcell/v2"
