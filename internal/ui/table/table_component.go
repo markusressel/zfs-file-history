@@ -116,6 +116,7 @@ func (c *RowSelectionTable[T]) SetTitle(title string) {
 func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColumn *Column, inverted bool) {
 	c.columnSpec = columns
 	c.SortBy(defaultSortColumn, inverted)
+	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) SetData(entries []*T) {
@@ -123,6 +124,7 @@ func (c *RowSelectionTable[T]) SetData(entries []*T) {
 	c.entries = entries
 	c.entriesMutex.Unlock()
 	c.SortBy(c.sortByColumn, c.sortInverted)
+	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) SetDoubleClickCallback(f func()) {
@@ -130,12 +132,11 @@ func (c *RowSelectionTable[T]) SetDoubleClickCallback(f func()) {
 }
 
 func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {
+	c.entriesMutex.Lock()
 	c.sortByColumn = sortOption
 	c.sortInverted = inverted
-	c.entriesMutex.Lock()
 	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
 	c.entriesMutex.Unlock()
-	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) nextSortOrder() {
@@ -143,6 +144,7 @@ func (c *RowSelectionTable[T]) nextSortOrder() {
 	nextIndex := (currentIndex + 1) % len(c.columnSpec)
 	column := c.columnSpec[nextIndex]
 	c.SortBy(column, c.sortInverted)
+	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) previousSortOrder() {
@@ -150,11 +152,13 @@ func (c *RowSelectionTable[T]) previousSortOrder() {
 	nextIndex := (len(c.columnSpec) + currentIndex - 1) % len(c.columnSpec)
 	column := c.columnSpec[nextIndex]
 	c.SortBy(column, c.sortInverted)
+	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) toggleSortDirection() {
 	c.sortInverted = !c.sortInverted
 	c.SortBy(c.sortByColumn, c.sortInverted)
+	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) updateTableContents() {
@@ -189,14 +193,12 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	}
 
 	// Table Content
-	c.entriesMutex.Lock()
 	for row, entry := range c.entries {
 		cells := c.toTableCells(row, c.columnSpec, entry)
 		for column, cell := range cells {
 			table.SetCell(row+1, column, cell)
 		}
 	}
-	c.entriesMutex.Unlock()
 }
 
 func (c *RowSelectionTable[T]) Select(entry *T) {

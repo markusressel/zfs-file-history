@@ -9,6 +9,7 @@ import (
 	"golang.org/x/exp/slices"
 	"os"
 	path2 "path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -196,7 +197,10 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	}
 
 	tableEntrySortFunction := func(entries []*data.FileBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.FileBrowserEntry {
-		slices.SortFunc(entries, func(a, b *data.FileBrowserEntry) int {
+		sort.SliceStable(entries, func(i, j int) bool {
+			a := entries[i]
+			b := entries[j]
+
 			result := 0
 			switch columnToSortBy {
 			case columnName:
@@ -216,22 +220,37 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 			}
 
 			if result != 0 {
-				return result
+				if result <= 0 {
+					return true
+				} else {
+					return false
+				}
 			}
 
 			result = int(b.Type - a.Type)
 			if result != 0 {
-				return result
+				if result <= 0 {
+					return true
+				} else {
+					return false
+				}
 			}
 
 			result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 			if result != 0 {
-				return result
+				if result <= 0 {
+					return true
+				} else {
+					return false
+				}
 			}
 
-			return result
+			if result <= 0 {
+				return true
+			} else {
+				return false
+			}
 		})
-
 		return entries
 	}
 

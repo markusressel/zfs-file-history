@@ -5,6 +5,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
+	"sort"
 	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -98,7 +99,10 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 	}
 
 	tableEntrySortFunction := func(entries []*SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*SnapshotBrowserEntry {
-		slices.SortFunc(entries, func(a, b *SnapshotBrowserEntry) int {
+		sort.SliceStable(entries, func(i, j int) bool {
+			a := entries[i]
+			b := entries[j]
+
 			result := 0
 			if columnToSortBy == columnName {
 				result = strings.Compare(strings.ToLower(a.Snapshot.Name), strings.ToLower(b.Snapshot.Name))
@@ -110,7 +114,12 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 			if inverted {
 				result *= -1
 			}
-			return result
+
+			if result <= 0 {
+				return true
+			} else {
+				return false
+			}
 		})
 		return entries
 	}
