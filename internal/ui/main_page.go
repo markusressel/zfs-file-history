@@ -5,6 +5,7 @@ import (
 	"github.com/rivo/tview"
 	"time"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
 	snapshotBrowser2 "zfs-file-history/internal/ui/snapshotBrowser"
 	"zfs-file-history/internal/ui/status"
@@ -14,7 +15,7 @@ type MainPage struct {
 	application     *tview.Application
 	header          *ApplicationHeaderComponent
 	fileBrowser     *file_browser.FileBrowserComponent
-	datasetInfo     *DatasetInfoComponent
+	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshotBrowser2.SnapshotBrowserComponent
 	layout          *tview.Flex
 	statusChannel   chan *status.StatusMessage
@@ -25,7 +26,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 
 	fileBrowser := file_browser.NewFileBrowser(application, statusChannel, path)
 
-	datasetInfo := NewDatasetInfo(application)
+	datasetInfo := dataset_info.NewDatasetInfo(application)
 	datasetInfo.SetPath(path)
 
 	snapshotBrowser := snapshotBrowser2.NewSnapshotBrowser(application, path)
@@ -94,7 +95,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	windowLayout.AddItem(mainPage.fileBrowser.GetLayout(), 0, 2, true)
 
 	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-	infoLayout.AddItem(mainPage.datasetInfo.layout, 0, 1, false)
+	infoLayout.AddItem(mainPage.datasetInfo.GetLayout(), 0, 1, false)
 	infoLayout.AddItem(mainPage.snapshotBrowser.GetLayout(), 0, 2, false)
 	windowLayout.AddItem(infoLayout, 0, 1, false)
 

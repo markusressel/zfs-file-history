@@ -1,4 +1,4 @@
-package ui
+package dataset_info
 
 import (
 	"fmt"
@@ -153,4 +153,8 @@ func (datasetInfo *DatasetInfoComponent) Focus() {
 
 func (datasetInfo *DatasetInfoComponent) OnDatasetChanged() <-chan *zfs.Dataset {
 	return datasetInfo.datasetChanged
+}
+
+func (datasetInfo *DatasetInfoComponent) GetLayout() tview.Primitive {
+	return datasetInfo.layout
 }
