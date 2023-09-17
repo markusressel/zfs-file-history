@@ -38,12 +38,13 @@ func loadDatasets() {
 
 func loadSnapshots(datasets []golibzfs.Dataset) {
 	for _, dataset := range datasets {
-		mountPointProperty := dataset.Properties[golibzfs.DatasetPropMountpoint]
+		nameProperty := dataset.Properties[golibzfs.DatasetPropName]
+		//mountPointProperty := dataset.Properties[golibzfs.DatasetPropMountpoint]
 		snapshots, err := dataset.Snapshots()
 		if err != nil {
 			logging.Error(err.Error())
 		} else {
-			AllSnapshots[mountPointProperty.Value] = snapshots
+			AllSnapshots[nameProperty.Value] = snapshots
 		}
 		loadSnapshots(dataset.Children)
 	}
@@ -128,7 +129,7 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 		_, name := path2.Split(file)
 
 		var creationDate time.Time
-		s := findSnapshot(AllSnapshots[dataset.Path], name)
+		s := findSnapshot(AllSnapshots[dataset.ZfsData.Name], name)
 		if s != nil {
 			creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
 			creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
@@ -138,6 +139,8 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 			} else {
 				creationDate = time.Unix(creationDateTimestamp, 0)
 			}
+		} else {
+			logging.Warning("Could not find snapshot %s on dataset %s", name, dataset.Path)
 		}
 
 		result = append(result, NewSnapshot(name, file, dataset, &creationDate))
