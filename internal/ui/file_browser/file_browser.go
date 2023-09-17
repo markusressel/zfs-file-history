@@ -526,6 +526,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 }
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
+	fileBrowser.selectedEntryChangedCallback(newSelection)
 	if fileBrowser.GetSelection() == newSelection {
 		return
 	}
@@ -546,8 +547,7 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 			entryToSelect = entries[0]
 		}
 	}
-	fileBrowser.tableContainer.Select(entryToSelect)
-	fileBrowser.selectedEntryChangedCallback(entryToSelect)
+	fileBrowser.selectFileEntry(entryToSelect)
 }
 
 func (fileBrowser *FileBrowserComponent) rememberSelectionForCurrentPath() {
