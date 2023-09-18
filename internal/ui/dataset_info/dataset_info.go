@@ -41,7 +41,7 @@ func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 }
 
 func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {
-	if datasetInfo.dataset == dataset || datasetInfo.dataset != nil && dataset != nil && datasetInfo.dataset.ZfsData.Name == dataset.ZfsData.Name {
+	if datasetInfo.dataset == dataset || datasetInfo.dataset != nil && dataset != nil && datasetInfo.dataset.GetName() == dataset.GetName() {
 		return
 	}
 	datasetInfo.dataset = dataset
@@ -75,42 +75,39 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 	titleText = fmt.Sprintf("%s: %s", titleText, dataset.Path)
 	uiutil.SetupWindow(datasetInfo.layout, titleText)
 
-	properties := []*DatasetInfoTableEntry{}
-	if dataset.ZfsData != nil {
-		properties = []*DatasetInfoTableEntry{
-			{
-				Name:  "Type",
-				Value: dataset.ZfsData.Type,
-			},
-			{
-				Name:  "Name",
-				Value: dataset.ZfsData.Name,
-			},
-			{
-				Name:  "Mountpoint",
-				Value: dataset.ZfsData.Mountpoint,
-			},
-			{
-				Name:  "Volsize",
-				Value: humanize.IBytes(dataset.ZfsData.Volsize),
-			},
-			{
-				Name:  "Avail",
-				Value: humanize.IBytes(dataset.ZfsData.Avail),
-			},
-			{
-				Name:  "Used",
-				Value: humanize.IBytes(dataset.ZfsData.Used),
-			},
-			{
-				Name:  "Compression",
-				Value: dataset.ZfsData.Compression,
-			},
-			{
-				Name:  "Origin",
-				Value: dataset.ZfsData.Origin,
-			},
-		}
+	properties := []*DatasetInfoTableEntry{
+		{
+			Name:  "Type",
+			Value: dataset.GetType(),
+		},
+		{
+			Name:  "Name",
+			Value: dataset.GetName(),
+		},
+		{
+			Name:  "Mountpoint",
+			Value: dataset.GetMountPoint(),
+		},
+		{
+			Name:  "Volsize",
+			Value: humanize.IBytes(dataset.GetVolSize()),
+		},
+		{
+			Name:  "Avail",
+			Value: humanize.IBytes(dataset.GetAvailable()),
+		},
+		{
+			Name:  "Used",
+			Value: humanize.IBytes(dataset.GetUsed()),
+		},
+		{
+			Name:  "Compression",
+			Value: dataset.GetCompression(),
+		},
+		{
+			Name:  "Origin",
+			Value: dataset.GetOrigin(),
+		},
 	}
 
 	datasetInfo.layout.Clear()
