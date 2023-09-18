@@ -29,7 +29,6 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	ds := findDataset(allDatasets, path)
 	if dataset != nil {
 		dataset.rawDataset = ds
-		return dataset, nil
 	}
 
 	datasets, err := gozfs.Filesystems(path)
@@ -97,7 +96,7 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 				creationDate = time.Unix(creationDateTimestamp, 0)
 			}
 		} else {
-			logging.Warning("Could not find snapshot %s on dataset %s", name, dataset.Path)
+			logging.Warning("Could not find snapshot %s on dataset %s", name, dataset.GetName())
 		}
 
 		result = append(result, NewSnapshot(name, file, dataset, &creationDate))
@@ -107,6 +106,9 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 }
 
 func (dataset *Dataset) GetName() string {
+	if dataset.zfsData != nil {
+		return dataset.zfsData.Name
+	}
 	if dataset.rawDataset != nil {
 		nameProperty, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropName)
 		if err != nil {
@@ -114,9 +116,6 @@ func (dataset *Dataset) GetName() string {
 		} else {
 			return nameProperty.Value
 		}
-	}
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Name
 	}
 	return dataset.Path
 }
