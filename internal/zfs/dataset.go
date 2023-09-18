@@ -188,12 +188,24 @@ func (dataset *Dataset) GetType() string {
 	if dataset.zfsData != nil {
 		return dataset.zfsData.Type
 	}
+	if dataset.rawDataset != nil {
+		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropType)
+		if err == nil {
+			return prop.Value
+		}
+	}
 	return ""
 }
 
 func (dataset *Dataset) GetMountPoint() string {
 	if dataset.zfsData != nil {
 		return dataset.zfsData.Mountpoint
+	}
+	if dataset.rawDataset != nil {
+		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropMountpoint)
+		if err == nil {
+			return prop.Value
+		}
 	}
 	return ""
 }
@@ -202,12 +214,30 @@ func (dataset *Dataset) GetVolSize() uint64 {
 	if dataset.zfsData != nil {
 		return dataset.zfsData.Volsize
 	}
+	if dataset.rawDataset != nil {
+		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropVolsize)
+		if err == nil {
+			number, err := strconv.ParseUint(prop.Value, 10, 64)
+			if err == nil {
+				return number
+			}
+		}
+	}
 	return 0
 }
 
 func (dataset *Dataset) GetAvailable() uint64 {
 	if dataset.zfsData != nil {
 		return dataset.zfsData.Avail
+	}
+	if dataset.rawDataset != nil {
+		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropAvailable)
+		if err == nil {
+			number, err := strconv.ParseUint(prop.Value, 10, 64)
+			if err == nil {
+				return number
+			}
+		}
 	}
 	return 0
 }
@@ -216,6 +246,15 @@ func (dataset *Dataset) GetUsed() uint64 {
 	if dataset.zfsData != nil {
 		return dataset.zfsData.Used
 	}
+	if dataset.rawDataset != nil {
+		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropUsed)
+		if err == nil {
+			number, err := strconv.ParseUint(prop.Value, 10, 64)
+			if err == nil {
+				return number
+			}
+		}
+	}
 	return 0
 }
 
@@ -223,12 +262,24 @@ func (dataset *Dataset) GetCompression() string {
 	if dataset.zfsData != nil {
 		return dataset.zfsData.Compression
 	}
+	if dataset.rawDataset != nil {
+		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropCompression)
+		if err == nil {
+			return prop.Value
+		}
+	}
 	return ""
 }
 
 func (dataset *Dataset) GetOrigin() string {
 	if dataset.zfsData != nil {
 		return dataset.zfsData.Origin
+	}
+	if dataset.rawDataset != nil {
+		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropOrigin)
+		if err == nil {
+			return prop.Value
+		}
 	}
 	return ""
 }
