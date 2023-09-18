@@ -265,7 +265,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 	entries := snapshotBrowser.GetEntries()
 	rememberedSelectionInfo := snapshotBrowser.getRememberedSelectionInfo(snapshotBrowser.hostDataset.Path)
 	if rememberedSelectionInfo == nil {
-		entryToSelect = entries[0]
+		if len(entries) > 0 {
+			entryToSelect = entries[0]
+		}
 	} else {
 		var index int
 		if rememberedSelectionInfo.Entry == nil {
