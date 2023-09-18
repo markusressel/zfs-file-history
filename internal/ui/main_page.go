@@ -3,7 +3,6 @@ package ui
 import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
@@ -19,32 +18,29 @@ type MainPage struct {
 	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
 	layout          *tview.Flex
-	statusChannel   chan *status_message.StatusMessage
 }
 
-func NewMainPage(application *tview.Application, path string) *MainPage {
-	statusChannel := make(chan *status_message.StatusMessage, 1000)
-
-	fileBrowser := file_browser.NewFileBrowser(application, statusChannel, path)
+func NewMainPage(application *tview.Application) *MainPage {
+	fileBrowser := file_browser.NewFileBrowser(application)
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
-	datasetInfo.SetPath(path)
 
-	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application, path)
-	snapshotBrowser.SetPath(path)
-	snapshotBrowser.SetFileEntry(fileBrowser.GetSelection())
+	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	mainPage := &MainPage{
 		application:     application,
 		fileBrowser:     fileBrowser,
 		datasetInfo:     datasetInfo,
 		snapshotBrowser: snapshotBrowser,
-		statusChannel:   statusChannel,
 	}
 
+	fileBrowser.SetStatusCallback(func(message *status_message.StatusMessage) {
+		mainPage.showStatusMessage(message)
+	})
+
 	fileBrowser.SetPathChangedCallback(func(path string) {
-		snapshotBrowser.SetPath(path)
 		datasetInfo.SetPath(path)
+		snapshotBrowser.SetPath(path)
 	})
 	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
 		snapshotBrowser.SetFileEntry(fileEntry)
@@ -67,18 +63,6 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		}
 		return event
 	})
-
-	// listen for selection changes within the file browser
-	go func() {
-		for {
-			select {
-			case statusMessage := <-statusChannel:
-				mainPage.showStatusMessage(statusMessage)
-			}
-		}
-	}()
-
-	mainPage.SendStatusMessage("Ready")
 
 	return mainPage
 }
@@ -106,6 +90,12 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	return mainPageLayout
 }
 
+func (mainPage *MainPage) Init(path string) {
+	mainPage.datasetInfo.SetPath(path)
+	mainPage.snapshotBrowser.SetPath(path)
+	mainPage.fileBrowser.SetPath(path, false)
+}
+
 func (mainPage *MainPage) ToggleFocus() {
 	if mainPage.fileBrowser.HasFocus() {
 		mainPage.datasetInfo.Focus()
@@ -120,10 +110,4 @@ func (mainPage *MainPage) ToggleFocus() {
 
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
-}
-
-func (mainPage *MainPage) SendStatusMessage(s string) {
-	go func() {
-		mainPage.statusChannel <- status_message.NewInfoStatusMessage(s).SetDuration(3 * time.Second)
-	}()
 }

@@ -11,7 +11,6 @@ import (
 	path2 "path"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -77,18 +76,17 @@ type FileBrowserComponent struct {
 	application *tview.Application
 	layout      *tview.Pages
 
-	lock *sync.Mutex
-
 	tableContainer               *table.RowSelectionTable[data.FileBrowserEntry]
 	selectedEntryChangedCallback func(fileEntry *data.FileBrowserEntry)
 
+	statusCallback func(message *status_message.StatusMessage)
+
 	selectionIndexMap   map[string]FileBrowserSelectionInfo
 	fileWatcher         *util.FileWatcher
-	statusChannel       chan<- *status_message.StatusMessage
 	pathChangedCallback func(path string)
 }
 
-func NewFileBrowser(application *tview.Application, statusChannel chan<- *status_message.StatusMessage, path string) *FileBrowserComponent {
+func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
 		var status = "="
 		var statusColor = tcell.ColorGray
@@ -263,9 +261,6 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	fileBrowser := &FileBrowserComponent{
 		application: application,
 
-		lock: &sync.Mutex{},
-
-		statusChannel:     statusChannel,
 		selectionIndexMap: map[string]FileBrowserSelectionInfo{},
 
 		tableContainer:               tableContainer,
@@ -301,7 +296,6 @@ func NewFileBrowser(application *tview.Application, statusChannel chan<- *status
 	})
 
 	fileBrowser.createLayout()
-	fileBrowser.SetPath(path, false)
 
 	return fileBrowser
 }
@@ -464,6 +458,9 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 func (fileBrowser *FileBrowserComponent) goUp() {
 	newSelection := fileBrowser.path
 	newPath := path2.Dir(fileBrowser.path)
+	if newSelection == newPath {
+		return
+	}
 	fileBrowser.SetPathWithSelection(newPath, newSelection)
 }
 
@@ -540,10 +537,10 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_
 }
 
 func (fileBrowser *FileBrowserComponent) Refresh() {
-	fileBrowser.showWarning(status_message.NewWarningStatusMessage("Refreshing..."))
+	fileBrowser.showMessage(status_message.NewWarningStatusMessage("Refreshing..."))
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
-	fileBrowser.showInfo(status_message.NewInfoStatusMessage(""))
+	fileBrowser.showMessage(status_message.NewInfoStatusMessage("Ready").SetDuration(1 * time.Second))
 }
 
 func (fileBrowser *FileBrowserComponent) updateTableContents() {
@@ -697,28 +694,12 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.showWarning(status_message.NewWarningStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
+	fileBrowser.showMessage(status_message.NewErrorStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
 }
 
-func (fileBrowser *FileBrowserComponent) showInfo(message *status_message.StatusMessage) {
+func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
 	logging.Info(message.Message)
-	fileBrowser.sendStatusMessage(message)
-}
-
-func (fileBrowser *FileBrowserComponent) showWarning(message *status_message.StatusMessage) {
-	logging.Warning(message.Message)
-	fileBrowser.sendStatusMessage(message)
-}
-
-func (fileBrowser *FileBrowserComponent) showError(err error) {
-	logging.Error(err.Error())
-	fileBrowser.sendStatusMessage(status_message.NewErrorStatusMessage(err.Error()))
-}
-
-func (fileBrowser *FileBrowserComponent) sendStatusMessage(message *status_message.StatusMessage) {
-	go func() {
-		fileBrowser.statusChannel <- message
-	}()
+	fileBrowser.statusCallback(message)
 }
 
 func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
@@ -733,6 +714,10 @@ func (fileBrowser *FileBrowserComponent) SetPathChangedCallback(f func(path stri
 	fileBrowser.pathChangedCallback = f
 }
 
+func (fileBrowser *FileBrowserComponent) SetStatusCallback(f func(message *status_message.StatusMessage)) {
+	fileBrowser.statusCallback = f
+}
+
 func (fileBrowser *FileBrowserComponent) selectHeader() {
 	fileBrowser.tableContainer.SelectHeader()
 }
@@ -743,4 +728,8 @@ func (fileBrowser *FileBrowserComponent) selectFirstEntryIfExists() {
 
 func (fileBrowser *FileBrowserComponent) GetEntries() []*data.FileBrowserEntry {
 	return fileBrowser.tableContainer.GetEntries()
+}
+
+func (fileBrowser *FileBrowserComponent) showError(err error) {
+	fileBrowser.showMessage(status_message.NewErrorStatusMessage(err.Error()))
 }

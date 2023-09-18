@@ -60,7 +60,7 @@ var (
 	}
 )
 
-func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBrowserComponent {
+func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
 	toTableCellsFunction := func(row int, columns []*table.Column, entry *SnapshotBrowserEntry) (cells []*tview.TableCell) {
 		result := []*tview.TableCell{}
 		for _, column := range columns {
@@ -143,7 +143,6 @@ func NewSnapshotBrowser(application *tview.Application, path string) *SnapshotBr
 		snapshotsBrowser.selectedSnapshotChangedCallback(entry)
 		snapshotsBrowser.updateTableContents()
 	})
-	snapshotsBrowser.SetPath(path)
 
 	return snapshotsBrowser
 }

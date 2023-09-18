@@ -17,7 +17,7 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 	application := tview.NewApplication()
 	application.EnableMouse(true)
 
-	mainPage := NewMainPage(application, path)
+	mainPage := NewMainPage(application)
 	helpPage := dialog.NewHelpPage()
 
 	pagesLayout := tview.NewPages().
@@ -49,6 +49,8 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		}
 		return event
 	})
+
+	mainPage.Init(path)
 
 	return application.SetRoot(pagesLayout, fullscreen).SetFocus(mainPage.fileBrowser.GetLayout())
 }

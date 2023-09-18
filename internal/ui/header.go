@@ -81,6 +81,7 @@ func (applicationHeader *ApplicationHeaderComponent) updateUi() {
 
 func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *status_message.StatusMessage) {
 	applicationHeader.statusTextView.SetText(status.Message).SetTextColor(status.Color)
+	applicationHeader.application.ForceDraw()
 	if status.Duration > 0 {
 		go func() {
 			time.Sleep(status.Duration)
@@ -95,5 +96,5 @@ func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *status_me
 
 func (applicationHeader *ApplicationHeaderComponent) ResetStatus() {
 	applicationHeader.statusTextView.SetText("").SetTextColor(tcell.ColorWhite)
-	applicationHeader.application.Draw()
+	applicationHeader.application.ForceDraw()
 }
