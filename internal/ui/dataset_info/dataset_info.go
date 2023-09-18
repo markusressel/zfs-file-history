@@ -41,7 +41,7 @@ func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 }
 
 func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {
-	if datasetInfo.dataset == dataset {
+	if datasetInfo.dataset == dataset || datasetInfo.dataset != nil && dataset != nil && datasetInfo.dataset.ZfsData.Name == dataset.ZfsData.Name {
 		return
 	}
 	datasetInfo.dataset = dataset

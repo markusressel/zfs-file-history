@@ -215,6 +215,7 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 		c.layout.ScrollToBeginning()
 	}
 	c.layout.Select(index, 0)
+	c.application.ForceDraw()
 }
 
 func (c *RowSelectionTable[T]) HasFocus() bool {

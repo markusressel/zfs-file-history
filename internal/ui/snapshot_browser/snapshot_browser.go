@@ -168,7 +168,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) Refresh() {
 func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.FileBrowserEntry) {
 	if fileEntry != nil &&
 		snapshotBrowser.currentFileEntry != nil &&
-		snapshotBrowser.currentFileEntry.Name == fileEntry.Name {
+		snapshotBrowser.currentFileEntry.GetRealPath() == fileEntry.GetRealPath() {
 		return
 	}
 	snapshotBrowser.currentFileEntry = fileEntry
@@ -288,7 +288,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *SnapshotBrowserEntry) {
 	snapshotBrowser.selectedSnapshotChangedCallback(snapshot)
-	if snapshotBrowser.GetSelection() == snapshot {
+	if snapshotBrowser.GetSelection() == snapshot || snapshotBrowser.GetSelection() != nil && snapshot != nil && snapshotBrowser.GetSelection().Snapshot.Path == snapshot.Snapshot.Path {
 		return
 	}
 	snapshotBrowser.tableContainer.Select(snapshot)

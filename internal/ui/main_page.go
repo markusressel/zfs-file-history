@@ -49,7 +49,6 @@ func NewMainPage(application *tview.Application) *MainPage {
 	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *snapshot_browser.SnapshotBrowserEntry) {
 		fileBrowser.SetSelectedSnapshot(snapshot)
 	})
-	fileBrowser.SetSelectedSnapshot(snapshotBrowser.GetSelection())
 
 	mainPage.layout = mainPage.createLayout()
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {

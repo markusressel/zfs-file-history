@@ -529,7 +529,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_browser.SnapshotBrowserEntry) {
-	if fileBrowser.currentSnapshot == snapshot {
+	if fileBrowser.currentSnapshot == snapshot || fileBrowser.currentSnapshot != nil && snapshot != nil && fileBrowser.currentSnapshot.Snapshot.Path == snapshot.Snapshot.Path {
 		return
 	}
 	fileBrowser.currentSnapshot = snapshot
@@ -537,10 +537,11 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_
 }
 
 func (fileBrowser *FileBrowserComponent) Refresh() {
-	fileBrowser.showMessage(status_message.NewWarningStatusMessage("Refreshing..."))
+	fileBrowser.showMessage(status_message.NewInfoStatusMessage("Refreshing..."))
 	fileBrowser.updateTableContents()
 	fileBrowser.updateFileWatcher()
-	fileBrowser.showMessage(status_message.NewInfoStatusMessage("Ready").SetDuration(1 * time.Second))
+	// TODO: clearing the message like this will hide error messages instantly...
+	fileBrowser.showMessage(status_message.NewInfoStatusMessage(""))
 }
 
 func (fileBrowser *FileBrowserComponent) updateTableContents() {
@@ -553,7 +554,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
 	fileBrowser.selectedEntryChangedCallback(newSelection)
-	if fileBrowser.GetSelection() == newSelection {
+	if fileBrowser.GetSelection() == newSelection || fileBrowser.GetSelection() != nil && newSelection != nil && fileBrowser.GetSelection().GetRealPath() == newSelection.GetRealPath() {
 		return
 	}
 

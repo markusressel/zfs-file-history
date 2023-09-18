@@ -19,7 +19,7 @@ func newStatusMessage(message string) *StatusMessage {
 	return &StatusMessage{
 		Message:  message,
 		Duration: StatusMessageDurationInfinite,
-		Color:    tcell.ColorWhite,
+		Color:    tcell.ColorLightGray,
 	}
 }
 
