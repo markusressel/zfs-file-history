@@ -49,7 +49,7 @@ func (s *Snapshot) GetRealPath(path string) string {
 }
 
 func (s *Snapshot) RestoreRecursive(srcPath string) error {
-	stat, err := os.Stat(srcPath)
+	stat, err := os.Lstat(srcPath)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (s *Snapshot) RestoreRecursive(srcPath string) error {
 			return err
 		}
 		for _, file := range files {
-			stat, err = os.Stat(file)
+			stat, err = os.Lstat(file)
 			if err != nil {
 				return err
 			}
@@ -96,7 +96,7 @@ func (s *Snapshot) RestoreRecursive(srcPath string) error {
 }
 
 func (s *Snapshot) Restore(srcPath string) error {
-	stat, err := os.Stat(srcPath)
+	stat, err := os.Lstat(srcPath)
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func (s *Snapshot) RestoreFile(srcPath string) error {
 		return err
 	}
 
-	stat, err := os.Stat(srcPath)
+	stat, err := os.Lstat(srcPath)
 	if err != nil {
 		return err
 	}
@@ -241,12 +241,12 @@ func (s *Snapshot) CheckIfFileHasChanged(path string) bool {
 		realPath = s.GetRealPath(path)
 	}
 
-	realStat, err := os.Stat(realPath)
+	realStat, err := os.Lstat(realPath)
 	if err != nil {
 		return false
 	}
 
-	snapStat, err := os.Stat(snapshotPath)
+	snapStat, err := os.Lstat(snapshotPath)
 	if err != nil {
 		return false
 	}
@@ -264,7 +264,7 @@ func (s *Snapshot) IsSnapshotPath(path string) bool {
 
 func (s *Snapshot) ContainsFile(entry string) (bool, error) {
 	realPath := s.GetSnapshotPath(entry)
-	_, err := os.Stat(realPath)
+	_, err := os.Lstat(realPath)
 	if os.IsNotExist(err) {
 		return false, nil
 	} else if err != nil {

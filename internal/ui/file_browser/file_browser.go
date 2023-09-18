@@ -347,7 +347,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 	// add entries for files which are present on the "real" location (and possibly within a snapshot as well)
 	for _, realFilePath := range realFiles {
 		_, realFileName := path2.Split(realFilePath)
-		realFileStat, err := os.Stat(realFilePath)
+		realFileStat, err := os.Lstat(realFilePath)
 		if err != nil {
 			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
 			fileBrowser.showError(err)
@@ -371,7 +371,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 			snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
 				return s == snapshotFilePath
 			})
-			statSnap, err := os.Stat(snapshotFilePath)
+			statSnap, err := os.Lstat(snapshotFilePath)
 			if err != nil {
 				if !os.IsNotExist(err) {
 					snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
@@ -407,7 +407,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 	for _, snapshotFilePath := range snapshotFilePaths {
 		_, snapshotFileName := path2.Split(snapshotFilePath)
 
-		statSnap, err := os.Stat(snapshotFilePath)
+		statSnap, err := os.Lstat(snapshotFilePath)
 		if err != nil {
 			fileBrowser.showError(err)
 			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
@@ -476,7 +476,7 @@ func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, se
 
 func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists bool) {
 	if checkExists {
-		stat, err := os.Stat(newPath)
+		stat, err := os.Lstat(newPath)
 		if err != nil {
 			// cannot enter path, ignoring
 			fileBrowser.showError(err)

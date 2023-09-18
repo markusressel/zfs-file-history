@@ -6,7 +6,7 @@ import (
 )
 
 func ListFilesIn(path string) (result []string, err error) {
-	if _, err = os.Stat(path); err != nil {
+	if _, err = os.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
 			return result, nil
 		} else {
