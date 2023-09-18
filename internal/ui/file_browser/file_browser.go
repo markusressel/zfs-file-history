@@ -569,7 +569,9 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 		entries := fileBrowser.GetEntries()
 		rememberedSelectionInfo := fileBrowser.getRememberedSelectionInfo(fileBrowser.path)
 		if rememberedSelectionInfo == nil {
-			entryToSelect = entries[0]
+			if len(entries) > 0 {
+				entryToSelect = entries[0]
+			}
 		} else {
 			var index int
 			if rememberedSelectionInfo.Entry == nil {
