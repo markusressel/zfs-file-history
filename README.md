@@ -17,7 +17,8 @@
 * [x] Intuitive navigation using arrow keys (and vim bindings)
 * [x] Colorful visualization "git diff" style
 * [x] Browse through Snapshots and get to the right version quickly
-* [x] Restore any file from any snapshot with two keytrokes 
+* [x] Sort table entries by any column and direction
+* [x] Restore any file from any snapshot with two keytrokes
 
 # How to use
 
