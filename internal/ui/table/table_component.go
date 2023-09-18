@@ -86,6 +86,10 @@ func (c *RowSelectionTable[T]) createLayout() {
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		event = c.inputCapture(event)
+		if event == nil {
+			return event
+		}
 		key := event.Key()
 		if c.GetSelectedEntry() == nil {
 			if key == tcell.KeyRight {
@@ -99,7 +103,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 				return nil
 			}
 		}
-		return c.inputCapture(event)
+		return event
 	})
 
 	c.layout = table
