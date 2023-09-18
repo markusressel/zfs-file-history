@@ -58,12 +58,12 @@ sudo chmod ug+x /usr/bin/zfs-file-history
 Then configure zfs-file-history by creating a YAML configuration file in **one** of the following locations:
 
 * `/etc/zfs-file-history/zfs-file-history.yaml` (recommended)
-* `/root/.zfs-file-history/zfs-file-history.yaml`
+* `/home/<user>/.config/zfs-file-history/zfs-file-history.yaml`
 * `./zfs-file-history.yaml`
 
 ```shell
-sudo mkdir /etc/zfs-file-history
-sudo nano /etc/zfs-file-history/zfs-file-history.yaml
+sudo mkdir -P ~/.config/zfs-file-history
+sudo nano ~/.config/zfs-file-history/zfs-file-history.yaml
 ```
 
 ### Example

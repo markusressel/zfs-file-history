@@ -4,6 +4,7 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 	"os"
+	path2 "path"
 	"zfs-file-history/internal/logging"
 )
 
@@ -30,6 +31,8 @@ func InitConfig(cfgFile string) {
 
 		viper.AddConfigPath(".")
 		viper.AddConfigPath(home)
+		viper.AddConfigPath(path2.Join(home, ".config"))
+		viper.AddConfigPath(path2.Join(home, ".config", "zfs-file-history"))
 		viper.AddConfigPath("/etc/zfs-file-history/")
 	}
 
