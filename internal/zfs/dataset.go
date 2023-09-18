@@ -14,10 +14,10 @@ import (
 )
 
 type Dataset struct {
-	Path          string
-	HiddenZfsPath string
-	zfsData       *gozfs.Dataset
-	rawDataset    *golibzfs.Dataset
+	Path            string
+	HiddenZfsPath   string
+	rawGozfsData    *gozfs.Dataset
+	rawGolibzfsData *golibzfs.Dataset
 }
 
 func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
@@ -28,7 +28,7 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 
 	ds := findDataset(allDatasets, path)
 	if dataset != nil {
-		dataset.rawDataset = ds
+		dataset.rawGolibzfsData = ds
 	}
 
 	datasets, err := gozfs.Filesystems(path)
@@ -36,7 +36,7 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 		return dataset, err
 	} else {
 		if len(datasets) > 0 {
-			dataset.zfsData = datasets[0]
+			dataset.rawGozfsData = datasets[0]
 		}
 	}
 
@@ -106,11 +106,11 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 }
 
 func (dataset *Dataset) GetName() string {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Name
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Name
 	}
-	if dataset.rawDataset != nil {
-		nameProperty, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropName)
+	if dataset.rawGolibzfsData != nil {
+		nameProperty, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropName)
 		if err != nil {
 			logging.Error(err.Error())
 		} else {
@@ -121,11 +121,11 @@ func (dataset *Dataset) GetName() string {
 }
 
 func (dataset *Dataset) GetType() string {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Type
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Type
 	}
-	if dataset.rawDataset != nil {
-		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropType)
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropType)
 		if err == nil {
 			return prop.Value
 		}
@@ -134,11 +134,11 @@ func (dataset *Dataset) GetType() string {
 }
 
 func (dataset *Dataset) GetMountPoint() string {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Mountpoint
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Mountpoint
 	}
-	if dataset.rawDataset != nil {
-		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropMountpoint)
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropMountpoint)
 		if err == nil {
 			return prop.Value
 		}
@@ -147,11 +147,11 @@ func (dataset *Dataset) GetMountPoint() string {
 }
 
 func (dataset *Dataset) GetVolSize() uint64 {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Volsize
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Volsize
 	}
-	if dataset.rawDataset != nil {
-		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropVolsize)
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropVolsize)
 		if err == nil {
 			number, err := strconv.ParseUint(prop.Value, 10, 64)
 			if err == nil {
@@ -163,11 +163,11 @@ func (dataset *Dataset) GetVolSize() uint64 {
 }
 
 func (dataset *Dataset) GetAvailable() uint64 {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Avail
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Avail
 	}
-	if dataset.rawDataset != nil {
-		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropAvailable)
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropAvailable)
 		if err == nil {
 			number, err := strconv.ParseUint(prop.Value, 10, 64)
 			if err == nil {
@@ -179,11 +179,11 @@ func (dataset *Dataset) GetAvailable() uint64 {
 }
 
 func (dataset *Dataset) GetUsed() uint64 {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Used
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Used
 	}
-	if dataset.rawDataset != nil {
-		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropUsed)
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUsed)
 		if err == nil {
 			number, err := strconv.ParseUint(prop.Value, 10, 64)
 			if err == nil {
@@ -195,11 +195,11 @@ func (dataset *Dataset) GetUsed() uint64 {
 }
 
 func (dataset *Dataset) GetCompression() string {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Compression
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Compression
 	}
-	if dataset.rawDataset != nil {
-		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropCompression)
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCompression)
 		if err == nil {
 			return prop.Value
 		}
@@ -208,11 +208,11 @@ func (dataset *Dataset) GetCompression() string {
 }
 
 func (dataset *Dataset) GetOrigin() string {
-	if dataset.zfsData != nil {
-		return dataset.zfsData.Origin
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Origin
 	}
-	if dataset.rawDataset != nil {
-		prop, err := dataset.rawDataset.GetProperty(golibzfs.DatasetPropOrigin)
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropOrigin)
 		if err == nil {
 			return prop.Value
 		}
