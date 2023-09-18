@@ -40,19 +40,7 @@ None yet
 
 ### Manual
 
-Download the latest release from GitHub:
-
-```shell
-# Install dependencies
-sudo pacman -S libnotify
-
-curl -L -o zfs-file-history https://github.com/markusressel/zfs-file-history/releases/latest/download/zfs-file-history-linux-amd64
-chmod +x zfs-file-history
-sudo cp ./zfs-file-history /usr/bin/zfs-file-history
-zfs-file-history
-```
-
-Or compile yourself:
+Compile yourself:
 
 ```shell
 git clone https://github.com/markusressel/zfs-file-history.git
@@ -63,6 +51,9 @@ sudo chmod ug+x /usr/bin/zfs-file-history
 ```
 
 ## Configuration
+
+> **Note:**
+> The configuration is optional and currently only contains debugging settings.
 
 Then configure zfs-file-history by creating a YAML configuration file in **one** of the following locations:
 
