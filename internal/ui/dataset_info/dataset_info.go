@@ -76,38 +76,14 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 	uiutil.SetupWindow(datasetInfo.layout, titleText)
 
 	properties := []*DatasetInfoTableEntry{
-		{
-			Name:  "Type",
-			Value: dataset.GetType(),
-		},
-		{
-			Name:  "Name",
-			Value: dataset.GetName(),
-		},
-		{
-			Name:  "Mountpoint",
-			Value: dataset.GetMountPoint(),
-		},
-		{
-			Name:  "Volsize",
-			Value: humanize.IBytes(dataset.GetVolSize()),
-		},
-		{
-			Name:  "Avail",
-			Value: humanize.IBytes(dataset.GetAvailable()),
-		},
-		{
-			Name:  "Used",
-			Value: humanize.IBytes(dataset.GetUsed()),
-		},
-		{
-			Name:  "Compression",
-			Value: dataset.GetCompression(),
-		},
-		{
-			Name:  "Origin",
-			Value: dataset.GetOrigin(),
-		},
+		{Name: "Type", Value: dataset.GetType()},
+		{Name: "Name", Value: dataset.GetName()},
+		{Name: "Mountpoint", Value: dataset.GetMountPoint()},
+		{Name: "Volsize", Value: humanize.IBytes(dataset.GetVolSize())},
+		{Name: "Avail", Value: humanize.IBytes(dataset.GetAvailable())},
+		{Name: "Used", Value: humanize.IBytes(dataset.GetUsed())},
+		{Name: "Compression", Value: dataset.GetCompression()},
+		{Name: "Origin", Value: dataset.GetOrigin()},
 	}
 
 	datasetInfo.layout.Clear()
