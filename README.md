@@ -7,6 +7,8 @@
 [![Latest Release](https://img.shields.io/github/release/markusressel/zfs-file-history.svg)](https://github.com/markusressel/zfs-file-history/releases)
 [![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)](/LICENSE)
 
+<a href="https://asciinema.org/a/HUjG6sJCUfOp2G8b8yXjfCyc9" target="_blank"><img src="https://asciinema.org/a/HUjG6sJCUfOp2G8b8yXjfCyc9.svg" /></a>
+
 </div>
 
 # Features
