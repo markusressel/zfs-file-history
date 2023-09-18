@@ -24,7 +24,7 @@ type RestoreFileProgressDialog struct {
 
 	layout              *tview.Flex
 	descriptionTextView *tview.TextView
-	abortTextView       *tview.TextView
+	actionsHelpTextView *tview.TextView
 
 	progress      *tvxwidgets.PercentageModeGauge
 	progressValue int
@@ -73,7 +73,7 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		AddItem(descriptionTextView, 0, 1, false)
 
 	abortTextView := uiutil.CreateAttentionTextView("Press 'q' to abort")
-	d.abortTextView = abortTextView
+	d.actionsHelpTextView = abortTextView
 
 	progress := tvxwidgets.NewPercentageModeGauge()
 	progressTitle := theme.CreateTitleText("Progress")
@@ -132,7 +132,6 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 				d.handleError(err)
 				d.application.Draw()
 				if err != nil {
-					logging.Error(err.Error())
 					return
 				}
 			}
@@ -141,7 +140,6 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 			d.handleError(err)
 			d.application.Draw()
 			if err != nil {
-				logging.Error(err.Error())
 				return
 			}
 		}
@@ -170,10 +168,12 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 
 func (d *RestoreFileProgressDialog) handleError(err error) {
 	if err != nil {
+		logging.Error(err.Error())
 		d.isRunning = false
 		d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
 		d.progress.SetTitle(theme.CreateTitleText("Failed!"))
 		d.progress.SetTitleColor(tcell.ColorRed)
+		d.actionsHelpTextView.SetText("Press 'esc' to close")
 	}
 }
 
@@ -183,5 +183,5 @@ func (d *RestoreFileProgressDialog) handleDone() {
 	d.progress.SetValue(finishedValue)
 	d.progress.SetTitle(theme.CreateTitleText("Done!"))
 	d.progress.SetTitleColor(tcell.ColorGreen)
-	d.abortTextView.SetText(uiutil.CreateAttentionText("Press 'esc' to close"))
+	d.actionsHelpTextView.SetText(uiutil.CreateAttentionText("Press 'esc' to close"))
 }
