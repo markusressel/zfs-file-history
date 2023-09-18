@@ -2,6 +2,7 @@ package zfs
 
 import (
 	"errors"
+	"fmt"
 	golibzfs "github.com/bicomsystems/go-libzfs"
 	gozfs "github.com/mistifyio/go-zfs"
 	"os"
@@ -100,28 +101,27 @@ func FindHostDataset(path string) (*Dataset, error) {
 	if path == "" {
 		return nil, errors.New("Cannot find host dataset for empty path")
 	}
-	var dataset *string = nil
 
 	var currentPath = path
-	for dataset == nil {
-		for {
-			stat, err := os.Stat(currentPath)
-			if err != nil || !stat.IsDir() {
-				currentPath = path2.Dir(currentPath)
-				continue
+	for {
+		stat, err := os.Stat(currentPath)
+		if err != nil || !stat.IsDir() {
+			old := currentPath
+			currentPath = path2.Dir(currentPath)
+			if old == currentPath {
+				return nil, errors.New(fmt.Sprintf("Could not find dataset for path: %s", path))
 			} else {
-				break
+				continue
 			}
 		}
 
 		pathToTest := path2.Join(currentPath, ".zfs")
-		_, err := os.Stat(pathToTest)
+		_, err = os.Stat(pathToTest)
 		if os.IsNotExist(err) {
-			logging.Debug(".zfs not found in %s, continuing...", currentPath)
+			//logging.Debug(".zfs not found in %s, continuing...", currentPath)
 			dir := path2.Dir(currentPath)
 			currentPath = dir
 			continue
-
 		} else if os.IsPermission(err) {
 			return nil, err
 		} else if err != nil {
@@ -130,9 +130,6 @@ func FindHostDataset(path string) (*Dataset, error) {
 			return NewDataset(currentPath, pathToTest)
 		}
 	}
-
-	logging.Fatal("Could not find host dataset for path %s", path)
-	panic(nil)
 }
 
 func (dataset *Dataset) GetSnapshotsDir() string {
