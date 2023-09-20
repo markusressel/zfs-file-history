@@ -1,7 +1,6 @@
 package data
 
 import (
-	"golang.org/x/exp/slices"
 	"os"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/zfs"
@@ -49,7 +48,7 @@ type FileBrowserEntry struct {
 }
 
 func (entry *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
-	return entry.Name == e.Name && entry.RealFile == e.RealFile && slices.Equal(entry.SnapshotFiles, e.SnapshotFiles)
+	return entry.GetRealPath() == e.GetRealPath()
 }
 
 func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*SnapshotFile, entryType FileBrowserEntryType) *FileBrowserEntry {
