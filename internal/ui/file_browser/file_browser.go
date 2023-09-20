@@ -464,10 +464,10 @@ func (fileBrowser *FileBrowserComponent) goUp() {
 	fileBrowser.SetPathWithSelection(newPath, newSelection)
 }
 
-func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, selection string) {
+func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, newSelection string) {
 	fileBrowser.SetPath(newPath, false)
 	for _, entry := range fileBrowser.GetEntries() {
-		if strings.Contains(entry.GetRealPath(), selection) {
+		if strings.Contains(entry.GetRealPath(), newSelection) {
 			fileBrowser.selectFileEntry(entry)
 			return
 		}
@@ -561,7 +561,7 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 	fileBrowser.tableContainer.Select(newSelection)
 }
 
-func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
+func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
 	var entryToSelect *data.FileBrowserEntry
 	if fileBrowser.isEmpty() {
 		entryToSelect = nil
@@ -576,7 +576,7 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 			var index int
 			if rememberedSelectionInfo.Entry == nil {
 				fileBrowser.selectHeader()
-				return
+				return true
 			} else {
 				index = slices.IndexFunc(entries, func(entry *data.FileBrowserEntry) bool {
 					return entry.Name == rememberedSelectionInfo.Entry.Name
@@ -591,6 +591,7 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() {
 		}
 	}
 	fileBrowser.selectFileEntry(entryToSelect)
+	return true
 }
 
 func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
@@ -672,7 +673,9 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 	} else if selection.HasReal() {
 		fileBrowser.SetPath(selection.GetRealPath(), true)
 	}
-	fileBrowser.selectFirstEntryIfExists()
+	if !fileBrowser.restoreSelectionForPath() {
+		fileBrowser.selectFirstEntryIfExists()
+	}
 }
 
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
