@@ -9,7 +9,7 @@ require (
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/mistifyio/go-zfs v2.1.1+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/navidys/tvxwidgets v0.3.0
+	github.com/navidys/tvxwidgets v0.4.0
 	github.com/oklog/run v1.1.0
 	github.com/pterm/pterm v0.12.69
 	github.com/rivo/tview v0.0.0-20230909130259-ba6a2a345459
