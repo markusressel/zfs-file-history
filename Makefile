@@ -12,14 +12,19 @@ test:   ## Run all tests
 
 build:  ## Builds the CLI
 	@go build ${GO_FLAGS} \
-	-ldflags "-w -s -X ${PACKAGE}/cmd.version=${VERSION} -X ${PACKAGE}/cmd.commit=${GIT_REV} -X ${PACKAGE}/cmd.date=${DATE}" \
+	-ldflags "-w -s \
+	-X ${NAME}/cmd/global.Version=${VERSION} \
+	-X ${PACKAGE}/cmd/global.Version=${VERSION} \
+	-X ${NAME}/cmd/global.Commit=${GIT_REV} \
+	-X ${PACKAGE}/cmd/global.Commit=${GIT_REV} \
+	-X ${NAME}/cmd/global.Date=${DATE} \
+	-X ${PACKAGE}/cmd/global.Date=${DATE}" \
 	-a -tags netgo -o ${OUTPUT_BIN} main.go
 
-run:
-	go build -o ${OUTPUT_BIN} main.go
+run: build
 	./${OUTPUT_BIN}
 
-deploy: build
+deploy: clean build
 	cp ./${OUTPUT_BIN} ~/.custom/bin/
 
 clean:
