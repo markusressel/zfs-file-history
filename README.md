@@ -26,8 +26,6 @@
 
 ### Arch Linux ![](https://img.shields.io/badge/Arch_Linux-1793D1?logo=arch-linux&logoColor=white)
 
-> **Note:** **COMING #SOON**
-
 ```shell
 yay -S zfs-file-history-git
 ```
