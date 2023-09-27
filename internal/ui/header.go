@@ -20,10 +20,7 @@ type ApplicationHeaderComponent struct {
 }
 
 func NewApplicationHeader(application *tview.Application) *ApplicationHeaderComponent {
-	versionText := global.Version
-	if versionText == "dev" {
-		versionText = fmt.Sprintf("%s-(#%s)-%s", global.Version, global.Commit, global.Date)
-	}
+	versionText := fmt.Sprintf("%s-(#%s)-%s", global.Version, global.Commit, global.Date)
 
 	applicationHeader := &ApplicationHeaderComponent{
 		application: application,

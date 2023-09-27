@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/oklog/run"
+	"github.com/pterm/pterm"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui"
+	"zfs-file-history/internal/zfs"
 )
 
 func RunApplication(path string) {
@@ -31,10 +33,13 @@ func RunApplication(path string) {
 
 				go func() {
 					logging.Info("Starting profiling webserver...")
+					pterm.Info.Printfln("Starting profiling webserver...")
+
 					profilingConfig := configuration.CurrentConfig.Profiling
 					address := fmt.Sprintf("%s:%d", profilingConfig.Host, profilingConfig.Port)
 					err := http.ListenAndServe(address, mux)
 					logging.Error("Error running profiling webserver: %v", err)
+					pterm.Error.Printfln("Error running profiling webserver: %v", err)
 				}()
 
 				<-ctx.Done()
@@ -43,20 +48,29 @@ func RunApplication(path string) {
 			}, func(err error) {
 				if err != nil {
 					logging.Warning("Error stopping parca webserver: " + err.Error())
+					pterm.Warning.Printfln("Error stopping parca webserver: " + err.Error())
 				} else {
 					logging.Debug("Webservers stopped.")
+					pterm.Debug.Printfln("parca webserver stopped.")
 				}
 			})
 		}
 	}
 	{
 		g.Add(func() error {
+			logging.Info("Loading ZFS data...")
+			pterm.Info.Printfln("Loading ZFS data...")
+			zfs.RefreshZfsData()
+			pterm.Info.Printfln("Launching UI...")
+			logging.Info("Launching UI...")
 			return ui.CreateUi(path, true).Run()
 		}, func(err error) {
 			if err != nil {
-				logging.Warning("Error stopping parca webserver: " + err.Error())
+				logging.Warning("Error stopping UI: " + err.Error())
+				pterm.Warning.Printfln("Error stopping UI: " + err.Error())
 			} else {
-				logging.Debug("Webservers stopped.")
+				logging.Debug("UI stopped.")
+				pterm.Debug.Printfln("Received SIGTERM signal, exiting...")
 			}
 		})
 	}
@@ -67,6 +81,8 @@ func RunApplication(path string) {
 		g.Add(func() error {
 			<-sig
 			logging.Info("Received SIGTERM signal, exiting...")
+			pterm.Info.Printfln("Received SIGTERM signal, exiting...")
+
 			return nil
 		}, func(err error) {
 			defer close(sig)
@@ -80,6 +96,7 @@ func RunApplication(path string) {
 		os.Exit(1)
 	} else {
 		logging.Info("Done.")
+		pterm.Info.Printfln("Done.")
 		os.Exit(0)
 	}
 }

@@ -11,10 +11,6 @@ var (
 	AllSnapshots = map[string][]golibzfs.Dataset{}
 )
 
-func init() {
-	RefreshZfsData()
-}
-
 func RefreshZfsData() {
 	loadDatasets()
 	loadSnapshots(allDatasets)
