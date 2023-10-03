@@ -38,8 +38,6 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 	return dialog
 }
 
-type DialogOptionId int
-
 const (
 	RestoreSingleDialogOption DialogOptionId = iota
 	RestoreRecursiveDialogOption

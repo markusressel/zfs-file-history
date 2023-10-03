@@ -17,6 +17,8 @@ type Dialog interface {
 	GetActionChannel() <-chan DialogAction
 }
 
+type DialogOptionId int
+
 type DialogOption struct {
 	Id   DialogOptionId
 	Name string
