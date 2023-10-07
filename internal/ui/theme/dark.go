@@ -63,14 +63,6 @@ type Color struct {
 	Header HeaderColors
 	Dialog DialogColors
 	Layout LayoutColors
-	Graphs GraphsColors
-}
-
-type GraphsColors struct {
-	Rpm    tcell.Color
-	Pwm    tcell.Color
-	Curve  tcell.Color
-	Sensor tcell.Color
 }
 
 type LayoutColors struct {
