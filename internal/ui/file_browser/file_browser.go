@@ -21,11 +21,14 @@ import (
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
-	"zfs-file-history/internal/zfs"
 )
+
+type FileBrowserEvent int
 
 const (
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
+
+	CreateSnapshotEvent FileBrowserEvent = iota
 )
 
 type FileBrowserSelectionInfo struct {
@@ -70,6 +73,8 @@ var (
 )
 
 type FileBrowserComponent struct {
+	eventCallback func(event FileBrowserEvent)
+
 	path string
 
 	currentSnapshot *data.SnapshotBrowserEntry
@@ -87,7 +92,7 @@ type FileBrowserComponent struct {
 	pathChangedCallback func(path string)
 }
 
-func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
+func NewFileBrowser(application *tview.Application, eventCallback func(event FileBrowserEvent)) *FileBrowserComponent {
 	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
 		var status = "="
 		var statusColor = tcell.ColorGray
@@ -260,6 +265,8 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	)
 
 	fileBrowser := &FileBrowserComponent{
+		eventCallback: eventCallback,
+
 		application: application,
 
 		selectionIndexMap: map[string]FileBrowserSelectionInfo{},
@@ -701,20 +708,7 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	dataset, err := zfs.FindHostDataset(entry.GetRealPath())
-	if err != nil {
-		fileBrowser.showError(err)
-		return
-	}
-	name := fmt.Sprintf("zfh-%s", time.Now().Format(time.DateTime))
-	err = dataset.CreateSnapshot(name)
-	if err != nil {
-		fileBrowser.showError(err)
-		return
-	} else {
-		zfs.RefreshZfsData()
-		fileBrowser.Refresh()
-	}
+	fileBrowser.eventCallback(CreateSnapshotEvent)
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {

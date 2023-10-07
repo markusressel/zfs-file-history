@@ -21,11 +21,19 @@ type MainPage struct {
 }
 
 func NewMainPage(application *tview.Application) *MainPage {
-	fileBrowser := file_browser.NewFileBrowser(application)
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
-
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
+
+	fileBrowser := file_browser.NewFileBrowser(application, func(event file_browser.FileBrowserEvent) {
+		switch event {
+		case file_browser.CreateSnapshotEvent:
+			err := snapshotBrowser.CreateSnapshot()
+			if err != nil {
+				logging.Error("Failed to create snapshot: %s", err)
+			}
+		}
+	})
 
 	mainPage := &MainPage{
 		application:     application,
