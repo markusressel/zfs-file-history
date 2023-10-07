@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
@@ -25,13 +27,16 @@ func NewMainPage(application *tview.Application) *MainPage {
 	datasetInfo := dataset_info.NewDatasetInfo(application)
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
-	fileBrowser := file_browser.NewFileBrowser(application, func(event file_browser.FileBrowserEvent) {
+	fileBrowser := file_browser.NewFileBrowser(application)
+	fileBrowser.SetEventCallback(func(event file_browser.FileBrowserEvent) {
 		switch event {
 		case file_browser.CreateSnapshotEvent:
-			err := snapshotBrowser.CreateSnapshot()
+			name := fmt.Sprintf("zfh-%s", time.Now().Format(time.DateTime))
+			err := datasetInfo.CreateSnapshot(name)
 			if err != nil {
 				logging.Error("Failed to create snapshot: %s", err)
 			}
+			snapshotBrowser.Refresh(true)
 		}
 	})
 

@@ -92,7 +92,7 @@ type FileBrowserComponent struct {
 	pathChangedCallback func(path string)
 }
 
-func NewFileBrowser(application *tview.Application, eventCallback func(event FileBrowserEvent)) *FileBrowserComponent {
+func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
 		var status = "="
 		var statusColor = tcell.ColorGray
@@ -265,7 +265,7 @@ func NewFileBrowser(application *tview.Application, eventCallback func(event Fil
 	)
 
 	fileBrowser := &FileBrowserComponent{
-		eventCallback: eventCallback,
+		eventCallback: func(event FileBrowserEvent) {},
 
 		application: application,
 
@@ -746,4 +746,8 @@ func (fileBrowser *FileBrowserComponent) GetEntries() []*data.FileBrowserEntry {
 
 func (fileBrowser *FileBrowserComponent) showError(err error) {
 	fileBrowser.showMessage(status_message.NewErrorStatusMessage(err.Error()))
+}
+
+func (fileBrowser *FileBrowserComponent) SetEventCallback(f func(event FileBrowserEvent)) {
+	fileBrowser.eventCallback = f
 }

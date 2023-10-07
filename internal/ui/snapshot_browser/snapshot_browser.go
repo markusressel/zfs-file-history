@@ -410,7 +410,3 @@ func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.Sna
 	snapshotBrowser.Refresh(true)
 	return nil
 }
-
-func (snapshotBrowser *SnapshotBrowserComponent) CreateSnapshot() error {
-	return snapshotBrowser.createSnapshot(snapshotBrowser.GetSelection())
-}
