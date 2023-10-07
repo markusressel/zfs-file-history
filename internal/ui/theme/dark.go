@@ -10,13 +10,16 @@ var (
 	PrimaryColor   = tcell.ColorTeal
 	SecondaryColor = tcell.ColorDarkOliveGreen
 
+	OnPrimaryColor = tcell.ColorWhite
+	OnSecondary    = tcell.ColorBlack
+
 	Colors = Color{
 		Header: HeaderColors{
-			Name:           tcell.ColorWhite,
 			NameBackground: PrimaryColor,
+			Name:           OnPrimaryColor,
 
-			Version:           tcell.ColorBlack,
 			VersionBackground: SecondaryColor,
+			Version:           OnSecondary,
 		},
 		Dialog: DialogColors{
 			Border: PrimaryColor,
