@@ -22,7 +22,7 @@ var (
 			Version:           OnSecondary,
 		},
 		Dialog: DialogColors{
-			Border: PrimaryColor,
+			Border: SecondaryColor,
 		},
 		FileBrowser: FileBrowserColors{
 			Table: FileBrowserTableColors{
