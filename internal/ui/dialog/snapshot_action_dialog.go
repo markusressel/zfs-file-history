@@ -104,7 +104,7 @@ func (d *SnapshotActionDialog) createLayout() {
 	dialogContent.AddItem(textDesctiptionView, 0, 1, false)
 	dialogContent.AddItem(optionTable, 0, 1, true)
 
-	dialog := createModal(dialogTitle, dialogContent, 50, 15)
+	dialog := createModal(dialogTitle, dialogContent, 50, 10)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			d.Close()
