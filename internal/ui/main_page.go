@@ -1,14 +1,17 @@
 package ui
 
 import (
+	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/zfs"
 )
 
 type MainPage struct {
@@ -21,11 +24,22 @@ type MainPage struct {
 }
 
 func NewMainPage(application *tview.Application) *MainPage {
-	fileBrowser := file_browser.NewFileBrowser(application)
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
-
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
+
+	fileBrowser := file_browser.NewFileBrowser(application)
+	fileBrowser.SetEventCallback(func(event file_browser.FileBrowserEvent) {
+		switch event {
+		case file_browser.CreateSnapshotEvent:
+			name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+			err := datasetInfo.CreateSnapshot(name)
+			if err != nil {
+				logging.Error("Failed to create snapshot: %s", err)
+			}
+			snapshotBrowser.Refresh(true)
+		}
+	})
 
 	mainPage := &MainPage{
 		application:     application,
@@ -40,13 +54,13 @@ func NewMainPage(application *tview.Application) *MainPage {
 
 	fileBrowser.SetPathChangedCallback(func(path string) {
 		datasetInfo.SetPath(path)
-		snapshotBrowser.SetPath(path)
+		snapshotBrowser.SetPath(path, false)
 	})
 	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
 		snapshotBrowser.SetFileEntry(fileEntry)
 	})
 
-	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *snapshot_browser.SnapshotBrowserEntry) {
+	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *data.SnapshotBrowserEntry) {
 		fileBrowser.SetSelectedSnapshot(snapshot)
 	})
 
@@ -57,7 +71,7 @@ func NewMainPage(application *tview.Application) *MainPage {
 			mainPage.ToggleFocus()
 		} else if key == tcell.KeyCtrlR {
 			fileBrowser.Refresh()
-			snapshotBrowser.Refresh()
+			snapshotBrowser.Refresh(true)
 			fileBrowser.Refresh()
 		}
 		return event
@@ -91,7 +105,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 func (mainPage *MainPage) Init(path string) {
 	mainPage.datasetInfo.SetPath(path)
-	mainPage.snapshotBrowser.SetPath(path)
+	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)
 }
 

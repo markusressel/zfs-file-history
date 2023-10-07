@@ -6,6 +6,10 @@ import (
 	"zfs-file-history/internal/logging"
 )
 
+const (
+	SnapshotTimeFormat = "2006-01-02-150405"
+)
+
 var (
 	allDatasets  = []golibzfs.Dataset{}
 	AllSnapshots = map[string][]golibzfs.Dataset{}

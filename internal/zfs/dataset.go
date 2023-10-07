@@ -219,3 +219,51 @@ func (dataset *Dataset) GetOrigin() string {
 	}
 	return ""
 }
+
+func (dataset *Dataset) CreateSnapshot(name string) error {
+	if dataset.rawGozfsData != nil {
+		_, err := dataset.rawGozfsData.Snapshot(name, false)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	if dataset.rawGolibzfsData != nil {
+		_, err := golibzfs.DatasetCreate(dataset.GetMountPoint()+"@"+name, golibzfs.DatasetTypeSnapshot, nil)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return errors.New("missing ZFS data, could not create snapshot")
+}
+
+func (dataset *Dataset) DestroySnapshot(name string, recursive bool) (err error) {
+	// TODO: also support for other zfs library
+	//if dataset.rawGozfsData != nil {
+	//	gozfs.DestroyDefault
+	//
+	//	_, err := dataset.rawGozfsData.Destroy(gozfs.DestroyDefault)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	return nil
+	//}
+	if dataset.rawGolibzfsData != nil {
+		snapshot := findSnapshot(AllSnapshots[dataset.GetName()], name)
+		if snapshot == nil {
+			return errors.New("could not find snapshot")
+		} else {
+			if recursive {
+				err = snapshot.DestroyRecursive()
+			} else {
+				err = snapshot.Destroy(false)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return errors.New("missing ZFS data, could not destroy snapshot")
+}

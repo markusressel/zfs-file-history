@@ -16,7 +16,6 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
-	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -24,8 +23,12 @@ import (
 	"zfs-file-history/internal/util"
 )
 
+type FileBrowserEvent int
+
 const (
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
+
+	CreateSnapshotEvent FileBrowserEvent = iota
 )
 
 type FileBrowserSelectionInfo struct {
@@ -70,9 +73,11 @@ var (
 )
 
 type FileBrowserComponent struct {
+	eventCallback func(event FileBrowserEvent)
+
 	path string
 
-	currentSnapshot *snapshot_browser.SnapshotBrowserEntry
+	currentSnapshot *data.SnapshotBrowserEntry
 
 	application *tview.Application
 	layout      *tview.Pages
@@ -260,6 +265,8 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	)
 
 	fileBrowser := &FileBrowserComponent{
+		eventCallback: func(event FileBrowserEvent) {},
+
 		application: application,
 
 		selectionIndexMap: map[string]FileBrowserSelectionInfo{},
@@ -509,18 +516,18 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		return
 	}
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
-	actionHandler := func(action dialog.DialogAction) bool {
+	actionHandler := func(action dialog.DialogActionId) bool {
 		switch action {
-		case dialog.CreateSnapshotDialogAction:
+		case dialog.FileDialogCreateSnapshotDialogActionId:
 			fileBrowser.createSnapshot(selection)
 			return true
-		case dialog.RestoreRecursiveDialogAction:
+		case dialog.FileDialogRestoreRecursiveDialogActionId:
 			fileBrowser.runRestoreFileAction(selection, true)
 			return true
-		case dialog.RestoreFileDialogAction:
+		case dialog.FileDialogRestoreFileActionId:
 			fileBrowser.runRestoreFileAction(selection, false)
 			return true
-		case dialog.DeleteDialogAction:
+		case dialog.FileDialogDeleteDialogActionId:
 			fileBrowser.delete(selection)
 			return true
 		}
@@ -529,7 +536,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	fileBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
-func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_browser.SnapshotBrowserEntry) {
+func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
 	if fileBrowser.currentSnapshot == snapshot || fileBrowser.currentSnapshot != nil && snapshot != nil && fileBrowser.currentSnapshot.Snapshot.Path == snapshot.Snapshot.Path {
 		return
 	}
@@ -652,7 +659,7 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.tableContainer.HasFocus()
 }
 
-func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction) bool) {
+func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
 	layout := d.GetLayout()
 	go func() {
 		for {
@@ -660,7 +667,7 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 			if actionHandler(action) {
 				return
 			}
-			if action == dialog.ActionClose {
+			if action == dialog.DialogCloseActionId {
 				fileBrowser.layout.RemovePage(d.GetName())
 			}
 		}
@@ -681,9 +688,9 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
 	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
-	fileBrowser.showDialog(d, func(action dialog.DialogAction) bool {
+	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
 		switch action {
-		case dialog.ActionClose:
+		case dialog.DialogCloseActionId:
 			fileBrowser.Refresh()
 		}
 		return false
@@ -701,7 +708,7 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.showMessage(status_message.NewErrorStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
+	fileBrowser.eventCallback(CreateSnapshotEvent)
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
@@ -739,4 +746,8 @@ func (fileBrowser *FileBrowserComponent) GetEntries() []*data.FileBrowserEntry {
 
 func (fileBrowser *FileBrowserComponent) showError(err error) {
 	fileBrowser.showMessage(status_message.NewErrorStatusMessage(err.Error()))
+}
+
+func (fileBrowser *FileBrowserComponent) SetEventCallback(f func(event FileBrowserEvent)) {
+	fileBrowser.eventCallback = f
 }

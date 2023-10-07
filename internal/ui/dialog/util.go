@@ -5,22 +5,20 @@ import (
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
-type DialogAction int
-
 const (
-	ActionClose DialogAction = iota
+	DialogCloseActionId DialogActionId = iota
 )
 
 type Dialog interface {
 	GetName() string
 	GetLayout() *tview.Flex
-	GetActionChannel() <-chan DialogAction
+	GetActionChannel() <-chan DialogActionId
 }
 
-type DialogOptionId int
+type DialogActionId int
 
 type DialogOption struct {
-	Id   DialogOptionId
+	Id   DialogActionId
 	Name string
 }
 

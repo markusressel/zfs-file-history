@@ -123,3 +123,7 @@ func (datasetInfo *DatasetInfoComponent) Focus() {
 func (datasetInfo *DatasetInfoComponent) GetLayout() tview.Primitive {
 	return datasetInfo.layout
 }
+
+func (datasetInfo *DatasetInfoComponent) CreateSnapshot(name string) error {
+	return datasetInfo.dataset.CreateSnapshot(name)
+}
