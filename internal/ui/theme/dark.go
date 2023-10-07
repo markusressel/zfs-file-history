@@ -10,17 +10,17 @@ var (
 	Colors = Color{
 		Header: HeaderColors{
 			Name:           tcell.ColorWhite,
-			NameBackground: tcell.ColorDodgerBlue,
+			NameBackground: tcell.ColorTeal,
 
 			Version:           tcell.ColorBlack,
-			VersionBackground: tcell.ColorGreenYellow,
+			VersionBackground: tcell.ColorDarkOliveGreen,
 		},
 		Dialog: DialogColors{
-			Border: tcell.ColorSteelBlue,
+			Border: tcell.ColorTeal,
 		},
 		Layout: LayoutColors{
 			Border: tcell.ColorWhite,
-			Title:  tcell.ColorBlue,
+			Title:  tcell.ColorTeal,
 		},
 	}
 
