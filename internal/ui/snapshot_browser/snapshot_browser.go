@@ -144,6 +144,17 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 		tableEntrySortFunction,
 	)
 
+	snapshotBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		key := event.Key()
+		if snapshotBrowser.GetSelection() != nil {
+			if key == tcell.KeyEnter {
+				snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
+				return nil
+			}
+		}
+		return event
+	})
+
 	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		snapshotBrowser.rememberSelectionForDataset(entry)
@@ -156,7 +167,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetLayout() tview.Primitive {
-	return snapshotBrowser.tableContainer.GetLayout()
+	return snapshotBrowser.layout
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
@@ -184,11 +195,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.Fi
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) Focus() {
-	snapshotBrowser.application.SetFocus(snapshotBrowser.tableContainer.GetLayout())
+	snapshotBrowser.application.SetFocus(snapshotBrowser.GetLayout())
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
-	return snapshotBrowser.tableContainer.HasFocus()
+	return snapshotBrowser.layout.HasFocus()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) updateTableContents() {
@@ -337,13 +348,22 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	actionHandler := func(action dialog.DialogAction) bool {
 		switch action {
 		case dialog.SnapshotActionDialogCreateSnapshotDialogAction:
-			snapshotBrowser.createSnapshot(selection)
+			err := snapshotBrowser.createSnapshot(selection)
+			if err != nil {
+				logging.Error(err.Error())
+			}
 			return true
 		case dialog.DestroySnapshotDialogAction:
-			snapshotBrowser.destroySnapshot(selection, false)
+			err := snapshotBrowser.destroySnapshot(selection, false)
+			if err != nil {
+				logging.Error(err.Error())
+			}
 			return true
 		case dialog.DestroySnapshotRecursivelyDialogAction:
-			snapshotBrowser.destroySnapshot(selection, true)
+			err := snapshotBrowser.destroySnapshot(selection, true)
+			if err != nil {
+				logging.Error(err.Error())
+			}
 			return true
 		}
 		return false
@@ -373,7 +393,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.Snap
 	if err != nil {
 		return err
 	}
-	zfs.RefreshZfsData()
 	snapshotBrowser.Refresh()
 	return nil
 }
@@ -388,7 +407,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.Sna
 	if err != nil {
 		return err
 	}
-	zfs.RefreshZfsData()
 	snapshotBrowser.Refresh()
 	return nil
 }

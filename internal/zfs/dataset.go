@@ -239,14 +239,16 @@ func (dataset *Dataset) CreateSnapshot(name string) error {
 }
 
 func (dataset *Dataset) DestroySnapshot(name string, recursive bool) (err error) {
-	if dataset.rawGozfsData != nil {
-
-		_, err := dataset.rawGozfsData.Snapshot(name, false)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
+	// TODO: also support for other zfs library
+	//if dataset.rawGozfsData != nil {
+	//	gozfs.DestroyDefault
+	//
+	//	_, err := dataset.rawGozfsData.Destroy(gozfs.DestroyDefault)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	return nil
+	//}
 	if dataset.rawGolibzfsData != nil {
 		snapshot := findSnapshot(AllSnapshots[dataset.GetName()], name)
 		if snapshot == nil {
