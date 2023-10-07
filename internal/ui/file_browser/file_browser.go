@@ -19,6 +19,7 @@ import (
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 )
@@ -93,19 +94,19 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 		switch entry.DiffState {
 		case diff_state.Equal:
 			status = "="
-			statusColor = tcell.ColorGray
+			statusColor = theme.Colors.FileBrowser.Table.State.Equal
 		case diff_state.Deleted:
 			status = "-"
-			statusColor = tcell.ColorRed
+			statusColor = theme.Colors.FileBrowser.Table.State.Deleted
 		case diff_state.Added:
 			status = "+"
-			statusColor = tcell.ColorGreen
+			statusColor = theme.Colors.FileBrowser.Table.State.Added
 		case diff_state.Modified:
 			status = "≠"
-			statusColor = tcell.ColorYellow
+			statusColor = theme.Colors.FileBrowser.Table.State.Modified
 		case diff_state.Unknown:
 			status = "N/A"
-			statusColor = tcell.ColorGray
+			statusColor = theme.Colors.FileBrowser.Table.State.Unknown
 		}
 
 		var typeCellText = "?"
@@ -115,7 +116,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 			typeCellText = "F"
 		case data.Directory:
 			typeCellText = "D"
-			typeCellColor = tcell.ColorSteelBlue
+			typeCellColor = theme.Colors.Layout.Table.Header
 		case data.Link:
 			typeCellText = "L"
 			typeCellColor = tcell.ColorYellow

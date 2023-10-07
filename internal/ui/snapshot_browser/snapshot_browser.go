@@ -11,6 +11,7 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
@@ -76,19 +77,19 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 				switch entry.DiffState {
 				case diff_state.Equal:
 					cellText = "="
-					cellColor = tcell.ColorGray
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Equal
 				case diff_state.Deleted:
 					cellText = "+"
-					cellColor = tcell.ColorGreen
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Deleted
 				case diff_state.Added:
 					cellText = "-"
-					cellColor = tcell.ColorRed
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Added
 				case diff_state.Modified:
 					cellText = "≠"
-					cellColor = tcell.ColorYellow
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Modified
 				case diff_state.Unknown:
 					cellText = "N/A"
-					cellColor = tcell.ColorGray
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
 				}
 			}
 			cell := tview.NewTableCell(cellText).

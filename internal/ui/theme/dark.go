@@ -18,9 +18,34 @@ var (
 		Dialog: DialogColors{
 			Border: tcell.ColorTeal,
 		},
+		FileBrowser: FileBrowserColors{
+			Table: FileBrowserTableColors{
+				State: FileBrowserTableStatusColors{
+					Unknown:  tcell.ColorGray,
+					Modified: tcell.ColorYellow,
+					Added:    tcell.ColorGreen,
+					Deleted:  tcell.ColorRed,
+					Equal:    tcell.ColorGray,
+				},
+			},
+		},
+		SnapshotBrowser: SnapshotBrowserColors{
+			Table: SnapshotBrowserTableColors{
+				State: SnapshotBrowserTableStatusColors{
+					Unknown:  tcell.ColorGray,
+					Modified: tcell.ColorYellow,
+					Added:    tcell.ColorRed,
+					Deleted:  tcell.ColorGreen,
+					Equal:    tcell.ColorGray,
+				},
+			},
+		},
 		Layout: LayoutColors{
 			Border: tcell.ColorWhite,
 			Title:  tcell.ColorTeal,
+			Table: LayoutTableColors{
+				Header: tcell.ColorTeal,
+			},
 		},
 	}
 
@@ -46,6 +71,38 @@ type HeaderColors struct {
 	VersionBackground tcell.Color
 }
 
+type FileBrowserColors struct {
+	Table FileBrowserTableColors
+}
+
+type FileBrowserTableColors struct {
+	State FileBrowserTableStatusColors
+}
+
+type FileBrowserTableStatusColors struct {
+	Unknown  tcell.Color
+	Modified tcell.Color
+	Added    tcell.Color
+	Deleted  tcell.Color
+	Equal    tcell.Color
+}
+
+type SnapshotBrowserColors struct {
+	Table SnapshotBrowserTableColors
+}
+
+type SnapshotBrowserTableColors struct {
+	State SnapshotBrowserTableStatusColors
+}
+
+type SnapshotBrowserTableStatusColors struct {
+	Unknown  tcell.Color
+	Modified tcell.Color
+	Added    tcell.Color
+	Deleted  tcell.Color
+	Equal    tcell.Color
+}
+
 type DialogColors struct {
 	Border tcell.Color
 }
@@ -60,14 +117,21 @@ type LayoutStyle struct {
 }
 
 type Color struct {
-	Header HeaderColors
-	Dialog DialogColors
-	Layout LayoutColors
+	Header          HeaderColors
+	Dialog          DialogColors
+	FileBrowser     FileBrowserColors
+	SnapshotBrowser SnapshotBrowserColors
+	Layout          LayoutColors
 }
 
 type LayoutColors struct {
 	Border tcell.Color
 	Title  tcell.Color
+	Table  LayoutTableColors
+}
+
+type LayoutTableColors struct {
+	Header tcell.Color
 }
 
 func CreateTitleText(text string) string {

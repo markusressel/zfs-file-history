@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"zfs-file-history/internal/ui/theme"
 )
 
 type HelpPage struct {
@@ -57,7 +58,7 @@ func (p *HelpPage) createLayout() {
 				if col == 0 && entry != emptyEntry {
 					text = fmt.Sprintf("%s:", entry.Key)
 					cellAlignment = tview.AlignRight
-					cellColor = tcell.ColorSteelBlue
+					cellColor = theme.Colors.Layout.Table.Header
 				} else {
 					text = entry.Value
 					cellAlignment = tview.AlignLeft

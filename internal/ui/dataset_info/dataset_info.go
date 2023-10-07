@@ -6,6 +6,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 )
@@ -98,7 +99,7 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 			if col == 0 {
 				text = fmt.Sprintf("%s:", entry.Name)
 				cellAlignment = tview.AlignRight
-				cellColor = tcell.ColorSteelBlue
+				cellColor = theme.Colors.Layout.Table.Header
 			} else {
 				text = entry.Value
 				cellAlignment = tview.AlignLeft
