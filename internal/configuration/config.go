@@ -53,7 +53,6 @@ func setDefaultValues() {
 
 // DetectAndReadConfigFile detects the path of the first existing config file
 func DetectAndReadConfigFile() string {
-	// TODO: no config for now
 	_ = readInConfig()
 	return GetFilePath()
 }

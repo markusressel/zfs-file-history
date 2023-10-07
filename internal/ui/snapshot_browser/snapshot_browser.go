@@ -247,11 +247,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 		})
 	}
 
-	// TODO: for testing
-	//for i := 0; i < 5; i++ {
-	//	result = append(result, result...)
-	//}
-
 	return result
 }
 

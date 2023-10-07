@@ -86,7 +86,7 @@ func (d *SnapshotActionDialog) createLayout() {
 		var cellColor = tcell.ColorWhite
 		var cellText string
 		var cellAlignment = tview.AlignLeft
-		var cellExpansion = 0
+		var cellExpansion = 1
 
 		cellText = columnTitle.Name
 
@@ -100,7 +100,6 @@ func (d *SnapshotActionDialog) createLayout() {
 	}
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.SetBorderPadding(0, 0, 1, 1)
 	dialogContent.AddItem(textDesctiptionView, 0, 1, false)
 	dialogContent.AddItem(optionTable, 0, 1, true)
 
