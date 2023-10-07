@@ -388,7 +388,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, act
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) error {
-	name := fmt.Sprintf("zfh-%s", time.Now().Format(time.DateTime))
+	name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
 	err := entry.Snapshot.ParentDataset.CreateSnapshot(name)
 	if err != nil {
 		return err

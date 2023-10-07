@@ -11,6 +11,7 @@ import (
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/zfs"
 )
 
 type MainPage struct {
@@ -31,7 +32,7 @@ func NewMainPage(application *tview.Application) *MainPage {
 	fileBrowser.SetEventCallback(func(event file_browser.FileBrowserEvent) {
 		switch event {
 		case file_browser.CreateSnapshotEvent:
-			name := fmt.Sprintf("zfh-%s", time.Now().Format(time.DateTime))
+			name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
 			err := datasetInfo.CreateSnapshot(name)
 			if err != nil {
 				logging.Error("Failed to create snapshot: %s", err)
