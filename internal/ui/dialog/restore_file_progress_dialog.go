@@ -20,7 +20,7 @@ const (
 type RestoreFileProgressDialog struct {
 	application   *tview.Application
 	fileSelection *data.FileBrowserEntry
-	actionChannel chan DialogAction
+	actionChannel chan DialogActionId
 
 	layout              *tview.Flex
 	descriptionTextView *tview.TextView
@@ -36,7 +36,7 @@ func NewRestoreFileProgressDialog(application *tview.Application, fileSelection 
 	dialog := &RestoreFileProgressDialog{
 		application:   application,
 		fileSelection: fileSelection,
-		actionChannel: make(chan DialogAction),
+		actionChannel: make(chan DialogActionId),
 	}
 
 	dialog.createLayout()
@@ -106,13 +106,13 @@ func (d *RestoreFileProgressDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *RestoreFileProgressDialog) GetActionChannel() <-chan DialogAction {
+func (d *RestoreFileProgressDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
 func (d *RestoreFileProgressDialog) Close() {
 	go func() {
-		d.actionChannel <- ActionClose
+		d.actionChannel <- DialogCloseActionId
 	}()
 }
 

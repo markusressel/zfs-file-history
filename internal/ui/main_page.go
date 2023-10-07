@@ -40,7 +40,7 @@ func NewMainPage(application *tview.Application) *MainPage {
 
 	fileBrowser.SetPathChangedCallback(func(path string) {
 		datasetInfo.SetPath(path)
-		snapshotBrowser.SetPath(path)
+		snapshotBrowser.SetPath(path, false)
 	})
 	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
 		snapshotBrowser.SetFileEntry(fileEntry)
@@ -57,7 +57,7 @@ func NewMainPage(application *tview.Application) *MainPage {
 			mainPage.ToggleFocus()
 		} else if key == tcell.KeyCtrlR {
 			fileBrowser.Refresh()
-			snapshotBrowser.Refresh()
+			snapshotBrowser.Refresh(true)
 			fileBrowser.Refresh()
 		}
 		return event
@@ -91,7 +91,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 func (mainPage *MainPage) Init(path string) {
 	mainPage.datasetInfo.SetPath(path)
-	mainPage.snapshotBrowser.SetPath(path)
+	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)
 }
 

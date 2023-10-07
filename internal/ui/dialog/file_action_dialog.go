@@ -13,38 +13,30 @@ const (
 	ActionDialog util.Page = "ActionDialog"
 
 	// recursively restores all files and folders top to bottom starting with the given entry
-	RestoreFileDialogAction DialogAction = iota
-	RestoreRecursiveDialogAction
-	DeleteDialogAction
-	CreateSnapshotDialogAction
+	FileDialogRestoreFileActionId DialogActionId = iota
+	FileDialogRestoreRecursiveDialogActionId
+	FileDialogDeleteDialogActionId
+	FileDialogCreateSnapshotDialogActionId
 )
 
 type FileActionDialog struct {
 	application   *tview.Application
 	file          *data.FileBrowserEntry
 	layout        *tview.Flex
-	actionChannel chan DialogAction
+	actionChannel chan DialogActionId
 }
 
 func NewFileActionDialog(application *tview.Application, file *data.FileBrowserEntry) *FileActionDialog {
 	dialog := &FileActionDialog{
 		application:   application,
 		file:          file,
-		actionChannel: make(chan DialogAction),
+		actionChannel: make(chan DialogActionId),
 	}
 
 	dialog.createLayout()
 
 	return dialog
 }
-
-const (
-	RestoreSingleDialogOption DialogOptionId = iota
-	RestoreRecursiveDialogOption
-	DeleteDialogOption
-	CreateSnapshotDialogOption
-	CloseDialogOptionId
-)
 
 func (d *FileActionDialog) createLayout() {
 	dialogTitle := " Select Action "
@@ -58,14 +50,14 @@ func (d *FileActionDialog) createLayout() {
 
 	dialogOptions := []*DialogOption{
 		{
-			Id:   CloseDialogOptionId,
+			Id:   DialogCloseActionId,
 			Name: "Close",
 		},
 	}
 
 	if d.file.HasReal() {
 		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-			Id:   DeleteDialogOption,
+			Id:   FileDialogDeleteDialogActionId,
 			Name: fmt.Sprintf("Delete '%s'", d.file.RealFile.Name),
 		})
 	}
@@ -73,25 +65,25 @@ func (d *FileActionDialog) createLayout() {
 	if d.file.HasSnapshot() {
 		if d.file.Type == data.Directory {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   RestoreRecursiveDialogOption,
+				Id:   FileDialogRestoreRecursiveDialogActionId,
 				Name: fmt.Sprintf("Restore directory recursively"),
 			})
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   RestoreSingleDialogOption,
+				Id:   FileDialogRestoreFileActionId,
 				Name: fmt.Sprintf("Restore directory only"),
 			})
 		}
 
 		if d.file.Type == data.File {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   RestoreSingleDialogOption,
+				Id:   FileDialogRestoreFileActionId,
 				Name: fmt.Sprintf("Restore file"),
 			})
 		}
 	}
 
 	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-		Id:   CreateSnapshotDialogOption,
+		Id:   FileDialogCreateSnapshotDialogActionId,
 		Name: fmt.Sprintf("Create Snapshot"),
 	})
 
@@ -159,55 +151,55 @@ func (d *FileActionDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *FileActionDialog) GetActionChannel() <-chan DialogAction {
+func (d *FileActionDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
 func (d *FileActionDialog) Close() {
 	go func() {
-		d.actionChannel <- ActionClose
+		d.actionChannel <- DialogCloseActionId
 	}()
 }
 
 func (d *FileActionDialog) RestoreFile() {
 	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- RestoreFileDialogAction
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- FileDialogRestoreFileActionId
 	}()
 }
 
 func (d *FileActionDialog) selectAction(option *DialogOption) {
 	switch option.Id {
-	case RestoreSingleDialogOption:
+	case FileDialogRestoreFileActionId:
 		d.RestoreFile()
-	case RestoreRecursiveDialogOption:
+	case FileDialogRestoreRecursiveDialogActionId:
 		d.RestoreRecursive()
-	case DeleteDialogOption:
+	case FileDialogDeleteDialogActionId:
 		d.DeleteFile()
-	case CreateSnapshotDialogOption:
+	case FileDialogCreateSnapshotDialogActionId:
 		d.CreateSnapshot()
-	case CloseDialogOptionId:
+	case DialogCloseActionId:
 		d.Close()
 	}
 }
 
 func (d *FileActionDialog) RestoreRecursive() {
 	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- RestoreRecursiveDialogAction
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- FileDialogRestoreRecursiveDialogActionId
 	}()
 }
 
 func (d *FileActionDialog) DeleteFile() {
 	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- DeleteDialogAction
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- FileDialogDeleteDialogActionId
 	}()
 }
 
 func (d *FileActionDialog) CreateSnapshot() {
 	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- CreateSnapshotDialogAction
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- FileDialogCreateSnapshotDialogActionId
 	}()
 }

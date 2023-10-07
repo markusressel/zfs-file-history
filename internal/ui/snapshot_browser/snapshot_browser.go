@@ -170,8 +170,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetLayout() tview.Primitive {
 	return snapshotBrowser.layout
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
-	if snapshotBrowser.path == path {
+func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string, force bool) {
+	if !force && snapshotBrowser.path == path {
 		return
 	}
 	snapshotBrowser.path = path
@@ -179,9 +179,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string) {
 	snapshotBrowser.updateTableContents()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) Refresh() {
+func (snapshotBrowser *SnapshotBrowserComponent) Refresh(force bool) {
 	zfs.RefreshZfsData()
-	snapshotBrowser.SetPath(snapshotBrowser.path)
+	snapshotBrowser.SetPath(snapshotBrowser.path, force)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.FileBrowserEntry) {
@@ -345,21 +345,21 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		return
 	}
 	actionDialogLayout := dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection)
-	actionHandler := func(action dialog.DialogAction) bool {
+	actionHandler := func(action dialog.DialogActionId) bool {
 		switch action {
-		case dialog.SnapshotActionDialogCreateSnapshotDialogAction:
+		case dialog.SnapshotDialogCreateSnapshotActionId:
 			err := snapshotBrowser.createSnapshot(selection)
 			if err != nil {
 				logging.Error(err.Error())
 			}
 			return true
-		case dialog.DestroySnapshotDialogAction:
+		case dialog.SnapshotDialogDestroySnapshotActionId:
 			err := snapshotBrowser.destroySnapshot(selection, false)
 			if err != nil {
 				logging.Error(err.Error())
 			}
 			return true
-		case dialog.DestroySnapshotRecursivelyDialogAction:
+		case dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
 			err := snapshotBrowser.destroySnapshot(selection, true)
 			if err != nil {
 				logging.Error(err.Error())
@@ -371,7 +371,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	snapshotBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction) bool) {
+func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
 	layout := d.GetLayout()
 	go func() {
 		for {
@@ -379,7 +379,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, act
 			if actionHandler(action) {
 				return
 			}
-			if action == dialog.ActionClose {
+			if action == dialog.DialogCloseActionId {
 				snapshotBrowser.layout.RemovePage(d.GetName())
 			}
 		}
@@ -393,7 +393,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.Snap
 	if err != nil {
 		return err
 	}
-	snapshotBrowser.Refresh()
+	snapshotBrowser.Refresh(true)
 	return nil
 }
 
@@ -407,6 +407,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.Sna
 	if err != nil {
 		return err
 	}
-	snapshotBrowser.Refresh()
+	snapshotBrowser.Refresh(true)
 	return nil
 }

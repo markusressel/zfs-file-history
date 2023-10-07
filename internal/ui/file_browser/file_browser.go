@@ -509,18 +509,18 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		return
 	}
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
-	actionHandler := func(action dialog.DialogAction) bool {
+	actionHandler := func(action dialog.DialogActionId) bool {
 		switch action {
-		case dialog.CreateSnapshotDialogAction:
+		case dialog.FileDialogCreateSnapshotDialogActionId:
 			fileBrowser.createSnapshot(selection)
 			return true
-		case dialog.RestoreRecursiveDialogAction:
+		case dialog.FileDialogRestoreRecursiveDialogActionId:
 			fileBrowser.runRestoreFileAction(selection, true)
 			return true
-		case dialog.RestoreFileDialogAction:
+		case dialog.FileDialogRestoreFileActionId:
 			fileBrowser.runRestoreFileAction(selection, false)
 			return true
-		case dialog.DeleteDialogAction:
+		case dialog.FileDialogDeleteDialogActionId:
 			fileBrowser.delete(selection)
 			return true
 		}
@@ -652,7 +652,7 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.tableContainer.HasFocus()
 }
 
-func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction) bool) {
+func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
 	layout := d.GetLayout()
 	go func() {
 		for {
@@ -660,7 +660,7 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 			if actionHandler(action) {
 				return
 			}
-			if action == dialog.ActionClose {
+			if action == dialog.DialogCloseActionId {
 				fileBrowser.layout.RemovePage(d.GetName())
 			}
 		}
@@ -681,9 +681,9 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
 	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
-	fileBrowser.showDialog(d, func(action dialog.DialogAction) bool {
+	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
 		switch action {
-		case dialog.ActionClose:
+		case dialog.DialogCloseActionId:
 			fileBrowser.Refresh()
 		}
 		return false

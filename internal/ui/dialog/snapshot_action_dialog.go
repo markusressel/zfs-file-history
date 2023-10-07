@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"golang.org/x/exp/slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
 )
@@ -12,35 +11,29 @@ import (
 const (
 	SnapshotActionDialogPage util.Page = "SnapshotActionDialog"
 
-	SnapshotActionDialogCreateSnapshotDialogAction DialogAction = iota
-	DestroySnapshotDialogAction
-	DestroySnapshotRecursivelyDialogAction
+	SnapshotDialogCreateSnapshotActionId DialogActionId = iota
+	SnapshotDialogDestroySnapshotActionId
+	SnapshotDialogDestroySnapshotRecursivelyActionId
 )
 
 type SnapshotActionDialog struct {
 	application   *tview.Application
 	snapshot      *data.SnapshotBrowserEntry
 	layout        *tview.Flex
-	actionChannel chan DialogAction
+	actionChannel chan DialogActionId
 }
 
 func NewSnapshotActionDialog(application *tview.Application, snapshot *data.SnapshotBrowserEntry) *SnapshotActionDialog {
 	dialog := &SnapshotActionDialog{
 		application:   application,
 		snapshot:      snapshot,
-		actionChannel: make(chan DialogAction),
+		actionChannel: make(chan DialogActionId),
 	}
 
 	dialog.createLayout()
 
 	return dialog
 }
-
-const (
-	CreateSnapshotDialogOptionId DialogOptionId = iota
-	DestroySnapshotDialogOptionId
-	DestroySnapshotRecursivelyDialogOptionId
-)
 
 func (d *SnapshotActionDialog) createLayout() {
 	dialogTitle := " Select Action "
@@ -54,28 +47,22 @@ func (d *SnapshotActionDialog) createLayout() {
 
 	dialogOptions := []*DialogOption{
 		{
-			Id:   CloseDialogOptionId,
+			Id:   SnapshotDialogCreateSnapshotActionId,
+			Name: fmt.Sprintf("Create Snapshot"),
+		},
+		{
+			Id:   SnapshotDialogDestroySnapshotActionId,
+			Name: fmt.Sprintf("Destroy '%s'", d.snapshot.Snapshot.Name),
+		},
+		{
+			Id:   SnapshotDialogDestroySnapshotRecursivelyActionId,
+			Name: fmt.Sprintf("Destroy (recursive) '%s'", d.snapshot.Snapshot.Name),
+		},
+		{
+			Id:   DialogCloseActionId,
 			Name: "Close",
 		},
 	}
-
-	createSnapshotDialogOption := &DialogOption{
-		Id:   CreateSnapshotDialogOptionId,
-		Name: fmt.Sprintf("Create Snapshot"),
-	}
-	dialogOptions = slices.Insert(dialogOptions, 0, createSnapshotDialogOption)
-
-	destroySnapshotDialogOption := &DialogOption{
-		Id:   DestroySnapshotDialogOptionId,
-		Name: fmt.Sprintf("Destroy '%s'", d.snapshot.Snapshot.Name),
-	}
-	dialogOptions = slices.Insert(dialogOptions, 0, destroySnapshotDialogOption)
-
-	DestroySnapshotRecursivelyDialogOption := &DialogOption{
-		Id:   DestroySnapshotRecursivelyDialogOptionId,
-		Name: fmt.Sprintf("Destroy (recursive) '%s'", d.snapshot.Snapshot.Name),
-	}
-	dialogOptions = slices.Insert(dialogOptions, 0, DestroySnapshotRecursivelyDialogOption)
 
 	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {
@@ -141,46 +128,46 @@ func (d *SnapshotActionDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *SnapshotActionDialog) GetActionChannel() <-chan DialogAction {
+func (d *SnapshotActionDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
 func (d *SnapshotActionDialog) Close() {
 	go func() {
-		d.actionChannel <- ActionClose
+		d.actionChannel <- DialogCloseActionId
 	}()
 }
 
 func (d *SnapshotActionDialog) selectAction(option *DialogOption) {
 	switch option.Id {
-	case CreateSnapshotDialogOptionId:
+	case SnapshotDialogCreateSnapshotActionId:
 		d.CreateSnapshot()
-	case DestroySnapshotDialogOptionId:
+	case SnapshotDialogDestroySnapshotActionId:
 		d.DestroySnapshot()
-	case DestroySnapshotRecursivelyDialogOptionId:
+	case SnapshotDialogDestroySnapshotRecursivelyActionId:
 		d.DestroySnapshotRecursively()
-	case CloseDialogOptionId:
+	case DialogCloseActionId:
 		d.Close()
 	}
 }
 
 func (d *SnapshotActionDialog) CreateSnapshot() {
 	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- CreateSnapshotDialogAction
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- SnapshotDialogCreateSnapshotActionId
 	}()
 }
 
 func (d *SnapshotActionDialog) DestroySnapshot() {
 	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- DestroySnapshotDialogAction
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- SnapshotDialogDestroySnapshotActionId
 	}()
 }
 
 func (d *SnapshotActionDialog) DestroySnapshotRecursively() {
 	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- DestroySnapshotRecursivelyDialogAction
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- SnapshotDialogDestroySnapshotRecursivelyActionId
 	}()
 }
