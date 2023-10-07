@@ -7,16 +7,19 @@ import (
 )
 
 var (
+	PrimaryColor   = tcell.ColorTeal
+	SecondaryColor = tcell.ColorDarkOliveGreen
+
 	Colors = Color{
 		Header: HeaderColors{
 			Name:           tcell.ColorWhite,
-			NameBackground: tcell.ColorTeal,
+			NameBackground: PrimaryColor,
 
 			Version:           tcell.ColorBlack,
-			VersionBackground: tcell.ColorDarkOliveGreen,
+			VersionBackground: SecondaryColor,
 		},
 		Dialog: DialogColors{
-			Border: tcell.ColorTeal,
+			Border: PrimaryColor,
 		},
 		FileBrowser: FileBrowserColors{
 			Table: FileBrowserTableColors{
@@ -41,10 +44,10 @@ var (
 			},
 		},
 		Layout: LayoutColors{
-			Border: tcell.ColorWhite,
-			Title:  tcell.ColorTeal,
+			Title:  PrimaryColor,
+			Border: SecondaryColor,
 			Table: LayoutTableColors{
-				Header: tcell.ColorTeal,
+				Header: PrimaryColor,
 			},
 		},
 	}
