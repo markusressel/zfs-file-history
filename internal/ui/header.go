@@ -7,6 +7,7 @@ import (
 	"time"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
@@ -36,21 +37,17 @@ func NewApplicationHeader(application *tview.Application) *ApplicationHeaderComp
 
 func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	layout := tview.NewFlex().SetDirection(tview.FlexColumn)
-	// TODO: check colors
-	layout.SetBackgroundColor(tcell.ColorRed)
-	layout.SetTitleColor(tcell.ColorRed)
-	layout.SetBorderColor(tcell.ColorGreen)
 
 	nameTextView := tview.NewTextView()
-	nameTextView.SetTextColor(tcell.ColorWhite)
-	nameTextView.SetBackgroundColor(tcell.ColorDodgerBlue)
+	nameTextView.SetTextColor(theme.Colors.Header.Name)
+	nameTextView.SetBackgroundColor(theme.Colors.Header.NameBackground)
 	nameText := fmt.Sprintf(" %s ", applicationHeader.name)
 	nameTextView.SetText(nameText)
 	nameTextView.SetTextAlign(tview.AlignCenter)
 
 	versionTextView := tview.NewTextView()
-	versionTextView.SetBackgroundColor(tcell.ColorGreenYellow)
-	versionTextView.SetTextColor(tcell.ColorBlack)
+	versionTextView.SetTextColor(theme.Colors.Header.Version)
+	versionTextView.SetBackgroundColor(theme.Colors.Header.VersionBackground)
 	versionText := fmt.Sprintf("  %s  ", applicationHeader.version)
 	versionTextView.SetText(versionText)
 	versionTextView.SetTextAlign(tview.AlignCenter)
