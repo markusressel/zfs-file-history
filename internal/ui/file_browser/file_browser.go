@@ -16,12 +16,12 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
-	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
+	"zfs-file-history/internal/zfs"
 )
 
 const (
@@ -72,7 +72,7 @@ var (
 type FileBrowserComponent struct {
 	path string
 
-	currentSnapshot *snapshot_browser.SnapshotBrowserEntry
+	currentSnapshot *data.SnapshotBrowserEntry
 
 	application *tview.Application
 	layout      *tview.Pages
@@ -529,7 +529,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	fileBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
-func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *snapshot_browser.SnapshotBrowserEntry) {
+func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
 	if fileBrowser.currentSnapshot == snapshot || fileBrowser.currentSnapshot != nil && snapshot != nil && fileBrowser.currentSnapshot.Snapshot.Path == snapshot.Snapshot.Path {
 		return
 	}
@@ -701,7 +701,20 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.showMessage(status_message.NewErrorStatusMessage("Sorry, creating snapshots is not yet supported :(").SetDuration(5 * time.Second))
+	dataset, err := zfs.FindHostDataset(entry.GetRealPath())
+	if err != nil {
+		fileBrowser.showError(err)
+		return
+	}
+	name := fmt.Sprintf("zfh-%s", time.Now().Format(time.DateTime))
+	err = dataset.CreateSnapshot(name)
+	if err != nil {
+		fileBrowser.showError(err)
+		return
+	} else {
+		zfs.RefreshZfsData()
+		fileBrowser.Refresh()
+	}
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {

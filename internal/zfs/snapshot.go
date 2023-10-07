@@ -290,6 +290,16 @@ func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
 	}
 }
 
+func (s *Snapshot) Destroy() error {
+	ds := s.ParentDataset
+	return ds.DestroySnapshot(s.Name, false)
+}
+
+func (s *Snapshot) DestroyRecursive() error {
+	ds := s.ParentDataset
+	return ds.DestroySnapshot(s.Name, true)
+}
+
 func syncFileProperties(dstPath string, stat os.FileInfo) error {
 	err := os.Chmod(dstPath, stat.Mode())
 	if err != nil {

@@ -46,7 +46,7 @@ func NewMainPage(application *tview.Application) *MainPage {
 		snapshotBrowser.SetFileEntry(fileEntry)
 	})
 
-	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *snapshot_browser.SnapshotBrowserEntry) {
+	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *data.SnapshotBrowserEntry) {
 		fileBrowser.SetSelectedSnapshot(snapshot)
 	})
 

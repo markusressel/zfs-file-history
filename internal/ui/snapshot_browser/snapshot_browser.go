@@ -7,9 +7,11 @@ import (
 	"golang.org/x/exp/slices"
 	"sort"
 	"strings"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/util"
@@ -21,23 +23,20 @@ type SelectionInfo[T any] struct {
 	Entry *T
 }
 
-type SnapshotBrowserEntry struct {
-	Snapshot  *zfs.Snapshot
-	DiffState diff_state.DiffState
-}
-
 type SnapshotBrowserComponent struct {
 	application *tview.Application
 
-	tableContainer *table.RowSelectionTable[SnapshotBrowserEntry]
+	layout *tview.Pages
+
+	tableContainer *table.RowSelectionTable[data.SnapshotBrowserEntry]
 
 	path             string
 	hostDataset      *zfs.Dataset
 	currentFileEntry *data.FileBrowserEntry
 
-	selectedSnapshotMap map[string]*SelectionInfo[SnapshotBrowserEntry]
+	selectedSnapshotMap map[string]*SelectionInfo[data.SnapshotBrowserEntry]
 
-	selectedSnapshotChangedCallback func(snapshot *SnapshotBrowserEntry)
+	selectedSnapshotChangedCallback func(snapshot *data.SnapshotBrowserEntry)
 }
 
 var (
@@ -62,7 +61,21 @@ var (
 )
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
-	toTableCellsFunction := func(row int, columns []*table.Column, entry *SnapshotBrowserEntry) (cells []*tview.TableCell) {
+	snapshotBrowser := &SnapshotBrowserComponent{
+		application:                     application,
+		selectedSnapshotMap:             map[string]*SelectionInfo[data.SnapshotBrowserEntry]{},
+		selectedSnapshotChangedCallback: func(snapshot *data.SnapshotBrowserEntry) {},
+	}
+
+	snapshotBrowser.layout = snapshotBrowser.createLayout()
+
+	return snapshotBrowser
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
+	layout := tview.NewPages()
+
+	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
 		result := []*tview.TableCell{}
 		for _, column := range columns {
 			cellText := "N/A"
@@ -99,7 +112,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		return result
 	}
 
-	tableEntrySortFunction := func(entries []*SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*SnapshotBrowserEntry {
+	tableEntrySortFunction := func(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.SnapshotBrowserEntry {
 		sort.SliceStable(entries, func(i, j int) bool {
 			a := entries[i]
 			b := entries[j]
@@ -125,27 +138,21 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		return entries
 	}
 
-	tableContainer := table.NewTableContainer[SnapshotBrowserEntry](
-		application,
+	snapshotBrowser.tableContainer = table.NewTableContainer[data.SnapshotBrowserEntry](
+		snapshotBrowser.application,
 		toTableCellsFunction,
 		tableEntrySortFunction,
 	)
 
-	snapshotsBrowser := &SnapshotBrowserComponent{
-		application:                     application,
-		selectedSnapshotMap:             map[string]*SelectionInfo[SnapshotBrowserEntry]{},
-		tableContainer:                  tableContainer,
-		selectedSnapshotChangedCallback: func(snapshot *SnapshotBrowserEntry) {},
-	}
-
-	tableContainer.SetColumnSpec(tableColumns, columnDate, true)
-	tableContainer.SetSelectionChangedCallback(func(entry *SnapshotBrowserEntry) {
-		snapshotsBrowser.rememberSelectionForDataset(entry)
-		snapshotsBrowser.selectedSnapshotChangedCallback(entry)
-		snapshotsBrowser.updateTableContents()
+	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
+	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
+		snapshotBrowser.rememberSelectionForDataset(entry)
+		snapshotBrowser.selectedSnapshotChangedCallback(entry)
+		snapshotBrowser.updateTableContents()
 	})
 
-	return snapshotsBrowser
+	layout.AddPage("snapshot-browser", snapshotBrowser.tableContainer.GetLayout(), true, true)
+	return layout
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetLayout() tview.Primitive {
@@ -198,8 +205,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateTableContents() {
 	snapshotBrowser.restoreSelectionForDataset()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*SnapshotBrowserEntry {
-	result := []*SnapshotBrowserEntry{}
+func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.SnapshotBrowserEntry {
+	result := []*data.SnapshotBrowserEntry{}
 	ds, err := zfs.FindHostDataset(snapshotBrowser.path)
 	if err != nil {
 		logging.Error(err.Error())
@@ -223,7 +230,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*Snapsh
 			filePath := snapshotBrowser.currentFileEntry.GetRealPath()
 			diffState = snapshot.DetermineDiffState(filePath)
 		}
-		result = append(result, &SnapshotBrowserEntry{
+		result = append(result, &data.SnapshotBrowserEntry{
 			Snapshot:  snapshot,
 			DiffState: diffState,
 		})
@@ -242,17 +249,17 @@ func (snapshotBrowser *SnapshotBrowserComponent) clear() {
 	snapshotBrowser.updateTableContents()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(selection *SnapshotBrowserEntry) {
+func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(selection *data.SnapshotBrowserEntry) {
 	if snapshotBrowser.hostDataset == nil {
 		return
 	}
-	snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path] = &SelectionInfo[SnapshotBrowserEntry]{
+	snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path] = &SelectionInfo[data.SnapshotBrowserEntry]{
 		Index: slices.Index(snapshotBrowser.GetEntries(), selection),
 		Entry: selection,
 	}
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *SelectionInfo[SnapshotBrowserEntry] {
+func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *SelectionInfo[data.SnapshotBrowserEntry] {
 	selectionInfo, ok := snapshotBrowser.selectedSnapshotMap[path]
 	if !ok {
 		return nil
@@ -262,7 +269,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
-	var entryToSelect *SnapshotBrowserEntry
+	var entryToSelect *data.SnapshotBrowserEntry
 	if snapshotBrowser.hostDataset == nil {
 		snapshotBrowser.selectSnapshot(entryToSelect)
 		return
@@ -280,7 +287,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 			snapshotBrowser.selectHeader()
 			return
 		} else {
-			index = slices.IndexFunc(entries, func(entry *SnapshotBrowserEntry) bool {
+			index = slices.IndexFunc(entries, func(entry *data.SnapshotBrowserEntry) bool {
 				return entry.Snapshot.Name == rememberedSelectionInfo.Entry.Snapshot.Name
 			})
 		}
@@ -294,7 +301,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 	snapshotBrowser.selectSnapshot(entryToSelect)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *SnapshotBrowserEntry) {
+func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *data.SnapshotBrowserEntry) {
 	snapshotBrowser.selectedSnapshotChangedCallback(snapshot)
 	if snapshotBrowser.GetSelection() == snapshot || snapshotBrowser.GetSelection() != nil && snapshot != nil && snapshotBrowser.GetSelection().Snapshot.Path == snapshot.Snapshot.Path {
 		return
@@ -302,15 +309,15 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *Snapsh
 	snapshotBrowser.tableContainer.Select(snapshot)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) GetSelection() *SnapshotBrowserEntry {
+func (snapshotBrowser *SnapshotBrowserComponent) GetSelection() *data.SnapshotBrowserEntry {
 	return snapshotBrowser.tableContainer.GetSelectedEntry()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) SetSelectedSnapshotChangedCallback(f func(snapshot *SnapshotBrowserEntry)) {
+func (snapshotBrowser *SnapshotBrowserComponent) SetSelectedSnapshotChangedCallback(f func(snapshot *data.SnapshotBrowserEntry)) {
 	snapshotBrowser.selectedSnapshotChangedCallback = f
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*SnapshotBrowserEntry {
+func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*data.SnapshotBrowserEntry {
 	return snapshotBrowser.tableContainer.GetEntries()
 }
 
@@ -320,4 +327,68 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectHeader() {
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectFirstIfExists() {
 	snapshotBrowser.tableContainer.SelectFirstIfExists()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *data.SnapshotBrowserEntry) {
+	if snapshotBrowser.GetSelection() == nil {
+		return
+	}
+	actionDialogLayout := dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection)
+	actionHandler := func(action dialog.DialogAction) bool {
+		switch action {
+		case dialog.SnapshotActionDialogCreateSnapshotDialogAction:
+			snapshotBrowser.createSnapshot(selection)
+			return true
+		case dialog.DestroySnapshotDialogAction:
+			snapshotBrowser.destroySnapshot(selection, false)
+			return true
+		case dialog.DestroySnapshotRecursivelyDialogAction:
+			snapshotBrowser.destroySnapshot(selection, true)
+			return true
+		}
+		return false
+	}
+	snapshotBrowser.showDialog(actionDialogLayout, actionHandler)
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogAction) bool) {
+	layout := d.GetLayout()
+	go func() {
+		for {
+			action := <-d.GetActionChannel()
+			if actionHandler(action) {
+				return
+			}
+			if action == dialog.ActionClose {
+				snapshotBrowser.layout.RemovePage(d.GetName())
+			}
+		}
+	}()
+	snapshotBrowser.layout.AddPage(d.GetName(), layout, true, true)
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) error {
+	name := fmt.Sprintf("zfh-%s", time.Now().Format(time.DateTime))
+	err := entry.Snapshot.ParentDataset.CreateSnapshot(name)
+	if err != nil {
+		return err
+	}
+	zfs.RefreshZfsData()
+	snapshotBrowser.Refresh()
+	return nil
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.SnapshotBrowserEntry, recursive bool) (err error) {
+	snapshot := entry.Snapshot
+	if recursive {
+		err = snapshot.DestroyRecursive()
+	} else {
+		err = snapshot.Destroy()
+	}
+	if err != nil {
+		return err
+	}
+	zfs.RefreshZfsData()
+	snapshotBrowser.Refresh()
+	return nil
 }

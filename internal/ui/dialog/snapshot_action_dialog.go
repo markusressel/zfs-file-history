@@ -10,26 +10,24 @@ import (
 )
 
 const (
-	ActionDialog util.Page = "ActionDialog"
+	SnapshotActionDialogPage util.Page = "SnapshotActionDialog"
 
-	// recursively restores all files and folders top to bottom starting with the given entry
-	RestoreFileDialogAction DialogAction = iota
-	RestoreRecursiveDialogAction
-	DeleteDialogAction
-	CreateSnapshotDialogAction
+	SnapshotActionDialogCreateSnapshotDialogAction DialogAction = iota
+	DestroySnapshotDialogAction
+	DestroySnapshotRecursivelyDialogAction
 )
 
-type FileActionDialog struct {
+type SnapshotActionDialog struct {
 	application   *tview.Application
-	file          *data.FileBrowserEntry
+	snapshot      *data.SnapshotBrowserEntry
 	layout        *tview.Flex
 	actionChannel chan DialogAction
 }
 
-func NewFileActionDialog(application *tview.Application, file *data.FileBrowserEntry) *FileActionDialog {
-	dialog := &FileActionDialog{
+func NewSnapshotActionDialog(application *tview.Application, snapshot *data.SnapshotBrowserEntry) *SnapshotActionDialog {
+	dialog := &SnapshotActionDialog{
 		application:   application,
-		file:          file,
+		snapshot:      snapshot,
 		actionChannel: make(chan DialogAction),
 	}
 
@@ -39,17 +37,15 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 }
 
 const (
-	RestoreSingleDialogOption DialogOptionId = iota
-	RestoreRecursiveDialogOption
-	DeleteDialogOption
-	CreateSnapshotDialogOption
-	CloseDialogOptionId
+	CreateSnapshotDialogOptionId DialogOptionId = iota
+	DestroySnapshotDialogOptionId
+	DestroySnapshotRecursivelyDialogOptionId
 )
 
-func (d *FileActionDialog) createLayout() {
+func (d *SnapshotActionDialog) createLayout() {
 	dialogTitle := " Select Action "
 
-	textDesctiption := fmt.Sprintf("What do you want to do with '%s'?", d.file.Name)
+	textDesctiption := fmt.Sprintf("What do you want to do with '%s'?", d.snapshot.Snapshot.Name)
 	textDesctiptionView := tview.NewTextView().SetText(textDesctiption)
 
 	optionTable := tview.NewTable()
@@ -63,37 +59,23 @@ func (d *FileActionDialog) createLayout() {
 		},
 	}
 
-	if d.file.HasReal() {
-		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-			Id:   DeleteDialogOption,
-			Name: fmt.Sprintf("Delete '%s'", d.file.RealFile.Name),
-		})
-	}
-
-	if d.file.HasSnapshot() {
-		if d.file.Type == data.Directory {
-			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   RestoreRecursiveDialogOption,
-				Name: fmt.Sprintf("Restore directory recursively"),
-			})
-			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   RestoreSingleDialogOption,
-				Name: fmt.Sprintf("Restore directory only"),
-			})
-		}
-
-		if d.file.Type == data.File {
-			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   RestoreSingleDialogOption,
-				Name: fmt.Sprintf("Restore file"),
-			})
-		}
-	}
-
-	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-		Id:   CreateSnapshotDialogOption,
+	createSnapshotDialogOption := &DialogOption{
+		Id:   CreateSnapshotDialogOptionId,
 		Name: fmt.Sprintf("Create Snapshot"),
-	})
+	}
+	dialogOptions = slices.Insert(dialogOptions, 0, createSnapshotDialogOption)
+
+	destroySnapshotDialogOption := &DialogOption{
+		Id:   DestroySnapshotDialogOptionId,
+		Name: fmt.Sprintf("Destroy '%s'", d.snapshot.Snapshot.Name),
+	}
+	dialogOptions = slices.Insert(dialogOptions, 0, destroySnapshotDialogOption)
+
+	DestroySnapshotRecursivelyDialogOption := &DialogOption{
+		Id:   DestroySnapshotRecursivelyDialogOptionId,
+		Name: fmt.Sprintf("Destroy (recursive) '%s'", d.snapshot.Snapshot.Name),
+	}
+	dialogOptions = slices.Insert(dialogOptions, 0, DestroySnapshotRecursivelyDialogOption)
 
 	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {
@@ -151,63 +133,54 @@ func (d *FileActionDialog) createLayout() {
 	d.layout = dialog
 }
 
-func (d *FileActionDialog) GetName() string {
-	return string(ActionDialog)
+func (d *SnapshotActionDialog) GetName() string {
+	return string(SnapshotActionDialogPage)
 }
 
-func (d *FileActionDialog) GetLayout() *tview.Flex {
+func (d *SnapshotActionDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *FileActionDialog) GetActionChannel() <-chan DialogAction {
+func (d *SnapshotActionDialog) GetActionChannel() <-chan DialogAction {
 	return d.actionChannel
 }
 
-func (d *FileActionDialog) Close() {
+func (d *SnapshotActionDialog) Close() {
 	go func() {
 		d.actionChannel <- ActionClose
 	}()
 }
 
-func (d *FileActionDialog) RestoreFile() {
-	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- RestoreFileDialogAction
-	}()
-}
-
-func (d *FileActionDialog) selectAction(option *DialogOption) {
+func (d *SnapshotActionDialog) selectAction(option *DialogOption) {
 	switch option.Id {
-	case RestoreSingleDialogOption:
-		d.RestoreFile()
-	case RestoreRecursiveDialogOption:
-		d.RestoreRecursive()
-	case DeleteDialogOption:
-		d.DeleteFile()
-	case CreateSnapshotDialogOption:
+	case CreateSnapshotDialogOptionId:
 		d.CreateSnapshot()
+	case DestroySnapshotDialogOptionId:
+		d.DestroySnapshot()
+	case DestroySnapshotRecursivelyDialogOptionId:
+		d.DestroySnapshotRecursively()
 	case CloseDialogOptionId:
 		d.Close()
 	}
 }
 
-func (d *FileActionDialog) RestoreRecursive() {
-	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- RestoreRecursiveDialogAction
-	}()
-}
-
-func (d *FileActionDialog) DeleteFile() {
-	go func() {
-		d.actionChannel <- ActionClose
-		d.actionChannel <- DeleteDialogAction
-	}()
-}
-
-func (d *FileActionDialog) CreateSnapshot() {
+func (d *SnapshotActionDialog) CreateSnapshot() {
 	go func() {
 		d.actionChannel <- ActionClose
 		d.actionChannel <- CreateSnapshotDialogAction
+	}()
+}
+
+func (d *SnapshotActionDialog) DestroySnapshot() {
+	go func() {
+		d.actionChannel <- ActionClose
+		d.actionChannel <- DestroySnapshotDialogAction
+	}()
+}
+
+func (d *SnapshotActionDialog) DestroySnapshotRecursively() {
+	go func() {
+		d.actionChannel <- ActionClose
+		d.actionChannel <- DestroySnapshotRecursivelyDialogAction
 	}()
 }
