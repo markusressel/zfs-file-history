@@ -347,6 +347,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			if err != nil {
 				logging.Error(err.Error())
 			}
+			snapshotBrowser.SelectLatest()
 			return true
 		case dialog.SnapshotDialogDestroySnapshotActionId:
 			err := snapshotBrowser.destroySnapshot(selection, false)
@@ -404,4 +405,30 @@ func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.Sna
 	}
 	snapshotBrowser.Refresh(true)
 	return nil
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
+	entries := snapshotBrowser.GetEntries()
+
+	var sortedEntries []*data.SnapshotBrowserEntry
+	sortedEntries = append(sortedEntries, entries...)
+	if len(sortedEntries) <= 0 {
+		return
+	}
+
+	sort.SliceStable(sortedEntries, func(i, j int) bool {
+		a := entries[i]
+		b := entries[j]
+		if a.Snapshot.Date != nil && b.Snapshot.Date != nil {
+			dateA := a.Snapshot.Date
+			dateB := b.Snapshot.Date
+			result := dateA.After(*dateB)
+			return result
+		}
+
+		return false
+	})
+
+	latestEntry := sortedEntries[0]
+	snapshotBrowser.tableContainer.Select(latestEntry)
 }
