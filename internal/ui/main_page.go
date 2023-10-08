@@ -40,8 +40,8 @@ func NewMainPage(application *tview.Application) *MainPage {
 
 	snapshotBrowser.SetEventCallback(func(event snapshot_browser.SnapshotBrowserEvent) {
 		switch event.(type) {
-		case uiutil.ErrorEvent:
-			event := event.(uiutil.ErrorEvent)
+		case uiutil.StatusMessageEvent:
+			event := event.(uiutil.StatusMessageEvent)
 			mainPage.showStatusMessage(event.Message)
 		case snapshot_browser.SnapshotCreated:
 			event := event.(snapshot_browser.SnapshotCreated)

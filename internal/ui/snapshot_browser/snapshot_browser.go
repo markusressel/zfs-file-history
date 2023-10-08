@@ -362,12 +362,26 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			err := snapshotBrowser.destroySnapshot(selection, false)
 			if err != nil {
 				logging.Error(err.Error())
+				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
+				})
+			} else {
+				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+					Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name)),
+				})
 			}
 			return true
 		case dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
 			err := snapshotBrowser.destroySnapshot(selection, true)
 			if err != nil {
 				logging.Error(err.Error())
+				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
+				})
+			} else {
+				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+					Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name)),
+				})
 			}
 			return true
 		}
@@ -443,7 +457,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) showStatusMessage(message *status_message.StatusMessage) {
-	snapshotBrowser.sendUiEvent(uiutil.ErrorEvent{
+	snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 		Message: message,
 	})
 }
