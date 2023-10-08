@@ -36,8 +36,10 @@ func NewMainPage(application *tview.Application) *MainPage {
 			err := datasetInfo.CreateSnapshot(name)
 			if err != nil {
 				logging.Error("Failed to create snapshot: %s", err)
+			} else {
+				snapshotBrowser.Refresh(true)
+				snapshotBrowser.SelectLatest()
 			}
-			snapshotBrowser.Refresh(true)
 		}
 	})
 
