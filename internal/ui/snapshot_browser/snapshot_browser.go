@@ -12,8 +12,10 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
@@ -23,7 +25,16 @@ type SelectionInfo[T any] struct {
 	Entry *T
 }
 
+type SnapshotBrowserEvent interface {
+}
+
+type SnapshotCreated struct {
+	SnapshotName string
+}
+
 type SnapshotBrowserComponent struct {
+	eventCallback func(event SnapshotBrowserEvent)
+
 	application *tview.Application
 
 	layout *tview.Pages
@@ -62,6 +73,7 @@ var (
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
 	snapshotBrowser := &SnapshotBrowserComponent{
+		eventCallback:                   func(event SnapshotBrowserEvent) {},
 		application:                     application,
 		selectedSnapshotMap:             map[string]*SelectionInfo[data.SnapshotBrowserEntry]{},
 		selectedSnapshotChangedCallback: func(snapshot *data.SnapshotBrowserEntry) {},
@@ -343,11 +355,15 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	actionHandler := func(action dialog.DialogActionId) bool {
 		switch action {
 		case dialog.SnapshotDialogCreateSnapshotActionId:
-			err := snapshotBrowser.createSnapshot(selection)
+			name, err := snapshotBrowser.createSnapshot(selection)
 			if err != nil {
 				logging.Error(err.Error())
+				snapshotBrowser.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
 			}
 			snapshotBrowser.SelectLatest()
+			snapshotBrowser.sendUiEvent(SnapshotCreated{
+				SnapshotName: name,
+			})
 			return true
 		case dialog.SnapshotDialogDestroySnapshotActionId:
 			err := snapshotBrowser.destroySnapshot(selection, false)
@@ -383,14 +399,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, act
 	snapshotBrowser.layout.AddPage(d.GetName(), layout, true, true)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) error {
-	name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
-	err := entry.Snapshot.ParentDataset.CreateSnapshot(name)
+func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) (name string, err error) {
+	name = fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+	err = entry.Snapshot.ParentDataset.CreateSnapshot(name)
 	if err != nil {
-		return err
+		return "", err
 	}
 	snapshotBrowser.Refresh(true)
-	return nil
+	return name, nil
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.SnapshotBrowserEntry, recursive bool) (err error) {
@@ -431,4 +447,18 @@ func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 
 	latestEntry := sortedEntries[0]
 	snapshotBrowser.tableContainer.Select(latestEntry)
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) showStatusMessage(message *status_message.StatusMessage) {
+	snapshotBrowser.sendUiEvent(uiutil.ErrorEvent{
+		Message: message,
+	})
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) sendUiEvent(event SnapshotBrowserEvent) {
+	snapshotBrowser.eventCallback(event)
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) SetEventCallback(f func(event SnapshotBrowserEvent)) {
+	snapshotBrowser.eventCallback = f
 }

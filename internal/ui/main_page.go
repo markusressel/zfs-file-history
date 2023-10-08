@@ -11,6 +11,7 @@ import (
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -29,19 +30,6 @@ func NewMainPage(application *tview.Application) *MainPage {
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
-	fileBrowser.SetEventCallback(func(event file_browser.FileBrowserEvent) {
-		switch event {
-		case file_browser.CreateSnapshotEvent:
-			name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
-			err := datasetInfo.CreateSnapshot(name)
-			if err != nil {
-				logging.Error("Failed to create snapshot: %s", err)
-			} else {
-				snapshotBrowser.Refresh(true)
-				snapshotBrowser.SelectLatest()
-			}
-		}
-	})
 
 	mainPage := &MainPage{
 		application:     application,
@@ -49,6 +37,17 @@ func NewMainPage(application *tview.Application) *MainPage {
 		datasetInfo:     datasetInfo,
 		snapshotBrowser: snapshotBrowser,
 	}
+
+	snapshotBrowser.SetEventCallback(func(event snapshot_browser.SnapshotBrowserEvent) {
+		switch event.(type) {
+		case uiutil.ErrorEvent:
+			event := event.(uiutil.ErrorEvent)
+			mainPage.showStatusMessage(event.Message)
+		case snapshot_browser.SnapshotCreated:
+			event := event.(snapshot_browser.SnapshotCreated)
+			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", event.SnapshotName)))
+		}
+	})
 
 	fileBrowser.SetStatusCallback(func(message *status_message.StatusMessage) {
 		mainPage.showStatusMessage(message)
@@ -77,6 +76,22 @@ func NewMainPage(application *tview.Application) *MainPage {
 			fileBrowser.Refresh()
 		}
 		return event
+	})
+
+	fileBrowser.SetEventCallback(func(event file_browser.FileBrowserEvent) {
+		switch event {
+		case file_browser.CreateSnapshotEvent:
+			name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+			err := datasetInfo.CreateSnapshot(name)
+			if err != nil {
+				logging.Error("Failed to create snapshot: %s", err)
+				mainPage.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
+			} else {
+				snapshotBrowser.Refresh(true)
+				snapshotBrowser.SelectLatest()
+				mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", name)))
+			}
+		}
 	})
 
 	return mainPage
@@ -125,4 +140,8 @@ func (mainPage *MainPage) ToggleFocus() {
 
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
+}
+
+func (mainPage *MainPage) clearStatus() {
+	mainPage.header.ClearStatus()
 }

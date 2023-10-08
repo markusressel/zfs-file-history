@@ -125,5 +125,8 @@ func (datasetInfo *DatasetInfoComponent) GetLayout() tview.Primitive {
 }
 
 func (datasetInfo *DatasetInfoComponent) CreateSnapshot(name string) error {
+	if datasetInfo.dataset == nil {
+		return fmt.Errorf("no dataset for current file selection")
+	}
 	return datasetInfo.dataset.CreateSnapshot(name)
 }
