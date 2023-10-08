@@ -46,6 +46,9 @@ func NewMainPage(application *tview.Application) *MainPage {
 		case snapshot_browser.SnapshotCreated:
 			event := event.(snapshot_browser.SnapshotCreated)
 			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", event.SnapshotName)))
+		case snapshot_browser.SnapshotDestroyed:
+			event := event.(snapshot_browser.SnapshotDestroyed)
+			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", event.SnapshotName)))
 		}
 	})
 

@@ -25,13 +25,6 @@ type SelectionInfo[T any] struct {
 	Entry *T
 }
 
-type SnapshotBrowserEvent interface {
-}
-
-type SnapshotCreated struct {
-	SnapshotName string
-}
-
 type SnapshotBrowserComponent struct {
 	eventCallback func(event SnapshotBrowserEvent)
 
