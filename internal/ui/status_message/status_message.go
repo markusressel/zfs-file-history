@@ -33,6 +33,10 @@ func (statusMessage *StatusMessage) SetColor(color tcell.Color) *StatusMessage {
 	return statusMessage
 }
 
+func NewSuccessStatusMessage(message string) *StatusMessage {
+	return newStatusMessage(message).SetColor(tcell.ColorGreen)
+}
+
 func NewErrorStatusMessage(message string) *StatusMessage {
 	return newStatusMessage(message).SetColor(tcell.ColorRed)
 }

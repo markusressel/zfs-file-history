@@ -23,12 +23,8 @@ import (
 	"zfs-file-history/internal/util"
 )
 
-type FileBrowserEvent int
-
 const (
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
-
-	CreateSnapshotEvent FileBrowserEvent = iota
 )
 
 type FileBrowserSelectionInfo struct {

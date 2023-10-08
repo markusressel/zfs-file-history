@@ -30,7 +30,6 @@ func NewApplicationHeader(application *tview.Application) *ApplicationHeaderComp
 	}
 
 	applicationHeader.createLayout()
-	applicationHeader.updateUi()
 
 	return applicationHeader
 }
@@ -69,10 +68,6 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	applicationHeader.layout = layout
 }
 
-func (applicationHeader *ApplicationHeaderComponent) updateUi() {
-	// no changing data
-}
-
 func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *status_message.StatusMessage) {
 	applicationHeader.statusTextView.SetText(status.Message).SetTextColor(status.Color)
 	applicationHeader.application.ForceDraw()
@@ -82,13 +77,13 @@ func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *status_me
 			if applicationHeader.lastStatus != status {
 				return
 			}
-			applicationHeader.ResetStatus()
+			applicationHeader.ClearStatus()
 		}()
 	}
 	applicationHeader.lastStatus = status
 }
 
-func (applicationHeader *ApplicationHeaderComponent) ResetStatus() {
+func (applicationHeader *ApplicationHeaderComponent) ClearStatus() {
 	applicationHeader.statusTextView.SetText("").SetTextColor(tcell.ColorWhite)
 	applicationHeader.application.ForceDraw()
 }
