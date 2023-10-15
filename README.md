@@ -19,6 +19,7 @@
 * [x] Browse through Snapshots and get to the right version quickly
 * [x] Sort table entries by any column and direction
 * [x] Restore any file from any snapshot with two keytrokes
+* [x] Create/Destroy snapshots
 
 # How to use
 
