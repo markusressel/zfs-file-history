@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/bicomsystems/go-libzfs v0.4.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fsnotify/fsnotify v1.6.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/mistifyio/go-zfs v2.1.1+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
