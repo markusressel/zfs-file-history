@@ -1,7 +1,7 @@
 package zfs
 
 import (
-	golibzfs "github.com/bicomsystems/go-libzfs"
+	golibzfs "github.com/kraudcloud/go-libzfs"
 	"strings"
 	"zfs-file-history/internal/logging"
 )

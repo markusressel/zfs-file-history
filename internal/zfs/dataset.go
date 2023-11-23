@@ -3,7 +3,7 @@ package zfs
 import (
 	"errors"
 	"fmt"
-	golibzfs "github.com/bicomsystems/go-libzfs"
+	golibzfs "github.com/kraudcloud/go-libzfs"
 	gozfs "github.com/mistifyio/go-zfs"
 	"os"
 	path2 "path"
