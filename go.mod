@@ -9,7 +9,7 @@ require (
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs v2.1.1+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/navidys/tvxwidgets v0.4.0
+	github.com/navidys/tvxwidgets v0.4.1
 	github.com/oklog/run v1.1.0
 	github.com/pterm/pterm v0.12.71
 	github.com/rivo/tview v0.0.0-20231115183240-7c9e464bac02
@@ -29,7 +29,6 @@ require (
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/kraudcloud/go-libzfs/v2 v2.22.1 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
