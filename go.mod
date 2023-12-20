@@ -9,10 +9,10 @@ require (
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs v2.1.1+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/navidys/tvxwidgets v0.4.1
+	github.com/navidys/tvxwidgets v0.5.0
 	github.com/oklog/run v1.1.0
 	github.com/pterm/pterm v0.12.72
-	github.com/rivo/tview v0.0.0-20231115183240-7c9e464bac02
+	github.com/rivo/tview v0.0.0-20231206124440-5f078138442e
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.8.4
