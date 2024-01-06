@@ -6,6 +6,10 @@ import (
 	"os"
 )
 
+const (
+	LoggingRootPath = "/tmp/zfs-file-history"
+)
+
 func SetDebugEnabled(enabled bool) {
 	pterm.PrintDebugMessages = enabled
 }
@@ -67,11 +71,11 @@ func writeToLogFile(format string, a ...interface{}) {
 }
 
 func openLogFile() *os.File {
-	err := os.MkdirAll("/tmp/zfs-file-history", 0700)
+	err := os.MkdirAll(LoggingRootPath, 0700)
 	if err != nil {
 		log.Fatal(err)
 	}
-	file, err := os.OpenFile("/tmp/zfs-file-history/zfs-file-history.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	file, err := os.OpenFile(LoggingRootPath+"/zfs-file-history.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
