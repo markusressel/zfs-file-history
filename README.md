@@ -62,8 +62,8 @@ Then configure zfs-file-history by creating a YAML configuration file in **one**
 * `./zfs-file-history.yaml`
 
 ```shell
-sudo mkdir -P ~/.config/zfs-file-history
-sudo nano ~/.config/zfs-file-history/zfs-file-history.yaml
+mkdir -P ~/.config/zfs-file-history
+nano ~/.config/zfs-file-history/zfs-file-history.yaml
 ```
 
 ### Example
