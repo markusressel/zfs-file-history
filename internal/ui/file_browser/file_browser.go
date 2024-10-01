@@ -691,6 +691,7 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 			}
 			if action == dialog.DialogCloseActionId {
 				fileBrowser.layout.RemovePage(d.GetName())
+				fileBrowser.application.Draw()
 			}
 		}
 	}()
