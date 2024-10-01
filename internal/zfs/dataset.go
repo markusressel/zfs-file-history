@@ -38,6 +38,12 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 		if len(datasets) > 0 {
 			dataset.rawGozfsData = datasets[0]
 		}
+		if len(datasets) > 1 {
+			// TODO: is this a real case?
+			//  Can we automatically select the "correct" one or should the user
+			//  decide which one to use?
+			logging.Warning("Found multiple datasets for path %s", path)
+		}
 	}
 
 	return dataset, nil
