@@ -37,8 +37,8 @@ func NewDeleteSnapshotDialog(application *tview.Application, snapshot *data.Snap
 func (d *DeleteSnapshotDialog) createLayout() {
 	dialogTitle := " Destroy Snapshot "
 
-	textDesctiption := fmt.Sprintf("Destroy '%s'?", d.snapshot.Snapshot.Name)
-	textDesctiptionView := tview.NewTextView().SetText(textDesctiption)
+	textDescription := fmt.Sprintf("Destroy '%s'?", d.snapshot.Snapshot.Name)
+	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
 	optionTable := tview.NewTable()
 	optionTable.SetSelectable(true, false)
@@ -92,7 +92,7 @@ func (d *DeleteSnapshotDialog) createLayout() {
 	}
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDesctiptionView, 0, 1, false)
+	dialogContent.AddItem(textDescriptionView, 0, 1, false)
 	dialogContent.AddItem(optionTable, 0, 1, true)
 
 	dialog := createModal(dialogTitle, dialogContent, 50, 6)

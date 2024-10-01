@@ -519,6 +519,9 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
 	actionHandler := func(action dialog.DialogActionId) bool {
 		switch action {
+		case dialog.FileDialogShowDiffActionId:
+			fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
+			return true
 		case dialog.FileDialogCreateSnapshotDialogActionId:
 			fileBrowser.createSnapshot(selection)
 			return true
@@ -688,6 +691,7 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 			}
 			if action == dialog.DialogCloseActionId {
 				fileBrowser.layout.RemovePage(d.GetName())
+				fileBrowser.application.Draw()
 			}
 		}
 	}()
@@ -707,6 +711,20 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
 	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
+	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
+		switch action {
+		case dialog.DialogCloseActionId:
+			fileBrowser.Refresh()
+		}
+		return false
+	})
+}
+
+func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEntry, snapshot *data.SnapshotBrowserEntry) {
+	if selection == nil || snapshot == nil {
+		return
+	}
+	d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
 	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
 		switch action {
 		case dialog.DialogCloseActionId:

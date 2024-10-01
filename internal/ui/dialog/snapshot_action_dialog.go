@@ -38,8 +38,8 @@ func NewSnapshotActionDialog(application *tview.Application, snapshot *data.Snap
 func (d *SnapshotActionDialog) createLayout() {
 	dialogTitle := " Select Action "
 
-	textDesctiption := fmt.Sprintf("What do you want to do with '%s'?", d.snapshot.Snapshot.Name)
-	textDesctiptionView := tview.NewTextView().SetText(textDesctiption)
+	textDescription := fmt.Sprintf("What do you want to do with '%s'?", d.snapshot.Snapshot.Name)
+	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
 	optionTable := tview.NewTable()
 	optionTable.SetSelectable(true, false)
@@ -100,7 +100,7 @@ func (d *SnapshotActionDialog) createLayout() {
 	}
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDesctiptionView, 0, 1, false)
+	dialogContent.AddItem(textDescriptionView, 0, 1, false)
 	dialogContent.AddItem(optionTable, 0, 1, true)
 
 	dialog := createModal(dialogTitle, dialogContent, 50, 10)

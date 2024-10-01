@@ -197,7 +197,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) Refresh(force bool) {
 func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.FileBrowserEntry) {
 	if fileEntry != nil &&
 		snapshotBrowser.currentFileEntry != nil &&
-		snapshotBrowser.currentFileEntry.GetRealPath() == fileEntry.GetRealPath() {
+		snapshotBrowser.currentFileEntry.GetRealPath() == fileEntry.GetRealPath() &&
+		snapshotBrowser.currentFileEntry.DiffState == fileEntry.DiffState {
 		return
 	}
 	snapshotBrowser.currentFileEntry = fileEntry

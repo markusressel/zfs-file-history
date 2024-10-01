@@ -37,8 +37,8 @@ func NewDeleteFileDialog(application *tview.Application, file *data.FileBrowserE
 func (d *DeleteFileDialog) createLayout() {
 	dialogTitle := " Delete File "
 
-	textDesctiption := fmt.Sprintf("Delete '%s'?", d.file.Name)
-	textDesctiptionView := tview.NewTextView().SetText(textDesctiption)
+	textDescription := fmt.Sprintf("Delete '%s'?", d.file.Name)
+	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
 	optionTable := tview.NewTable()
 	optionTable.SetSelectable(true, false)
@@ -94,7 +94,7 @@ func (d *DeleteFileDialog) createLayout() {
 	}
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDesctiptionView, 0, 1, false)
+	dialogContent.AddItem(textDescriptionView, 0, 1, false)
 	dialogContent.AddItem(optionTable, 0, 1, true)
 
 	dialog := createModal(dialogTitle, dialogContent, 50, 6)

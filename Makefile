@@ -32,4 +32,4 @@ deploy: clean build
 
 clean:
 	go clean
-	rm ${OUTPUT_BIN}
+	rm -f ${OUTPUT_BIN}
