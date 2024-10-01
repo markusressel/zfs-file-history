@@ -77,7 +77,7 @@ func (d *FileDiffDialog) createLayout() {
 	closeTextView := util.CreateAttentionTextView("Press 'esc' to close")
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDescriptionView, 0, 1, false)
+	dialogContent.AddItem(textDescriptionView, 0, 1, true)
 	dialogContent.AddItem(closeTextView, 1, 0, false)
 	dialogContent.SetBorderPadding(0, 0, 1, 1)
 
