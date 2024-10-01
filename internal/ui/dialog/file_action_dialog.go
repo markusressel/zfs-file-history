@@ -13,7 +13,8 @@ const (
 	ActionDialog util.Page = "ActionDialog"
 
 	// recursively restores all files and folders top to bottom starting with the given entry
-	FileDialogRestoreFileActionId DialogActionId = iota
+	FileDialogShowDiffActionId DialogActionId = iota
+	FileDialogRestoreFileActionId
 	FileDialogRestoreRecursiveDialogActionId
 	FileDialogDeleteDialogActionId
 	FileDialogCreateSnapshotDialogActionId
@@ -41,8 +42,8 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 func (d *FileActionDialog) createLayout() {
 	dialogTitle := " Select Action "
 
-	textDesctiption := fmt.Sprintf("What do you want to do with '%s'?", d.file.Name)
-	textDesctiptionView := tview.NewTextView().SetText(textDesctiption)
+	textDescription := fmt.Sprintf("What do you want to do with '%s'?", d.file.Name)
+	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
 	optionTable := tview.NewTable()
 	optionTable.SetSelectable(true, false)
@@ -76,6 +77,10 @@ func (d *FileActionDialog) createLayout() {
 
 		if d.file.Type == data.File {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+				Id:   FileDialogShowDiffActionId,
+				Name: fmt.Sprintf("Show diff"),
+			})
+			dialogOptions = slices.Insert(dialogOptions, 1, &DialogOption{
 				Id:   FileDialogRestoreFileActionId,
 				Name: fmt.Sprintf("Restore file"),
 			})
@@ -123,7 +128,7 @@ func (d *FileActionDialog) createLayout() {
 	}
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDesctiptionView, 0, 1, false)
+	dialogContent.AddItem(textDescriptionView, 0, 1, false)
 	dialogContent.AddItem(optionTable, 0, 1, true)
 
 	dialog := createModal(dialogTitle, dialogContent, 50, 15)
@@ -169,6 +174,8 @@ func (d *FileActionDialog) RestoreFile() {
 
 func (d *FileActionDialog) selectAction(option *DialogOption) {
 	switch option.Id {
+	case FileDialogShowDiffActionId:
+		d.ShowDiff()
 	case FileDialogRestoreFileActionId:
 		d.RestoreFile()
 	case FileDialogRestoreRecursiveDialogActionId:
@@ -200,5 +207,12 @@ func (d *FileActionDialog) CreateSnapshot() {
 	go func() {
 		d.actionChannel <- DialogCloseActionId
 		d.actionChannel <- FileDialogCreateSnapshotDialogActionId
+	}()
+}
+
+func (d *FileActionDialog) ShowDiff() {
+	go func() {
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- FileDialogShowDiffActionId
 	}()
 }

@@ -15,6 +15,7 @@ require (
 	github.com/oklog/run v1.1.0
 	github.com/pterm/pterm v0.12.79
 	github.com/rivo/tview v0.0.0-20240728114935-65571ae51e71
+	github.com/sergi/go-diff v1.2.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
