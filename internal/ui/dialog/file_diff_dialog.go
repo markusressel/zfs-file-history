@@ -74,11 +74,12 @@ func (d *FileDiffDialog) createLayout() {
 
 	textDescriptionView.SetText(diffText)
 
-	closeTextView := util.CreateAttentionTextView("Press 'q' to abort")
+	closeTextView := util.CreateAttentionTextView("Press 'esc' to close")
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	dialogContent.AddItem(textDescriptionView, 0, 1, false)
 	dialogContent.AddItem(closeTextView, 1, 0, false)
+	dialogContent.SetBorderPadding(0, 0, 1, 1)
 
 	width := 80
 	height := 20
