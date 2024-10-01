@@ -38,6 +38,7 @@ func (p *HelpPage) createLayout() {
 		{Key: "left, h", Value: "Opens parent directory"},
 		{Key: "right", Value: "Enters selected directory"},
 		{Key: "enter", Value: "Opens file action dialog"},
+		{Key: "d", Value: "Delete selection"},
 		{Key: "tab, shift+tab", Value: "Cycles window focus"},
 		{Key: "ctrl+r", Value: "Refreshes all data"},
 		emptyEntry,
