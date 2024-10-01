@@ -286,6 +286,11 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 			} else if key == tcell.KeyEnter {
 				fileBrowser.openActionDialog(fileBrowser.GetSelection())
 				return nil
+			} else if event.Rune() == 'd' {
+				currentSelection := fileBrowser.GetSelection()
+				if currentSelection != nil && currentSelection.HasReal() {
+					fileBrowser.openDeleteDialog(currentSelection)
+				}
 			}
 		}
 		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
@@ -508,7 +513,7 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 }
 
 func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBrowserEntry) {
-	if fileBrowser.GetSelection() == nil {
+	if selection == nil {
 		return
 	}
 	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
@@ -526,10 +531,28 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		case dialog.FileDialogDeleteDialogActionId:
 			fileBrowser.delete(selection)
 			return true
+		default:
+			return false
 		}
-		return false
 	}
 	fileBrowser.showDialog(actionDialogLayout, actionHandler)
+}
+
+func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBrowserEntry) {
+	if selection == nil || !selection.HasReal() {
+		return
+	}
+	deleteDialogLayout := dialog.NewDeleteFileDialog(fileBrowser.application, selection)
+	deleteHandler := func(action dialog.DialogActionId) bool {
+		switch action {
+		case dialog.DeleteFileDialogDeleteFileActionId:
+			fileBrowser.delete(selection)
+			return true
+		default:
+			return false
+		}
+	}
+	fileBrowser.showDialog(deleteDialogLayout, deleteHandler)
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
