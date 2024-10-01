@@ -155,6 +155,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 			if key == tcell.KeyEnter {
 				snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
 				return nil
+			} else if event.Rune() == 'd' {
+				currentSelection := snapshotBrowser.GetSelection()
+				if currentSelection != nil {
+					snapshotBrowser.openDeleteDialog(currentSelection)
+				}
 			}
 		}
 		return event
@@ -388,6 +393,29 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		return false
 	}
 	snapshotBrowser.showDialog(actionDialogLayout, actionHandler)
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *data.SnapshotBrowserEntry) {
+	if selection == nil {
+		return
+	}
+	deleteDialogLayout := dialog.NewDeleteSnapshotDialog(snapshotBrowser.application, selection)
+	deleteHandler := func(action dialog.DialogActionId) bool {
+		switch action {
+		case dialog.DeleteSnapshotDialogDeleteSnapshotActionId:
+			err := snapshotBrowser.destroySnapshot(selection, false)
+			if err != nil {
+				logging.Error(err.Error())
+				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
+				})
+			}
+			return true
+		default:
+			return false
+		}
+	}
+	snapshotBrowser.showDialog(deleteDialogLayout, deleteHandler)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {

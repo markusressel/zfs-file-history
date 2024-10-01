@@ -10,22 +10,22 @@ import (
 )
 
 const (
-	DeleteFileDialogPage util.Page = "DeleteFileDialog"
+	DeleteSnapshotDialogPage util.Page = "DeleteSnapshotDialog"
 
-	DeleteFileDialogDeleteFileActionId DialogActionId = iota
+	DeleteSnapshotDialogDeleteSnapshotActionId DialogActionId = iota
 )
 
-type DeleteFileDialog struct {
+type DeleteSnapshotDialog struct {
 	application   *tview.Application
-	file          *data.FileBrowserEntry
+	snapshot      *data.SnapshotBrowserEntry
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
 }
 
-func NewDeleteFileDialog(application *tview.Application, file *data.FileBrowserEntry) *DeleteFileDialog {
-	dialog := &DeleteFileDialog{
+func NewDeleteSnapshotDialog(application *tview.Application, snapshot *data.SnapshotBrowserEntry) *DeleteSnapshotDialog {
+	dialog := &DeleteSnapshotDialog{
 		application:   application,
-		file:          file,
+		snapshot:      snapshot,
 		actionChannel: make(chan DialogActionId),
 	}
 
@@ -34,10 +34,10 @@ func NewDeleteFileDialog(application *tview.Application, file *data.FileBrowserE
 	return dialog
 }
 
-func (d *DeleteFileDialog) createLayout() {
-	dialogTitle := " Delete File "
+func (d *DeleteSnapshotDialog) createLayout() {
+	dialogTitle := " Destroy Snapshot "
 
-	textDesctiption := fmt.Sprintf("Delete '%s'?", d.file.Name)
+	textDesctiption := fmt.Sprintf("Destroy '%s'?", d.snapshot.Snapshot.Name)
 	textDesctiptionView := tview.NewTextView().SetText(textDesctiption)
 
 	optionTable := tview.NewTable()
@@ -51,12 +51,10 @@ func (d *DeleteFileDialog) createLayout() {
 		},
 	}
 
-	if d.file.HasReal() {
-		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-			Id:   DeleteFileDialogDeleteFileActionId,
-			Name: "Delete",
-		})
-	}
+	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+		Id:   DeleteSnapshotDialogDeleteSnapshotActionId,
+		Name: "Destroy",
+	})
 
 	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		switch action {
@@ -113,36 +111,36 @@ func (d *DeleteFileDialog) createLayout() {
 	d.layout = dialog
 }
 
-func (d *DeleteFileDialog) GetName() string {
-	return string(DeleteFileDialogPage)
+func (d *DeleteSnapshotDialog) GetName() string {
+	return string(DeleteSnapshotDialogPage)
 }
 
-func (d *DeleteFileDialog) GetLayout() *tview.Flex {
+func (d *DeleteSnapshotDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *DeleteFileDialog) GetActionChannel() <-chan DialogActionId {
+func (d *DeleteSnapshotDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
-func (d *DeleteFileDialog) Close() {
+func (d *DeleteSnapshotDialog) Close() {
 	go func() {
 		d.actionChannel <- DialogCloseActionId
 	}()
 }
 
-func (d *DeleteFileDialog) selectAction(option *DialogOption) {
+func (d *DeleteSnapshotDialog) selectAction(option *DialogOption) {
 	switch option.Id {
-	case DeleteFileDialogDeleteFileActionId:
-		d.DeleteFile()
+	case DeleteSnapshotDialogDeleteSnapshotActionId:
+		d.DeleteSnapshot()
 	case DialogCloseActionId:
 		d.Close()
 	}
 }
 
-func (d *DeleteFileDialog) DeleteFile() {
+func (d *DeleteSnapshotDialog) DeleteSnapshot() {
 	go func() {
 		d.actionChannel <- DialogCloseActionId
-		d.actionChannel <- DeleteFileDialogDeleteFileActionId
+		d.actionChannel <- DeleteSnapshotDialogDeleteSnapshotActionId
 	}()
 }
