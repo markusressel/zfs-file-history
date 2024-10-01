@@ -65,12 +65,12 @@ func (d *FileActionDialog) createLayout() {
 	if d.file.HasSnapshot() {
 		if d.file.Type == data.Directory {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   FileDialogRestoreRecursiveDialogActionId,
-				Name: fmt.Sprintf("Restore directory recursively"),
-			})
-			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 				Id:   FileDialogRestoreFileActionId,
 				Name: fmt.Sprintf("Restore directory only"),
+			})
+			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+				Id:   FileDialogRestoreRecursiveDialogActionId,
+				Name: fmt.Sprintf("Restore directory recursively"),
 			})
 		}
 
