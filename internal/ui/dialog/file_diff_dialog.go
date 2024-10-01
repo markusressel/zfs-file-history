@@ -3,14 +3,15 @@ package dialog
 import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sergi/go-diff/diffmatchpatch"
-	"os"
 	"os/exec"
+	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
 )
 
 const (
+	DiffBinPath = "/usr/bin/diff"
+
 	FileDiffDialogPage util.Page = "FileDiffDialog"
 )
 
@@ -40,20 +41,38 @@ func (d *FileDiffDialog) createLayout() {
 
 	realFilePath := d.file.RealFile.Path
 	snapshotFilePath := d.snapshot.Snapshot.GetSnapshotPath(d.file.RealFile.Path)
-	diffText := computeDiffText(realFilePath, snapshotFilePath)
 
 	output, err := exec.Command(
-		"/usr/bin/diff",
-		"-U", "4611686018427387903",
+		DiffBinPath,
+		"-U", "3",
 		snapshotFilePath,
 		realFilePath,
 	).Output()
-	if err != nil {
+	diffText := string(output)
+	if err != nil && err.Error() != "exit status 1" {
 		diffText = "error calculating diff: " + err.Error()
 	}
 
-	diffText = string(output)
-	textDescriptionView := tview.NewTextView().SetText(diffText)
+	diffTextLines := strings.Split(diffText, "\n")
+	for i := 0; i < len(diffTextLines); i++ {
+		line := diffTextLines[i]
+		if strings.HasPrefix(line, "+") {
+			diffTextLines[i] = `[green]` + line + `[white]`
+		}
+		if strings.HasPrefix(line, "-") {
+			diffTextLines[i] = `[red]` + line + `[white]`
+		}
+	}
+	diffText = strings.Join(diffTextLines, "\n")
+
+	textDescriptionView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetChangedFunc(func() {
+			d.application.Draw()
+		})
+
+	textDescriptionView.SetText(diffText)
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	dialogContent.AddItem(textDescriptionView, 0, 1, false)
@@ -69,21 +88,6 @@ func (d *FileDiffDialog) createLayout() {
 		return event
 	})
 	d.layout = dialog
-}
-
-func computeDiffText(path string, path2 string) string {
-	text1, err := os.ReadFile(path)
-	if err != nil {
-		return "error calculating diff"
-	}
-	text2, err := os.ReadFile(path2)
-	if err != nil {
-		return "error calculating diff"
-	}
-
-	dmp := diffmatchpatch.New()
-	diffs := dmp.DiffMain(string(text1), string(text2), false)
-	return dmp.DiffPrettyText(diffs)
 }
 
 func (d *FileDiffDialog) GetName() string {

@@ -5,7 +5,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
+	"os/exec"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/util"
 )
 
@@ -76,10 +78,12 @@ func (d *FileActionDialog) createLayout() {
 		}
 
 		if d.file.Type == data.File {
-			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   FileDialogShowDiffActionId,
-				Name: fmt.Sprintf("Show diff"),
-			})
+			if DiffBinExists() && d.file.DiffState == diff_state.Modified {
+				dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+					Id:   FileDialogShowDiffActionId,
+					Name: fmt.Sprintf("Show diff"),
+				})
+			}
 			dialogOptions = slices.Insert(dialogOptions, 1, &DialogOption{
 				Id:   FileDialogRestoreFileActionId,
 				Name: fmt.Sprintf("Restore file"),
@@ -145,6 +149,14 @@ func (d *FileActionDialog) createLayout() {
 		return event
 	})
 	d.layout = dialog
+}
+
+func DiffBinExists() bool {
+	_, err := exec.LookPath(DiffBinPath)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 func (d *FileActionDialog) GetName() string {
