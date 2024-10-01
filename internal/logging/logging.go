@@ -71,11 +71,11 @@ func writeToLogFile(format string, a ...interface{}) {
 }
 
 func openLogFile() *os.File {
-	err := os.MkdirAll(LoggingRootPath, 0700)
+	err := os.MkdirAll(LoggingRootPath, 0777)
 	if err != nil {
 		log.Fatal(err)
 	}
-	file, err := os.OpenFile(LoggingRootPath+"/zfs-file-history.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	file, err := os.OpenFile(LoggingRootPath+"/zfs-file-history.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
