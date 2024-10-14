@@ -11,7 +11,7 @@ require (
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs v2.1.1+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/navidys/tvxwidgets v0.8.0
+	github.com/navidys/tvxwidgets v0.9.0
 	github.com/oklog/run v1.1.0
 	github.com/pterm/pterm v0.12.79
 	github.com/rivo/tview v0.0.0-20240728114935-65571ae51e71
