@@ -14,11 +14,11 @@ require (
 	github.com/navidys/tvxwidgets v0.9.0
 	github.com/oklog/run v1.1.0
 	github.com/pterm/pterm v0.12.79
-	github.com/rivo/tview v0.0.0-20240728114935-65571ae51e71
+	github.com/rivo/tview v0.0.0-20241016194538-c5e4fb24af13
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
+	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 )
 
 require (
