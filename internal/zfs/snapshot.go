@@ -2,6 +2,7 @@ package zfs
 
 import (
 	golibzfs "github.com/kraudcloud/go-libzfs"
+	gozfs "github.com/mistifyio/go-zfs"
 	"io"
 	"os"
 	path2 "path"
@@ -14,13 +15,47 @@ import (
 	"zfs-file-history/internal/util"
 )
 
+const (
+	OS_READ        = 04
+	OS_WRITE       = 02
+	OS_EX          = 01
+	OS_USER_SHIFT  = 6
+	OS_GROUP_SHIFT = 3
+	OS_OTH_SHIFT   = 0
+
+	OS_USER_R   = OS_READ << OS_USER_SHIFT
+	OS_USER_W   = OS_WRITE << OS_USER_SHIFT
+	OS_USER_X   = OS_EX << OS_USER_SHIFT
+	OS_USER_RW  = OS_USER_R | OS_USER_W
+	OS_USER_RWX = OS_USER_RW | OS_USER_X
+
+	OS_GROUP_R   = OS_READ << OS_GROUP_SHIFT
+	OS_GROUP_W   = OS_WRITE << OS_GROUP_SHIFT
+	OS_GROUP_X   = OS_EX << OS_GROUP_SHIFT
+	OS_GROUP_RW  = OS_GROUP_R | OS_GROUP_W
+	OS_GROUP_RWX = OS_GROUP_RW | OS_GROUP_X
+
+	OS_OTH_R   = OS_READ << OS_OTH_SHIFT
+	OS_OTH_W   = OS_WRITE << OS_OTH_SHIFT
+	OS_OTH_X   = OS_EX << OS_OTH_SHIFT
+	OS_OTH_RW  = OS_OTH_R | OS_OTH_W
+	OS_OTH_RWX = OS_OTH_RW | OS_OTH_X
+
+	OS_ALL_R   = OS_USER_R | OS_GROUP_R | OS_OTH_R
+	OS_ALL_W   = OS_USER_W | OS_GROUP_W | OS_OTH_W
+	OS_ALL_X   = OS_USER_X | OS_GROUP_X | OS_OTH_X
+	OS_ALL_RW  = OS_ALL_R | OS_ALL_W
+	OS_ALL_RWX = OS_ALL_RW | OS_GROUP_X
+)
+
 type Snapshot struct {
 	Name          string
 	Path          string
 	ParentDataset *Dataset
 	Date          *time.Time
 
-	internalSnapshot *golibzfs.Dataset
+	rawGozfsData    *gozfs.Dataset
+	rawGolibzfsData *golibzfs.Dataset
 }
 
 func (s *Snapshot) Equal(e Snapshot) bool {
@@ -29,11 +64,12 @@ func (s *Snapshot) Equal(e Snapshot) bool {
 
 func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Time, s *golibzfs.Dataset) *Snapshot {
 	snapshot := &Snapshot{
-		Name:             name,
-		Path:             path,
-		ParentDataset:    parentDataset,
-		Date:             date,
-		internalSnapshot: s,
+		Name:          name,
+		Path:          path,
+		ParentDataset: parentDataset,
+		Date:          date,
+
+		rawGolibzfsData: s,
 	}
 
 	return snapshot
@@ -148,39 +184,6 @@ func (s *Snapshot) RestoreDir(dstPath string, stat os.FileInfo) error {
 
 	return err
 }
-
-const (
-	OS_READ        = 04
-	OS_WRITE       = 02
-	OS_EX          = 01
-	OS_USER_SHIFT  = 6
-	OS_GROUP_SHIFT = 3
-	OS_OTH_SHIFT   = 0
-
-	OS_USER_R   = OS_READ << OS_USER_SHIFT
-	OS_USER_W   = OS_WRITE << OS_USER_SHIFT
-	OS_USER_X   = OS_EX << OS_USER_SHIFT
-	OS_USER_RW  = OS_USER_R | OS_USER_W
-	OS_USER_RWX = OS_USER_RW | OS_USER_X
-
-	OS_GROUP_R   = OS_READ << OS_GROUP_SHIFT
-	OS_GROUP_W   = OS_WRITE << OS_GROUP_SHIFT
-	OS_GROUP_X   = OS_EX << OS_GROUP_SHIFT
-	OS_GROUP_RW  = OS_GROUP_R | OS_GROUP_W
-	OS_GROUP_RWX = OS_GROUP_RW | OS_GROUP_X
-
-	OS_OTH_R   = OS_READ << OS_OTH_SHIFT
-	OS_OTH_W   = OS_WRITE << OS_OTH_SHIFT
-	OS_OTH_X   = OS_EX << OS_OTH_SHIFT
-	OS_OTH_RW  = OS_OTH_R | OS_OTH_W
-	OS_OTH_RWX = OS_OTH_RW | OS_OTH_X
-
-	OS_ALL_R   = OS_USER_R | OS_GROUP_R | OS_OTH_R
-	OS_ALL_W   = OS_USER_W | OS_GROUP_W | OS_OTH_W
-	OS_ALL_X   = OS_USER_X | OS_GROUP_X | OS_OTH_X
-	OS_ALL_RW  = OS_ALL_R | OS_ALL_W
-	OS_ALL_RWX = OS_ALL_RW | OS_GROUP_X
-)
 
 func (s *Snapshot) RestoreFile(srcPath string) error {
 	srcFile, err := os.Open(srcPath)
@@ -306,7 +309,12 @@ func (s *Snapshot) DestroyRecursive() error {
 }
 
 func (s *Snapshot) GetUsed() uint64 {
-	used, err := strconv.ParseUint(s.internalSnapshot.Properties[golibzfs.DatasetPropUsed].Value, 10, 64)
+	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUsed)
+	if err != nil {
+		logging.Error("Could not get used property: %s", err.Error())
+		return 0
+	}
+	used, err := strconv.ParseUint(prop.Value, 10, 64)
 	if err != nil {
 		logging.Error("Could not parse used property: %s", err.Error())
 		return 0
@@ -315,7 +323,12 @@ func (s *Snapshot) GetUsed() uint64 {
 }
 
 func (s *Snapshot) GetReferenced() uint64 {
-	referenced, err := strconv.ParseUint(s.internalSnapshot.Properties[golibzfs.DatasetPropReferenced].Value, 10, 64)
+	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropReferenced)
+	if err != nil {
+		logging.Error("Could not get used property: %s", err.Error())
+		return 0
+	}
+	referenced, err := strconv.ParseUint(prop.Value, 10, 64)
 	if err != nil {
 		logging.Error("Could not parse referenced property: %s", err.Error())
 		return 0
@@ -324,13 +337,17 @@ func (s *Snapshot) GetReferenced() uint64 {
 }
 
 func (s *Snapshot) GetRatio() float64 {
-	rawValue := s.internalSnapshot.Properties[golibzfs.DatasetPropRefratio].Value
-	prop, err := strconv.ParseFloat(rawValue, 64)
+	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropRefratio)
+	if err != nil {
+		logging.Error("Could not get used property: %s", err.Error())
+		return 0
+	}
+	val, err := strconv.ParseFloat(prop.Value, 64)
 	if err != nil {
 		logging.Error("Could not parse ratio property: %s", err.Error())
 		return 0
 	}
-	return prop
+	return val
 }
 
 func syncFileProperties(dstPath string, stat os.FileInfo) error {

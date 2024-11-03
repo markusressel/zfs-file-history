@@ -14,8 +14,9 @@ import (
 )
 
 type Dataset struct {
-	Path            string
-	HiddenZfsPath   string
+	Path          string
+	HiddenZfsPath string
+
 	rawGozfsData    *gozfs.Dataset
 	rawGolibzfsData *golibzfs.Dataset
 }
