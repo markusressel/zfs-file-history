@@ -323,6 +323,16 @@ func (s *Snapshot) GetReferenced() uint64 {
 	return referenced
 }
 
+func (s *Snapshot) GetRatio() float64 {
+	rawValue := s.internalSnapshot.Properties[golibzfs.DatasetPropRefratio].Value
+	prop, err := strconv.ParseFloat(rawValue, 64)
+	if err != nil {
+		logging.Error("Could not parse ratio property: %s", err.Error())
+		return 0
+	}
+	return prop
+}
+
 func syncFileProperties(dstPath string, stat os.FileInfo) error {
 	err := os.Chmod(dstPath, stat.Mode())
 	if err != nil {

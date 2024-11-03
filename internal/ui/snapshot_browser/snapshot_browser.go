@@ -6,6 +6,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
+	"math/big"
 	"sort"
 	"strings"
 	"time"
@@ -52,7 +53,7 @@ var (
 	}
 	columnDate = &table.Column{
 		Id:        1,
-		Title:     "Date",
+		Title:     "Creation",
 		Alignment: tview.AlignLeft,
 	}
 	columnDiff = &table.Column{
@@ -70,8 +71,13 @@ var (
 		Title:     "Refer",
 		Alignment: tview.AlignCenter,
 	}
+	columnRatio = &table.Column{
+		Id:        5,
+		Title:     "Ratio",
+		Alignment: tview.AlignCenter,
+	}
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed, columnRefer,
+		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio,
 	}
 )
 
@@ -124,6 +130,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 				cellText = humanize.IBytes(entry.Snapshot.GetUsed())
 			} else if column == columnRefer {
 				cellText = humanize.IBytes(entry.Snapshot.GetReferenced())
+			} else if column == columnRatio {
+				ratio := entry.Snapshot.GetRatio()
+				cellText = fmt.Sprintf("%.2fx", ratio)
 			}
 			cell := tview.NewTableCell(cellText).
 				SetTextColor(cellColor).SetAlign(cellAlign)
@@ -148,6 +157,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 				result = int(b.Snapshot.GetUsed() - a.Snapshot.GetUsed())
 			} else if columnToSortBy == columnRefer {
 				result = int(b.Snapshot.GetReferenced() - a.Snapshot.GetReferenced())
+			} else if columnToSortBy == columnRatio {
+				ratioA := a.Snapshot.GetRatio()
+				ratioB := b.Snapshot.GetRatio()
+				result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))
 			}
 			if inverted {
 				result *= -1
