@@ -105,7 +105,7 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 			logging.Warning("Could not find snapshot %s on dataset %s", name, dataset.GetName())
 		}
 
-		result = append(result, NewSnapshot(name, file, dataset, &creationDate))
+		result = append(result, NewSnapshot(name, file, dataset, &creationDate, s))
 	}
 
 	return result, nil

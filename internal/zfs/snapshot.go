@@ -1,9 +1,11 @@
 package zfs
 
 import (
+	golibzfs "github.com/kraudcloud/go-libzfs"
 	"io"
 	"os"
 	path2 "path"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -17,18 +19,21 @@ type Snapshot struct {
 	Path          string
 	ParentDataset *Dataset
 	Date          *time.Time
+
+	internalSnapshot *golibzfs.Dataset
 }
 
 func (s *Snapshot) Equal(e Snapshot) bool {
 	return s.Name == e.Name && s.Path == e.Path
 }
 
-func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Time) *Snapshot {
+func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Time, s *golibzfs.Dataset) *Snapshot {
 	snapshot := &Snapshot{
-		Name:          name,
-		Path:          path,
-		ParentDataset: parentDataset,
-		Date:          date,
+		Name:             name,
+		Path:             path,
+		ParentDataset:    parentDataset,
+		Date:             date,
+		internalSnapshot: s,
 	}
 
 	return snapshot
@@ -298,6 +303,15 @@ func (s *Snapshot) Destroy() error {
 func (s *Snapshot) DestroyRecursive() error {
 	ds := s.ParentDataset
 	return ds.DestroySnapshot(s.Name, true)
+}
+
+func (s *Snapshot) GetUsed() uint64 {
+	used, err := strconv.ParseUint(s.internalSnapshot.Properties[golibzfs.DatasetPropUsed].Value, 10, 64)
+	if err != nil {
+		logging.Error("Could not parse used property: %s", err.Error())
+		return 0
+	}
+	return used
 }
 
 func syncFileProperties(dstPath string, stat os.FileInfo) error {
