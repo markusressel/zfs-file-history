@@ -10,6 +10,6 @@ type SnapshotBrowserEntry struct {
 	DiffState diff_state.DiffState
 }
 
-func (s *SnapshotBrowserEntry) TableRowId() string {
+func (s SnapshotBrowserEntry) TableRowId() string {
 	return s.Snapshot.Path
 }

@@ -9,8 +9,8 @@ import (
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
-// TableMultiSelectEntry is an interface that can be implemented by entries used in a RowSelectionTable.
-type TableMultiSelectEntry[T any] interface {
+// RowSelectionTableEntry is an interface that must be implemented by entries used in a RowSelectionTable.
+type RowSelectionTableEntry interface {
 	// TableRowId returns a unique identifier for the entry.
 	// This identifier is used to keep track of the selected entries in the table.
 	TableRowId() string
@@ -39,9 +39,9 @@ type Column struct {
 //
 // RowSelectionTable supports the selection of multiple entries using the "Space" key.
 // This feature is disabled by default, but can be enabled by setting the "multiSelectEnabled" property to true.
-// The entries of type T can implement the TableMultiSelectEntry interface to provide a unique identifier for each entry,
+// The entries of type T can implement the RowSelectionTableEntry interface to provide a unique identifier for each entry,
 // which allows the selection to be retained even when the memory address of the entry changes.
-type RowSelectionTable[T any] struct {
+type RowSelectionTable[T RowSelectionTableEntry] struct {
 	application *tview.Application
 
 	layout *tview.Table
@@ -64,7 +64,7 @@ type RowSelectionTable[T any] struct {
 	sortInverted bool
 }
 
-func NewTableContainer[T any](
+func NewTableContainer[T RowSelectionTableEntry](
 	application *tview.Application,
 	toTableCells func(row int, columns []*Column, entry *T) (cells []*tview.TableCell),
 	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T,
@@ -364,7 +364,7 @@ func (c *RowSelectionTable[T]) clearMultiSelection() {
 
 func (c *RowSelectionTable[T]) createMultiSelectionEntryId(entry *T) string {
 	switch e := any(entry).(type) {
-	case TableMultiSelectEntry[T]:
+	case RowSelectionTableEntry:
 		return e.TableRowId()
 	default:
 		return fmt.Sprintf("%v", e)
