@@ -3,13 +3,8 @@ package util
 import (
 	"fmt"
 	"golang.org/x/exp/constraints"
-	"sort"
 	"strconv"
 	"zfs-file-history/internal/logging"
-)
-
-const (
-	InterpolationTypeLinear = "linear"
 )
 
 // Coerce returns a value that is at least min and at most max, otherwise value
@@ -49,64 +44,6 @@ func HexString(hex string) string {
 // rangeMax - rangeMin != 0
 func Ratio(target float64, rangeMin float64, rangeMax float64) float64 {
 	return (target - rangeMin) / (rangeMax - rangeMin)
-}
-
-// UpdateSimpleMovingAvg calculates the new moving average, based on an existing average and buffer size
-func UpdateSimpleMovingAvg(oldAvg float64, n int, newValue float64) float64 {
-	return oldAvg + (1/float64(n))*(newValue-oldAvg)
-}
-
-// InterpolateLinearly takes the given mapping and adds interpolated values in [start;stop].
-func InterpolateLinearly(data *map[int]float64, start int, stop int) map[int]float64 {
-	interpolated := map[int]float64{}
-	for i := start; i <= stop; i++ {
-		interpolatedValue := CalculateInterpolatedCurveValue(*data, InterpolationTypeLinear, float64(i))
-		interpolated[i] = interpolatedValue
-	}
-	return interpolated
-}
-
-// CalculateInterpolatedCurveValue creates an interpolated function from the given map of x-values -> y-values
-// as specified by the interpolationType and returns the y-value for the given input
-func CalculateInterpolatedCurveValue(steps map[int]float64, interpolationType string, input float64) float64 {
-	xValues := make([]int, 0, len(steps))
-	for x := range steps {
-		xValues = append(xValues, x)
-	}
-	// sort them increasing
-	sort.Ints(xValues)
-
-	// find value closest to input
-	for i := 0; i < len(xValues)-1; i++ {
-		currentX := xValues[i]
-		nextX := xValues[i+1]
-
-		if input <= float64(currentX) && i == 0 {
-			// input is below the smallest given step, so
-			// we fall back to the value of the smallest step
-			return steps[currentX]
-		}
-
-		if input >= float64(nextX) {
-			continue
-		}
-
-		if input == float64(currentX) {
-			return steps[currentX]
-		} else {
-			// input is somewhere in between currentX and nextX
-			currentY := steps[currentX]
-			nextY := steps[nextX]
-
-			ratio := Ratio(input, float64(currentX), float64(nextX))
-			interpolation := currentY + ratio*(nextY-currentY)
-			return interpolation
-		}
-	}
-
-	// input is above (or equal to) the largest given
-	// step, so we fall back to the value of the largest step
-	return steps[xValues[len(xValues)-1]]
 }
 
 // FindClosest finds the closest value to target in options.

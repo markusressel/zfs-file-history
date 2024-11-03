@@ -2,6 +2,7 @@ package snapshot_browser
 
 import (
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/exp/slices"
@@ -59,8 +60,13 @@ var (
 		Title:     "Diff",
 		Alignment: tview.AlignCenter,
 	}
+	columnUsed = &table.Column{
+		Id:        3,
+		Title:     "Used",
+		Alignment: tview.AlignCenter,
+	}
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff,
+		columnName, columnDate, columnDiff, columnUsed,
 	}
 )
 
@@ -109,6 +115,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 					cellText = "N/A"
 					cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
 				}
+			} else if column == columnUsed {
+				cellText = humanize.IBytes(entry.Snapshot.GetUsed())
 			}
 			cell := tview.NewTableCell(cellText).
 				SetTextColor(cellColor).SetAlign(cellAlign)
@@ -129,6 +137,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 				result = a.Snapshot.Date.Compare(*b.Snapshot.Date)
 			} else if columnToSortBy == columnDiff {
 				result = int(b.DiffState - a.DiffState)
+			} else if columnToSortBy == columnUsed {
+				result = int(b.Snapshot.GetUsed() - a.Snapshot.GetUsed())
 			}
 			if inverted {
 				result *= -1
