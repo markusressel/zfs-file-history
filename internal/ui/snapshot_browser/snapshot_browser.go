@@ -65,8 +65,13 @@ var (
 		Title:     "Used",
 		Alignment: tview.AlignCenter,
 	}
+	columnRefer = &table.Column{
+		Id:        4,
+		Title:     "Refer",
+		Alignment: tview.AlignCenter,
+	}
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed,
+		columnName, columnDate, columnDiff, columnUsed, columnRefer,
 	}
 )
 
@@ -117,6 +122,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 				}
 			} else if column == columnUsed {
 				cellText = humanize.IBytes(entry.Snapshot.GetUsed())
+			} else if column == columnRefer {
+				cellText = humanize.IBytes(entry.Snapshot.GetReferenced())
 			}
 			cell := tview.NewTableCell(cellText).
 				SetTextColor(cellColor).SetAlign(cellAlign)
@@ -139,6 +146,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 				result = int(b.DiffState - a.DiffState)
 			} else if columnToSortBy == columnUsed {
 				result = int(b.Snapshot.GetUsed() - a.Snapshot.GetUsed())
+			} else if columnToSortBy == columnRefer {
+				result = int(b.Snapshot.GetReferenced() - a.Snapshot.GetReferenced())
 			}
 			if inverted {
 				result *= -1
