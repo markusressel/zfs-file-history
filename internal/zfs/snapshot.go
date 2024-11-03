@@ -309,6 +309,10 @@ func (s *Snapshot) DestroyRecursive() error {
 }
 
 func (s *Snapshot) GetUsed() uint64 {
+	if s.rawGolibzfsData == nil {
+		logging.Error("No rawGolibzfsData available")
+		return 0
+	}
 	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUsed)
 	if err != nil {
 		logging.Error("Could not get used property: %s", err.Error())
@@ -323,6 +327,10 @@ func (s *Snapshot) GetUsed() uint64 {
 }
 
 func (s *Snapshot) GetReferenced() uint64 {
+	if s.rawGolibzfsData == nil {
+		logging.Error("No rawGolibzfsData available")
+		return 0
+	}
 	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropReferenced)
 	if err != nil {
 		logging.Error("Could not get used property: %s", err.Error())
@@ -337,6 +345,10 @@ func (s *Snapshot) GetReferenced() uint64 {
 }
 
 func (s *Snapshot) GetRatio() float64 {
+	if s.rawGolibzfsData == nil {
+		logging.Error("No rawGolibzfsData available")
+		return 0
+	}
 	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropRefratio)
 	if err != nil {
 		logging.Error("Could not get used property: %s", err.Error())
