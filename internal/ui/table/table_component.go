@@ -49,8 +49,8 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	entries      []*T
 	entriesMutex sync.Mutex
 
-	multiSelectEnabled bool
-	selectedEntryIds   []string
+	multiSelectEnabled     bool
+	multiSelectionEntryMap map[string]*T
 
 	sortByColumn     *Column
 	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T
@@ -73,8 +73,8 @@ func NewTableContainer[T RowSelectionTableEntry](
 		application:  application,
 		entriesMutex: sync.Mutex{},
 
-		multiSelectEnabled: false,
-		selectedEntryIds:   make([]string, 0),
+		multiSelectEnabled:     false,
+		multiSelectionEntryMap: map[string]*T{},
 
 		toTableCells:     toTableCells,
 		sortTableEntries: sortTableEntries,
@@ -91,7 +91,7 @@ func NewTableContainer[T RowSelectionTableEntry](
 
 func (c *RowSelectionTable[T]) SetMultiSelect(multiSelect bool) {
 	c.multiSelectEnabled = multiSelect
-	c.clearMultiSelection()
+	c.ClearMultiSelection()
 }
 
 func (c *RowSelectionTable[T]) createLayout() {
@@ -327,38 +327,35 @@ func (c *RowSelectionTable[T]) toggleMultiSelection(entry *T) {
 	}
 }
 
+// isInMultiSelection returns true if the given entry is selected for the "multi selection" feature.
 func (c *RowSelectionTable[T]) isInMultiSelection(entry *T) bool {
 	if entry == nil {
 		return false
 	}
 	entryId := c.createMultiSelectionEntryId(entry)
-	return slices.Contains(c.selectedEntryIds, entryId)
+	entry, ok := c.multiSelectionEntryMap[entryId]
+	return ok && entry != nil
 }
 
+// removeFromMultiSelection removes the given entry from the selected entries for the "multi selection" feature.
 func (c *RowSelectionTable[T]) removeFromMultiSelection(entry *T) {
 	if entry == nil {
 		return
 	}
-	entryId := c.createMultiSelectionEntryId(entry)
-	idx := slices.Index(c.selectedEntryIds, entryId)
-	if idx >= 0 {
-		newMultiSelection := slices.Delete(c.selectedEntryIds, idx, idx+1)
-		c.selectedEntryIds = newMultiSelection
+	if c.isInMultiSelection(entry) {
+		entryId := c.createMultiSelectionEntryId(entry)
+		delete(c.multiSelectionEntryMap, entryId)
 		c.updateTableContents()
 	}
 }
 
+// addToMultiSelection adds the given entry to the selected entries for the "multi selection" feature.
 func (c *RowSelectionTable[T]) addToMultiSelection(entry *T) {
 	if entry == nil {
 		return
 	}
 	entryId := c.createMultiSelectionEntryId(entry)
-	c.selectedEntryIds = append(c.selectedEntryIds, entryId)
-	c.updateTableContents()
-}
-
-func (c *RowSelectionTable[T]) clearMultiSelection() {
-	c.selectedEntryIds = make([]string, 0)
+	c.multiSelectionEntryMap[entryId] = entry
 	c.updateTableContents()
 }
 
@@ -372,18 +369,24 @@ func (c *RowSelectionTable[T]) createMultiSelectionEntryId(entry *T) string {
 
 }
 
+// ClearMultiSelection clears all selected entries for the "multi selection" feature.
+func (c *RowSelectionTable[T]) ClearMultiSelection() {
+	c.multiSelectionEntryMap = make(map[string]*T)
+	c.updateTableContents()
+}
+
+// GetMultiSelection returns all selected entries for the "multi selection" feature.
 func (c *RowSelectionTable[T]) GetMultiSelection() []*T {
 	multiSelection := make([]*T, 0)
-	for _, entryId := range c.selectedEntryIds {
-		for _, entry := range c.entries {
-			if c.createMultiSelectionEntryId(entry) == entryId {
-				multiSelection = append(multiSelection, entry)
-			}
+	for _, entry := range c.entries {
+		if c.isInMultiSelection(entry) {
+			multiSelection = append(multiSelection, entry)
 		}
 	}
 	return multiSelection
 }
 
+// HasMultiSelection returns true if there are any selected entries for the "multi selection" feature.
 func (c *RowSelectionTable[T]) HasMultiSelection() bool {
-	return len(c.selectedEntryIds) > 0
+	return len(c.multiSelectionEntryMap) > 0
 }

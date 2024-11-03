@@ -228,7 +228,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string, force bool
 		return
 	}
 	snapshotBrowser.path = path
-
+	snapshotBrowser.ClearMultiSelection()
 	snapshotBrowser.updateTableContents()
 }
 
@@ -544,4 +544,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetEventCallback(f func(event S
 
 func (snapshotBrowser *SnapshotBrowserComponent) HasMultiSelection() bool {
 	return snapshotBrowser.tableContainer.HasMultiSelection()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
+	snapshotBrowser.tableContainer.ClearMultiSelection()
 }
