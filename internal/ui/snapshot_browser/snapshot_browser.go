@@ -186,7 +186,17 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 		key := event.Key()
 		if snapshotBrowser.GetSelection() != nil {
 			if key == tcell.KeyEnter {
-				snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
+				if snapshotBrowser.HasMultiSelection() {
+					multiSelectionEntries := snapshotBrowser.tableContainer.GetMultiSelection()
+					if len(multiSelectionEntries) <= 1 {
+						snapshotBrowser.openActionDialog(multiSelectionEntries[0])
+					} else {
+						// TODO: implement action dialog for multiselection
+						//snapshotBrowser.openActionDialog(multiSelectionEntries)
+					}
+				} else {
+					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
+				}
 				return nil
 			} else if event.Rune() == 'd' {
 				currentSelection := snapshotBrowser.GetSelection()
@@ -530,4 +540,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) sendUiEvent(event SnapshotBrows
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetEventCallback(f func(event SnapshotBrowserEvent)) {
 	snapshotBrowser.eventCallback = f
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) HasMultiSelection() bool {
+	return snapshotBrowser.tableContainer.HasMultiSelection()
 }

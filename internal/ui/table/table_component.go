@@ -9,6 +9,13 @@ import (
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
+// TableMultiSelectEntry is an interface that can be implemented by entries used in a RowSelectionTable.
+type TableMultiSelectEntry[T any] interface {
+	// TableRowId returns a unique identifier for the entry.
+	// This identifier is used to keep track of the selected entries in the table.
+	TableRowId() string
+}
+
 const (
 	SpaceRune = ' '
 )
@@ -32,6 +39,8 @@ type Column struct {
 //
 // RowSelectionTable supports the selection of multiple entries using the "Space" key.
 // This feature is disabled by default, but can be enabled by setting the "multiSelectEnabled" property to true.
+// The entries of type T can implement the TableMultiSelectEntry interface to provide a unique identifier for each entry,
+// which allows the selection to be retained even when the memory address of the entry changes.
 type RowSelectionTable[T any] struct {
 	application *tview.Application
 
@@ -41,7 +50,7 @@ type RowSelectionTable[T any] struct {
 	entriesMutex sync.Mutex
 
 	multiSelectEnabled bool
-	selectedEntries    []*T
+	selectedEntryIds   []string
 
 	sortByColumn     *Column
 	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T
@@ -65,7 +74,7 @@ func NewTableContainer[T any](
 		entriesMutex: sync.Mutex{},
 
 		multiSelectEnabled: false,
-		selectedEntries:    make([]*T, 0),
+		selectedEntryIds:   make([]string, 0),
 
 		toTableCells:     toTableCells,
 		sortTableEntries: sortTableEntries,
@@ -319,24 +328,62 @@ func (c *RowSelectionTable[T]) toggleMultiSelection(entry *T) {
 }
 
 func (c *RowSelectionTable[T]) isInMultiSelection(entry *T) bool {
-	return slices.Contains(c.selectedEntries, entry)
+	if entry == nil {
+		return false
+	}
+	entryId := c.createMultiSelectionEntryId(entry)
+	return slices.Contains(c.selectedEntryIds, entryId)
 }
 
 func (c *RowSelectionTable[T]) removeFromMultiSelection(entry *T) {
-	idx := slices.Index(c.selectedEntries, entry)
-	if idx > 0 {
-		newMultiSelection := slices.Delete(c.selectedEntries, idx, idx+1)
-		c.selectedEntries = newMultiSelection
+	if entry == nil {
+		return
+	}
+	entryId := c.createMultiSelectionEntryId(entry)
+	idx := slices.Index(c.selectedEntryIds, entryId)
+	if idx >= 0 {
+		newMultiSelection := slices.Delete(c.selectedEntryIds, idx, idx+1)
+		c.selectedEntryIds = newMultiSelection
 		c.updateTableContents()
 	}
 }
 
 func (c *RowSelectionTable[T]) addToMultiSelection(entry *T) {
-	c.selectedEntries = append(c.selectedEntries, entry)
+	if entry == nil {
+		return
+	}
+	entryId := c.createMultiSelectionEntryId(entry)
+	c.selectedEntryIds = append(c.selectedEntryIds, entryId)
 	c.updateTableContents()
 }
 
 func (c *RowSelectionTable[T]) clearMultiSelection() {
-	c.selectedEntries = make([]*T, 0)
+	c.selectedEntryIds = make([]string, 0)
 	c.updateTableContents()
+}
+
+func (c *RowSelectionTable[T]) createMultiSelectionEntryId(entry *T) string {
+	switch e := any(entry).(type) {
+	case TableMultiSelectEntry[T]:
+		return e.TableRowId()
+	default:
+		return fmt.Sprintf("%v", e)
+	}
+
+}
+
+func (c *RowSelectionTable[T]) GetMultiSelection() []*T {
+	multiSelection := make([]*T, 0)
+	for _, entryId := range c.selectedEntryIds {
+		for _, entry := range c.entries {
+			if c.createMultiSelectionEntryId(entry) == entryId {
+				multiSelection = append(multiSelection, entry)
+			}
+		}
+	}
+	return multiSelection
+}
+
+func (c *RowSelectionTable[T]) HasMultiSelection() bool {
+	return len(c.selectedEntryIds) > 0
 }
