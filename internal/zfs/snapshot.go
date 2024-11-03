@@ -314,6 +314,15 @@ func (s *Snapshot) GetUsed() uint64 {
 	return used
 }
 
+func (s *Snapshot) GetReferenced() uint64 {
+	referenced, err := strconv.ParseUint(s.internalSnapshot.Properties[golibzfs.DatasetPropReferenced].Value, 10, 64)
+	if err != nil {
+		logging.Error("Could not parse referenced property: %s", err.Error())
+		return 0
+	}
+	return referenced
+}
+
 func syncFileProperties(dstPath string, stat os.FileInfo) error {
 	err := os.Chmod(dstPath, stat.Mode())
 	if err != nil {
