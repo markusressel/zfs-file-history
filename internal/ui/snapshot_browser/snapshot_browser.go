@@ -180,6 +180,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 		toTableCellsFunction,
 		tableEntrySortFunction,
 	)
+	snapshotBrowser.tableContainer.SetMultiSelect(true)
 
 	snapshotBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
