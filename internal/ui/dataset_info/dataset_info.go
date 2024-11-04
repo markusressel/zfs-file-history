@@ -8,6 +8,7 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -80,11 +81,23 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 		{Name: "Type", Value: dataset.GetType()},
 		{Name: "Name", Value: dataset.GetName()},
 		{Name: "Mountpoint", Value: dataset.GetMountPoint()},
+		{Name: "Mounted", Value: dataset.GetMounted()},
 		{Name: "Volsize", Value: humanize.IBytes(dataset.GetVolSize())},
 		{Name: "Avail", Value: humanize.IBytes(dataset.GetAvailable())},
 		{Name: "Used", Value: humanize.IBytes(dataset.GetUsed())},
 		{Name: "Compression", Value: dataset.GetCompression()},
-		{Name: "Origin", Value: dataset.GetOrigin()},
+	}
+
+	if !util.IsBlank(dataset.GetOrigin()) {
+		properties = append(properties, &DatasetInfoTableEntry{
+			Name: "Origin", Value: dataset.GetOrigin(),
+		})
+	}
+
+	if dataset.GetSnapshotLimit() > 0 {
+		properties = append(properties, &DatasetInfoTableEntry{
+			Name: "Snapshot Limit", Value: fmt.Sprintf("%d/%d", dataset.GetSnapshotCount(), dataset.GetSnapshotLimit()),
+		})
 	}
 
 	datasetInfo.layout.Clear()
