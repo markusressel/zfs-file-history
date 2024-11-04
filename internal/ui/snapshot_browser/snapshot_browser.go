@@ -5,8 +5,8 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"golang.org/x/exp/slices"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -180,12 +180,23 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 		toTableCellsFunction,
 		tableEntrySortFunction,
 	)
+	snapshotBrowser.tableContainer.SetMultiSelect(true)
 
 	snapshotBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if snapshotBrowser.GetSelection() != nil {
 			if key == tcell.KeyEnter {
-				snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
+				if snapshotBrowser.HasMultiSelection() {
+					multiSelectionEntries := snapshotBrowser.tableContainer.GetMultiSelection()
+					if len(multiSelectionEntries) <= 1 {
+						snapshotBrowser.openActionDialog(multiSelectionEntries[0])
+					} else {
+						// TODO: implement action dialog for multiselection
+						snapshotBrowser.openMultiActionDialog(multiSelectionEntries)
+					}
+				} else {
+					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
+				}
 				return nil
 			} else if event.Rune() == 'd' {
 				currentSelection := snapshotBrowser.GetSelection()
@@ -217,7 +228,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string, force bool
 		return
 	}
 	snapshotBrowser.path = path
-
 	snapshotBrowser.updateTableContents()
 }
 
@@ -266,6 +276,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 		logging.Error(err.Error())
 		return result
 	}
+
+	// the dataset is not the same as the current dataset
+	if snapshotBrowser.hostDataset != nil && ds != nil && snapshotBrowser.hostDataset.Path != ds.Path || snapshotBrowser.hostDataset == nil || ds == nil {
+		snapshotBrowser.ClearMultiSelection()
+	}
+
 	snapshotBrowser.hostDataset = ds
 
 	if snapshotBrowser.hostDataset == nil {
@@ -428,6 +444,45 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	snapshotBrowser.showDialog(actionDialogLayout, actionHandler)
 }
 
+func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries []*data.SnapshotBrowserEntry) {
+	if len(entries) <= 0 {
+		return
+	}
+	actionDialogLayout := dialog.NewMultiSnapshotActionDialog(snapshotBrowser.application, entries)
+	actionHandler := func(action dialog.DialogActionId) bool {
+		switch action {
+		case dialog.MultiSnapshotDialogClearSelectionActionId:
+			snapshotBrowser.ClearMultiSelection()
+		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
+			snapshotBrowser.ClearMultiSelection()
+			for _, entry := range entries {
+				err := snapshotBrowser.destroySnapshot(entry, false)
+				if err != nil {
+					logging.Error(err.Error())
+					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
+					})
+				}
+			}
+			return true
+		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
+			snapshotBrowser.ClearMultiSelection()
+			for _, entry := range entries {
+				err := snapshotBrowser.destroySnapshot(entry, true)
+				if err != nil {
+					logging.Error(err.Error())
+					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
+					})
+				}
+			}
+			return true
+		}
+		return false
+	}
+	snapshotBrowser.showDialog(actionDialogLayout, actionHandler)
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *data.SnapshotBrowserEntry) {
 	if selection == nil {
 		return
@@ -529,4 +584,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) sendUiEvent(event SnapshotBrows
 
 func (snapshotBrowser *SnapshotBrowserComponent) SetEventCallback(f func(event SnapshotBrowserEvent)) {
 	snapshotBrowser.eventCallback = f
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) HasMultiSelection() bool {
+	return snapshotBrowser.tableContainer.HasMultiSelection()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
+	snapshotBrowser.tableContainer.ClearMultiSelection()
+	snapshotBrowser.application.ForceDraw()
 }

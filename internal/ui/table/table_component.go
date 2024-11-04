@@ -4,9 +4,22 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"golang.org/x/exp/slices"
+	"maps"
+	"slices"
 	"sync"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+)
+
+// RowSelectionTableEntry is an interface that must be implemented by entries used in a RowSelectionTable.
+type RowSelectionTableEntry interface {
+	// TableRowId returns a unique identifier for the entry.
+	// This identifier is used to keep track of the selected entries in the table.
+	TableRowId() string
+}
+
+const (
+	SpaceRune = ' '
 )
 
 type ColumnId int
@@ -17,7 +30,20 @@ type Column struct {
 	Alignment int
 }
 
-type RowSelectionTable[T any] struct {
+// RowSelectionTable is a table component for the special case where
+// only a single table row can be highlighted at a time instead of a table cell.
+//
+// RowSelectionTable is a generic component and can be used with any type T.
+// For each entry of type T in the table, a row is created via the toTableCells function.
+//
+// RowSelectionTable supports custom sorting of entries by providing the sortTableEntries function.
+// The column can be sorted by individual columns or multiple columns as you please.
+//
+// RowSelectionTable supports the selection of multiple entries using the "Space" key.
+// This feature is disabled by default, but can be enabled by setting the "multiSelectEnabled" property to true.
+// The entries of type T can implement the RowSelectionTableEntry interface to provide a unique identifier for each entry,
+// which allows the selection to be retained even when the memory address of the entry changes.
+type RowSelectionTable[T RowSelectionTableEntry] struct {
 	application *tview.Application
 
 	layout *tview.Table
@@ -25,9 +51,13 @@ type RowSelectionTable[T any] struct {
 	entries      []*T
 	entriesMutex sync.Mutex
 
-	sortByColumn             *Column
-	sortTableEntries         func(entries []*T, column *Column, inverted bool) []*T
-	toTableCells             func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
+	multiSelectEnabled     bool
+	multiSelectionEntryMap map[string]*T
+
+	sortByColumn     *Column
+	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T
+	toTableCells     func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
+
 	inputCapture             func(event *tcell.EventKey) *tcell.EventKey
 	doubleClickCallback      func()
 	selectionChangedCallback func(selectedEntry *T)
@@ -36,16 +66,21 @@ type RowSelectionTable[T any] struct {
 	sortInverted bool
 }
 
-func NewTableContainer[T any](
+func NewTableContainer[T RowSelectionTableEntry](
 	application *tview.Application,
 	toTableCells func(row int, columns []*Column, entry *T) (cells []*tview.TableCell),
 	sortTableEntries func(entries []*T, column *Column, inverted bool) []*T,
 ) *RowSelectionTable[T] {
 	tableContainer := &RowSelectionTable[T]{
-		application:      application,
-		entriesMutex:     sync.Mutex{},
+		application:  application,
+		entriesMutex: sync.Mutex{},
+
+		multiSelectEnabled:     false,
+		multiSelectionEntryMap: map[string]*T{},
+
 		toTableCells:     toTableCells,
 		sortTableEntries: sortTableEntries,
+
 		inputCapture: func(event *tcell.EventKey) *tcell.EventKey {
 			return event
 		},
@@ -54,6 +89,11 @@ func NewTableContainer[T any](
 	}
 	tableContainer.createLayout()
 	return tableContainer
+}
+
+func (c *RowSelectionTable[T]) SetMultiSelect(multiSelect bool) {
+	c.multiSelectEnabled = multiSelect
+	c.ClearMultiSelection()
 }
 
 func (c *RowSelectionTable[T]) createLayout() {
@@ -77,6 +117,12 @@ func (c *RowSelectionTable[T]) createLayout() {
 	// fixed header row
 	table.SetFixed(1, 0)
 
+	table.SetSelectedStyle(
+		tcell.StyleDefault.
+			Foreground(theme.Colors.Layout.Table.SelectedForeground).
+			Background(theme.Colors.Layout.Table.SelectedBackground),
+	)
+
 	uiutil.SetupWindow(table, "")
 
 	table.SetSelectable(true, false)
@@ -91,6 +137,8 @@ func (c *RowSelectionTable[T]) createLayout() {
 			return event
 		}
 		key := event.Key()
+
+		// current selection is on HEADER row
 		if c.GetSelectedEntry() == nil {
 			if key == tcell.KeyRight {
 				c.nextSortOrder()
@@ -103,6 +151,13 @@ func (c *RowSelectionTable[T]) createLayout() {
 				return nil
 			}
 		}
+
+		// current selection is on DATA row
+		if event.Rune() == SpaceRune && c.multiSelectEnabled {
+			currentEntry := c.GetSelectedEntry()
+			c.toggleMultiSelection(currentEntry)
+		}
+
 		return event
 	})
 
@@ -128,6 +183,7 @@ func (c *RowSelectionTable[T]) SetData(entries []*T) {
 	c.entries = entries
 	c.entriesMutex.Unlock()
 	c.SortBy(c.sortByColumn, c.sortInverted)
+	c.cleanupMultiSelection()
 	c.updateTableContents()
 }
 
@@ -200,6 +256,13 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	for row, entry := range c.entries {
 		cells := c.toTableCells(row, c.columnSpec, entry)
 		for column, cell := range cells {
+			if c.isInMultiSelection(entry) {
+				cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
+				cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionForeground)
+				cell.SetSelectedStyle(
+					tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
+				)
+			}
 			table.SetCell(row+1, column, cell)
 		}
 	}
@@ -262,5 +325,91 @@ func (c *RowSelectionTable[T]) SelectHeader() {
 func (c *RowSelectionTable[T]) SelectFirstIfExists() {
 	if len(c.entries) > 0 {
 		c.Select(c.entries[0])
+	}
+}
+
+// toggleMultiSelection toggles the selection state of the given entry for the "multi selection" feature.
+func (c *RowSelectionTable[T]) toggleMultiSelection(entry *T) {
+	if entry == nil {
+		return
+	}
+	if c.isInMultiSelection(entry) {
+		c.removeFromMultiSelection(entry)
+	} else {
+		c.addToMultiSelection(entry)
+	}
+}
+
+// isInMultiSelection returns true if the given entry is selected for the "multi selection" feature.
+func (c *RowSelectionTable[T]) isInMultiSelection(entry *T) bool {
+	if entry == nil {
+		return false
+	}
+	entryId := c.createMultiSelectionEntryId(entry)
+	entry, ok := c.multiSelectionEntryMap[entryId]
+	return ok && entry != nil
+}
+
+// removeFromMultiSelection removes the given entry from the selected entries for the "multi selection" feature.
+func (c *RowSelectionTable[T]) removeFromMultiSelection(entry *T) {
+	if entry == nil {
+		return
+	}
+	if c.isInMultiSelection(entry) {
+		entryId := c.createMultiSelectionEntryId(entry)
+		delete(c.multiSelectionEntryMap, entryId)
+		c.updateTableContents()
+	}
+}
+
+// addToMultiSelection adds the given entry to the selected entries for the "multi selection" feature.
+func (c *RowSelectionTable[T]) addToMultiSelection(entry *T) {
+	if entry == nil {
+		return
+	}
+	entryId := c.createMultiSelectionEntryId(entry)
+	c.multiSelectionEntryMap[entryId] = entry
+	c.updateTableContents()
+}
+
+func (c *RowSelectionTable[T]) createMultiSelectionEntryId(entry *T) string {
+	switch e := any(entry).(type) {
+	case RowSelectionTableEntry:
+		return e.TableRowId()
+	default:
+		return fmt.Sprintf("%v", e)
+	}
+
+}
+
+// ClearMultiSelection clears all selected entries for the "multi selection" feature.
+func (c *RowSelectionTable[T]) ClearMultiSelection() {
+	c.multiSelectionEntryMap = make(map[string]*T)
+	c.updateTableContents()
+}
+
+// GetMultiSelection returns all selected entries for the "multi selection" feature.
+func (c *RowSelectionTable[T]) GetMultiSelection() []*T {
+	entries := maps.Values(c.multiSelectionEntryMap)
+	return slices.Collect(entries)
+}
+
+// HasMultiSelection returns true if there are any selected entries for the "multi selection" feature.
+func (c *RowSelectionTable[T]) HasMultiSelection() bool {
+	return len(c.multiSelectionEntryMap) > 0
+}
+
+// cleanupMultiSelection removes all entries from the "multi selection" feature that are not part of the current table entries.
+func (c *RowSelectionTable[T]) cleanupMultiSelection() {
+	currentEntryIds := []string{}
+	for _, entry := range c.entries {
+		entryId := c.createMultiSelectionEntryId(entry)
+		currentEntryIds = append(currentEntryIds, entryId)
+	}
+
+	for entryId := range c.multiSelectionEntryMap {
+		if !slices.Contains(currentEntryIds, entryId) {
+			delete(c.multiSelectionEntryMap, entryId)
+		}
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"golang.org/x/exp/slices"
+	"slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
 )

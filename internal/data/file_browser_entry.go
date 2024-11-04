@@ -47,6 +47,10 @@ type FileBrowserEntry struct {
 	DiffState     diff_state.DiffState
 }
 
+func (entry FileBrowserEntry) TableRowId() string {
+	return entry.GetRealPath()
+}
+
 func (entry *FileBrowserEntry) Equal(e FileBrowserEntry) bool {
 	return entry.GetRealPath() == e.GetRealPath()
 }

@@ -6,24 +6,24 @@ import (
 )
 
 var (
-	PrimaryColor   = tcell.ColorTeal
-	SecondaryColor = tcell.ColorDarkOliveGreen
+	Primary   = tcell.ColorTeal
+	Secondary = tcell.ColorDarkOliveGreen
 
-	OnPrimaryColor = tcell.ColorWhite
-	OnSecondary    = tcell.ColorBlack
+	OnPrimary   = tcell.ColorWhite
+	OnSecondary = tcell.ColorBlack
 )
 
 var (
 	Colors = Color{
 		Header: HeaderColors{
-			NameBackground: PrimaryColor,
-			Name:           OnPrimaryColor,
+			NameBackground: Primary,
+			Name:           OnPrimary,
 
-			VersionBackground: SecondaryColor,
+			VersionBackground: Secondary,
 			Version:           OnSecondary,
 		},
 		Dialog: DialogColors{
-			Border: SecondaryColor,
+			Border: Secondary,
 		},
 		FileBrowser: FileBrowserColors{
 			Table: FileBrowserTableColors{
@@ -48,10 +48,16 @@ var (
 			},
 		},
 		Layout: LayoutColors{
-			Title:  PrimaryColor,
-			Border: SecondaryColor,
+			Title:  Primary,
+			Border: Secondary,
 			Table: LayoutTableColors{
-				Header: PrimaryColor,
+				Header: Primary,
+
+				SelectedForeground: tcell.ColorBlack,
+				SelectedBackground: tcell.ColorWhite,
+
+				MultiSelectionBackground: Secondary,
+				MultiSelectionForeground: OnSecondary,
 			},
 		},
 	}
