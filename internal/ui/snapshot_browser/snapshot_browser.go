@@ -451,7 +451,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 	actionDialogLayout := dialog.NewMultiSnapshotActionDialog(snapshotBrowser.application, entries)
 	actionHandler := func(action dialog.DialogActionId) bool {
 		switch action {
+		case dialog.MultiSnapshotDialogClearSelectionActionId:
+			snapshotBrowser.ClearMultiSelection()
 		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
+			snapshotBrowser.ClearMultiSelection()
 			for _, entry := range entries {
 				err := snapshotBrowser.destroySnapshot(entry, false)
 				if err != nil {
@@ -463,6 +466,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 			}
 			return true
 		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
+			snapshotBrowser.ClearMultiSelection()
 			for _, entry := range entries {
 				err := snapshotBrowser.destroySnapshot(entry, true)
 				if err != nil {

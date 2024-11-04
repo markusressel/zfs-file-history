@@ -11,7 +11,8 @@ import (
 const (
 	MultiSnapshotActionDialogPage util.Page = "MultiSnapshotActionDialog"
 
-	MultiSnapshotDialogDestroySnapshotActionId DialogActionId = iota
+	MultiSnapshotDialogClearSelectionActionId DialogActionId = iota
+	MultiSnapshotDialogDestroySnapshotActionId
 	MultiSnapshotDialogDestroySnapshotRecursivelyActionId
 )
 
@@ -57,6 +58,10 @@ func (d *MultiSnapshotActionDialog) createLayout() {
 		{
 			Id:   MultiSnapshotDialogDestroySnapshotRecursivelyActionId,
 			Name: fmt.Sprintf("Destroy all (recursive)"),
+		},
+		{
+			Id:   MultiSnapshotDialogClearSelectionActionId,
+			Name: fmt.Sprintf("Clear Selection"),
 		},
 		{
 			Id:   DialogCloseActionId,
@@ -139,6 +144,8 @@ func (d *MultiSnapshotActionDialog) Close() {
 
 func (d *MultiSnapshotActionDialog) selectAction(option *DialogOption) {
 	switch option.Id {
+	case MultiSnapshotDialogClearSelectionActionId:
+		d.ClearSelection()
 	case MultiSnapshotDialogDestroySnapshotActionId:
 		d.DestroyAllSnapshots()
 	case MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
@@ -146,6 +153,13 @@ func (d *MultiSnapshotActionDialog) selectAction(option *DialogOption) {
 	case DialogCloseActionId:
 		d.Close()
 	}
+}
+
+func (d MultiSnapshotActionDialog) ClearSelection() {
+	go func() {
+		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- MultiSnapshotDialogClearSelectionActionId
+	}()
 }
 
 func (d *MultiSnapshotActionDialog) DestroyAllSnapshots() {
