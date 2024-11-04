@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"golang.org/x/exp/slices"
+	"maps"
+	"slices"
 	"sync"
 	uiutil "zfs-file-history/internal/ui/util"
 )
@@ -377,13 +378,8 @@ func (c *RowSelectionTable[T]) ClearMultiSelection() {
 
 // GetMultiSelection returns all selected entries for the "multi selection" feature.
 func (c *RowSelectionTable[T]) GetMultiSelection() []*T {
-	multiSelection := make([]*T, 0)
-	for _, entry := range c.entries {
-		if c.isInMultiSelection(entry) {
-			multiSelection = append(multiSelection, entry)
-		}
-	}
-	return multiSelection
+	entries := maps.Values(c.multiSelectionEntryMap)
+	return slices.Collect(entries)
 }
 
 // HasMultiSelection returns true if there are any selected entries for the "multi selection" feature.
