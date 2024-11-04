@@ -51,9 +51,13 @@ var (
 			Title:  Primary,
 			Border: Secondary,
 			Table: LayoutTableColors{
-				Header:                   Primary,
+				Header: Primary,
+
+				SelectedForeground: OnPrimary,
+				SelectedBackground: Primary,
+
 				MultiSelectionBackground: Secondary,
-				MultiSelectionText:       OnSecondary,
+				MultiSelectionForeground: OnSecondary,
 			},
 		},
 	}

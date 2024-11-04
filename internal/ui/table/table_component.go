@@ -117,6 +117,12 @@ func (c *RowSelectionTable[T]) createLayout() {
 	// fixed header row
 	table.SetFixed(1, 0)
 
+	table.SetSelectedStyle(
+		tcell.StyleDefault.
+			Foreground(theme.Colors.Layout.Table.SelectedForeground).
+			Background(theme.Colors.Layout.Table.SelectedBackground),
+	)
+
 	uiutil.SetupWindow(table, "")
 
 	table.SetSelectable(true, false)
@@ -251,7 +257,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 		for column, cell := range cells {
 			if c.isInMultiSelection(entry) {
 				cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
-				cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionText)
+				cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionForeground)
 			}
 			table.SetCell(row+1, column, cell)
 		}
