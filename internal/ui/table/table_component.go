@@ -181,8 +181,9 @@ func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColum
 func (c *RowSelectionTable[T]) SetData(entries []*T) {
 	c.entriesMutex.Lock()
 	c.entries = entries
-	c.entriesMutex.Unlock()
 	c.SortBy(c.sortByColumn, c.sortInverted)
+	c.cleanupMultiSelection()
+	c.entriesMutex.Unlock()
 	c.updateTableContents()
 }
 
@@ -396,4 +397,19 @@ func (c *RowSelectionTable[T]) GetMultiSelection() []*T {
 // HasMultiSelection returns true if there are any selected entries for the "multi selection" feature.
 func (c *RowSelectionTable[T]) HasMultiSelection() bool {
 	return len(c.multiSelectionEntryMap) > 0
+}
+
+// cleanupMultiSelection removes all entries from the "multi selection" feature that are not part of the current table entries.
+func (c *RowSelectionTable[T]) cleanupMultiSelection() {
+	currentEntryIds := []string{}
+	for _, entry := range c.entries {
+		entryId := c.createMultiSelectionEntryId(entry)
+		currentEntryIds = append(currentEntryIds, entryId)
+	}
+
+	for entryId := range c.multiSelectionEntryMap {
+		if !slices.Contains(currentEntryIds, entryId) {
+			delete(c.multiSelectionEntryMap, entryId)
+		}
+	}
 }
