@@ -53,8 +53,8 @@ var (
 			Table: LayoutTableColors{
 				Header: Primary,
 
-				SelectedForeground: OnPrimary,
-				SelectedBackground: Primary,
+				SelectedForeground: tcell.ColorBlack,
+				SelectedBackground: tcell.ColorWhite,
 
 				MultiSelectionBackground: Secondary,
 				MultiSelectionForeground: OnSecondary,

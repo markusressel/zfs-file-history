@@ -258,6 +258,9 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 			if c.isInMultiSelection(entry) {
 				cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
 				cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionForeground)
+				cell.SetSelectedStyle(
+					tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
+				)
 			}
 			table.SetCell(row+1, column, cell)
 		}
