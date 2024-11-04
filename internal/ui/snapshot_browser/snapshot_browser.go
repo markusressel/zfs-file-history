@@ -228,7 +228,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string, force bool
 		return
 	}
 	snapshotBrowser.path = path
-	snapshotBrowser.ClearMultiSelection()
 	snapshotBrowser.updateTableContents()
 }
 
@@ -277,6 +276,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 		logging.Error(err.Error())
 		return result
 	}
+
+	// the dataset is not the same as the current dataset
+	if snapshotBrowser.hostDataset != nil && ds != nil && snapshotBrowser.hostDataset.Path != ds.Path || snapshotBrowser.hostDataset == nil || ds == nil {
+		snapshotBrowser.ClearMultiSelection()
+	}
+
 	snapshotBrowser.hostDataset = ds
 
 	if snapshotBrowser.hostDataset == nil {
