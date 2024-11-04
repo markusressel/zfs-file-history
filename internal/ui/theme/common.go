@@ -79,7 +79,9 @@ type LayoutColors struct {
 }
 
 type LayoutTableColors struct {
-	Header tcell.Color
+	Header                   tcell.Color
+	MultiSelectionBackground tcell.Color
+	MultiSelectionText       tcell.Color
 }
 
 func CreateTitleText(text string) string {

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 )
 
@@ -249,7 +250,8 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 		cells := c.toTableCells(row, c.columnSpec, entry)
 		for column, cell := range cells {
 			if c.isInMultiSelection(entry) {
-				cell.SetBackgroundColor(tcell.ColorGreen)
+				cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
+				cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionText)
 			}
 			table.SetCell(row+1, column, cell)
 		}
