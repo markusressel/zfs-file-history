@@ -181,9 +181,9 @@ func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColum
 func (c *RowSelectionTable[T]) SetData(entries []*T) {
 	c.entriesMutex.Lock()
 	c.entries = entries
+	c.entriesMutex.Unlock()
 	c.SortBy(c.sortByColumn, c.sortInverted)
 	c.cleanupMultiSelection()
-	c.entriesMutex.Unlock()
 	c.updateTableContents()
 }
 
