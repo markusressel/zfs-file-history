@@ -592,4 +592,5 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasMultiSelection() bool {
 
 func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
 	snapshotBrowser.tableContainer.ClearMultiSelection()
+	snapshotBrowser.application.ForceDraw()
 }
