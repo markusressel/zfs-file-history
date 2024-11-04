@@ -192,7 +192,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 						snapshotBrowser.openActionDialog(multiSelectionEntries[0])
 					} else {
 						// TODO: implement action dialog for multiselection
-						//snapshotBrowser.openActionDialog(multiSelectionEntries)
+						snapshotBrowser.openMultiActionDialog(multiSelectionEntries)
 					}
 				} else {
 					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
@@ -436,6 +436,41 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 					Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name)),
 				})
+			}
+			return true
+		}
+		return false
+	}
+	snapshotBrowser.showDialog(actionDialogLayout, actionHandler)
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries []*data.SnapshotBrowserEntry) {
+	if len(entries) <= 0 {
+		return
+	}
+	actionDialogLayout := dialog.NewMultiSnapshotActionDialog(snapshotBrowser.application, entries)
+	actionHandler := func(action dialog.DialogActionId) bool {
+		switch action {
+		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
+			for _, entry := range entries {
+				err := snapshotBrowser.destroySnapshot(entry, false)
+				if err != nil {
+					logging.Error(err.Error())
+					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
+					})
+				}
+			}
+			return true
+		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
+			for _, entry := range entries {
+				err := snapshotBrowser.destroySnapshot(entry, true)
+				if err != nil {
+					logging.Error(err.Error())
+					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
+					})
+				}
 			}
 			return true
 		}
