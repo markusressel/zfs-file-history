@@ -76,8 +76,13 @@ var (
 		Title:     "Ratio",
 		Alignment: tview.AlignCenter,
 	}
+	columnClones = &table.Column{
+		Id:        6,
+		Title:     "Clones",
+		Alignment: tview.AlignCenter,
+	}
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio,
+		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
 	}
 )
 
@@ -133,6 +138,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 			} else if column == columnRatio {
 				ratio := entry.Snapshot.GetRatio()
 				cellText = fmt.Sprintf("%.2fx", ratio)
+			} else if column == columnClones {
+				cellText = fmt.Sprintf("%d", entry.Snapshot.GetClones())
 			}
 			cell := tview.NewTableCell(cellText).
 				SetTextColor(cellColor).SetAlign(cellAlign)
@@ -161,6 +168,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 				ratioA := a.Snapshot.GetRatio()
 				ratioB := b.Snapshot.GetRatio()
 				result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))
+			} else if columnToSortBy == columnClones {
+				result = int(b.Snapshot.GetClones() - a.Snapshot.GetClones())
 			}
 			if inverted {
 				result *= -1
@@ -413,7 +422,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			})
 			return true
 		case dialog.SnapshotDialogDestroySnapshotActionId:
-			err := snapshotBrowser.destroySnapshot(selection, false)
+			err := snapshotBrowser.destroySnapshot(selection, false, false)
 			if err != nil {
 				logging.Error(err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
@@ -426,7 +435,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			}
 			return true
 		case dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
-			err := snapshotBrowser.destroySnapshot(selection, true)
+			err := snapshotBrowser.destroySnapshot(selection, true, true)
 			if err != nil {
 				logging.Error(err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
@@ -456,7 +465,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
 			snapshotBrowser.ClearMultiSelection()
 			for _, entry := range entries {
-				err := snapshotBrowser.destroySnapshot(entry, false)
+				err := snapshotBrowser.destroySnapshot(entry, false, false)
 				if err != nil {
 					logging.Error(err.Error())
 					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
@@ -468,7 +477,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
 			snapshotBrowser.ClearMultiSelection()
 			for _, entry := range entries {
-				err := snapshotBrowser.destroySnapshot(entry, true)
+				err := snapshotBrowser.destroySnapshot(entry, true, true)
 				if err != nil {
 					logging.Error(err.Error())
 					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
@@ -491,7 +500,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 	deleteHandler := func(action dialog.DialogActionId) bool {
 		switch action {
 		case dialog.DeleteSnapshotDialogDeleteSnapshotActionId:
-			err := snapshotBrowser.destroySnapshot(selection, false)
+			err := snapshotBrowser.destroySnapshot(selection, false, false)
 			if err != nil {
 				logging.Error(err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
@@ -532,13 +541,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.Snap
 	return name, nil
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.SnapshotBrowserEntry, recursive bool) (err error) {
+func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.SnapshotBrowserEntry, recursive bool, dependantClones bool) (err error) {
 	snapshot := entry.Snapshot
-	if recursive {
-		err = snapshot.DestroyRecursive()
-	} else {
-		err = snapshot.Destroy()
-	}
+	err = snapshot.Destroy(recursive, dependantClones)
 	if err != nil {
 		return err
 	}

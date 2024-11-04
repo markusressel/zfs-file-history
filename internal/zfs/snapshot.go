@@ -298,14 +298,9 @@ func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
 	}
 }
 
-func (s *Snapshot) Destroy() error {
+func (s *Snapshot) Destroy(recursive bool, dependantClones bool) error {
 	ds := s.ParentDataset
-	return ds.DestroySnapshot(s.Name, false)
-}
-
-func (s *Snapshot) DestroyRecursive() error {
-	ds := s.ParentDataset
-	return ds.DestroySnapshot(s.Name, true)
+	return ds.DestroySnapshot(s.Name, recursive, dependantClones)
 }
 
 func (s *Snapshot) GetUsed() uint64 {
@@ -357,6 +352,24 @@ func (s *Snapshot) GetRatio() float64 {
 	val, err := strconv.ParseFloat(prop.Value, 64)
 	if err != nil {
 		logging.Error("Could not parse ratio property: %s", err.Error())
+		return 0
+	}
+	return val
+}
+
+func (s *Snapshot) GetClones() uint64 {
+	if s.rawGolibzfsData == nil {
+		logging.Error("No rawGolibzfsData available")
+		return 0
+	}
+	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropNumclones)
+	if err != nil {
+		logging.Error("Could not get clones property: %s", err.Error())
+		return 0
+	}
+	val, err := strconv.ParseUint(prop.Value, 10, 64)
+	if err != nil {
+		logging.Error("Could not parse clones property: %s", err.Error())
 		return 0
 	}
 	return val
