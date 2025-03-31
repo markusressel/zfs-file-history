@@ -2,8 +2,6 @@ module zfs-file-history
 
 go 1.23
 
-toolchain go1.23.1
-
 require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.8.0
@@ -16,7 +14,7 @@ require (
 	github.com/pterm/pterm v0.12.80
 	github.com/rivo/tview v0.0.0-20241103174730-c76f7879f592
 	github.com/spf13/cobra v1.9.1
-	github.com/spf13/viper v1.20.0
+	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 )
