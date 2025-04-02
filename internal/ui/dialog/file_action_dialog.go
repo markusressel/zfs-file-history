@@ -69,11 +69,11 @@ func (d *FileActionDialog) createLayout() {
 		if d.file.Type == data.Directory {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 				Id:   FileDialogRestoreFileActionId,
-				Name: fmt.Sprintf("Restore directory only"),
+				Name: "Restore directory only",
 			})
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 				Id:   FileDialogRestoreRecursiveDialogActionId,
-				Name: fmt.Sprintf("Restore directory recursively"),
+				Name: "Restore directory recursively",
 			})
 		}
 
@@ -81,12 +81,12 @@ func (d *FileActionDialog) createLayout() {
 			if DiffBinExists() && d.file.DiffState == diff_state.Modified {
 				dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 					Id:   FileDialogShowDiffActionId,
-					Name: fmt.Sprintf("Show diff"),
+					Name: "Show diff",
 				})
 			}
 			dialogOptions = slices.Insert(dialogOptions, 1, &DialogOption{
 				Id:   FileDialogRestoreFileActionId,
-				Name: fmt.Sprintf("Restore file"),
+				Name: "Restore file",
 			})
 		}
 	}

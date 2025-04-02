@@ -67,7 +67,9 @@ func writeToLogFile(format string, a ...interface{}) {
 		return
 	}
 	file := openLogFile()
-	defer file.Close()
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
 	log.SetOutput(file)
 	log.Printf(format, a...)
 }
