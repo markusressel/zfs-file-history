@@ -142,7 +142,3 @@ func (mainPage *MainPage) ToggleFocus() {
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
 }
-
-func (mainPage *MainPage) clearStatus() {
-	mainPage.header.ClearStatus()
-}
