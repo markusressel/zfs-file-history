@@ -68,13 +68,14 @@ func NewMainPage(application *tview.Application) *MainPage {
 	mainPage.layout = mainPage.createLayout()
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
-		switch {
-		case key == tcell.KeyTab || key == tcell.KeyBacktab:
+		switch key {
+		case tcell.KeyTab, tcell.KeyBacktab:
 			mainPage.ToggleFocus()
-		case key == tcell.KeyCtrlR:
+		case tcell.KeyCtrlR:
 			fileBrowser.Refresh()
 			snapshotBrowser.Refresh(true)
 			fileBrowser.Refresh()
+		default:
 		}
 		return event
 	})
