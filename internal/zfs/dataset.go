@@ -64,7 +64,7 @@ func FindHostDataset(path string) (*Dataset, error) {
 			old := currentPath
 			currentPath = path2.Dir(currentPath)
 			if old == currentPath {
-				return nil, errors.New(fmt.Sprintf("could not find dataset for path: %s", path))
+				return nil, fmt.Errorf("could not find dataset for path: %s", path)
 			} else {
 				continue
 			}
