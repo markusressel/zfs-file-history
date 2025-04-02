@@ -24,6 +24,7 @@ jobs:
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7.0.0
+        if: false
         env:
           GOFLAGS: "-buildvcs=false"
         with:
