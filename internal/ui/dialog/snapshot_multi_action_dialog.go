@@ -53,15 +53,15 @@ func (d *MultiSnapshotActionDialog) createLayout() {
 	dialogOptions := []*DialogOption{
 		{
 			Id:   MultiSnapshotDialogDestroySnapshotActionId,
-			Name: fmt.Sprintf("Destroy all"),
+			Name: "Destroy all",
 		},
 		{
 			Id:   MultiSnapshotDialogDestroySnapshotRecursivelyActionId,
-			Name: fmt.Sprintf("Destroy all (recursive)"),
+			Name: "Destroy all (recursive)",
 		},
 		{
 			Id:   MultiSnapshotDialogClearSelectionActionId,
-			Name: fmt.Sprintf("Clear Selection"),
+			Name: "Clear Selection",
 		},
 		{
 			Id:   DialogCloseActionId,

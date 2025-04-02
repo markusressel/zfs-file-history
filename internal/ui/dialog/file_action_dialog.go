@@ -93,7 +93,7 @@ func (d *FileActionDialog) createLayout() {
 
 	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 		Id:   FileDialogCreateSnapshotDialogActionId,
-		Name: fmt.Sprintf("Create Snapshot"),
+		Name: "Create Snapshot",
 	})
 
 	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {

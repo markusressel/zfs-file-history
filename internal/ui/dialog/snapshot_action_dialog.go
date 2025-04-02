@@ -48,7 +48,7 @@ func (d *SnapshotActionDialog) createLayout() {
 	dialogOptions := []*DialogOption{
 		{
 			Id:   SnapshotDialogCreateSnapshotActionId,
-			Name: fmt.Sprintf("Create Snapshot"),
+			Name: "Create Snapshot",
 		},
 		{
 			Id:   SnapshotDialogDestroySnapshotActionId,
