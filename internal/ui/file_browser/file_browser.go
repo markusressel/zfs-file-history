@@ -129,22 +129,22 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 			var cellAlignment = tview.AlignLeft
 			var cellExpansion = 0
 
-			switch {
-			case column == columnName:
+			switch column {
+			case columnName:
 				cellText = entry.Name
 				if entry.GetStat().IsDir() {
 					cellText = fmt.Sprintf("/%s", cellText)
 				}
 				cellColor = statusColor
-			case column == columnType:
+			case columnType:
 				cellText = typeCellText
 				cellColor = typeCellColor
 				cellAlignment = tview.AlignCenter
-			case column == columnDiff:
+			case columnDiff:
 				cellText = status
 				cellColor = statusColor
 				cellAlignment = tview.AlignCenter
-			case column == columnDateTime:
+			case columnDateTime:
 				cellText = entry.GetStat().ModTime().Format(time.DateTime)
 				switch entry.DiffState {
 				case diff_state.Added, diff_state.Deleted:
@@ -158,7 +158,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 				default:
 					cellColor = tcell.ColorGray
 				}
-			case column == columnSize:
+			case columnSize:
 				cellText = humanize.IBytes(uint64(entry.GetStat().Size()))
 				if strings.HasSuffix(cellText, " B") {
 					withoutSuffix := strings.TrimSuffix(cellText, " B")
