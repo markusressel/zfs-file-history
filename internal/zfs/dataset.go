@@ -28,9 +28,7 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	}
 
 	ds := findDataset(allDatasets, path)
-	if dataset != nil {
-		dataset.rawGolibzfsData = ds
-	}
+	dataset.rawGolibzfsData = ds
 
 	datasets, err := gozfs.Filesystems(path)
 	if err != nil {

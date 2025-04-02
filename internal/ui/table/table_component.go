@@ -140,15 +140,17 @@ func (c *RowSelectionTable[T]) createLayout() {
 
 		// current selection is on HEADER row
 		if c.GetSelectedEntry() == nil {
-			if key == tcell.KeyRight {
+			switch key {
+			case tcell.KeyRight:
 				c.nextSortOrder()
 				return nil
-			} else if key == tcell.KeyLeft {
+			case tcell.KeyLeft:
 				c.previousSortOrder()
 				return nil
-			} else if key == tcell.KeyEnter {
+			case tcell.KeyEnter:
 				c.toggleSortDirection()
 				return nil
+			default:
 			}
 		}
 

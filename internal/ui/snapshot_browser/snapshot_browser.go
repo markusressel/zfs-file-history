@@ -103,12 +103,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 			cellText := "N/A"
 			cellAlign := tview.AlignLeft
 			cellColor := tcell.ColorWhite
-			switch {
-			case column == columnDate:
+			switch column {
+			case columnDate:
 				cellText = entry.Snapshot.Date.Format("2006-01-02 15:04:05")
-			case column == columnName:
+			case columnName:
 				cellText = entry.Snapshot.Name
-			case column == columnDiff:
+			case columnDiff:
 				cellAlign = tview.AlignCenter
 				switch entry.DiffState {
 				case diff_state.Equal:
@@ -127,11 +127,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 					cellText = "N/A"
 					cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
 				}
-			case column == columnUsed:
+			case columnUsed:
 				cellText = humanize.IBytes(entry.Snapshot.GetUsed())
-			case column == columnRefer:
+			case columnRefer:
 				cellText = humanize.IBytes(entry.Snapshot.GetReferenced())
-			case column == columnRatio:
+			case columnRatio:
 				ratio := entry.Snapshot.GetRatio()
 				cellText = fmt.Sprintf("%.2fx", ratio)
 			}
@@ -148,17 +148,18 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 			b := entries[j]
 
 			result := 0
-			if columnToSortBy == columnName {
+			switch columnToSortBy {
+			case columnName:
 				result = strings.Compare(strings.ToLower(a.Snapshot.Name), strings.ToLower(b.Snapshot.Name))
-			} else if columnToSortBy == columnDate {
+			case columnDate:
 				result = a.Snapshot.Date.Compare(*b.Snapshot.Date)
-			} else if columnToSortBy == columnDiff {
+			case columnDiff:
 				result = int(b.DiffState - a.DiffState)
-			} else if columnToSortBy == columnUsed {
+			case columnUsed:
 				result = int(b.Snapshot.GetUsed() - a.Snapshot.GetUsed())
-			} else if columnToSortBy == columnRefer {
+			case columnRefer:
 				result = int(b.Snapshot.GetReferenced() - a.Snapshot.GetReferenced())
-			} else if columnToSortBy == columnRatio {
+			case columnRatio:
 				ratioA := a.Snapshot.GetRatio()
 				ratioB := b.Snapshot.GetRatio()
 				result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))

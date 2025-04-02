@@ -278,13 +278,14 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if fileBrowser.GetSelection() != nil {
-			if key == tcell.KeyRight {
+			switch {
+			case key == tcell.KeyRight:
 				fileBrowser.enterFileEntry(fileBrowser.GetSelection())
 				return nil
-			} else if key == tcell.KeyEnter {
+			case key == tcell.KeyEnter:
 				fileBrowser.openActionDialog(fileBrowser.GetSelection())
 				return nil
-			} else if event.Rune() == 'd' {
+			case event.Rune() == 'd':
 				currentSelection := fileBrowser.GetSelection()
 				if currentSelection != nil && currentSelection.HasReal() {
 					fileBrowser.openDeleteDialog(currentSelection)
