@@ -24,10 +24,9 @@ jobs:
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7.0.0
-        if: false
         with:
           # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
-          version: v1.54.2
+          version: latest
 
           # Optional: working directory, useful for monorepos
           # working-directory: somedir
