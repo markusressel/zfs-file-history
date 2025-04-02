@@ -39,15 +39,12 @@ func NewMainPage(application *tview.Application) *MainPage {
 	}
 
 	snapshotBrowser.SetEventCallback(func(event snapshot_browser.SnapshotBrowserEvent) {
-		switch event.(type) {
+		switch event := event.(type) {
 		case uiutil.StatusMessageEvent:
-			event := event.(uiutil.StatusMessageEvent)
 			mainPage.showStatusMessage(event.Message)
 		case snapshot_browser.SnapshotCreated:
-			event := event.(snapshot_browser.SnapshotCreated)
 			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", event.SnapshotName)))
 		case snapshot_browser.SnapshotDestroyed:
-			event := event.(snapshot_browser.SnapshotDestroyed)
 			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", event.SnapshotName)))
 		}
 	})
