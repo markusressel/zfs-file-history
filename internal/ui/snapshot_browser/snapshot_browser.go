@@ -103,11 +103,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 			cellText := "N/A"
 			cellAlign := tview.AlignLeft
 			cellColor := tcell.ColorWhite
-			if column == columnDate {
+			switch {
+			case column == columnDate:
 				cellText = entry.Snapshot.Date.Format("2006-01-02 15:04:05")
-			} else if column == columnName {
+			case column == columnName:
 				cellText = entry.Snapshot.Name
-			} else if column == columnDiff {
+			case column == columnDiff:
 				cellAlign = tview.AlignCenter
 				switch entry.DiffState {
 				case diff_state.Equal:
@@ -126,11 +127,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 					cellText = "N/A"
 					cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
 				}
-			} else if column == columnUsed {
+			case column == columnUsed:
 				cellText = humanize.IBytes(entry.Snapshot.GetUsed())
-			} else if column == columnRefer {
+			case column == columnRefer:
 				cellText = humanize.IBytes(entry.Snapshot.GetReferenced())
-			} else if column == columnRatio {
+			case column == columnRatio:
 				ratio := entry.Snapshot.GetRatio()
 				cellText = fmt.Sprintf("%.2fx", ratio)
 			}

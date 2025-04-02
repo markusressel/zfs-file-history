@@ -53,7 +53,7 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 // FindHostDataset returns the root path of the dataset containing this path
 func FindHostDataset(path string) (*Dataset, error) {
 	if path == "" {
-		return nil, errors.New("Cannot find host dataset for empty path")
+		return nil, errors.New("cannot find host dataset for empty path")
 	}
 
 	var currentPath = path
@@ -64,7 +64,7 @@ func FindHostDataset(path string) (*Dataset, error) {
 			old := currentPath
 			currentPath = path2.Dir(currentPath)
 			if old == currentPath {
-				return nil, errors.New(fmt.Sprintf("Could not find dataset for path: %s", path))
+				return nil, errors.New(fmt.Sprintf("could not find dataset for path: %s", path))
 			} else {
 				continue
 			}
