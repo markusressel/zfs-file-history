@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fsnotify/fsnotify v1.8.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs v2.1.1+incompatible
