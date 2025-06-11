@@ -58,15 +58,19 @@ jobs:
         run: |
           GOOS="linux"
           GOARCH="amd64"
-          filename="$GOOS-$GOARCH"
-          go build -o ./dist/zfs-file-history-$filename -buildmode "exe" main.go
+          GOFLAGS="-buildmode=exe"
+          NAME="zfs-file-history-${GOOS}-${GOARCH}"
+          OUTPUT_BIN="dist/${NAME}"          
+          make build GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}"
 
       - name: Generate build files
         run: |
           GOOS="linux"
           GOARCH="arm64"
-          filename="$GOOS-$GOARCH"
-          go build -o ./dist/zfs-file-history-$filename -buildmode "exe" main.go
+          GOFLAGS="-buildmode=exe"
+          NAME="zfs-file-history-${GOOS}-${GOARCH}"
+          OUTPUT_BIN="dist/${NAME}"          
+          make build GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}"
 
       - name: Release
         uses: softprops/action-gh-release@v2
