@@ -28,7 +28,8 @@ deploy-custom: clean build
 	cp ./${OUTPUT_BIN} ~/.custom/bin/
 
 deploy: clean build
-	sudo cp ./${OUTPUT_BIN} /usr/bin/
+	sudo cp ./${OUTPUT_BIN} /usr/local/bin/
+	sudo chmod ug+x /usr/local/bin/${NAME}
 
 clean:
 	go clean
