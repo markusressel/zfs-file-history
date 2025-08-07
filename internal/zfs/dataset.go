@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	golibzfs "github.com/kraudcloud/go-libzfs"
-	gozfs "github.com/mistifyio/go-zfs"
+	gozfs "github.com/mistifyio/go-zfs/v3"
 	"os"
 	path2 "path"
 	"strconv"

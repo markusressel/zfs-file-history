@@ -1,8 +1,9 @@
 package zfs
 
 import (
+	"fmt"
 	golibzfs "github.com/kraudcloud/go-libzfs"
-	gozfs "github.com/mistifyio/go-zfs"
+	gozfs "github.com/mistifyio/go-zfs/v3"
 	"io"
 	"os"
 	path2 "path"
@@ -50,6 +51,7 @@ const (
 
 type Snapshot struct {
 	Name          string
+	FullName      string
 	Path          string
 	ParentDataset *Dataset
 	Date          *time.Time
@@ -63,13 +65,23 @@ func (s *Snapshot) Equal(e Snapshot) bool {
 }
 
 func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Time, s *golibzfs.Dataset) *Snapshot {
+	fullName := fmt.Sprintf("%s@%s", parentDataset.rawGozfsData.Name, name)
 	snapshot := &Snapshot{
 		Name:          name,
+		FullName:      fullName,
 		Path:          path,
 		ParentDataset: parentDataset,
 		Date:          date,
 
 		rawGolibzfsData: s,
+	}
+
+	rawGoufsData, err := gozfs.Snapshots(fullName)
+	if err != nil {
+		logging.Error("NewSnapshot: gozfs snapshot failed: " + err.Error())
+		return snapshot
+	} else {
+		snapshot.rawGozfsData = rawGoufsData[0]
 	}
 
 	return snapshot
@@ -306,6 +318,39 @@ func (s *Snapshot) Destroy() error {
 func (s *Snapshot) DestroyRecursive() error {
 	ds := s.ParentDataset
 	return ds.DestroySnapshot(s.Name, true)
+}
+
+func (s *Snapshot) GetCreationData() *time.Time {
+	//propValue, err := s.rawGozfsData.GetProperty("creation")
+	//if err != nil {
+	//	logging.Error(err.Error())
+	//	return nil
+	//}
+	//
+	//timestamp, err := strconv.ParseInt(propValue, 10, 64)
+	//if err != nil {
+	//	logging.Error("Could not parse creation property: %s", err.Error())
+	//	return nil
+	//}
+	//t := time.Unix(timestamp, 0)
+	//return &t
+
+	if s.rawGolibzfsData == nil {
+		logging.Error("No rawGolibzfsData available")
+		return nil
+	}
+	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
+	if err != nil {
+		logging.Error("Could not get creation property: %s", err.Error())
+		return nil
+	}
+	timestamp, err := strconv.ParseInt(prop.Value, 10, 64)
+	if err != nil {
+		logging.Error("Could not parse creation property: %s", err.Error())
+		return nil
+	}
+	t := time.Unix(timestamp, 0)
+	return &t
 }
 
 func (s *Snapshot) GetUsed() uint64 {
