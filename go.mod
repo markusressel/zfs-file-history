@@ -11,7 +11,7 @@ require (
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs/v3 v3.0.1
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/navidys/tvxwidgets v0.11.1
+	github.com/navidys/tvxwidgets v0.11.3
 	github.com/oklog/run v1.2.0
 	github.com/pterm/pterm v0.12.81
 	github.com/rivo/tview v0.0.0-20250625164341-a4a78f1e05cb
@@ -46,7 +46,6 @@ require (
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
