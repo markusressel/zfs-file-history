@@ -14,7 +14,7 @@ require (
 	github.com/navidys/tvxwidgets v0.11.3
 	github.com/oklog/run v1.2.0
 	github.com/pterm/pterm v0.12.81
-	github.com/rivo/tview v0.0.0-20250625164341-a4a78f1e05cb
+	github.com/rivo/tview v0.42.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.11.0
