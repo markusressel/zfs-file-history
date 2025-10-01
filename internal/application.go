@@ -3,8 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"github.com/oklog/run"
-	"github.com/pterm/pterm"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -14,6 +12,9 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui"
 	"zfs-file-history/internal/zfs"
+
+	"github.com/oklog/run"
+	"github.com/pterm/pterm"
 )
 
 func RunApplication(path string) {
@@ -47,8 +48,8 @@ func RunApplication(path string) {
 				return nil
 			}, func(err error) {
 				if err != nil {
-					logging.Warning("Error stopping parca webserver: " + err.Error())
-					pterm.Warning.Printfln("Error stopping parca webserver: " + err.Error())
+					logging.Warning("Error stopping parca webserver: %s", err.Error())
+					pterm.Warning.Printfln("Error stopping parca webserver: %s", err.Error())
 				} else {
 					logging.Debug("Webservers stopped.")
 					pterm.Debug.Printfln("parca webserver stopped.")
@@ -66,8 +67,8 @@ func RunApplication(path string) {
 			return ui.CreateUi(path, true).Run()
 		}, func(err error) {
 			if err != nil {
-				logging.Warning("Error stopping UI: " + err.Error())
-				pterm.Warning.Printfln("Error stopping UI: " + err.Error())
+				logging.Warning("Error stopping UI: %s", err.Error())
+				pterm.Warning.Printfln("Error stopping UI: %s", err.Error())
 			} else {
 				logging.Debug("UI stopped.")
 				pterm.Debug.Printfln("Received SIGTERM signal, exiting...")

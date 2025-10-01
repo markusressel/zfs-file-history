@@ -3,9 +3,6 @@ package file_browser
 import (
 	"errors"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"os"
 	path2 "path"
 	"slices"
@@ -21,6 +18,10 @@ import (
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
+
+	"github.com/dustin/go-humanize"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (
@@ -748,7 +749,7 @@ func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserE
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
-	logging.Info(message.Message)
+	logging.Info("%s", message.Message)
 	fileBrowser.statusCallback(message)
 }
 

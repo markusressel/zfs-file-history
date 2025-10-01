@@ -2,15 +2,16 @@ package dialog
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/navidys/tvxwidgets"
-	"github.com/rivo/tview"
 	"math"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/navidys/tvxwidgets"
+	"github.com/rivo/tview"
 )
 
 const (
@@ -168,7 +169,7 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 
 func (d *RestoreFileProgressDialog) handleError(err error) {
 	if err != nil {
-		logging.Error(err.Error())
+		logging.Error("Error during restore: %s", err.Error())
 		d.isRunning = false
 		d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
 		d.progress.SetTitle(theme.CreateTitleText("Failed!"))
