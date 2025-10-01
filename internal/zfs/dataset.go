@@ -3,14 +3,15 @@ package zfs
 import (
 	"errors"
 	"fmt"
-	golibzfs "github.com/kraudcloud/go-libzfs"
-	gozfs "github.com/mistifyio/go-zfs/v3"
 	"os"
 	path2 "path"
 	"strconv"
 	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
+
+	golibzfs "github.com/kraudcloud/go-libzfs"
+	gozfs "github.com/mistifyio/go-zfs/v3"
 )
 
 type Dataset struct {
@@ -96,7 +97,7 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 			creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
 			creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Could not parse creation date for snapshot %s on dataset %s: %s", name, dataset.GetName(), err.Error())
 			} else {
 				creationDate = time.Unix(creationDateTimestamp, 0)
 			}
@@ -117,7 +118,7 @@ func (dataset *Dataset) GetName() string {
 	if dataset.rawGolibzfsData != nil {
 		nameProperty, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropName)
 		if err != nil {
-			logging.Error(err.Error())
+			logging.Error("Could not get name property for dataset %s: %s", dataset.Path, err.Error())
 		} else {
 			return nameProperty.Value
 		}

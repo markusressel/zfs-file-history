@@ -1,12 +1,13 @@
 package util
 
 import (
-	"github.com/fsnotify/fsnotify"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 	"zfs-file-history/internal/logging"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 type FileWatcher struct {
@@ -71,12 +72,12 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 			// watch for errors
 			case err := <-fileWatcher.watcher.Errors:
 				if err != nil {
-					logging.Error(err.Error())
+					logging.Error("Error watching files: %s", err.Error())
 				}
 			case <-fileWatcher.stop:
 				err := fileWatcher.watcher.Close()
 				if err != nil {
-					logging.Error(err.Error())
+					logging.Error("Error closing file watcher: %s", err.Error())
 				}
 				return
 			}
@@ -92,7 +93,7 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 
 	// starting at the root of the project, walk each file/directory searching for directories
 	if err := filepath.Walk(path, fileWatcher.addFolderWatch); err != nil {
-		logging.Error(err.Error())
+		logging.Error("Error walking path %s: %s", path, err.Error())
 		return
 	}
 
@@ -109,11 +110,11 @@ func (fileWatcher *FileWatcher) watchDirRecursive(path string, action func(s str
 				fileWatcher.actionLock.Unlock()
 			// watch for errors
 			case err := <-fileWatcher.watcher.Errors:
-				logging.Error(err.Error())
+				logging.Error("Error watching files: %s", err.Error())
 			case <-fileWatcher.stop:
 				err := fileWatcher.watcher.Close()
 				if err != nil {
-					logging.Error(err.Error())
+					logging.Error("Error closing file watcher: %s", err.Error())
 				}
 				return
 			}

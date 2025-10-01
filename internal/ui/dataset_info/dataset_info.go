@@ -2,13 +2,14 @@ package dataset_info
 
 import (
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
+
+	"github.com/dustin/go-humanize"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type DatasetInfoComponent struct {
@@ -36,7 +37,7 @@ func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 	if err == nil {
 		datasetInfo.SetDataset(dataset)
 	} else {
-		logging.Error(err.Error())
+		logging.Error("Could not find dataset for path %s: %s", path, err.Error())
 		datasetInfo.SetDataset(nil)
 	}
 }

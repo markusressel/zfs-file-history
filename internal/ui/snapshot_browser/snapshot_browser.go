@@ -2,9 +2,6 @@ package snapshot_browser
 
 import (
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"math/big"
 	"slices"
 	"sort"
@@ -20,6 +17,10 @@ import (
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
+
+	"github.com/dustin/go-humanize"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type SelectionInfo[T any] struct {
@@ -275,7 +276,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 	result := []*data.SnapshotBrowserEntry{}
 	ds, err := zfs.FindHostDataset(snapshotBrowser.path)
 	if err != nil {
-		logging.Error(err.Error())
+		logging.Error("Could not find dataset for path %s: %s", snapshotBrowser.path, err.Error())
 		return result
 	}
 
@@ -292,7 +293,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 
 	snapshots, err := snapshotBrowser.hostDataset.GetSnapshots()
 	if err != nil {
-		logging.Error(err.Error())
+		logging.Error("Could not get snapshots for dataset %s: %s", snapshotBrowser.hostDataset.Path, err.Error())
 		return result
 	}
 
@@ -406,7 +407,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		case dialog.SnapshotDialogCreateSnapshotActionId:
 			name, err := snapshotBrowser.createSnapshot(selection)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to create snapshot: %s", err.Error())
 				snapshotBrowser.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
 			}
 			snapshotBrowser.SelectLatest()
@@ -417,7 +418,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		case dialog.SnapshotDialogDestroySnapshotActionId:
 			err := snapshotBrowser.destroySnapshot(selection, false)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to destroy snapshot: %s", err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
@@ -430,7 +431,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		case dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
 			err := snapshotBrowser.destroySnapshot(selection, true)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to destroy snapshot: %s", err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
@@ -460,7 +461,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 			for _, entry := range entries {
 				err := snapshotBrowser.destroySnapshot(entry, false)
 				if err != nil {
-					logging.Error(err.Error())
+					logging.Error("Failed to destroy snapshot: %s", err.Error())
 					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 					})
@@ -472,7 +473,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 			for _, entry := range entries {
 				err := snapshotBrowser.destroySnapshot(entry, true)
 				if err != nil {
-					logging.Error(err.Error())
+					logging.Error("Failed to destroy snapshot: %s", err.Error())
 					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 					})
@@ -495,7 +496,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 		case dialog.DeleteSnapshotDialogDeleteSnapshotActionId:
 			err := snapshotBrowser.destroySnapshot(selection, false)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to destroy snapshot: %s", err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})

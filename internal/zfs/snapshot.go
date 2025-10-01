@@ -2,8 +2,6 @@ package zfs
 
 import (
 	"fmt"
-	golibzfs "github.com/kraudcloud/go-libzfs"
-	gozfs "github.com/mistifyio/go-zfs/v3"
 	"io"
 	"os"
 	path2 "path"
@@ -14,6 +12,9 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
+
+	golibzfs "github.com/kraudcloud/go-libzfs"
+	gozfs "github.com/mistifyio/go-zfs/v3"
 )
 
 const (
@@ -78,7 +79,7 @@ func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Ti
 
 	rawGoufsData, err := gozfs.Snapshots(fullName)
 	if err != nil {
-		logging.Error("NewSnapshot: gozfs snapshot failed: " + err.Error())
+		logging.Error("NewSnapshot: gozfs snapshot failed: %s", err.Error())
 		return snapshot
 	} else {
 		snapshot.rawGozfsData = rawGoufsData[0]
@@ -296,7 +297,7 @@ func (s *Snapshot) ContainsFile(entry string) (bool, error) {
 func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
 	containsFile, err := s.ContainsFile(path)
 	if err != nil {
-		logging.Error(err.Error())
+		logging.Error("Could not determine if snapshot contains file %s: %s", path, err.Error())
 		return diff_state.Unknown
 	}
 	if containsFile {
@@ -323,7 +324,7 @@ func (s *Snapshot) DestroyRecursive() error {
 func (s *Snapshot) GetCreationData() *time.Time {
 	//propValue, err := s.rawGozfsData.GetProperty("creation")
 	//if err != nil {
-	//	logging.Error(err.Error())
+	//	logging.Error("Could not get creation property: %s", err.Error())
 	//	return nil
 	//}
 	//
