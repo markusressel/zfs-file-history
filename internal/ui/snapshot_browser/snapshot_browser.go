@@ -215,7 +215,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		snapshotBrowser.rememberSelectionForDataset(entry)
 		snapshotBrowser.selectedSnapshotChangedCallback(entry)
-		snapshotBrowser.updateTableContents()
 	})
 
 	layout.AddPage("snapshot-browser", snapshotBrowser.tableContainer.GetLayout(), true, true)
@@ -501,6 +500,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
 			}
+			snapshotBrowser.updateTableContents()
 			return true
 		default:
 			return false
