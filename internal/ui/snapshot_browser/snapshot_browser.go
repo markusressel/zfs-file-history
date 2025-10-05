@@ -74,7 +74,7 @@ var (
 	}
 	columnRatio = &table.Column{
 		Id:        5,
-		Title:     "CompressionRatio",
+		Title:     "Ratio",
 		Alignment: tview.AlignCenter,
 	}
 	tableColumns = []*table.Column{
