@@ -106,7 +106,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 			cellColor := tcell.ColorWhite
 			switch column {
 			case columnDate:
-				cellText = entry.Snapshot.Date.Format("2006-01-02 15:04:05")
+				cellText = entry.Snapshot.Properties.CreationDate.Format("2006-01-02 15:04:05")
 			case columnName:
 				cellText = entry.Snapshot.Name
 			case columnDiff:
@@ -129,11 +129,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 					cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
 				}
 			case columnUsed:
-				cellText = humanize.IBytes(entry.Snapshot.GetUsed())
+				cellText = humanize.IBytes(entry.Snapshot.Properties.Used)
 			case columnRefer:
-				cellText = humanize.IBytes(entry.Snapshot.GetReferenced())
+				cellText = humanize.IBytes(entry.Snapshot.Properties.Referenced)
 			case columnRatio:
-				ratio := entry.Snapshot.GetRatio()
+				ratio := entry.Snapshot.Properties.CompressionRatio
 				cellText = fmt.Sprintf("%.2fx", ratio)
 			}
 			cell := tview.NewTableCell(cellText).
@@ -153,16 +153,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 			case columnName:
 				result = strings.Compare(strings.ToLower(a.Snapshot.Name), strings.ToLower(b.Snapshot.Name))
 			case columnDate:
-				result = a.Snapshot.Date.Compare(*b.Snapshot.Date)
+				result = a.Snapshot.Properties.CreationDate.Compare(*b.Snapshot.Properties.CreationDate)
 			case columnDiff:
 				result = int(b.DiffState - a.DiffState)
 			case columnUsed:
-				result = int(b.Snapshot.GetUsed() - a.Snapshot.GetUsed())
+				result = int(b.Snapshot.Properties.Used - a.Snapshot.Properties.Used)
 			case columnRefer:
-				result = int(b.Snapshot.GetReferenced() - a.Snapshot.GetReferenced())
+				result = int(b.Snapshot.Properties.Referenced - a.Snapshot.Properties.Referenced)
 			case columnRatio:
-				ratioA := a.Snapshot.GetRatio()
-				ratioB := b.Snapshot.GetRatio()
+				ratioA := a.Snapshot.Properties.CompressionRatio
+				ratioB := b.Snapshot.Properties.CompressionRatio
 				result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))
 			}
 			if inverted {
@@ -215,7 +215,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		snapshotBrowser.rememberSelectionForDataset(entry)
 		snapshotBrowser.selectedSnapshotChangedCallback(entry)
-		snapshotBrowser.updateTableContents()
 	})
 
 	layout.AddPage("snapshot-browser", snapshotBrowser.tableContainer.GetLayout(), true, true)
@@ -501,6 +500,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
 			}
+			snapshotBrowser.updateTableContents()
 			return true
 		default:
 			return false
@@ -561,9 +561,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 	sort.SliceStable(sortedEntries, func(i, j int) bool {
 		a := entries[i]
 		b := entries[j]
-		if a.Snapshot.Date != nil && b.Snapshot.Date != nil {
-			dateA := a.Snapshot.Date
-			dateB := b.Snapshot.Date
+		if a.Snapshot.Properties.CreationDate != nil && b.Snapshot.Properties.CreationDate != nil {
+			dateA := a.Snapshot.Properties.CreationDate
+			dateB := b.Snapshot.Properties.CreationDate
 			result := dateA.After(*dateB)
 			return result
 		}
