@@ -11,7 +11,7 @@ import (
 	"zfs-file-history/internal/util"
 
 	golibzfs "github.com/kraudcloud/go-libzfs"
-	gozfs "github.com/mistifyio/go-zfs/v3"
+	gozfs "github.com/mistifyio/go-zfs/v4"
 )
 
 type Dataset struct {

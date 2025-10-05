@@ -77,8 +77,8 @@ github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i
 github.com/mattn/go-runewidth v0.0.13/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=
 github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
-github.com/mistifyio/go-zfs/v3 v3.0.1 h1:YaoXgBePoMA12+S1u/ddkv+QqxcfiZK4prI6HPnkFiU=
-github.com/mistifyio/go-zfs/v3 v3.0.1/go.mod h1:CzVgeB0RvF2EGzQnytKVvVSDwmKJXxkOTUGbNrTja/k=
+github.com/mistifyio/go-zfs/v4 v4.0.0 h1:sU0+5dX45tdDK5xNZ3HBi95nxUc48FS92qbIZEvpAg4=
+github.com/mistifyio/go-zfs/v4 v4.0.0/go.mod h1:weotFtXTHvBwhr9Mv96KYnDkTPBOHFUbm9cBmQpesL0=
 github.com/mitchellh/go-homedir v1.1.0 h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG+4E0Y=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/navidys/tvxwidgets v0.12.0 h1:eqCqaYsOUkZ6mJf8hVKdRc4cq1afLw+h7plDa7bBM8U=
