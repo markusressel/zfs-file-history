@@ -55,24 +55,23 @@ type Snapshot struct {
 	FullName      string
 	Path          string
 	ParentDataset *Dataset
-	Date          *time.Time
 
 	rawGozfsData    *gozfs.Dataset
 	rawGolibzfsData *golibzfs.Dataset
+	Properties      SnapshotProperties
 }
 
 func (s *Snapshot) Equal(e Snapshot) bool {
 	return s.Name == e.Name && s.Path == e.Path
 }
 
-func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Time, s *golibzfs.Dataset) *Snapshot {
+func NewSnapshot(name string, path string, parentDataset *Dataset, s *golibzfs.Dataset) *Snapshot {
 	fullName := fmt.Sprintf("%s@%s", parentDataset.rawGozfsData.Name, name)
 	snapshot := &Snapshot{
 		Name:          name,
 		FullName:      fullName,
 		Path:          path,
 		ParentDataset: parentDataset,
-		Date:          date,
 
 		rawGolibzfsData: s,
 	}
@@ -84,6 +83,8 @@ func NewSnapshot(name string, path string, parentDataset *Dataset, date *time.Ti
 	} else {
 		snapshot.rawGozfsData = rawGoufsData[0]
 	}
+
+	snapshot.FetchDetails()
 
 	return snapshot
 }
@@ -321,37 +322,38 @@ func (s *Snapshot) DestroyRecursive() error {
 	return ds.DestroySnapshot(s.Name, true)
 }
 
-func (s *Snapshot) GetCreationData() *time.Time {
-	//propValue, err := s.rawGozfsData.GetProperty("creation")
+func (s *Snapshot) GetCreationDate() *time.Time {
+	propValue, err := s.rawGozfsData.GetProperty("creation")
+	if err != nil {
+		logging.Error("Could not get creation property: %s", err.Error())
+		return nil
+	}
+
+	timestamp, err := strconv.ParseInt(propValue, 10, 64)
+	if err != nil {
+		logging.Error("Could not parse creation property: %s", err.Error())
+		return nil
+	}
+
+	t := time.Unix(timestamp, 0)
+	return &t
+
+	//if s.rawGolibzfsData == nil {
+	//	logging.Error("No rawGolibzfsData available")
+	//	return nil
+	//}
+	//prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
 	//if err != nil {
 	//	logging.Error("Could not get creation property: %s", err.Error())
 	//	return nil
 	//}
-	//
-	//timestamp, err := strconv.ParseInt(propValue, 10, 64)
+	//timestamp, err := strconv.ParseInt(prop.Value, 10, 64)
 	//if err != nil {
 	//	logging.Error("Could not parse creation property: %s", err.Error())
 	//	return nil
 	//}
 	//t := time.Unix(timestamp, 0)
 	//return &t
-
-	if s.rawGolibzfsData == nil {
-		logging.Error("No rawGolibzfsData available")
-		return nil
-	}
-	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
-	if err != nil {
-		logging.Error("Could not get creation property: %s", err.Error())
-		return nil
-	}
-	timestamp, err := strconv.ParseInt(prop.Value, 10, 64)
-	if err != nil {
-		logging.Error("Could not parse creation property: %s", err.Error())
-		return nil
-	}
-	t := time.Unix(timestamp, 0)
-	return &t
 }
 
 func (s *Snapshot) GetUsed() uint64 {
@@ -406,6 +408,22 @@ func (s *Snapshot) GetRatio() float64 {
 		return 0
 	}
 	return val
+}
+
+type SnapshotProperties struct {
+	CreationDate     *time.Time
+	Used             uint64
+	Referenced       uint64
+	CompressionRatio float64
+}
+
+func (s *Snapshot) FetchDetails() {
+	s.Properties = SnapshotProperties{
+		CreationDate:     s.GetCreationDate(),
+		Used:             s.GetUsed(),
+		Referenced:       s.GetReferenced(),
+		CompressionRatio: s.GetRatio(),
+	}
 }
 
 func syncFileProperties(dstPath string, stat os.FileInfo) error {

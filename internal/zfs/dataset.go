@@ -6,7 +6,6 @@ import (
 	"os"
 	path2 "path"
 	"strconv"
-	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 
@@ -91,21 +90,13 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	for _, file := range snapshotDirs {
 		_, name := path2.Split(file)
 
-		var creationDate time.Time
 		s := findSnapshot(AllSnapshots[dataset.GetName()], name)
 		if s != nil {
-			creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
-			creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
-			if err != nil {
-				logging.Error("Could not parse creation date for snapshot %s on dataset %s: %s", name, dataset.GetName(), err.Error())
-			} else {
-				creationDate = time.Unix(creationDateTimestamp, 0)
-			}
 		} else {
 			logging.Warning("Could not find snapshot %s on dataset %s", name, dataset.GetName())
 		}
 
-		result = append(result, NewSnapshot(name, file, dataset, &creationDate, s))
+		result = append(result, NewSnapshot(name, file, dataset, s))
 	}
 
 	return result, nil
