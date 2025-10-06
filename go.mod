@@ -1,8 +1,6 @@
 module zfs-file-history
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.24.7
 
 require (
 	github.com/dustin/go-humanize v1.0.1
@@ -11,7 +9,7 @@ require (
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs/v4 v4.0.0
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/navidys/tvxwidgets v0.12.0
+	github.com/navidys/tvxwidgets v0.12.1
 	github.com/oklog/run v1.2.0
 	github.com/pterm/pterm v0.12.81
 	github.com/rivo/tview v0.42.0
