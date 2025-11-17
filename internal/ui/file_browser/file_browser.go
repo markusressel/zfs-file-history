@@ -363,7 +363,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 			continue
 		}
 
-		entryType := determineEntryType(realFilePath)
+		entryType := fileBrowser.determineEntryType(realFilePath)
 
 		var snapshotFile *data.SnapshotFile = nil
 		if snapshotEntry != nil {
@@ -414,7 +414,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 			continue
 		}
 
-		entryType := determineEntryType(snapshotFilePath)
+		entryType := fileBrowser.determineEntryType(snapshotFilePath)
 
 		snapshotFile := &data.SnapshotFile{
 			Path:         snapshotFilePath,
@@ -448,7 +448,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 }
 
 // determineEntryType determines whether the given path is a file, directory or symlink.
-func determineEntryType(path string) data.FileBrowserEntryType {
+func (fileBrowser *FileBrowserComponent) determineEntryType(path string) data.FileBrowserEntryType {
 	var entryType data.FileBrowserEntryType
 	lstat, err := os.Lstat(path)
 	if err == nil && lstat.Mode().Type() == os.ModeSymlink {
