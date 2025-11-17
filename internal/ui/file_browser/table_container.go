@@ -16,15 +16,11 @@ import (
 )
 
 func createFileBrowserTable(application *tview.Application) *table.RowSelectionTable[data.FileBrowserEntry] {
-	toTableCellsFunction := fileBrowserEntryTableCellsFunction
-	tableEntrySortFunction := fileBrowserEntrySortFunction
-
 	tableContainer := table.NewTableContainer[data.FileBrowserEntry](
 		application,
-		toTableCellsFunction,
-		tableEntrySortFunction,
+		fileBrowserEntryTableCellsFunction,
+		fileBrowserEntrySortFunction,
 	)
-
 	return tableContainer
 }
 
