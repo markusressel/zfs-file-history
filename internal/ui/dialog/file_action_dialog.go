@@ -107,6 +107,8 @@ func (d *FileActionDialog) createLayout() {
 				d.application.Draw()
 			}()
 			return action, nil
+		default:
+			// ignore other mouse actions
 		}
 		return action, event
 	})
@@ -198,6 +200,7 @@ func (d *FileActionDialog) selectAction(option *DialogOption) {
 	case FileDialogCreateSnapshotDialogActionId:
 		d.CreateSnapshot()
 	case DialogCloseActionId:
+	default:
 		d.Close()
 	}
 }

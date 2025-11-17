@@ -147,6 +147,7 @@ func (d *SnapshotActionDialog) selectAction(option *DialogOption) {
 	case SnapshotDialogDestroySnapshotRecursivelyActionId:
 		d.DestroySnapshotRecursively()
 	case DialogCloseActionId:
+	default:
 		d.Close()
 	}
 }

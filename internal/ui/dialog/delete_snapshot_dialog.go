@@ -135,6 +135,7 @@ func (d *DeleteSnapshotDialog) selectAction(option *DialogOption) {
 	case DeleteSnapshotDialogDeleteSnapshotActionId:
 		d.DeleteSnapshot()
 	case DialogCloseActionId:
+	default:
 		d.Close()
 	}
 }

@@ -137,6 +137,7 @@ func (d *DeleteFileDialog) selectAction(option *DialogOption) {
 	case DeleteFileDialogDeleteFileActionId:
 		d.DeleteFile()
 	case DialogCloseActionId:
+	default:
 		d.Close()
 	}
 }

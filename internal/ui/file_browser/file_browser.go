@@ -368,7 +368,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		lstat, err := os.Lstat(realFilePath)
 		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
 			entryType = data.Link
-		} else if lstat.IsDir() {
+		} else if lstat != nil && lstat.IsDir() {
 			entryType = data.Directory
 		} else {
 			entryType = data.File
@@ -427,7 +427,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		lstat, err := os.Lstat(snapshotFilePath)
 		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
 			entryType = data.Link
-		} else if lstat.IsDir() {
+		} else if lstat != nil && lstat.IsDir() {
 			entryType = data.Directory
 		} else {
 			entryType = data.File

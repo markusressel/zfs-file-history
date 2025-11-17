@@ -23,6 +23,7 @@ type DialogOption struct {
 	Name string
 }
 
+// createModal creates a [tview.Flex] layout for a modal dialog with the given title and content.
 func createModal(title string, content tview.Primitive, width int, height int) *tview.Flex {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
