@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/table"
@@ -80,7 +79,7 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			cellColor = statusColor
 			cellAlignment = tview.AlignCenter
 		case columnDateTime:
-			cellText = entry.GetStat().ModTime().Format(time.DateTime)
+			cellText = entry.GetStat().ModTime().Format(theme.Style.Format.DateTime)
 			switch entry.DiffState {
 			case diff_state.Added, diff_state.Deleted:
 				cellColor = statusColor
