@@ -363,16 +363,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 			continue
 		}
 
-		var entryType data.FileBrowserEntryType
-
-		lstat, err := os.Lstat(realFilePath)
-		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
-			entryType = data.Link
-		} else if lstat != nil && lstat.IsDir() {
-			entryType = data.Directory
-		} else {
-			entryType = data.File
-		}
+		entryType := determineEntryType(realFilePath)
 
 		var snapshotFile *data.SnapshotFile = nil
 		if snapshotEntry != nil {
@@ -423,15 +414,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 			continue
 		}
 
-		var entryType data.FileBrowserEntryType
-		lstat, err := os.Lstat(snapshotFilePath)
-		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
-			entryType = data.Link
-		} else if lstat != nil && lstat.IsDir() {
-			entryType = data.Directory
-		} else {
-			entryType = data.File
-		}
+		entryType := determineEntryType(snapshotFilePath)
 
 		snapshotFile := &data.SnapshotFile{
 			Path:         snapshotFilePath,
@@ -462,6 +445,20 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 	}
 
 	return fileEntries
+}
+
+// determineEntryType determines whether the given path is a file, directory or symlink.
+func determineEntryType(path string) data.FileBrowserEntryType {
+	var entryType data.FileBrowserEntryType
+	lstat, err := os.Lstat(path)
+	if err == nil && lstat.Mode().Type() == os.ModeSymlink {
+		entryType = data.Link
+	} else if lstat != nil && lstat.IsDir() {
+		entryType = data.Directory
+	} else {
+		entryType = data.File
+	}
+	return entryType
 }
 
 func (fileBrowser *FileBrowserComponent) goUp() {
