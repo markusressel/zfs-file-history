@@ -67,5 +67,8 @@ var (
 			TitleAlign:       tview.AlignCenter,
 			DialogTitleAlign: tview.AlignCenter,
 		},
+		Format: FormatStyle{
+			DateTime: "2006-01-02 15:04:05",
+		},
 	}
 )

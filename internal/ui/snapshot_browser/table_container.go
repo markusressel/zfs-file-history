@@ -32,7 +32,7 @@ func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *da
 		cellColor := tcell.ColorWhite
 		switch column {
 		case columnDate:
-			cellText = entry.Snapshot.Properties.CreationDate.Format("2006-01-02 15:04:05")
+			cellText = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
 		case columnName:
 			cellText = entry.Snapshot.Name
 		case columnDiff:
