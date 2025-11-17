@@ -2,13 +2,14 @@ package table
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"maps"
 	"slices"
 	"sync"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // RowSelectionTableEntry is an interface that must be implemented by entries used in a RowSelectionTable.

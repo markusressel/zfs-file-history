@@ -2,11 +2,12 @@ package dialog
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (

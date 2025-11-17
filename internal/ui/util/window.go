@@ -1,9 +1,10 @@
 package util
 
 import (
+	"zfs-file-history/internal/ui/theme"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"zfs-file-history/internal/ui/theme"
 )
 
 type Window[T any] interface {

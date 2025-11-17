@@ -2,8 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
@@ -13,6 +11,9 @@ import (
 	"zfs-file-history/internal/ui/status_message"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type MainPage struct {

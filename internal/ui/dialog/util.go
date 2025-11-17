@@ -1,8 +1,9 @@
 package dialog
 
 import (
-	"github.com/rivo/tview"
 	uiutil "zfs-file-history/internal/ui/util"
+
+	"github.com/rivo/tview"
 )
 
 const (

@@ -1,11 +1,12 @@
 package configuration
 
 import (
-	"github.com/mitchellh/go-homedir"
-	"github.com/spf13/viper"
 	"os"
 	path2 "path"
 	"zfs-file-history/internal/logging"
+
+	"github.com/mitchellh/go-homedir"
+	"github.com/spf13/viper"
 )
 
 type Configuration struct {

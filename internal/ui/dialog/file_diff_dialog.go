@@ -1,12 +1,13 @@
 package dialog
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"os/exec"
 	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (

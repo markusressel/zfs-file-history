@@ -2,9 +2,10 @@ package util
 
 import (
 	"fmt"
-	"golang.org/x/exp/constraints"
 	"strconv"
 	"zfs-file-history/internal/logging"
+
+	"golang.org/x/exp/constraints"
 )
 
 // Coerce returns a value that is at least min and at most max, otherwise value

@@ -2,14 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/logging"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 )
 
 // rootCmd represents the base command when called without any subcommands
