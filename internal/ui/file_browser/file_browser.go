@@ -408,9 +408,6 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
-	if fileBrowser.currentSnapshot == snapshot || fileBrowser.currentSnapshot != nil && snapshot != nil && fileBrowser.currentSnapshot.Snapshot.Path == snapshot.Snapshot.Path {
-		return
-	}
 	fileBrowser.currentSnapshot = snapshot
 	fileBrowser.Refresh()
 }
@@ -433,7 +430,10 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
 	fileBrowser.selectedEntryChangedCallback(newSelection)
-	if fileBrowser.GetSelection() == newSelection || fileBrowser.GetSelection() != nil && newSelection != nil && fileBrowser.GetSelection().GetRealPath() == newSelection.GetRealPath() {
+	if fileBrowser.GetSelection() == newSelection {
+		return
+	}
+	if fileBrowser.GetSelection() != nil && newSelection != nil && fileBrowser.GetSelection().GetRealPath() == newSelection.GetRealPath() {
 		return
 	}
 

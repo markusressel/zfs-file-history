@@ -80,6 +80,8 @@ func (dataset *Dataset) GetSnapshotsDir() string {
 	return path2.Join(dataset.HiddenZfsPath, "snapshot")
 }
 
+// GetSnapshots returns all snapshots for this dataset
+// Note: depending on the amount of snapshots, this can be a slow operation.
 func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	var result []*Snapshot
 

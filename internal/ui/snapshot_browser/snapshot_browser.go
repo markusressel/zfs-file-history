@@ -173,14 +173,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
 func (snapshotBrowser *SnapshotBrowserComponent) updateTableContents() {
 	newEntries := snapshotBrowser.computeTableEntries()
 	snapshotBrowser.tableContainer.SetData(newEntries)
-
-	title := "Snapshots"
-	if snapshotBrowser.GetSelection() != nil {
-		currentSelectionIndex := slices.Index(snapshotBrowser.GetEntries(), snapshotBrowser.GetSelection()) + 1
-		totalEntriesCount := len(snapshotBrowser.GetEntries())
-		title = fmt.Sprintf("Snapshot: %s (%d/%d)", snapshotBrowser.GetSelection().Snapshot.Name, currentSelectionIndex, totalEntriesCount)
-	}
-	snapshotBrowser.tableContainer.SetTitle(title)
+	snapshotBrowser.updateTableTitle()
 	snapshotBrowser.restoreSelectionForDataset()
 }
 
@@ -203,6 +196,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 		return result
 	}
 
+	// TODO: fetching snapshots can take a long time
 	snapshots, err := snapshotBrowser.hostDataset.GetSnapshots()
 	if err != nil {
 		logging.Error("Could not get snapshots for dataset %s: %s", snapshotBrowser.hostDataset.Path, err.Error())
@@ -222,6 +216,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 	}
 
 	return result
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) updateTableTitle() {
+	title := "Snapshots"
+	if snapshotBrowser.GetSelection() != nil {
+		currentSelectionIndex := slices.Index(snapshotBrowser.GetEntries(), snapshotBrowser.GetSelection()) + 1
+		totalEntriesCount := len(snapshotBrowser.GetEntries())
+		title = fmt.Sprintf("Snapshot: %s (%d/%d)", snapshotBrowser.GetSelection().Snapshot.Name, currentSelectionIndex, totalEntriesCount)
+	}
+	snapshotBrowser.tableContainer.SetTitle(title)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) clear() {
