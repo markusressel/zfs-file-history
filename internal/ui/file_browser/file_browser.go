@@ -18,6 +18,7 @@ import (
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
@@ -364,28 +365,19 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		}
 
 		entryType := fileBrowser.determineEntryType(realFilePath)
-
 		var snapshotFile *data.SnapshotFile = nil
 		if snapshotEntry != nil {
-			snapshotFilePath := snapshotEntry.Snapshot.GetSnapshotPath(realFilePath)
+			snapshot := snapshotEntry.Snapshot
+			snapshotPathOfRealFile := snapshot.GetSnapshotPath(realFilePath)
+			snapshotFile = fileBrowser.computeSnapshotEntryForRealPathIfExists(
+				realFilePath,
+				snapshotPathOfRealFile,
+				snapshot,
+			)
+			// remove from snapshotFilePaths so we don't add it again later
 			snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
-				return s == snapshotFilePath
+				return s == snapshotPathOfRealFile
 			})
-			statSnap, err := os.Lstat(snapshotFilePath)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
-						return s == snapshotFilePath
-					})
-				}
-			} else {
-				snapshotFile = &data.SnapshotFile{
-					Path:         snapshotFilePath,
-					OriginalPath: realFilePath,
-					Stat:         statSnap,
-					Snapshot:     snapshotEntry.Snapshot,
-				}
-			}
 		}
 
 		var snapshotFiles []*data.SnapshotFile
@@ -403,48 +395,59 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		fileEntries = append(fileEntries, fileBrowserEntry)
 	}
 
-	// add remaining entries for files which are only present in the snapshot
-	for _, snapshotFilePath := range snapshotFilePaths {
-		_, snapshotFileName := path2.Split(snapshotFilePath)
+	if snapshotEntry != nil {
+		// add remaining entries for files which are only present in the snapshot
+		for _, snapshotFilePath := range snapshotFilePaths {
+			_, snapshotFileName := path2.Split(snapshotFilePath)
 
-		statSnap, err := os.Lstat(snapshotFilePath)
-		if err != nil {
-			fileBrowser.showError(err)
-			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
-			continue
+			statSnap, err := os.Lstat(snapshotFilePath)
+			if err != nil {
+				fileBrowser.showError(err)
+				// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
+				continue
+			}
+
+			entryType := fileBrowser.determineEntryType(snapshotFilePath)
+
+			snapshotFile := &data.SnapshotFile{
+				Path:         snapshotFilePath,
+				OriginalPath: snapshotEntry.Snapshot.GetRealPath(snapshotFilePath),
+				Stat:         statSnap,
+				Snapshot:     snapshotEntry.Snapshot,
+			}
+
+			snapshotFiles := []*data.SnapshotFile{snapshotFile}
+			fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles, entryType))
 		}
-
-		entryType := fileBrowser.determineEntryType(snapshotFilePath)
-
-		snapshotFile := &data.SnapshotFile{
-			Path:         snapshotFilePath,
-			OriginalPath: snapshotEntry.Snapshot.GetRealPath(snapshotFilePath),
-			Stat:         statSnap,
-			Snapshot:     snapshotEntry.Snapshot,
-		}
-
-		snapshotFiles := []*data.SnapshotFile{snapshotFile}
-		fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles, entryType))
 	}
 
 	for _, entry := range fileEntries {
-		// figure out status_message
-		var status = diff_state.Equal
-		if fileBrowser.currentSnapshot == nil {
-			status = diff_state.Unknown
-		} else if entry.HasSnapshot() && !entry.HasReal() {
-			// file only exists in snapshot but not in real
-			status = diff_state.Deleted
-		} else if !entry.HasSnapshot() && entry.HasReal() {
-			// file only exists in real but not in snapshot
-			status = diff_state.Added
-		} else if entry.SnapshotFiles[0].HasChanged() {
-			status = diff_state.Modified
-		}
-		entry.DiffState = status
+		entry.DiffState = fileBrowser.determineDiffState(entry, snapshotEntry)
 	}
 
 	return fileEntries
+}
+
+func (fileBrowser *FileBrowserComponent) computeSnapshotEntryForRealPathIfExists(
+	realFilePath string,
+	snapshotPathOfRealFile string,
+	snapshot *zfs.Snapshot,
+) *data.SnapshotFile {
+	var snapshotFile *data.SnapshotFile = nil
+	snapshotFilePath := snapshotPathOfRealFile
+	statSnap, err := os.Lstat(snapshotFilePath)
+	if err != nil {
+		logging.Error("Cannot stat snapshot file: " + err.Error())
+		return nil
+	}
+
+	snapshotFile = &data.SnapshotFile{
+		Path:         snapshotFilePath,
+		OriginalPath: realFilePath,
+		Stat:         statSnap,
+		Snapshot:     snapshot,
+	}
+	return snapshotFile
 }
 
 // determineEntryType determines whether the given path is a file, directory or symlink.
@@ -459,6 +462,26 @@ func (fileBrowser *FileBrowserComponent) determineEntryType(path string) data.Fi
 		entryType = data.File
 	}
 	return entryType
+}
+
+func (fileBrowser *FileBrowserComponent) determineDiffState(
+	entry *data.FileBrowserEntry,
+	snapshotEntry *data.SnapshotBrowserEntry,
+) diff_state.DiffState {
+	// figure out status_message
+	var status = diff_state.Equal
+	if snapshotEntry == nil {
+		status = diff_state.Unknown
+	} else if entry.HasSnapshot() && !entry.HasReal() {
+		// file only exists in snapshot but not in real
+		status = diff_state.Deleted
+	} else if !entry.HasSnapshot() && entry.HasReal() {
+		// file only exists in real but not in snapshot
+		status = diff_state.Added
+	} else if entry.SnapshotFiles[0].HasChanged() {
+		status = diff_state.Modified
+	}
+	return status
 }
 
 func (fileBrowser *FileBrowserComponent) goUp() {
