@@ -266,7 +266,7 @@ func (fileBrowser *FileBrowserComponent) computeSnapshotEntryForRealPathIfExists
 	snapshotFilePath := snapshotPathOfRealFile
 	statSnap, err := os.Lstat(snapshotFilePath)
 	if err != nil {
-		logging.Error("Cannot stat snapshot file: " + err.Error())
+		logging.Error("Cannot stat snapshot file: %v", err.Error())
 		return nil
 	}
 
