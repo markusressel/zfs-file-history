@@ -7,6 +7,7 @@ on:
 
 jobs:
   publish-aur-git-package:
+    if: false
     name: Update AUR *-git package revision
     runs-on: ubuntu-latest
     steps:
