@@ -5,7 +5,7 @@ go 1.24.7
 require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/gdamore/tcell/v2 v2.13.2
+	github.com/gdamore/tcell/v2 v2.13.4
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs/v4 v4.0.0
 	github.com/mitchellh/go-homedir v1.1.0
