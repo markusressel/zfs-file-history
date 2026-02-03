@@ -9,7 +9,7 @@ require (
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
 	github.com/mistifyio/go-zfs/v4 v4.0.0
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/navidys/tvxwidgets v0.12.1
+	github.com/navidys/tvxwidgets v0.13.0
 	github.com/oklog/run v1.2.0
 	github.com/pterm/pterm v0.12.82
 	github.com/rivo/tview v0.42.0
