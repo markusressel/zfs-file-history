@@ -60,7 +60,7 @@ type FileBrowserEntry struct {
 	DiffState     diff_state.DiffState
 }
 
-func (entry *FileBrowserEntry) TableRowId() string {
+func (entry FileBrowserEntry) TableRowId() string {
 	return entry.GetRealPath()
 }
 
