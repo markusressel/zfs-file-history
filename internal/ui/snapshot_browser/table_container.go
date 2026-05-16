@@ -61,6 +61,8 @@ func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *da
 		case columnRatio:
 			ratio := entry.Snapshot.Properties.CompressionRatio
 			cellText = fmt.Sprintf("%.2fx", ratio)
+		case columnClones:
+			cellText = fmt.Sprintf("%d", entry.Snapshot.GetClones())
 		}
 		cell := tview.NewTableCell(cellText).
 			SetTextColor(cellColor).SetAlign(cellAlign)
@@ -90,6 +92,8 @@ func createSnapshotBrowserTableSortFunction(entries []*data.SnapshotBrowserEntry
 			ratioA := a.Snapshot.Properties.CompressionRatio
 			ratioB := b.Snapshot.Properties.CompressionRatio
 			result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))
+		case columnClones:
+			result = int(b.Snapshot.GetClones() - a.Snapshot.GetClones())
 		}
 		if inverted {
 			result *= -1
