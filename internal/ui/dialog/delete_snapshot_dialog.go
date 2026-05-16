@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"fmt"
-	"slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
 
@@ -40,17 +39,7 @@ func (d *DeleteSnapshotDialog) createLayout() {
 	textDescription := fmt.Sprintf("Destroy '%s'?", d.snapshot.Snapshot.Name)
 	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
-	dialogOptions := []*DialogOption{
-		{
-			Id:   DialogCloseActionId,
-			Name: "Cancel",
-		},
-	}
-
-	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-		Id:   DeleteSnapshotDialogDeleteSnapshotActionId,
-		Name: "Destroy",
-	})
+	dialogOptions := buildConfirmDialogOptions(DeleteSnapshotDialogDeleteSnapshotActionId, "Destroy", true)
 
 	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
 

@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"slices"
 	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -22,6 +23,21 @@ type DialogActionId int
 type DialogOption struct {
 	Id   DialogActionId
 	Name string
+}
+
+// buildConfirmDialogOptions creates a standard [confirm, cancel] option list.
+func buildConfirmDialogOptions(confirmActionId DialogActionId, confirmLabel string, includeConfirm bool) []*DialogOption {
+	options := []*DialogOption{{
+		Id:   DialogCloseActionId,
+		Name: "Cancel",
+	}}
+	if includeConfirm {
+		options = slices.Insert(options, 0, &DialogOption{
+			Id:   confirmActionId,
+			Name: confirmLabel,
+		})
+	}
+	return options
 }
 
 // createModal creates a [tview.Flex] layout for a modal dialog with the given title and content.
