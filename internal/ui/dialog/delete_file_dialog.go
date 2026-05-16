@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"fmt"
-	"slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
 
@@ -40,19 +39,7 @@ func (d *DeleteFileDialog) createLayout() {
 	textDescription := fmt.Sprintf("Delete '%s'?", d.file.Name)
 	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
-	dialogOptions := []*DialogOption{
-		{
-			Id:   DialogCloseActionId,
-			Name: "Cancel",
-		},
-	}
-
-	if d.file.HasReal() {
-		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-			Id:   DeleteFileDialogDeleteFileActionId,
-			Name: "Delete",
-		})
-	}
+	dialogOptions := buildConfirmDialogOptions(DeleteFileDialogDeleteFileActionId, "Delete", d.file.HasReal())
 
 	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
 

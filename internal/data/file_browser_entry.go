@@ -60,7 +60,7 @@ type FileBrowserEntry struct {
 	DiffState     diff_state.DiffState
 }
 
-func (entry FileBrowserEntry) TableRowId() string {
+func (entry *FileBrowserEntry) TableRowId() string {
 	return entry.GetRealPath()
 }
 
@@ -88,9 +88,9 @@ func (entry *FileBrowserEntry) GetRealPath() string {
 func (entry *FileBrowserEntry) GetStat() os.FileInfo {
 	if entry.HasReal() {
 		return entry.RealFile.Stat
-	} else {
-		return entry.SnapshotFiles[0].Stat
 	}
+
+	return entry.SnapshotFiles[0].Stat
 }
 
 // HasSnapshot indicated whether a snapshot file exists on the dataset for this entry.

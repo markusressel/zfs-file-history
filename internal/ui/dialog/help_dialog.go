@@ -48,32 +48,29 @@ func (p *HelpPage) createLayout() {
 		{Key: "ctrl+q", Value: "Quits zfs-file-history"},
 	}
 
-	columns, rows := 2, len(helpTableEntries)
-	for row := 0; row < rows; row++ {
-		for column := 0; column < columns; column++ {
-			entry := helpTableEntries[row]
-
-			for col := 0; col < columns; col++ {
-				var text string
-				var cellAlignment int
-				var cellColor = tcell.ColorWhite
-				if col == 0 && entry != emptyEntry {
-					text = fmt.Sprintf("%s:", entry.Key)
-					cellAlignment = tview.AlignRight
-					cellColor = theme.Colors.Layout.Table.Header
-				} else {
-					text = entry.Value
-					cellAlignment = tview.AlignLeft
-				}
-				helpTable.SetCell(
-					row, col,
-					tview.NewTableCell(text).SetAlign(cellAlignment).SetTextColor(cellColor),
-				)
-			}
-		}
+	for row, entry := range helpTableEntries {
+		setHelpTableRow(helpTable, row, entry)
 	}
 
 	p.layout = createModal(" Help ", helpTable, 60, 14)
+}
+
+func setHelpTableRow(helpTable *tview.Table, row int, entry *TableEntry) {
+	keyText := ""
+	keyColor := tcell.ColorWhite
+	if entry != emptyEntry {
+		keyText = fmt.Sprintf("%s:", entry.Key)
+		keyColor = theme.Colors.Layout.Table.Header
+	}
+
+	helpTable.SetCell(row, 0, tview.NewTableCell(keyText).
+		SetAlign(tview.AlignRight).
+		SetTextColor(keyColor),
+	)
+	helpTable.SetCell(row, 1, tview.NewTableCell(entry.Value).
+		SetAlign(tview.AlignLeft).
+		SetTextColor(tcell.ColorWhite),
+	)
 }
 
 func (p *HelpPage) GetLayout() *tview.Flex {
