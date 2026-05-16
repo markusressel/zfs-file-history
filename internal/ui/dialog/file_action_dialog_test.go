@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"testing"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 
@@ -100,10 +101,45 @@ func TestBuildFileDialogOptions_OnlyRealFile(t *testing.T) {
 	)
 }
 
+func TestBuildFileDialogOptions_DeletedFile_AlwaysHasCloseLast(t *testing.T) {
+	entry := &data.FileBrowserEntry{
+		Name: "deleted-in-live.txt",
+		Type: data.File,
+		SnapshotFiles: []*data.SnapshotFile{
+			{},
+		},
+		DiffState: diff_state.Deleted,
+	}
+
+	options := buildFileDialogOptions(entry, false)
+
+	assert.Equal(t,
+		[]DialogActionId{
+			FileDialogCreateSnapshotDialogActionId,
+			FileDialogRestoreFileActionId,
+			DialogCloseActionId,
+		},
+		optionIds(options),
+	)
+}
+
 func optionIds(options []*DialogOption) []DialogActionId {
 	result := make([]DialogActionId, 0, len(options))
 	for _, option := range options {
 		result = append(result, option.Id)
 	}
 	return result
+}
+
+func TestFileActionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
+	d := &FileActionDialog{actionChannel: make(chan DialogActionId, 1)}
+
+	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: "Close"})
+
+	select {
+	case action := <-d.actionChannel:
+		assert.Equal(t, DialogCloseActionId, action)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected close action to be emitted")
+	}
 }

@@ -101,6 +101,7 @@ func (d *MultiSnapshotActionDialog) selectAction(option *DialogOption) {
 	case MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
 		d.DestroyAllSnapshotsRecursively()
 	case DialogCloseActionId:
+		d.Close()
 	default:
 		d.Close()
 	}

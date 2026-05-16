@@ -103,7 +103,21 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 		Name: "Create Snapshot",
 	})
 
-	return dialogOptions
+	return ensureDialogCloseIsLast(dialogOptions)
+}
+
+func ensureDialogCloseIsLast(options []*DialogOption) []*DialogOption {
+	closeIndex := slices.IndexFunc(options, func(option *DialogOption) bool {
+		return option != nil && option.Id == DialogCloseActionId
+	})
+	if closeIndex < 0 || closeIndex == len(options)-1 {
+		return options
+	}
+
+	closeOption := options[closeIndex]
+	result := slices.Delete(options, closeIndex, closeIndex+1)
+	result = append(result, closeOption)
+	return result
 }
 
 func DiffBinExists() bool {
@@ -147,6 +161,7 @@ func (d *FileActionDialog) selectAction(option *DialogOption) {
 	case FileDialogCreateSnapshotDialogActionId:
 		d.CreateSnapshot()
 	case DialogCloseActionId:
+		d.Close()
 	default:
 		d.Close()
 	}
