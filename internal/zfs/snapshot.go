@@ -428,6 +428,7 @@ type SnapshotProperties struct {
 	Used             uint64
 	Referenced       uint64
 	CompressionRatio float64
+	Clones           uint64
 }
 
 func (s *Snapshot) FetchDetails() {
@@ -436,6 +437,7 @@ func (s *Snapshot) FetchDetails() {
 		Used:             s.GetUsed(),
 		Referenced:       s.GetReferenced(),
 		CompressionRatio: s.GetRatio(),
+		Clones:           s.GetClones(),
 	}
 }
 
