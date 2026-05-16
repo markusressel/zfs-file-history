@@ -19,11 +19,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-type SelectionInfo[T any] struct {
-	Index int
-	Entry *T
-}
-
 type SnapshotBrowserComponent struct {
 	eventCallback func(event SnapshotBrowserEvent)
 
@@ -38,7 +33,7 @@ type SnapshotBrowserComponent struct {
 	currentSnapshots []*zfs.Snapshot
 	currentFileEntry *data.FileBrowserEntry
 
-	selectedSnapshotMap map[string]*SelectionInfo[data.SnapshotBrowserEntry]
+	selectedSnapshotMemory *uiutil.SelectionMemory[data.SnapshotBrowserEntry]
 
 	selectedSnapshotChangedCallback func(snapshot *data.SnapshotBrowserEntry)
 }
@@ -84,7 +79,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		eventCallback:                   func(event SnapshotBrowserEvent) {},
 		application:                     application,
 		currentSnapshots:                []*zfs.Snapshot{},
-		selectedSnapshotMap:             map[string]*SelectionInfo[data.SnapshotBrowserEntry]{},
+		selectedSnapshotMemory:          uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
 		selectedSnapshotChangedCallback: func(snapshot *data.SnapshotBrowserEntry) {},
 	}
 
@@ -260,19 +255,15 @@ func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(sel
 	if snapshotBrowser.hostDataset == nil {
 		return
 	}
-	snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path] = &SelectionInfo[data.SnapshotBrowserEntry]{
-		Index: slices.Index(snapshotBrowser.GetEntries(), selection),
-		Entry: selection,
-	}
+	snapshotBrowser.selectedSnapshotMemory.Remember(
+		snapshotBrowser.hostDataset.Path,
+		slices.Index(snapshotBrowser.GetEntries(), selection),
+		selection,
+	)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *SelectionInfo[data.SnapshotBrowserEntry] {
-	selectionInfo, ok := snapshotBrowser.selectedSnapshotMap[path]
-	if !ok {
-		return nil
-	} else {
-		return selectionInfo
-	}
+func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *uiutil.SelectionInfo[data.SnapshotBrowserEntry] {
+	return snapshotBrowser.selectedSnapshotMemory.Get(path)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
@@ -451,19 +442,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
-	layout := d.GetLayout()
-	go func() {
-		for {
-			action := <-d.GetActionChannel()
-			if actionHandler(action) {
-				return
-			}
-			if action == dialog.DialogCloseActionId {
-				snapshotBrowser.layout.RemovePage(d.GetName())
-			}
-		}
-	}()
-	snapshotBrowser.layout.AddPage(d.GetName(), layout, true, true)
+	dialog.ShowDialogOnPages(snapshotBrowser.application, snapshotBrowser.layout, d, actionHandler, nil)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) (name string, err error) {

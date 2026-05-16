@@ -6,7 +6,6 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -41,10 +40,6 @@ func (d *DeleteFileDialog) createLayout() {
 	textDescription := fmt.Sprintf("Delete '%s'?", d.file.Name)
 	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
-	optionTable := tview.NewTable()
-	optionTable.SetSelectable(true, false)
-	optionTable.Select(0, 0)
-
 	dialogOptions := []*DialogOption{
 		{
 			Id:   DialogCloseActionId,
@@ -59,58 +54,14 @@ func (d *DeleteFileDialog) createLayout() {
 		})
 	}
 
-	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		switch action {
-		case tview.MouseLeftDoubleClick:
-			go func() {
-				row, _ := optionTable.GetSelection()
-				dialogOption := dialogOptions[row]
-				d.selectAction(dialogOption)
-				d.application.Draw()
-			}()
-			return action, nil
-		}
-		return action, event
-	})
-
-	_, rows := 1, len(dialogOptions)
-	fileIndex := 0
-	for row := 0; row < rows; row++ {
-		columnTitle := dialogOptions[row]
-
-		var cellColor = tcell.ColorWhite
-		var cellText string
-		var cellAlignment = tview.AlignLeft
-		var cellExpansion = 1
-
-		cellText = columnTitle.Name
-
-		optionTable.SetCell(row, 0,
-			tview.NewTableCell(cellText).
-				SetTextColor(cellColor).
-				SetAlign(cellAlignment).
-				SetExpansion(cellExpansion),
-		)
-		fileIndex = (fileIndex + 1) % rows
-	}
+	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	dialogContent.AddItem(textDescriptionView, 0, 1, false)
 	dialogContent.AddItem(optionTable, 0, 1, true)
 
 	dialog := createModal(dialogTitle, dialogContent, 50, 6)
-	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape {
-			d.Close()
-			return nil
-		} else if event.Key() == tcell.KeyEnter {
-			row, _ := optionTable.GetSelection()
-			dialogOption := dialogOptions[row]
-			d.selectAction(dialogOption)
-			return nil
-		}
-		return event
-	})
+	dialog.SetInputCapture(createOptionDialogInputCapture(optionTable, dialogOptions, d.selectAction, d.Close))
 	d.layout = dialog
 }
 
@@ -127,9 +78,7 @@ func (d *DeleteFileDialog) GetActionChannel() <-chan DialogActionId {
 }
 
 func (d *DeleteFileDialog) Close() {
-	go func() {
-		d.actionChannel <- DialogCloseActionId
-	}()
+	emitDialogActions(d.actionChannel, DialogCloseActionId)
 }
 
 func (d *DeleteFileDialog) selectAction(option *DialogOption) {
@@ -143,8 +92,5 @@ func (d *DeleteFileDialog) selectAction(option *DialogOption) {
 }
 
 func (d *DeleteFileDialog) DeleteFile() {
-	go func() {
-		d.actionChannel <- DialogCloseActionId
-		d.actionChannel <- DeleteFileDialogDeleteFileActionId
-	}()
+	emitDialogActions(d.actionChannel, DialogCloseActionId, DeleteFileDialogDeleteFileActionId)
 }

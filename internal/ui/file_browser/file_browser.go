@@ -25,11 +25,6 @@ const (
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
 
-type FileBrowserSelectionInfo struct {
-	Index int
-	Entry *data.FileBrowserEntry
-}
-
 var (
 	columnSize = &table.Column{
 		Id:        0,
@@ -81,7 +76,7 @@ type FileBrowserComponent struct {
 
 	statusCallback func(message *status_message.StatusMessage)
 
-	selectionIndexMap   map[string]FileBrowserSelectionInfo
+	selectionMemory     *uiutil.SelectionMemory[data.FileBrowserEntry]
 	fileWatcher         *util.FileWatcher
 	pathChangedCallback func(path string)
 }
@@ -94,7 +89,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 
 		application: application,
 
-		selectionIndexMap: map[string]FileBrowserSelectionInfo{},
+		selectionMemory: uiutil.NewSelectionMemory[data.FileBrowserEntry](),
 
 		tableContainer:               tableContainer,
 		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
@@ -476,26 +471,15 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
 func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
 	selectedEntry := fileBrowser.tableContainer.GetSelectedEntry()
 	if selectedEntry == nil {
-		fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
-			Index: -1,
-			Entry: nil,
-		}
+		fileBrowser.selectionMemory.Remember(fileBrowser.path, -1, nil)
 	} else {
 		index := slices.Index(fileBrowser.GetEntries(), selectedEntry)
-		fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
-			Index: index,
-			Entry: selectedEntry,
-		}
+		fileBrowser.selectionMemory.Remember(fileBrowser.path, index, selectedEntry)
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) getRememberedSelectionInfo(path string) *FileBrowserSelectionInfo {
-	selectionInfo, ok := fileBrowser.selectionIndexMap[path]
-	if !ok {
-		return nil
-	} else {
-		return &selectionInfo
-	}
+func (fileBrowser *FileBrowserComponent) getRememberedSelectionInfo(path string) *uiutil.SelectionInfo[data.FileBrowserEntry] {
+	return fileBrowser.selectionMemory.Get(path)
 }
 
 func (fileBrowser *FileBrowserComponent) GetSelection() *data.FileBrowserEntry {
@@ -531,20 +515,7 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 }
 
 func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
-	layout := d.GetLayout()
-	go func() {
-		for {
-			action := <-d.GetActionChannel()
-			if actionHandler(action) {
-				return
-			}
-			if action == dialog.DialogCloseActionId {
-				fileBrowser.layout.RemovePage(d.GetName())
-				fileBrowser.application.Draw()
-			}
-		}
-	}()
-	fileBrowser.layout.AddPage(d.GetName(), layout, true, true)
+	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, actionHandler, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
