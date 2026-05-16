@@ -2,13 +2,14 @@ package table
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"maps"
 	"slices"
 	"sync"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // RowSelectionTableEntry is an interface that must be implemented by entries used in a RowSelectionTable.
@@ -140,15 +141,17 @@ func (c *RowSelectionTable[T]) createLayout() {
 
 		// current selection is on HEADER row
 		if c.GetSelectedEntry() == nil {
-			if key == tcell.KeyRight {
+			switch key {
+			case tcell.KeyRight:
 				c.nextSortOrder()
 				return nil
-			} else if key == tcell.KeyLeft {
+			case tcell.KeyLeft:
 				c.previousSortOrder()
 				return nil
-			} else if key == tcell.KeyEnter {
+			case tcell.KeyEnter:
 				c.toggleSortDirection()
 				return nil
+			default:
 			}
 		}
 

@@ -1,6 +1,8 @@
 package theme
 
 import (
+	"time"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -66,6 +68,9 @@ var (
 		Layout: LayoutStyle{
 			TitleAlign:       tview.AlignCenter,
 			DialogTitleAlign: tview.AlignCenter,
+		},
+		Format: FormatStyle{
+			DateTime: time.DateTime,
 		},
 	}
 )

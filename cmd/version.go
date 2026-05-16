@@ -1,9 +1,10 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal/logging"
+
+	"github.com/spf13/cobra"
 )
 
 var long bool

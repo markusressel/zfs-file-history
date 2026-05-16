@@ -3,14 +3,14 @@ package zfs
 import (
 	"errors"
 	"fmt"
-	golibzfs "github.com/kraudcloud/go-libzfs"
-	gozfs "github.com/mistifyio/go-zfs"
 	"os"
 	path2 "path"
 	"strconv"
-	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
+
+	golibzfs "github.com/kraudcloud/go-libzfs"
+	gozfs "github.com/mistifyio/go-zfs/v4"
 )
 
 type Dataset struct {
@@ -28,9 +28,7 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	}
 
 	ds := findDataset(allDatasets, path)
-	if dataset != nil {
-		dataset.rawGolibzfsData = ds
-	}
+	dataset.rawGolibzfsData = ds
 
 	datasets, err := gozfs.Filesystems(path)
 	if err != nil {
@@ -53,7 +51,7 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 // FindHostDataset returns the root path of the dataset containing this path
 func FindHostDataset(path string) (*Dataset, error) {
 	if path == "" {
-		return nil, errors.New("Cannot find host dataset for empty path")
+		return nil, errors.New("cannot find host dataset for empty path")
 	}
 
 	var currentPath = path
@@ -64,7 +62,7 @@ func FindHostDataset(path string) (*Dataset, error) {
 			old := currentPath
 			currentPath = path2.Dir(currentPath)
 			if old == currentPath {
-				return nil, errors.New(fmt.Sprintf("Could not find dataset for path: %s", path))
+				return nil, fmt.Errorf("could not find dataset for path: %s", path)
 			} else {
 				continue
 			}
@@ -82,6 +80,8 @@ func (dataset *Dataset) GetSnapshotsDir() string {
 	return path2.Join(dataset.HiddenZfsPath, "snapshot")
 }
 
+// GetSnapshots returns all snapshots for this dataset
+// Note: depending on the amount of snapshots, this can be a slow operation.
 func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	var result []*Snapshot
 
@@ -92,21 +92,13 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	for _, file := range snapshotDirs {
 		_, name := path2.Split(file)
 
-		var creationDate time.Time
 		s := findSnapshot(AllSnapshots[dataset.GetName()], name)
 		if s != nil {
-			creationDateProperty := s.Properties[golibzfs.DatasetPropCreation]
-			creationDateTimestamp, err := strconv.ParseInt(creationDateProperty.Value, 10, 64)
-			if err != nil {
-				logging.Error(err.Error())
-			} else {
-				creationDate = time.Unix(creationDateTimestamp, 0)
-			}
 		} else {
 			logging.Warning("Could not find snapshot %s on dataset %s", name, dataset.GetName())
 		}
 
-		result = append(result, NewSnapshot(name, file, dataset, &creationDate, s))
+		result = append(result, NewSnapshot(name, file, dataset, s))
 	}
 
 	return result, nil
@@ -119,7 +111,7 @@ func (dataset *Dataset) GetName() string {
 	if dataset.rawGolibzfsData != nil {
 		nameProperty, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropName)
 		if err != nil {
-			logging.Error(err.Error())
+			logging.Error("Could not get name property for dataset %s: %s", dataset.Path, err.Error())
 		} else {
 			return nameProperty.Value
 		}

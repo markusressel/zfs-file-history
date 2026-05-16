@@ -3,34 +3,27 @@ package file_browser
 import (
 	"errors"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"os"
 	path2 "path"
 	"slices"
-	"sort"
 	"strings"
-	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
-	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
+	"zfs-file-history/internal/zfs"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (
 	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
-
-type FileBrowserSelectionInfo struct {
-	Index int
-	Entry *data.FileBrowserEntry
-}
 
 var (
 	columnSize = &table.Column{
@@ -83,189 +76,20 @@ type FileBrowserComponent struct {
 
 	statusCallback func(message *status_message.StatusMessage)
 
-	selectionIndexMap   map[string]FileBrowserSelectionInfo
+	selectionMemory     *uiutil.SelectionMemory[data.FileBrowserEntry]
 	fileWatcher         *util.FileWatcher
 	pathChangedCallback func(path string)
 }
 
 func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
-	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
-		var status = "="
-		var statusColor = tcell.ColorGray
-		switch entry.DiffState {
-		case diff_state.Equal:
-			status = "="
-			statusColor = theme.Colors.FileBrowser.Table.State.Equal
-		case diff_state.Deleted:
-			status = "-"
-			statusColor = theme.Colors.FileBrowser.Table.State.Deleted
-		case diff_state.Added:
-			status = "+"
-			statusColor = theme.Colors.FileBrowser.Table.State.Added
-		case diff_state.Modified:
-			status = "≠"
-			statusColor = theme.Colors.FileBrowser.Table.State.Modified
-		case diff_state.Unknown:
-			status = "N/A"
-			statusColor = theme.Colors.FileBrowser.Table.State.Unknown
-		}
-
-		var typeCellText = "?"
-		var typeCellColor = tcell.ColorGray
-		switch entry.Type {
-		case data.File:
-			typeCellText = "F"
-		case data.Directory:
-			typeCellText = "D"
-			typeCellColor = theme.Colors.Layout.Table.Header
-		case data.Link:
-			typeCellText = "L"
-			typeCellColor = tcell.ColorYellow
-		}
-
-		for _, column := range columns {
-			var cellColor = tcell.ColorWhite
-			var cellText string
-			var cellAlignment = tview.AlignLeft
-			var cellExpansion = 0
-
-			if column == columnName {
-				cellText = entry.Name
-				if entry.GetStat().IsDir() {
-					cellText = fmt.Sprintf("/%s", cellText)
-				}
-				cellColor = statusColor
-			} else if column == columnType {
-				cellText = typeCellText
-				cellColor = typeCellColor
-				cellAlignment = tview.AlignCenter
-			} else if column == columnDiff {
-				cellText = status
-				cellColor = statusColor
-				cellAlignment = tview.AlignCenter
-			} else if column == columnDateTime {
-				cellText = entry.GetStat().ModTime().Format(time.DateTime)
-
-				switch entry.DiffState {
-				case diff_state.Added, diff_state.Deleted:
-					cellColor = statusColor
-				case diff_state.Modified:
-					if entry.RealFile.Stat.ModTime() != entry.SnapshotFiles[0].Stat.ModTime() {
-						cellColor = statusColor
-					} else {
-						cellColor = tcell.ColorWhite
-					}
-				default:
-					cellColor = tcell.ColorGray
-				}
-			} else if column == columnSize {
-				cellText = humanize.IBytes(uint64(entry.GetStat().Size()))
-				if strings.HasSuffix(cellText, " B") {
-					withoutSuffix := strings.TrimSuffix(cellText, " B")
-					cellText = fmt.Sprintf("%s   B", withoutSuffix)
-				}
-				if len(cellText) < 10 {
-					cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
-				}
-
-				switch entry.DiffState {
-				case diff_state.Added, diff_state.Deleted:
-					cellColor = statusColor
-				case diff_state.Modified:
-					if entry.RealFile.Stat.Size() != entry.SnapshotFiles[0].Stat.Size() {
-						cellColor = statusColor
-					} else {
-						cellColor = tcell.ColorWhite
-					}
-				default:
-					cellColor = tcell.ColorGray
-				}
-
-				cellAlignment = tview.AlignRight
-			} else {
-				panic("Unknown column")
-			}
-
-			cell := tview.NewTableCell(cellText).
-				SetTextColor(cellColor).
-				SetAlign(cellAlignment).
-				SetExpansion(cellExpansion)
-			cells = append(cells, cell)
-		}
-
-		return cells
-	}
-
-	tableEntrySortFunction := func(entries []*data.FileBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.FileBrowserEntry {
-		sort.SliceStable(entries, func(i, j int) bool {
-			a := entries[i]
-			b := entries[j]
-
-			result := 0
-			switch columnToSortBy {
-			case columnName:
-				result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
-			case columnDateTime:
-				result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
-			case columnType:
-				result = int(b.Type - a.Type)
-			case columnSize:
-				result = int(a.GetStat().Size() - b.GetStat().Size())
-			case columnDiff:
-				result = int(b.DiffState - a.DiffState)
-			}
-
-			if inverted {
-				result *= -1
-			}
-
-			if result != 0 {
-				if result <= 0 {
-					return true
-				} else {
-					return false
-				}
-			}
-
-			result = int(b.Type - a.Type)
-			if result != 0 {
-				if result <= 0 {
-					return true
-				} else {
-					return false
-				}
-			}
-
-			result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
-			if result != 0 {
-				if result <= 0 {
-					return true
-				} else {
-					return false
-				}
-			}
-
-			if result <= 0 {
-				return true
-			} else {
-				return false
-			}
-		})
-		return entries
-	}
-
-	tableContainer := table.NewTableContainer[data.FileBrowserEntry](
-		application,
-		toTableCellsFunction,
-		tableEntrySortFunction,
-	)
+	tableContainer := createFileBrowserTable(application)
 
 	fileBrowser := &FileBrowserComponent{
 		eventCallback: func(event FileBrowserEvent) {},
 
 		application: application,
 
-		selectionIndexMap: map[string]FileBrowserSelectionInfo{},
+		selectionMemory: uiutil.NewSelectionMemory[data.FileBrowserEntry](),
 
 		tableContainer:               tableContainer,
 		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
@@ -280,13 +104,14 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if fileBrowser.GetSelection() != nil {
-			if key == tcell.KeyRight {
+			switch {
+			case key == tcell.KeyRight:
 				fileBrowser.enterFileEntry(fileBrowser.GetSelection())
 				return nil
-			} else if key == tcell.KeyEnter {
+			case key == tcell.KeyEnter:
 				fileBrowser.openActionDialog(fileBrowser.GetSelection())
 				return nil
-			} else if event.Rune() == 'd' {
+			case event.Rune() == 'd':
 				currentSelection := fileBrowser.GetSelection()
 				if currentSelection != nil && currentSelection.HasReal() {
 					fileBrowser.openDeleteDialog(currentSelection)
@@ -363,38 +188,20 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 			continue
 		}
 
-		var entryType data.FileBrowserEntryType
-
-		lstat, err := os.Lstat(realFilePath)
-		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
-			entryType = data.Link
-		} else if lstat.IsDir() {
-			entryType = data.Directory
-		} else {
-			entryType = data.File
-		}
-
+		entryType := fileBrowser.determineEntryType(realFilePath)
 		var snapshotFile *data.SnapshotFile = nil
 		if snapshotEntry != nil {
-			snapshotFilePath := snapshotEntry.Snapshot.GetSnapshotPath(realFilePath)
+			snapshot := snapshotEntry.Snapshot
+			snapshotPathOfRealFile := snapshot.GetSnapshotPath(realFilePath)
+			snapshotFile = fileBrowser.computeSnapshotEntryForRealPathIfExists(
+				realFilePath,
+				snapshotPathOfRealFile,
+				snapshot,
+			)
+			// remove from snapshotFilePaths so we don't add it again later
 			snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
-				return s == snapshotFilePath
+				return s == snapshotPathOfRealFile
 			})
-			statSnap, err := os.Lstat(snapshotFilePath)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					snapshotFilePaths = slices.DeleteFunc(snapshotFilePaths, func(s string) bool {
-						return s == snapshotFilePath
-					})
-				}
-			} else {
-				snapshotFile = &data.SnapshotFile{
-					Path:         snapshotFilePath,
-					OriginalPath: realFilePath,
-					Stat:         statSnap,
-					Snapshot:     snapshotEntry.Snapshot,
-				}
-			}
 		}
 
 		var snapshotFiles []*data.SnapshotFile
@@ -412,56 +219,93 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		fileEntries = append(fileEntries, fileBrowserEntry)
 	}
 
-	// add remaining entries for files which are only present in the snapshot
-	for _, snapshotFilePath := range snapshotFilePaths {
-		_, snapshotFileName := path2.Split(snapshotFilePath)
+	if snapshotEntry != nil {
+		// add remaining entries for files which are only present in the snapshot
+		for _, snapshotFilePath := range snapshotFilePaths {
+			_, snapshotFileName := path2.Split(snapshotFilePath)
 
-		statSnap, err := os.Lstat(snapshotFilePath)
-		if err != nil {
-			fileBrowser.showError(err)
-			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
-			continue
+			statSnap, err := os.Lstat(snapshotFilePath)
+			if err != nil {
+				fileBrowser.showError(err)
+				// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
+				continue
+			}
+
+			entryType := fileBrowser.determineEntryType(snapshotFilePath)
+
+			snapshotFile := &data.SnapshotFile{
+				Path:         snapshotFilePath,
+				OriginalPath: snapshotEntry.Snapshot.GetRealPath(snapshotFilePath),
+				Stat:         statSnap,
+				Snapshot:     snapshotEntry.Snapshot,
+			}
+
+			snapshotFiles := []*data.SnapshotFile{snapshotFile}
+			fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles, entryType))
 		}
-
-		var entryType data.FileBrowserEntryType
-		lstat, err := os.Lstat(snapshotFilePath)
-		if err == nil && lstat.Mode().Type() == os.ModeSymlink {
-			entryType = data.Link
-		} else if lstat.IsDir() {
-			entryType = data.Directory
-		} else {
-			entryType = data.File
-		}
-
-		snapshotFile := &data.SnapshotFile{
-			Path:         snapshotFilePath,
-			OriginalPath: snapshotEntry.Snapshot.GetRealPath(snapshotFilePath),
-			Stat:         statSnap,
-			Snapshot:     snapshotEntry.Snapshot,
-		}
-
-		snapshotFiles := []*data.SnapshotFile{snapshotFile}
-		fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles, entryType))
 	}
 
 	for _, entry := range fileEntries {
-		// figure out status_message
-		var status = diff_state.Equal
-		if fileBrowser.currentSnapshot == nil {
-			status = diff_state.Unknown
-		} else if entry.HasSnapshot() && !entry.HasReal() {
-			// file only exists in snapshot but not in real
-			status = diff_state.Deleted
-		} else if !entry.HasSnapshot() && entry.HasReal() {
-			// file only exists in real but not in snapshot
-			status = diff_state.Added
-		} else if entry.SnapshotFiles[0].HasChanged() {
-			status = diff_state.Modified
-		}
-		entry.DiffState = status
+		entry.DiffState = fileBrowser.determineDiffState(entry, snapshotEntry)
 	}
 
 	return fileEntries
+}
+
+func (fileBrowser *FileBrowserComponent) computeSnapshotEntryForRealPathIfExists(
+	realFilePath string,
+	snapshotPathOfRealFile string,
+	snapshot *zfs.Snapshot,
+) *data.SnapshotFile {
+	var snapshotFile *data.SnapshotFile = nil
+	snapshotFilePath := snapshotPathOfRealFile
+	statSnap, err := os.Lstat(snapshotFilePath)
+	if err != nil {
+		logging.Error("Cannot stat snapshot file: %v", err.Error())
+		return nil
+	}
+
+	snapshotFile = &data.SnapshotFile{
+		Path:         snapshotFilePath,
+		OriginalPath: realFilePath,
+		Stat:         statSnap,
+		Snapshot:     snapshot,
+	}
+	return snapshotFile
+}
+
+// determineEntryType determines whether the given path is a file, directory or symlink.
+func (fileBrowser *FileBrowserComponent) determineEntryType(path string) data.FileBrowserEntryType {
+	var entryType data.FileBrowserEntryType
+	lstat, err := os.Lstat(path)
+	if err == nil && lstat.Mode().Type() == os.ModeSymlink {
+		entryType = data.Link
+	} else if lstat != nil && lstat.IsDir() {
+		entryType = data.Directory
+	} else {
+		entryType = data.File
+	}
+	return entryType
+}
+
+func (fileBrowser *FileBrowserComponent) determineDiffState(
+	entry *data.FileBrowserEntry,
+	snapshotEntry *data.SnapshotBrowserEntry,
+) diff_state.DiffState {
+	// figure out status_message
+	var status = diff_state.Equal
+	if snapshotEntry == nil {
+		status = diff_state.Unknown
+	} else if entry.HasSnapshot() && !entry.HasReal() {
+		// file only exists in snapshot but not in real
+		status = diff_state.Deleted
+	} else if !entry.HasSnapshot() && entry.HasReal() {
+		// file only exists in real but not in snapshot
+		status = diff_state.Added
+	} else if entry.SnapshotFiles[0].HasChanged() {
+		status = diff_state.Modified
+	}
+	return status
 }
 
 func (fileBrowser *FileBrowserComponent) goUp() {
@@ -559,9 +403,6 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
-	if fileBrowser.currentSnapshot == snapshot || fileBrowser.currentSnapshot != nil && snapshot != nil && fileBrowser.currentSnapshot.Snapshot.Path == snapshot.Snapshot.Path {
-		return
-	}
 	fileBrowser.currentSnapshot = snapshot
 	fileBrowser.Refresh()
 }
@@ -584,7 +425,10 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
 	fileBrowser.selectedEntryChangedCallback(newSelection)
-	if fileBrowser.GetSelection() == newSelection || fileBrowser.GetSelection() != nil && newSelection != nil && fileBrowser.GetSelection().GetRealPath() == newSelection.GetRealPath() {
+	if fileBrowser.GetSelection() == newSelection {
+		return
+	}
+	if fileBrowser.GetSelection() != nil && newSelection != nil && fileBrowser.GetSelection().GetRealPath() == newSelection.GetRealPath() {
 		return
 	}
 
@@ -627,26 +471,15 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
 func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
 	selectedEntry := fileBrowser.tableContainer.GetSelectedEntry()
 	if selectedEntry == nil {
-		fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
-			Index: -1,
-			Entry: nil,
-		}
+		fileBrowser.selectionMemory.Remember(fileBrowser.path, -1, nil)
 	} else {
 		index := slices.Index(fileBrowser.GetEntries(), selectedEntry)
-		fileBrowser.selectionIndexMap[fileBrowser.path] = FileBrowserSelectionInfo{
-			Index: index,
-			Entry: selectedEntry,
-		}
+		fileBrowser.selectionMemory.Remember(fileBrowser.path, index, selectedEntry)
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) getRememberedSelectionInfo(path string) *FileBrowserSelectionInfo {
-	selectionInfo, ok := fileBrowser.selectionIndexMap[path]
-	if !ok {
-		return nil
-	} else {
-		return &selectionInfo
-	}
+func (fileBrowser *FileBrowserComponent) getRememberedSelectionInfo(path string) *uiutil.SelectionInfo[data.FileBrowserEntry] {
+	return fileBrowser.selectionMemory.Get(path)
 }
 
 func (fileBrowser *FileBrowserComponent) GetSelection() *data.FileBrowserEntry {
@@ -682,20 +515,7 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 }
 
 func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
-	layout := d.GetLayout()
-	go func() {
-		for {
-			action := <-d.GetActionChannel()
-			if actionHandler(action) {
-				return
-			}
-			if action == dialog.DialogCloseActionId {
-				fileBrowser.layout.RemovePage(d.GetName())
-				fileBrowser.application.Draw()
-			}
-		}
-	}()
-	fileBrowser.layout.AddPage(d.GetName(), layout, true, true)
+	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, actionHandler, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
@@ -749,7 +569,7 @@ func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserE
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
-	logging.Info(message.Message)
+	logging.Info("%s", message.Message)
 	fileBrowser.statusCallback(message)
 }
 

@@ -17,10 +17,14 @@ func (file *RealFile) Equal(e RealFile) bool {
 }
 
 type SnapshotFile struct {
-	Path         string
+	// Path is the path of the file within the snapshot
+	Path string
+	// OriginalPath is the path of the file in the real filesystem
 	OriginalPath string
-	Stat         os.FileInfo
-	Snapshot     *zfs.Snapshot
+	// Stat is the file info of the file within the snapshot
+	Stat os.FileInfo
+	// Snapshot is the snapshot this file belongs to
+	Snapshot *zfs.Snapshot
 }
 
 func (file *SnapshotFile) Equal(e SnapshotFile) bool {
@@ -29,6 +33,15 @@ func (file *SnapshotFile) Equal(e SnapshotFile) bool {
 
 func (file *SnapshotFile) HasChanged() bool {
 	return file.Snapshot.CheckIfFileHasChanged(file.Path)
+}
+
+func (file *SnapshotFile) Exists() bool {
+	statSnap, err := os.Lstat(file.Path)
+	if os.IsNotExist(err) {
+		return false
+	} else {
+		return statSnap != nil
+	}
 }
 
 type FileBrowserEntryType int

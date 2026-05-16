@@ -2,8 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
@@ -13,6 +11,9 @@ import (
 	"zfs-file-history/internal/ui/status_message"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type MainPage struct {
@@ -39,15 +40,12 @@ func NewMainPage(application *tview.Application) *MainPage {
 	}
 
 	snapshotBrowser.SetEventCallback(func(event snapshot_browser.SnapshotBrowserEvent) {
-		switch event.(type) {
+		switch event := event.(type) {
 		case uiutil.StatusMessageEvent:
-			event := event.(uiutil.StatusMessageEvent)
 			mainPage.showStatusMessage(event.Message)
 		case snapshot_browser.SnapshotCreated:
-			event := event.(snapshot_browser.SnapshotCreated)
 			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", event.SnapshotName)))
 		case snapshot_browser.SnapshotDestroyed:
-			event := event.(snapshot_browser.SnapshotDestroyed)
 			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", event.SnapshotName)))
 		}
 	})
@@ -71,12 +69,14 @@ func NewMainPage(application *tview.Application) *MainPage {
 	mainPage.layout = mainPage.createLayout()
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
-		if key == tcell.KeyTab || key == tcell.KeyBacktab {
+		switch key {
+		case tcell.KeyTab, tcell.KeyBacktab:
 			mainPage.ToggleFocus()
-		} else if key == tcell.KeyCtrlR {
+		case tcell.KeyCtrlR:
 			fileBrowser.Refresh()
 			snapshotBrowser.Refresh(true)
 			fileBrowser.Refresh()
+		default:
 		}
 		return event
 	})
@@ -143,8 +143,4 @@ func (mainPage *MainPage) ToggleFocus() {
 
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
-}
-
-func (mainPage *MainPage) clearStatus() {
-	mainPage.header.ClearStatus()
 }

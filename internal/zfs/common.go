@@ -1,9 +1,10 @@
 package zfs
 
 import (
-	golibzfs "github.com/kraudcloud/go-libzfs"
 	"strings"
 	"zfs-file-history/internal/logging"
+
+	golibzfs "github.com/kraudcloud/go-libzfs"
 )
 
 const (
@@ -23,7 +24,7 @@ func RefreshZfsData() {
 func loadDatasets() {
 	datasets, err := golibzfs.DatasetOpenAll()
 	if err != nil {
-		logging.Error(err.Error())
+		logging.Error("Could not load ZFS datasets: %s", err.Error())
 	} else {
 		allDatasets = datasets
 	}
@@ -35,7 +36,7 @@ func loadSnapshots(datasets []golibzfs.Dataset) {
 		//mountPointProperty := dataset.Properties[golibzfs.DatasetPropMountpoint]
 		snapshots, err := dataset.Snapshots()
 		if err != nil {
-			logging.Error(err.Error())
+			logging.Error("Could not load snapshots for dataset %s: %s", nameProperty.Value, err.Error())
 		} else {
 			AllSnapshots[nameProperty.Value] = snapshots
 		}

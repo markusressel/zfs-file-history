@@ -2,6 +2,7 @@ package theme
 
 import (
 	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -57,11 +58,16 @@ type DialogColors struct {
 
 type StyleStruct struct {
 	Layout LayoutStyle
+	Format FormatStyle
 }
 
 type LayoutStyle struct {
 	TitleAlign       int
 	DialogTitleAlign int
+}
+
+type FormatStyle struct {
+	DateTime string
 }
 
 type Color struct {

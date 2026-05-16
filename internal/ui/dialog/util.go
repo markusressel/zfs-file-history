@@ -1,8 +1,10 @@
 package dialog
 
 import (
-	"github.com/rivo/tview"
 	uiutil "zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (
@@ -22,6 +24,7 @@ type DialogOption struct {
 	Name string
 }
 
+// createModal creates a [tview.Flex] layout for a modal dialog with the given title and content.
 func createModal(title string, content tview.Primitive, width int, height int) *tview.Flex {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
@@ -41,4 +44,96 @@ func createModal(title string, content tview.Primitive, width int, height int) *
 		AddItem(nil, 0, 1, false)
 
 	return dialogContentColumnWrapper
+}
+
+func createOptionTable(application *tview.Application, options []*DialogOption, onSelect func(option *DialogOption)) *tview.Table {
+	optionTable := tview.NewTable()
+	optionTable.SetSelectable(true, false)
+	optionTable.Select(0, 0)
+
+	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		switch action {
+		case tview.MouseLeftDoubleClick:
+			go func() {
+				row, _ := optionTable.GetSelection()
+				onSelect(options[row])
+				application.QueueUpdateDraw(func() {})
+			}()
+			return action, nil
+		default:
+			// ignore other mouse actions
+		}
+		return action, event
+	})
+
+	for row, option := range options {
+		optionTable.SetCell(row, 0,
+			tview.NewTableCell(option.Name).
+				SetTextColor(tcell.ColorWhite).
+				SetAlign(tview.AlignLeft).
+				SetExpansion(1),
+		)
+	}
+
+	return optionTable
+}
+
+func createOptionDialogInputCapture(
+	optionTable *tview.Table,
+	options []*DialogOption,
+	onSelect func(option *DialogOption),
+	onClose func(),
+) func(event *tcell.EventKey) *tcell.EventKey {
+	return func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			onClose()
+			return nil
+		}
+		if event.Key() == tcell.KeyEnter {
+			row, _ := optionTable.GetSelection()
+			onSelect(options[row])
+			return nil
+		}
+		return event
+	}
+}
+
+func emitDialogActions(actionChannel chan DialogActionId, actionIds ...DialogActionId) {
+	go func() {
+		for _, action := range actionIds {
+			actionChannel <- action
+		}
+	}()
+}
+
+func ShowDialogOnPages(
+	application *tview.Application,
+	pages *tview.Pages,
+	d Dialog,
+	actionHandler func(action DialogActionId) bool,
+	onUpdate func(),
+) {
+	layout := d.GetLayout()
+	go func() {
+		for {
+			action := <-d.GetActionChannel()
+			if actionHandler(action) {
+				return
+			}
+			if action == DialogCloseActionId {
+				application.QueueUpdateDraw(func() {
+					pages.RemovePage(d.GetName())
+					if onUpdate != nil {
+						onUpdate()
+					}
+				})
+			}
+		}
+	}()
+	// Opening dialogs is usually triggered from input handlers on the UI goroutine.
+	// Calling QueueUpdateDraw there can deadlock, so update directly.
+	pages.AddPage(d.GetName(), layout, true, true)
+	if onUpdate != nil {
+		onUpdate()
+	}
 }

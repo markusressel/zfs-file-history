@@ -1,9 +1,10 @@
 package logging
 
 import (
-	"github.com/pterm/pterm"
 	"log"
 	"os"
+
+	"github.com/pterm/pterm"
 )
 
 const (
@@ -67,7 +68,9 @@ func writeToLogFile(format string, a ...interface{}) {
 		return
 	}
 	file := openLogFile()
-	defer file.Close()
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
 	log.SetOutput(file)
 	log.Printf(format, a...)
 }

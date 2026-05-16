@@ -1,8 +1,9 @@
 package util
 
 import (
-	"golang.org/x/exp/constraints"
 	"sort"
+
+	"golang.org/x/exp/constraints"
 )
 
 func ContainsString(s []string, e string) bool {

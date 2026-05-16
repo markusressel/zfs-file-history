@@ -5,7 +5,7 @@ PACKAGE    := github.com/markusressel/$(NAME)
 GIT_REV    ?= $(shell git rev-parse --short HEAD)
 SOURCE_DATE_EPOCH ?= $(shell date +%s)
 DATE       ?= $(shell date -u -d @${SOURCE_DATE_EPOCH} +"%Y-%m-%dT%H:%M:%SZ")
-VERSION    ?= 0.3.0
+VERSION    ?= 0.4.1
 
 test:   ## Run all tests
 	@go clean --testcache && go test -v ./...
@@ -28,7 +28,8 @@ deploy-custom: clean build
 	cp ./${OUTPUT_BIN} ~/.custom/bin/
 
 deploy: clean build
-	sudo cp ./${OUTPUT_BIN} /usr/bin/
+	sudo cp ./${OUTPUT_BIN} /usr/local/bin/
+	sudo chmod ug+x /usr/local/bin/${NAME}
 
 clean:
 	go clean

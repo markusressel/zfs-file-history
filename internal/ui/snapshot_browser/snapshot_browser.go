@@ -2,13 +2,8 @@ package snapshot_browser
 
 import (
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-	"math/big"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -16,16 +11,13 @@ import (
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
-	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
-)
 
-type SelectionInfo[T any] struct {
-	Index int
-	Entry *T
-}
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
 
 type SnapshotBrowserComponent struct {
 	eventCallback func(event SnapshotBrowserEvent)
@@ -38,9 +30,10 @@ type SnapshotBrowserComponent struct {
 
 	path             string
 	hostDataset      *zfs.Dataset
+	currentSnapshots []*zfs.Snapshot
 	currentFileEntry *data.FileBrowserEntry
 
-	selectedSnapshotMap map[string]*SelectionInfo[data.SnapshotBrowserEntry]
+	selectedSnapshotMemory *uiutil.SelectionMemory[data.SnapshotBrowserEntry]
 
 	selectedSnapshotChangedCallback func(snapshot *data.SnapshotBrowserEntry)
 }
@@ -90,7 +83,8 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 	snapshotBrowser := &SnapshotBrowserComponent{
 		eventCallback:                   func(event SnapshotBrowserEvent) {},
 		application:                     application,
-		selectedSnapshotMap:             map[string]*SelectionInfo[data.SnapshotBrowserEntry]{},
+		currentSnapshots:                []*zfs.Snapshot{},
+		selectedSnapshotMemory:          uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
 		selectedSnapshotChangedCallback: func(snapshot *data.SnapshotBrowserEntry) {},
 	}
 
@@ -102,93 +96,8 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 	layout := tview.NewPages()
 
-	toTableCellsFunction := func(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
-		result := []*tview.TableCell{}
-		for _, column := range columns {
-			cellText := "N/A"
-			cellAlign := tview.AlignLeft
-			cellColor := tcell.ColorWhite
-			if column == columnDate {
-				cellText = entry.Snapshot.Date.Format("2006-01-02 15:04:05")
-			} else if column == columnName {
-				cellText = entry.Snapshot.Name
-			} else if column == columnDiff {
-				cellAlign = tview.AlignCenter
-				switch entry.DiffState {
-				case diff_state.Equal:
-					cellText = "="
-					cellColor = theme.Colors.SnapshotBrowser.Table.State.Equal
-				case diff_state.Deleted:
-					cellText = "+"
-					cellColor = theme.Colors.SnapshotBrowser.Table.State.Deleted
-				case diff_state.Added:
-					cellText = "-"
-					cellColor = theme.Colors.SnapshotBrowser.Table.State.Added
-				case diff_state.Modified:
-					cellText = "≠"
-					cellColor = theme.Colors.SnapshotBrowser.Table.State.Modified
-				case diff_state.Unknown:
-					cellText = "N/A"
-					cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
-				}
-			} else if column == columnUsed {
-				cellText = humanize.IBytes(entry.Snapshot.GetUsed())
-			} else if column == columnRefer {
-				cellText = humanize.IBytes(entry.Snapshot.GetReferenced())
-			} else if column == columnRatio {
-				ratio := entry.Snapshot.GetRatio()
-				cellText = fmt.Sprintf("%.2fx", ratio)
-			} else if column == columnClones {
-				cellText = fmt.Sprintf("%d", entry.Snapshot.GetClones())
-			}
-			cell := tview.NewTableCell(cellText).
-				SetTextColor(cellColor).SetAlign(cellAlign)
-			result = append(result, cell)
-		}
-		return result
-	}
+	snapshotBrowser.tableContainer = createSnapshotBrowserTable(snapshotBrowser.application)
 
-	tableEntrySortFunction := func(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.SnapshotBrowserEntry {
-		sort.SliceStable(entries, func(i, j int) bool {
-			a := entries[i]
-			b := entries[j]
-
-			result := 0
-			if columnToSortBy == columnName {
-				result = strings.Compare(strings.ToLower(a.Snapshot.Name), strings.ToLower(b.Snapshot.Name))
-			} else if columnToSortBy == columnDate {
-				result = a.Snapshot.Date.Compare(*b.Snapshot.Date)
-			} else if columnToSortBy == columnDiff {
-				result = int(b.DiffState - a.DiffState)
-			} else if columnToSortBy == columnUsed {
-				result = int(b.Snapshot.GetUsed() - a.Snapshot.GetUsed())
-			} else if columnToSortBy == columnRefer {
-				result = int(b.Snapshot.GetReferenced() - a.Snapshot.GetReferenced())
-			} else if columnToSortBy == columnRatio {
-				ratioA := a.Snapshot.GetRatio()
-				ratioB := b.Snapshot.GetRatio()
-				result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))
-			} else if columnToSortBy == columnClones {
-				result = int(b.Snapshot.GetClones() - a.Snapshot.GetClones())
-			}
-			if inverted {
-				result *= -1
-			}
-
-			if result <= 0 {
-				return true
-			} else {
-				return false
-			}
-		})
-		return entries
-	}
-
-	snapshotBrowser.tableContainer = table.NewTableContainer[data.SnapshotBrowserEntry](
-		snapshotBrowser.application,
-		toTableCellsFunction,
-		tableEntrySortFunction,
-	)
 	snapshotBrowser.tableContainer.SetMultiSelect(true)
 
 	snapshotBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -221,7 +130,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		snapshotBrowser.rememberSelectionForDataset(entry)
 		snapshotBrowser.selectedSnapshotChangedCallback(entry)
-		snapshotBrowser.updateTableContents()
 	})
 
 	layout.AddPage("snapshot-browser", snapshotBrowser.tableContainer.GetLayout(), true, true)
@@ -237,7 +145,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string, force bool
 		return
 	}
 	snapshotBrowser.path = path
-	snapshotBrowser.updateTableContents()
+	snapshotBrowser.reloadSnapshotEntries()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) Refresh(force bool) {
@@ -253,7 +161,53 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.Fi
 		return
 	}
 	snapshotBrowser.currentFileEntry = fileEntry
-	snapshotBrowser.updateTableContents()
+	snapshotBrowser.updateCurrentSnapshotEntries()
+}
+
+// reloadSnapshotEntries reloads the available snapshots for the current path.
+// Note: depending on the number of snapshots, this can take a while.
+// See updateCurrentSnapshotEntries for a faster alternative that only updates the diff state.
+func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries() {
+	snapshotBrowser.determineHostDataset()
+
+	// TODO: fetching snapshots can take a long time
+	snapshots, err := snapshotBrowser.hostDataset.GetSnapshots()
+	if err != nil {
+		logging.Error("Could not get snapshots for dataset %s: %s", snapshotBrowser.hostDataset.Path, err.Error())
+		return
+	}
+	snapshotBrowser.currentSnapshots = snapshots
+
+	snapshotBrowser.updateCurrentSnapshotEntries()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) determineHostDataset() {
+	ds, err := zfs.FindHostDataset(snapshotBrowser.path)
+	if err != nil {
+		logging.Error("Could not find dataset for path %s: %s", snapshotBrowser.path, err.Error())
+		return
+	}
+
+	// the dataset is not the same as the current dataset
+	if snapshotBrowser.hostDataset != nil && ds != nil && snapshotBrowser.hostDataset.Path != ds.Path || snapshotBrowser.hostDataset == nil || ds == nil {
+		snapshotBrowser.ClearMultiSelection()
+	}
+
+	snapshotBrowser.hostDataset = ds
+}
+
+// updateCurrentSnapshotEntries updates the snapshot entries based on the current file entry.
+// Note: this is used to update the diff state of the snapshots, which is much faster than reloading all snapshots,
+// as is done in reloadSnapshotEntries.
+func (snapshotBrowser *SnapshotBrowserComponent) updateCurrentSnapshotEntries() {
+	snapshotBrowser.updateTableEntries()
+	snapshotBrowser.restoreSelectionForDataset()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) updateTableEntries() {
+	newEntries := snapshotBrowser.computeTableEntries(snapshotBrowser.currentSnapshots)
+	snapshotBrowser.tableContainer.SetData(newEntries)
+	snapshotBrowser.updateTableTitle()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) Focus() {
@@ -264,42 +218,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
 	return snapshotBrowser.layout.HasFocus()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) updateTableContents() {
-	newEntries := snapshotBrowser.computeTableEntries()
-	snapshotBrowser.tableContainer.SetData(newEntries)
-
-	title := "Snapshots"
-	if snapshotBrowser.GetSelection() != nil {
-		currentSelectionIndex := slices.Index(snapshotBrowser.GetEntries(), snapshotBrowser.GetSelection()) + 1
-		totalEntriesCount := len(snapshotBrowser.GetEntries())
-		title = fmt.Sprintf("Snapshot: %s (%d/%d)", snapshotBrowser.GetSelection().Snapshot.Name, currentSelectionIndex, totalEntriesCount)
-	}
-	snapshotBrowser.tableContainer.SetTitle(title)
-	snapshotBrowser.restoreSelectionForDataset()
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.SnapshotBrowserEntry {
+func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries(snapshots []*zfs.Snapshot) []*data.SnapshotBrowserEntry {
 	result := []*data.SnapshotBrowserEntry{}
-	ds, err := zfs.FindHostDataset(snapshotBrowser.path)
-	if err != nil {
-		logging.Error(err.Error())
-		return result
-	}
-
-	// the dataset is not the same as the current dataset
-	if snapshotBrowser.hostDataset != nil && ds != nil && snapshotBrowser.hostDataset.Path != ds.Path || snapshotBrowser.hostDataset == nil || ds == nil {
-		snapshotBrowser.ClearMultiSelection()
-	}
-
-	snapshotBrowser.hostDataset = ds
 
 	if snapshotBrowser.hostDataset == nil {
-		return result
-	}
-
-	snapshots, err := snapshotBrowser.hostDataset.GetSnapshots()
-	if err != nil {
-		logging.Error(err.Error())
 		return result
 	}
 
@@ -318,28 +240,35 @@ func (snapshotBrowser *SnapshotBrowserComponent) computeTableEntries() []*data.S
 	return result
 }
 
+func (snapshotBrowser *SnapshotBrowserComponent) updateTableTitle() {
+	title := "Snapshots"
+	if snapshotBrowser.GetSelection() != nil {
+		currentSelectionIndex := slices.Index(snapshotBrowser.GetEntries(), snapshotBrowser.GetSelection()) + 1
+		totalEntriesCount := len(snapshotBrowser.GetEntries())
+		title = fmt.Sprintf("Snapshot: %s (%d/%d)", snapshotBrowser.GetSelection().Snapshot.Name, currentSelectionIndex, totalEntriesCount)
+	}
+	snapshotBrowser.tableContainer.SetTitle(title)
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) clear() {
 	snapshotBrowser.path = ""
-	snapshotBrowser.updateTableContents()
+	snapshotBrowser.currentSnapshots = []*zfs.Snapshot{}
+	snapshotBrowser.updateCurrentSnapshotEntries()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(selection *data.SnapshotBrowserEntry) {
 	if snapshotBrowser.hostDataset == nil {
 		return
 	}
-	snapshotBrowser.selectedSnapshotMap[snapshotBrowser.hostDataset.Path] = &SelectionInfo[data.SnapshotBrowserEntry]{
-		Index: slices.Index(snapshotBrowser.GetEntries(), selection),
-		Entry: selection,
-	}
+	snapshotBrowser.selectedSnapshotMemory.Remember(
+		snapshotBrowser.hostDataset.Path,
+		slices.Index(snapshotBrowser.GetEntries(), selection),
+		selection,
+	)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *SelectionInfo[data.SnapshotBrowserEntry] {
-	selectionInfo, ok := snapshotBrowser.selectedSnapshotMap[path]
-	if !ok {
-		return nil
-	} else {
-		return selectionInfo
-	}
+func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *uiutil.SelectionInfo[data.SnapshotBrowserEntry] {
+	return snapshotBrowser.selectedSnapshotMemory.Get(path)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
@@ -413,7 +342,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		case dialog.SnapshotDialogCreateSnapshotActionId:
 			name, err := snapshotBrowser.createSnapshot(selection)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to create snapshot: %s", err.Error())
 				snapshotBrowser.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
 			}
 			snapshotBrowser.SelectLatest()
@@ -424,7 +353,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		case dialog.SnapshotDialogDestroySnapshotActionId:
 			err := snapshotBrowser.destroySnapshot(selection, false, false)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to destroy snapshot: %s", err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
@@ -437,7 +366,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		case dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
 			err := snapshotBrowser.destroySnapshot(selection, true, true)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to destroy snapshot: %s", err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
@@ -467,7 +396,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 			for _, entry := range entries {
 				err := snapshotBrowser.destroySnapshot(entry, false, false)
 				if err != nil {
-					logging.Error(err.Error())
+					logging.Error("Failed to destroy snapshot: %s", err.Error())
 					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 					})
@@ -479,7 +408,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 			for _, entry := range entries {
 				err := snapshotBrowser.destroySnapshot(entry, true, true)
 				if err != nil {
-					logging.Error(err.Error())
+					logging.Error("Failed to destroy snapshot: %s", err.Error())
 					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 					})
@@ -502,11 +431,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 		case dialog.DeleteSnapshotDialogDeleteSnapshotActionId:
 			err := snapshotBrowser.destroySnapshot(selection, false, false)
 			if err != nil {
-				logging.Error(err.Error())
+				logging.Error("Failed to destroy snapshot: %s", err.Error())
 				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
 			}
+			// TODO: this could be optimized by simply removing the entry on success instead of reloading all entries
+			snapshotBrowser.reloadSnapshotEntries()
 			return true
 		default:
 			return false
@@ -516,19 +447,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
-	layout := d.GetLayout()
-	go func() {
-		for {
-			action := <-d.GetActionChannel()
-			if actionHandler(action) {
-				return
-			}
-			if action == dialog.DialogCloseActionId {
-				snapshotBrowser.layout.RemovePage(d.GetName())
-			}
-		}
-	}()
-	snapshotBrowser.layout.AddPage(d.GetName(), layout, true, true)
+	dialog.ShowDialogOnPages(snapshotBrowser.application, snapshotBrowser.layout, d, actionHandler, nil)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) (name string, err error) {
@@ -563,9 +482,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 	sort.SliceStable(sortedEntries, func(i, j int) bool {
 		a := entries[i]
 		b := entries[j]
-		if a.Snapshot.Date != nil && b.Snapshot.Date != nil {
-			dateA := a.Snapshot.Date
-			dateB := b.Snapshot.Date
+		if a.Snapshot.Properties.CreationDate != nil && b.Snapshot.Properties.CreationDate != nil {
+			dateA := a.Snapshot.Properties.CreationDate
+			dateB := b.Snapshot.Properties.CreationDate
 			result := dateA.After(*dateB)
 			return result
 		}

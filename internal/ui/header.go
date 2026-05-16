@@ -2,13 +2,14 @@ package ui
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"time"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type ApplicationHeaderComponent struct {

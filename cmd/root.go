@@ -2,13 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 	"os"
+	"path/filepath"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/logging"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -31,6 +33,10 @@ var rootCmd = &cobra.Command{
 		var path string
 		if len(args) > 0 {
 			path = args[0]
+			path, err = filepath.Abs(path)
+			if err != nil {
+				logging.Fatal("Couldn't resolve path: %v", err)
+			}
 		} else {
 			currentWorkingDirectory, err := os.Getwd()
 			if err != nil {

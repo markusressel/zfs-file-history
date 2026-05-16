@@ -45,9 +45,7 @@ Compile yourself:
 ```shell
 git clone https://github.com/markusressel/zfs-file-history.git
 cd zfs-file-history
-make build
-sudo cp ./bin/zfs-file-history /usr/bin/zfs-file-history
-sudo chmod ug+x /usr/bin/zfs-file-history
+make deploy
 ```
 
 ## Configuration
