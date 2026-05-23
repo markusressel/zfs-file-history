@@ -13,13 +13,13 @@
 
 # Features
 
-* [x] Full fledged File Explorer
-* [x] Intuitive navigation using arrow keys (and vim bindings)
-* [x] Colorful visualization "git diff" style
-* [x] Browse through Snapshots and get to the right version quickly
-* [x] Sort table entries by any column and direction
-* [x] Restore any file from any snapshot with two keytrokes
-* [x] Create/Destroy snapshots
+* 📁 **File browser:** Navigate datasets and snapshot contents in a terminal-based file explorer.
+* ⌨️ **Keyboard-first navigation:** Use arrow keys and optional Vim key bindings for efficient traversal.
+* 🔍 **Diff-style change view:** Inspect file changes between snapshots with a Git-like visual diff representation.
+* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
+* ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
+* ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot.
+* 🗂️ **Snapshot lifecycle actions:** Create and destroy snapshots from within the UI.
 
 # How to use
 
