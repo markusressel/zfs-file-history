@@ -11,8 +11,8 @@ var (
 	Primary   = tcell.ColorTeal
 	Secondary = tcell.ColorDarkOliveGreen
 
-	OnPrimary   = tcell.ColorWhite
-	OnSecondary = tcell.ColorBlack
+	OnPrimary   = tcell.ColorBlack
+	OnSecondary = tcell.ColorWhite
 )
 
 var (
