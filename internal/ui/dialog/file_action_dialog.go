@@ -67,20 +67,23 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 
 	if file.HasReal() {
 		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-			Id:   FileDialogDeleteDialogActionId,
-			Name: fmt.Sprintf("Delete '%s'", file.RealFile.Name),
+			Id:       FileDialogDeleteDialogActionId,
+			Name:     fmt.Sprintf("🗑 Delete '%s'", file.RealFile.Name),
+			Severity: DialogSeverityDanger,
 		})
 	}
 
 	if file.HasSnapshot() {
 		if file.Type == data.Directory {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   FileDialogRestoreFileActionId,
-				Name: "Restore directory only",
+				Id:       FileDialogRestoreFileActionId,
+				Name:     "📁 Restore directory only",
+				Severity: DialogSeverityWarning,
 			})
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   FileDialogRestoreRecursiveDialogActionId,
-				Name: "Restore directory recursively",
+				Id:       FileDialogRestoreRecursiveDialogActionId,
+				Name:     "🌳 Restore directory recursively",
+				Severity: DialogSeverityDanger,
 			})
 		}
 
@@ -88,19 +91,20 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 			if diffBinAvailable && file.DiffState == diff_state.Modified {
 				dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 					Id:   FileDialogShowDiffActionId,
-					Name: "Show diff",
+					Name: "🔍 Show diff",
 				})
 			}
 			dialogOptions = slices.Insert(dialogOptions, 1, &DialogOption{
-				Id:   FileDialogRestoreFileActionId,
-				Name: "Restore file",
+				Id:       FileDialogRestoreFileActionId,
+				Name:     "♻️ Restore file",
+				Severity: DialogSeverityWarning,
 			})
 		}
 	}
 
 	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 		Id:   FileDialogCreateSnapshotDialogActionId,
-		Name: "Create Snapshot",
+		Name: "📸 Create Snapshot",
 	})
 
 	return ensureDialogCloseIsLast(dialogOptions)

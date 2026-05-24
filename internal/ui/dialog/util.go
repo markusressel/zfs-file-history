@@ -8,8 +8,19 @@ import (
 	"github.com/rivo/tview"
 )
 
+type DialogActionId int
+
 const (
 	DialogCloseActionId DialogActionId = iota
+)
+
+type DialogSeverity int
+
+const (
+	DialogSeverityNeutral DialogSeverity = iota
+	DialogSeveritySafe
+	DialogSeverityWarning
+	DialogSeverityDanger
 )
 
 type Dialog interface {
@@ -18,11 +29,10 @@ type Dialog interface {
 	GetActionChannel() <-chan DialogActionId
 }
 
-type DialogActionId int
-
 type DialogOption struct {
-	Id   DialogActionId
-	Name string
+	Id       DialogActionId
+	Name     string
+	Severity DialogSeverity
 }
 
 // buildConfirmDialogOptions creates a standard [confirm, cancel] option list.
@@ -83,9 +93,20 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 	})
 
 	for row, option := range options {
+		var textColor tcell.Color
+		switch option.Severity {
+		case DialogSeverityNeutral:
+			textColor = tcell.ColorWhite
+		case DialogSeveritySafe:
+			textColor = tcell.ColorWhite
+		case DialogSeverityWarning:
+			textColor = tcell.ColorYellow
+		case DialogSeverityDanger:
+			textColor = tcell.ColorRed
+		}
 		optionTable.SetCell(row, 0,
 			tview.NewTableCell(option.Name).
-				SetTextColor(tcell.ColorWhite).
+				SetTextColor(textColor).
 				SetAlign(tview.AlignLeft).
 				SetExpansion(1),
 		)
