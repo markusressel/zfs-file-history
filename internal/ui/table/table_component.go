@@ -142,6 +142,8 @@ func (c *RowSelectionTable[T]) createLayout() {
 		// current selection is on HEADER row
 		if c.GetSelectedEntry() == nil {
 			switch key {
+			case tcell.KeyEscape:
+				c.ClearMultiSelection()
 			case tcell.KeyRight:
 				c.nextSortOrder()
 				return nil
