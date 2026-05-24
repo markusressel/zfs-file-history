@@ -68,7 +68,7 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 	if file.HasReal() {
 		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 			Id:       FileDialogDeleteDialogActionId,
-			Name:     fmt.Sprintf("🗑 Delete '%s'", file.RealFile.Name),
+			Name:     fmt.Sprintf("🗑  Delete '%s'", file.RealFile.Name),
 			Severity: DialogSeverityDanger,
 		})
 	}
