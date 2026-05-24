@@ -642,11 +642,8 @@ var (
 
 	// Pagers
 	Delta = ExternalDiffViewerConfig{
-		Path: "delta",
-	}
-
-	Difftastic = ExternalDiffViewerConfig{
-		Path: "difftastic",
+		Path:        "delta",
+		WrapInPager: true,
 	}
 
 	Difft = ExternalDiffViewerConfig{
@@ -658,9 +655,6 @@ var (
 		Args:        []string{"--paginate", "diff", "--no-index", "--color=always"},
 		WrapInPager: true,
 	}
-	Difi = ExternalDiffViewerConfig{
-		Path: "difi",
-	}
 	Deff = ExternalDiffViewerConfig{
 		Path: "deff",
 	}
@@ -669,11 +663,9 @@ var (
 		NVIM,
 		KAK,
 		Delta,
-		Difftastic,
 		Difft,
-		Difi,
 		Deff,
-		VIMDIFF,
+		//VIMDIFF,
 		GitDiff,
 	}
 )
