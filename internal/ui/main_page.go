@@ -72,7 +72,7 @@ func NewMainPage(application *tview.Application) *MainPage {
 		switch key {
 		case tcell.KeyTab, tcell.KeyBacktab:
 			mainPage.ToggleFocus()
-		case tcell.KeyCtrlR:
+		case tcell.KeyF5:
 			fileBrowser.Refresh()
 			snapshotBrowser.Refresh(true)
 			fileBrowser.Refresh()
