@@ -562,11 +562,10 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 			}
 		}
 
-		if editorConf == nil {
+		if editorConf != nil {
+			runExternalDiffEditor(fileBrowser.application, *editorConf, realFilePath, snapshotFilePath)
 			return
 		}
-		runExternalDiffEditor(fileBrowser.application, *editorConf, realFilePath, snapshotFilePath)
-		return
 	}
 
 	// Internal diff display (or fallback from external if no editor path)
