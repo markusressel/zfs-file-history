@@ -107,6 +107,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 				c.doubleClickCallback()
 			}()
 			return action, nil
+		default:
 		}
 		return action, event
 	})
