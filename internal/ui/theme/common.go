@@ -76,6 +76,7 @@ type Color struct {
 	FileBrowser     FileBrowserColors
 	SnapshotBrowser SnapshotBrowserColors
 	Layout          LayoutColors
+	ShortcutMap     ShortcutMapColors
 }
 
 type LayoutColors struct {
@@ -92,6 +93,11 @@ type LayoutTableColors struct {
 
 	MultiSelectionBackground tcell.Color
 	MultiSelectionForeground tcell.Color
+}
+
+type ShortcutMapColors struct {
+	KeyCombo tcell.Color
+	Name     tcell.Color
 }
 
 func CreateTitleText(text string) string {

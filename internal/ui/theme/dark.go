@@ -62,6 +62,10 @@ var (
 				MultiSelectionForeground: OnSecondary,
 			},
 		},
+		ShortcutMap: ShortcutMapColors{
+			KeyCombo: Primary,
+			Name:     OnPrimary,
+		},
 	}
 
 	Style = StyleStruct{
