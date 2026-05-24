@@ -52,7 +52,7 @@ func (p *HelpPage) createLayout() {
 		setHelpTableRow(helpTable, row, entry)
 	}
 
-	p.layout = createModal(" Help ", helpTable, 60, 14)
+	p.layout = createModal(" ℹ️ Help ", helpTable, 60, 14)
 }
 
 func setHelpTableRow(helpTable *tview.Table, row int, entry *TableEntry) {

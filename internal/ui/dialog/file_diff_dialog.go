@@ -38,7 +38,7 @@ func NewFileDiffDialog(application *tview.Application, file *data.FileBrowserEnt
 }
 
 func (d *FileDiffDialog) createLayout() {
-	dialogTitle := " File Diff "
+	dialogTitle := " 🔍 File Diff "
 
 	realFilePath := d.file.RealFile.Path
 	snapshotFilePath := d.snapshot.Snapshot.GetSnapshotPath(d.file.RealFile.Path)

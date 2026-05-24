@@ -176,6 +176,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 					c.addToMultiSelection(c.GetSelectedEntry())
 					return nil
 				default:
+					return nil
 				}
 			}
 

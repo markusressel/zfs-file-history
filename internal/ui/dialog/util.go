@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"slices"
+	"zfs-file-history/internal/ui/localization"
 	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -36,15 +37,21 @@ type DialogOption struct {
 }
 
 // buildConfirmDialogOptions creates a standard [confirm, cancel] option list.
-func buildConfirmDialogOptions(confirmActionId DialogActionId, confirmLabel string, includeConfirm bool) []*DialogOption {
+func buildConfirmDialogOptions(
+	confirmActionId DialogActionId,
+	confirmLabel string,
+	includeConfirm bool,
+	severity DialogSeverity,
+) []*DialogOption {
 	options := []*DialogOption{{
 		Id:   DialogCloseActionId,
-		Name: "Cancel",
+		Name: localization.LocalizationCommonCancel,
 	}}
 	if includeConfirm {
 		options = slices.Insert(options, 0, &DialogOption{
-			Id:   confirmActionId,
-			Name: confirmLabel,
+			Id:       confirmActionId,
+			Name:     confirmLabel,
+			Severity: severity,
 		})
 	}
 	return options

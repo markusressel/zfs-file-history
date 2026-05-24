@@ -3,6 +3,7 @@ package dialog
 import (
 	"fmt"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/rivo/tview"
@@ -36,7 +37,7 @@ func NewSnapshotActionDialog(application *tview.Application, snapshot *data.Snap
 }
 
 func (d *SnapshotActionDialog) createLayout() {
-	dialogTitle := " Select Action "
+	dialogTitle := localization.LocalizationSelectActionDialogTitle
 
 	textDescription := fmt.Sprintf("What do you want to do with '%s'?", d.snapshot.Snapshot.Name)
 	textDescriptionView := tview.NewTextView().SetText(textDescription)
@@ -58,7 +59,7 @@ func (d *SnapshotActionDialog) createLayout() {
 		},
 		{
 			Id:   DialogCloseActionId,
-			Name: "Close",
+			Name: localization.LocalizationCommonClose,
 		},
 	}
 

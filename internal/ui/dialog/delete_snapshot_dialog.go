@@ -34,12 +34,12 @@ func NewDeleteSnapshotDialog(application *tview.Application, snapshot *data.Snap
 }
 
 func (d *DeleteSnapshotDialog) createLayout() {
-	dialogTitle := " Destroy Snapshot "
+	dialogTitle := " 💥 Destroy Snapshot "
 
 	textDescription := fmt.Sprintf("Destroy '%s'?", d.snapshot.Snapshot.Name)
 	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
-	dialogOptions := buildConfirmDialogOptions(DeleteSnapshotDialogDeleteSnapshotActionId, "Destroy", true)
+	dialogOptions := buildConfirmDialogOptions(DeleteSnapshotDialogDeleteSnapshotActionId, "Destroy", true, DialogSeverityDanger)
 
 	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
 
