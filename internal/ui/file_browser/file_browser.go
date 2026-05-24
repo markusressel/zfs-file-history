@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	path2 "path"
 	"slices"
 	"strings"
@@ -552,11 +551,11 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 
 	if configuration.CurrentConfig.Diff.Mode == configuration.DiffModeExternal {
 		editorPath := configuration.CurrentConfig.Diff.External.Editor.Path
-		editorConf := fileBrowser.determineExternalDiffViewer(editorPath)
+		editorConf := determineExternalDiffViewer(editorPath)
 		if editorConf == nil {
 			return
 		}
-		fileBrowser.runExternalDiffEditor(*editorConf, realFilePath, snapshotFilePath)
+		runExternalDiffEditor(fileBrowser.application, *editorConf, realFilePath, snapshotFilePath)
 		return
 	}
 
@@ -626,86 +625,6 @@ func (fileBrowser *FileBrowserComponent) SetEventCallback(f func(event FileBrows
 	fileBrowser.eventCallback = f
 }
 
-var (
-	// Editors
-	NVIM = ExternalDiffViewerConfig{
-		Path: "nvim",
-		Args: []string{"-d"},
-	}
-	VIMDIFF = ExternalDiffViewerConfig{
-		Path: "vimdiff",
-	}
-	KAK = ExternalDiffViewerConfig{
-		Path: "kak",
-		Args: []string{"-d"},
-	}
-
-	// Pagers
-	Delta = ExternalDiffViewerConfig{
-		Path:        "delta",
-		WrapInPager: true,
-	}
-
-	Difft = ExternalDiffViewerConfig{
-		Path: "difft",
-	}
-
-	GitDiff = ExternalDiffViewerConfig{
-		Path:        "git",
-		Args:        []string{"--paginate", "diff", "--no-index", "--color=always"},
-		WrapInPager: true,
-	}
-	Deff = ExternalDiffViewerConfig{
-		Path: "deff",
-	}
-
-	EditorOptions = []ExternalDiffViewerConfig{
-		NVIM,
-		KAK,
-		Delta,
-		Difft,
-		Deff,
-		//VIMDIFF,
-		GitDiff,
-	}
-)
-
-func (fileBrowser *FileBrowserComponent) determineExternalDiffViewer(editorPath string) (editorConfig *ExternalDiffViewerConfig) {
-	if editorPath != "" {
-		editorConfig = findEditorOption(editorPath, EditorOptions)
-		if editorConfig != nil {
-			return editorConfig
-		}
-
-		logging.Warning("Configured external editor '%s' is not recognized. Falling back to internal diff.", editorPath)
-	}
-
-	for _, editor := range EditorOptions {
-		if !editor.IsAvailable() {
-			continue
-		}
-
-		logging.Info("Using external diff viewer: %s", editor.Path)
-		return &editor
-	}
-
-	logging.Warning("No configured external diff viewer found on system. Checking EDITOR environment variable for fallback option.")
-
-	editorEnvValue := os.Getenv("EDITOR")
-	if editorEnvValue == "" {
-		logging.Error("EDITOR environment variable not set and no external editor path configured. Falling back to internal diff.")
-	} else {
-		editorConfig = findEditorOption(editorPath, EditorOptions)
-		if editorConfig == nil {
-			logging.Error("EDITOR environment variable is set to '%s' but it is not a recognized editor. Falling back to internal diff.", editorEnvValue)
-		} else {
-			return editorConfig
-		}
-	}
-
-	return nil
-}
-
 func findEditorOption(path string, options []ExternalDiffViewerConfig) *ExternalDiffViewerConfig {
 	for _, option := range options {
 		if strings.HasSuffix(path, option.Path) {
@@ -713,35 +632,4 @@ func findEditorOption(path string, options []ExternalDiffViewerConfig) *External
 		}
 	}
 	return nil
-}
-
-func (fileBrowser *FileBrowserComponent) runExternalDiffEditor(editorConf ExternalDiffViewerConfig, snapshotFilePath string, realFilePath string) {
-	var args []string
-	args = append(args, editorConf.Args...)
-	args = append(args, snapshotFilePath)
-	args = append(args, realFilePath)
-
-	var cmd *exec.Cmd
-	if editorConf.WrapInPager {
-		// pipe the output into "less -R" to make it blocking
-		editorCommandArgsString := strings.Join(editorConf.Args, " ")
-		editorCommand := fmt.Sprintf("%s %s '%s' '%s' | less -R", editorConf.Path, editorCommandArgsString, snapshotFilePath, realFilePath)
-		cmd = exec.Command("sh", "-c", editorCommand)
-	} else {
-		cmd = exec.Command(editorConf.Path, args...)
-	}
-
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	fileBrowser.application.Suspend(func() {
-		runErr := cmd.Run()
-		if runErr != nil {
-			logging.Error("Error running external diff editor: %v", runErr)
-		}
-	})
-	// After suspend, ensure the tview application redraws itself
-	fileBrowser.application.Sync()
-	fileBrowser.application.Draw()
 }
