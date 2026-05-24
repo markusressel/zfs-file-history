@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/localization"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -11,7 +12,7 @@ import (
 func TestSnapshotActionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
 	d := &SnapshotActionDialog{actionChannel: make(chan DialogActionId, 1)}
 
-	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: "Close"})
+	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: localization.LocalizationCommonClose})
 
 	assertDialogActionEmitted(t, d.actionChannel, DialogCloseActionId)
 }
@@ -19,7 +20,7 @@ func TestSnapshotActionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
 func TestDeleteFileDialog_SelectCancelOption_EmitsCloseAction(t *testing.T) {
 	d := &DeleteFileDialog{actionChannel: make(chan DialogActionId, 1)}
 
-	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: "Cancel"})
+	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: localization.LocalizationCommonCancel})
 
 	assertDialogActionEmitted(t, d.actionChannel, DialogCloseActionId)
 }
@@ -27,7 +28,7 @@ func TestDeleteFileDialog_SelectCancelOption_EmitsCloseAction(t *testing.T) {
 func TestDeleteSnapshotDialog_SelectCancelOption_EmitsCloseAction(t *testing.T) {
 	d := &DeleteSnapshotDialog{actionChannel: make(chan DialogActionId, 1)}
 
-	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: "Cancel"})
+	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: localization.LocalizationCommonCancel})
 
 	assertDialogActionEmitted(t, d.actionChannel, DialogCloseActionId)
 }
@@ -35,7 +36,7 @@ func TestDeleteSnapshotDialog_SelectCancelOption_EmitsCloseAction(t *testing.T) 
 func TestMultiSnapshotActionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
 	d := &MultiSnapshotActionDialog{actionChannel: make(chan DialogActionId, 1)}
 
-	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: "Close"})
+	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: localization.LocalizationCommonClose})
 
 	assertDialogActionEmitted(t, d.actionChannel, DialogCloseActionId)
 }
@@ -46,7 +47,7 @@ func TestSnapshotActionDialog_SelectCloseOption_DoesNotEmitOtherAction(t *testin
 		snapshot:      &data.SnapshotBrowserEntry{},
 	}
 
-	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: "Close"})
+	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: localization.LocalizationCommonClose})
 
 	assertDialogActionEmitted(t, d.actionChannel, DialogCloseActionId)
 	assertNoMoreDialogActions(t, d.actionChannel)

@@ -3,6 +3,7 @@ package dialog
 import (
 	"fmt"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/rivo/tview"
@@ -36,7 +37,7 @@ func NewMultiSnapshotActionDialog(application *tview.Application, snapshots []*d
 }
 
 func (d *MultiSnapshotActionDialog) createLayout() {
-	dialogTitle := " Select Action "
+	dialogTitle := localization.LocalizationSelectActionDialogTitle
 
 	snapshotNames := make([]string, 0)
 	for _, snapshot := range d.snapshots {
@@ -48,12 +49,14 @@ func (d *MultiSnapshotActionDialog) createLayout() {
 
 	dialogOptions := []*DialogOption{
 		{
-			Id:   MultiSnapshotDialogDestroySnapshotActionId,
-			Name: "Destroy all",
+			Id:       MultiSnapshotDialogDestroySnapshotActionId,
+			Name:     "💥 Destroy all",
+			Severity: DialogSeverityDanger,
 		},
 		{
-			Id:   MultiSnapshotDialogDestroySnapshotRecursivelyActionId,
-			Name: "Destroy all (recursive)",
+			Id:       MultiSnapshotDialogDestroySnapshotRecursivelyActionId,
+			Name:     "💥 Destroy all (recursive)",
+			Severity: DialogSeverityDanger,
 		},
 		{
 			Id:   MultiSnapshotDialogClearSelectionActionId,
@@ -61,7 +64,7 @@ func (d *MultiSnapshotActionDialog) createLayout() {
 		},
 		{
 			Id:   DialogCloseActionId,
-			Name: "Close",
+			Name: localization.LocalizationCommonClose,
 		},
 	}
 

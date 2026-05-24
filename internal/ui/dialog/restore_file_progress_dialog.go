@@ -47,7 +47,7 @@ func NewRestoreFileProgressDialog(application *tview.Application, fileSelection 
 }
 
 func (d *RestoreFileProgressDialog) createLayout() {
-	dialogTitle := "Restore"
+	dialogTitle := " ♻️ Restore "
 
 	fileToRestore := d.fileSelection.SnapshotFiles[0]
 

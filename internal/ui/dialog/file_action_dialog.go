@@ -6,6 +6,7 @@ import (
 	"slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/rivo/tview"
@@ -42,7 +43,7 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 }
 
 func (d *FileActionDialog) createLayout() {
-	dialogTitle := " Select Action "
+	dialogTitle := localization.LocalizationSelectActionDialogTitle
 
 	textDescription := fmt.Sprintf("What do you want to do with '%s'?", d.file.Name)
 	textDescriptionView := tview.NewTextView().SetText(textDescription)
@@ -62,7 +63,7 @@ func (d *FileActionDialog) createLayout() {
 func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) []*DialogOption {
 	dialogOptions := []*DialogOption{{
 		Id:   DialogCloseActionId,
-		Name: "Close",
+		Name: localization.LocalizationCommonClose,
 	}}
 
 	if file.HasReal() {

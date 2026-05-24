@@ -3,6 +3,7 @@ package dialog
 import (
 	"fmt"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/rivo/tview"
@@ -34,12 +35,12 @@ func NewDeleteFileDialog(application *tview.Application, file *data.FileBrowserE
 }
 
 func (d *DeleteFileDialog) createLayout() {
-	dialogTitle := " Delete File "
+	dialogTitle := " 🗑️ Delete File "
 
 	textDescription := fmt.Sprintf("Delete '%s'?", d.file.Name)
 	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
-	dialogOptions := buildConfirmDialogOptions(DeleteFileDialogDeleteFileActionId, "Delete", d.file.HasReal())
+	dialogOptions := buildConfirmDialogOptions(DeleteFileDialogDeleteFileActionId, localization.LocalizationCommonDelete, d.file.HasReal(), DialogSeverityDanger)
 
 	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
 
