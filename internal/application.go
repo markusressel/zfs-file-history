@@ -45,7 +45,8 @@ func addSignalHandlerActor(g *run.Group, cancel context.CancelFunc) {
 
 		return nil
 	}, func(err error) {
-		defer close(sig)
+		signal.Stop(sig) // Stop notifying for signals
+		close(sig)       // Then close the channel
 		cancel()
 	})
 }
