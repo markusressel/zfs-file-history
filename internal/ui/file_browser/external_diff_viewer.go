@@ -44,6 +44,7 @@ var (
 	// Pagers
 	Delta = ExternalDiffViewerConfig{
 		Path:        "delta",
+		Args:        []string{"--line-numbers", "--hunk-header-style=omit"},
 		WrapInPager: true,
 	}
 
