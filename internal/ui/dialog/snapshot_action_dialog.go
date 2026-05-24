@@ -44,15 +44,17 @@ func (d *SnapshotActionDialog) createLayout() {
 	dialogOptions := []*DialogOption{
 		{
 			Id:   SnapshotDialogCreateSnapshotActionId,
-			Name: "Create Snapshot",
+			Name: "📸 Create Snapshot",
 		},
 		{
-			Id:   SnapshotDialogDestroySnapshotActionId,
-			Name: fmt.Sprintf("Destroy '%s'", d.snapshot.Snapshot.Name),
+			Id:       SnapshotDialogDestroySnapshotActionId,
+			Name:     fmt.Sprintf("💥 Destroy '%s'", d.snapshot.Snapshot.Name),
+			Severity: DialogSeverityDanger,
 		},
 		{
-			Id:   SnapshotDialogDestroySnapshotRecursivelyActionId,
-			Name: fmt.Sprintf("Destroy (recursive) '%s'", d.snapshot.Snapshot.Name),
+			Id:       SnapshotDialogDestroySnapshotRecursivelyActionId,
+			Name:     fmt.Sprintf("💥 Destroy (recursive) '%s'", d.snapshot.Snapshot.Name),
+			Severity: DialogSeverityDanger,
 		},
 		{
 			Id:   DialogCloseActionId,

@@ -139,13 +139,6 @@ func (c *RowSelectionTable[T]) createLayout() {
 		}
 		key := event.Key()
 
-		if c.HasMultiSelection() {
-			switch key {
-			case tcell.KeyEscape:
-				c.ClearMultiSelection()
-			}
-		}
-
 		// current selection is on HEADER row
 		if c.GetSelectedEntry() == nil {
 			switch key {
@@ -162,10 +155,35 @@ func (c *RowSelectionTable[T]) createLayout() {
 			}
 		}
 
-		// current selection is on DATA row
-		if event.Rune() == SpaceRune && c.multiSelectEnabled {
-			currentEntry := c.GetSelectedEntry()
-			c.toggleMultiSelection(currentEntry)
+		if c.HasMultiSelection() {
+			switch key {
+			case tcell.KeyEscape:
+				c.ClearMultiSelection()
+			}
+		}
+
+		if c.multiSelectEnabled {
+			if event.Modifiers()&tcell.ModShift != 0 {
+				switch key {
+				case tcell.KeyUp:
+					c.addToMultiSelection(c.GetSelectedEntry())
+					c.Up()
+					c.addToMultiSelection(c.GetSelectedEntry())
+					return nil
+				case tcell.KeyDown:
+					c.addToMultiSelection(c.GetSelectedEntry())
+					c.Down()
+					c.addToMultiSelection(c.GetSelectedEntry())
+					return nil
+				default:
+				}
+			}
+
+			// current selection is on DATA row
+			if event.Rune() == SpaceRune {
+				currentEntry := c.GetSelectedEntry()
+				c.toggleMultiSelection(currentEntry)
+			}
 		}
 
 		return event
@@ -421,5 +439,21 @@ func (c *RowSelectionTable[T]) cleanupMultiSelection() {
 		if !slices.Contains(currentEntryIds, entryId) {
 			delete(c.multiSelectionEntryMap, entryId)
 		}
+	}
+}
+
+// Up moves the current selection up one row
+func (c *RowSelectionTable[T]) Up() {
+	row, col := c.layout.GetSelection()
+	if row > 0 {
+		c.layout.Select(row-1, col)
+	}
+}
+
+// Down moves the current selection down one row
+func (c *RowSelectionTable[T]) Down() {
+	row, col := c.layout.GetSelection()
+	if row < len(c.entries) {
+		c.layout.Select(row+1, col)
 	}
 }
