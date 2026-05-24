@@ -12,6 +12,7 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -686,4 +687,12 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 
 func (fileBrowser *FileBrowserComponent) SetEventCallback(f func(event FileBrowserEvent)) {
 	fileBrowser.eventCallback = f
+}
+
+func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
+	return []shortcut_helper.ShortcutEntry{
+		{KeyCombo: []string{"Enter"}, Name: "Actions"},
+		{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
+		{KeyCombo: []string{"Ctrl+r"}, Name: "Restore"},
+	}
 }

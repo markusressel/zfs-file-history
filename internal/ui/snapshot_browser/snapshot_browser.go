@@ -9,6 +9,7 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -518,4 +519,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasMultiSelection() bool {
 func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
 	snapshotBrowser.tableContainer.ClearMultiSelection()
 	snapshotBrowser.application.ForceDraw()
+}
+
+func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
+	return []shortcut_helper.ShortcutEntry{
+		{KeyCombo: []string{"Enter"}, Name: "Actions"},
+		{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
+	}
 }

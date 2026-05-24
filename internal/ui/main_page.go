@@ -7,6 +7,7 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -19,6 +20,7 @@ import (
 type MainPage struct {
 	application     *tview.Application
 	header          *ApplicationHeaderComponent
+	shortcutMap     *shortcut_helper.ShortcutMapComponent
 	fileBrowser     *file_browser.FileBrowserComponent
 	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
@@ -120,6 +122,10 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	mainPage.header = header
 
+	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application)
+	mainPageLayout.AddItem(shortcutMap.GetLayout(), 1, 0, false)
+	mainPage.shortcutMap = shortcutMap
+
 	return mainPageLayout
 }
 
@@ -130,17 +136,34 @@ func (mainPage *MainPage) Init(path string) {
 }
 
 func (mainPage *MainPage) ToggleFocus() {
+	var nextFocusedComponent FocusableUiComponent
 	if mainPage.fileBrowser.HasFocus() {
-		mainPage.datasetInfo.Focus()
+		nextFocusedComponent = mainPage.datasetInfo
 	} else if mainPage.snapshotBrowser.HasFocus() {
-		mainPage.fileBrowser.Focus()
+		nextFocusedComponent = mainPage.fileBrowser
 	} else if mainPage.datasetInfo.HasFocus() {
-		mainPage.snapshotBrowser.Focus()
+		nextFocusedComponent = mainPage.snapshotBrowser
 	} else {
 		logging.Warning("Unexpected focus state")
+	}
+
+	nextFocusedComponent.Focus()
+	if c, ok := nextFocusedComponent.(shortcut_helper.ShortcutMapProvider); ok {
+		shortcutMap := c.GetShortcutMap()
+		mainPage.setShortcutMap(shortcutMap)
+	} else {
+		mainPage.clearShortcutMap()
 	}
 }
 
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
+}
+
+func (mainPage *MainPage) setShortcutMap(shortcutEntries []shortcut_helper.ShortcutEntry) {
+	mainPage.shortcutMap.SetEntries(shortcutEntries)
+}
+
+func (mainPage *MainPage) clearShortcutMap() {
+	mainPage.shortcutMap.Clear()
 }

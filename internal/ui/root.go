@@ -14,6 +14,11 @@ const (
 	HelpDialog util.Page = "help"
 )
 
+type FocusableUiComponent interface {
+	Focus()
+	HasFocus() bool
+}
+
 func CreateUi(path string, fullscreen bool) *tview.Application {
 	application := tview.NewApplication()
 	application.EnableMouse(true)
