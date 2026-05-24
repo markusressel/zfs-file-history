@@ -115,6 +115,18 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 			}
 		}
 
+		if event.Modifiers()&tcell.ModCtrl != 0 {
+			switch {
+			case event.Rune() == 'r':
+				openRestoreDialogOnCurrentSelection(fileBrowser)
+			case event.Rune() == 'd':
+				openDeleteDialogOnCurrentSelection(fileBrowser)
+				return nil
+			default:
+				return nil
+			}
+		}
+
 		if fileBrowser.GetSelection() != nil {
 			switch {
 			case key == tcell.KeyRight:
@@ -124,10 +136,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 				fileBrowser.openActionDialog(fileBrowser.GetSelection())
 				return nil
 			case key == tcell.KeyDelete:
-				currentSelection := fileBrowser.GetSelection()
-				if currentSelection != nil && currentSelection.HasReal() {
-					fileBrowser.openDeleteDialog(currentSelection)
-				}
+				openDeleteDialogOnCurrentSelection(fileBrowser)
 			}
 		}
 		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
@@ -144,6 +153,20 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	fileBrowser.createLayout()
 
 	return fileBrowser
+}
+
+func openDeleteDialogOnCurrentSelection(fileBrowser *FileBrowserComponent) {
+	currentSelection := fileBrowser.GetSelection()
+	if currentSelection != nil && currentSelection.HasReal() {
+		fileBrowser.openDeleteDialog(currentSelection)
+	}
+}
+
+func openRestoreDialogOnCurrentSelection(fileBrowser *FileBrowserComponent) {
+	currentSelection := fileBrowser.GetSelection()
+	if currentSelection != nil && currentSelection.HasSnapshot() && currentSelection.DiffState != diff_state.Equal {
+		fileBrowser.openRestoreDialog(currentSelection)
+	}
 }
 
 func (fileBrowser *FileBrowserComponent) createLayout() {
@@ -412,6 +435,26 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 		}
 	}
 	fileBrowser.showDialog(deleteDialogLayout, deleteHandler)
+}
+
+func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileBrowserEntry) {
+	if selection == nil || !selection.HasSnapshot() {
+		return
+	}
+	restoreDialogLayout := dialog.NewRestoreFileDialog(fileBrowser.application, selection)
+	restoreHandler := func(action dialog.DialogActionId) bool {
+		switch action {
+		case dialog.RestoreFileDialogRestoreFileActionId:
+			fileBrowser.runRestoreFileAction(selection, false)
+			return true
+		case dialog.RestoreFileDialogRestoreRecursiveActionId:
+			fileBrowser.runRestoreFileAction(selection, true)
+			return true
+		default:
+			return false
+		}
+	}
+	fileBrowser.showDialog(restoreDialogLayout, restoreHandler)
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
