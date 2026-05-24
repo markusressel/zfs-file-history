@@ -2,6 +2,7 @@ package shortcut_helper
 
 import (
 	"fmt"
+	"zfs-file-history/internal/ui/txwidgets"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -41,9 +42,9 @@ func NewShortcutMap(application *tview.Application) *ShortcutMapComponent {
 func (sm *ShortcutMapComponent) createLayout() {
 	layout := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	shortcutEntriesTextView := tview.NewTextView()
+	shortcutEntriesTextView := tview.NewTextView().
+		SetDynamicColors(true)
 	shortcutEntriesTextView.SetBorderPadding(0, 0, 1, 1)
-	shortcutEntriesTextView.SetTextColor(tcell.ColorGray)
 	shortcutEntriesTextView.SetTextAlign(tview.AlignLeft)
 
 	layout.AddItem(shortcutEntriesTextView, 0, 1, false)
@@ -56,14 +57,16 @@ func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 	sm.ShortCutEntries = entries
 	var statusText string
 	for _, entry := range entries {
-		statusText += fmt.Sprintf("%s: %s  ", entry.KeyCombo, entry.Name)
+		shortcuts := txwidgets.Span(tcell.ColorYellow, "%s", entry.KeyCombo)
+		name := txwidgets.Span(tcell.ColorWhite, entry.Name)
+		statusText += fmt.Sprintf("%s: %s  ", shortcuts, name)
 	}
-	sm.shortcutEntriesTextView.SetText(statusText).SetTextColor(tcell.ColorGray)
+	sm.shortcutEntriesTextView.SetText(statusText)
 	sm.application.ForceDraw()
 }
 
 func (sm *ShortcutMapComponent) Clear() {
-	sm.shortcutEntriesTextView.SetText("").SetTextColor(tcell.ColorWhite)
+	sm.shortcutEntriesTextView.SetText("")
 	sm.application.ForceDraw()
 }
 

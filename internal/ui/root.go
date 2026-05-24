@@ -58,5 +58,9 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 
 	mainPage.Init(path)
 
-	return application.SetRoot(pagesLayout, fullscreen).SetFocus(mainPage.fileBrowser.GetLayout())
+	application.SetRoot(pagesLayout, fullscreen).
+		SetFocus(mainPage.fileBrowser.GetLayout())
+	mainPage.updateShortcutMap(mainPage.fileBrowser)
+
+	return application
 }

@@ -148,12 +148,7 @@ func (mainPage *MainPage) ToggleFocus() {
 	}
 
 	nextFocusedComponent.Focus()
-	if c, ok := nextFocusedComponent.(shortcut_helper.ShortcutMapProvider); ok {
-		shortcutMap := c.GetShortcutMap()
-		mainPage.setShortcutMap(shortcutMap)
-	} else {
-		mainPage.clearShortcutMap()
-	}
+	mainPage.updateShortcutMap(nextFocusedComponent)
 }
 
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
@@ -166,4 +161,13 @@ func (mainPage *MainPage) setShortcutMap(shortcutEntries []shortcut_helper.Short
 
 func (mainPage *MainPage) clearShortcutMap() {
 	mainPage.shortcutMap.Clear()
+}
+
+func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
+	if c, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
+		shortcutMap := c.GetShortcutMap()
+		mainPage.setShortcutMap(shortcutMap)
+	} else {
+		mainPage.clearShortcutMap()
+	}
 }
