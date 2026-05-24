@@ -1,6 +1,11 @@
 package file_browser
 
-import "github.com/rivo/tview"
+import (
+	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/status_message"
+
+	"github.com/rivo/tview"
+)
 
 type Event interface {
 	isFileBrowserEvent()
@@ -23,3 +28,15 @@ type RequestFocusEvent struct {
 }
 
 func (RequestFocusEvent) isFileBrowserEvent() {}
+
+type FileBrowserStatusEvent struct {
+	Message *status_message.StatusMessage
+}
+
+func (FileBrowserStatusEvent) isFileBrowserEvent() {}
+
+type SelectedTableEntryChangedEvent struct {
+	FileEntry *data.FileBrowserEntry
+}
+
+func (SelectedTableEntryChangedEvent) isFileBrowserEvent() {}

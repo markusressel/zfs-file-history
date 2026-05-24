@@ -74,10 +74,7 @@ type FileBrowserComponent struct {
 	application *tview.Application
 	layout      *tview.Pages
 
-	tableContainer               *table.RowSelectionTable[data.FileBrowserEntry]
-	selectedEntryChangedCallback func(fileEntry *data.FileBrowserEntry)
-
-	statusCallback func(message *status_message.StatusMessage)
+	tableContainer *table.RowSelectionTable[data.FileBrowserEntry]
 
 	selectionMemory *uiutil.SelectionMemory[data.FileBrowserEntry]
 	fileWatcher     *util.FileWatcher
@@ -93,8 +90,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 
 		selectionMemory: uiutil.NewSelectionMemory[data.FileBrowserEntry](),
 
-		tableContainer:               tableContainer,
-		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
+		tableContainer: tableContainer,
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
@@ -143,7 +139,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	})
 	tableContainer.SetSelectionChangedCallback(func(selectedEntry *data.FileBrowserEntry) {
 		fileBrowser.rememberSelectionInfoForCurrentPath()
-		fileBrowser.selectedEntryChangedCallback(selectedEntry)
+		fileBrowser.Events.Emit(SelectedTableEntryChangedEvent{selectedEntry})
 	})
 
 	fileBrowser.createLayout()
@@ -482,7 +478,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 }
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
-	fileBrowser.selectedEntryChangedCallback(newSelection)
+	fileBrowser.emit(SelectedTableEntryChangedEvent{newSelection})
 	if fileBrowser.GetSelection() == newSelection {
 		return
 	}
@@ -653,19 +649,11 @@ func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserE
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
 	logging.Info("%s", message.Message)
-	fileBrowser.statusCallback(message)
+	fileBrowser.emit(FileBrowserStatusEvent{message})
 }
 
 func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
 	return fileBrowser.layout
-}
-
-func (fileBrowser *FileBrowserComponent) SetSelectedFileEntryChangedCallback(f func(fileEntry *data.FileBrowserEntry)) {
-	fileBrowser.selectedEntryChangedCallback = f
-}
-
-func (fileBrowser *FileBrowserComponent) SetStatusCallback(f func(message *status_message.StatusMessage)) {
-	fileBrowser.statusCallback = f
 }
 
 func (fileBrowser *FileBrowserComponent) selectHeader() {

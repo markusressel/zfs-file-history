@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
@@ -49,19 +48,16 @@ func NewMainPage(application *tview.Application) *MainPage {
 		}
 	})
 
-	fileBrowser.SetStatusCallback(func(message *status_message.StatusMessage) {
-		mainPage.showStatusMessage(message)
-	})
-
 	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
 		switch e := event.(type) {
 		case file_browser.PathChangedEvent:
 			datasetInfo.SetPath(e.NewPath)
 			snapshotBrowser.SetPath(e.NewPath, false)
+		case file_browser.FileBrowserStatusEvent:
+			mainPage.showStatusMessage(e.Message)
+		case file_browser.SelectedTableEntryChangedEvent:
+			snapshotBrowser.SetFileEntry(e.FileEntry)
 		}
-	})
-	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
-		snapshotBrowser.SetFileEntry(fileEntry)
 	})
 
 	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {

@@ -80,7 +80,7 @@ var (
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
 	snapshotBrowser := &SnapshotBrowserComponent{
-		Events:                 uiutil.Emitter[Event]{},
+		Events:                 *uiutil.NewEmitter[Event](),
 		application:            application,
 		currentSnapshots:       []*zfs.Snapshot{},
 		selectedSnapshotMemory: uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
