@@ -139,11 +139,16 @@ func (c *RowSelectionTable[T]) createLayout() {
 		}
 		key := event.Key()
 
-		// current selection is on HEADER row
-		if c.GetSelectedEntry() == nil {
+		if c.HasMultiSelection() {
 			switch key {
 			case tcell.KeyEscape:
 				c.ClearMultiSelection()
+			}
+		}
+
+		// current selection is on HEADER row
+		if c.GetSelectedEntry() == nil {
+			switch key {
 			case tcell.KeyRight:
 				c.nextSortOrder()
 				return nil
