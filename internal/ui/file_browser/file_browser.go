@@ -99,10 +99,6 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
-	tableContainer.SetDoubleClickCallback(func() {
-		fileBrowser.openActionDialog(fileBrowser.GetSelection())
-		application.Draw()
-	})
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 

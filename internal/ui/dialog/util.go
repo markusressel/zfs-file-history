@@ -84,21 +84,6 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 	optionTable.SetSelectable(true, false)
 	optionTable.Select(0, 0)
 
-	optionTable.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		switch action {
-		case tview.MouseLeftDoubleClick:
-			go func() {
-				row, _ := optionTable.GetSelection()
-				onSelect(options[row])
-				application.QueueUpdateDraw(func() {})
-			}()
-			return action, nil
-		default:
-			// ignore other mouse actions
-		}
-		return action, event
-	})
-
 	for row, option := range options {
 		var textColor tcell.Color
 		switch option.Severity {
