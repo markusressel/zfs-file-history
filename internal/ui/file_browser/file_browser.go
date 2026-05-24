@@ -633,12 +633,3 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 func (fileBrowser *FileBrowserComponent) SetEventCallback(f func(event FileBrowserEvent)) {
 	fileBrowser.eventCallback = f
 }
-
-func findEditorOption(path string, options []ExternalDiffViewerConfig) *ExternalDiffViewerConfig {
-	for _, option := range options {
-		if strings.HasSuffix(path, option.Path) {
-			return &option
-		}
-	}
-	return nil
-}

@@ -108,6 +108,14 @@ func determineExternalDiffViewer(binaryPath string) (editorConfig *ExternalDiffV
 	return nil
 }
 
+func findEditorOption(path string, options []ExternalDiffViewerConfig) *ExternalDiffViewerConfig {
+	for _, option := range options {
+		if strings.HasSuffix(path, option.Path) {
+			return &option
+		}
+	}
+	return nil
+}
 func runExternalDiffEditor(application *tview.Application, editorConf ExternalDiffViewerConfig, snapshotFilePath string, realFilePath string) {
 	var args []string
 	args = append(args, editorConf.Args...)
