@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"slices"
 	"zfs-file-history/internal/data"
-	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
 
@@ -89,7 +88,7 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 		}
 
 		if file.Type == data.File {
-			if diffBinAvailable && file.DiffState == diff_state.Modified {
+			if diffBinAvailable && file.HasDiff() {
 				dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 					Id:   FileDialogShowDiffActionId,
 					Name: "🔍 Show diff",

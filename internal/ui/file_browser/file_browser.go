@@ -113,10 +113,9 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 				openRestoreDialogOnCurrentSelection(fileBrowser)
 			case event.Rune() == 'd':
 				openDeleteDialogOnCurrentSelection(fileBrowser)
-				return nil
-			default:
-				return nil
 			}
+
+			return nil
 		}
 
 		if fileBrowser.GetSelection() != nil {
@@ -129,6 +128,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 				return nil
 			case key == tcell.KeyDelete:
 				openDeleteDialogOnCurrentSelection(fileBrowser)
+				return nil
 			}
 		}
 		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {

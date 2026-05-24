@@ -119,6 +119,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 				if currentSelection != nil {
 					snapshotBrowser.openDeleteDialog(currentSelection)
 				}
+				return nil
 			}
 		}
 		return event

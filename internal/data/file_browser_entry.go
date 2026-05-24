@@ -104,3 +104,7 @@ func (entry *FileBrowserEntry) HasSnapshot() bool {
 func (entry *FileBrowserEntry) HasReal() bool {
 	return entry.RealFile != nil
 }
+
+func (entry *FileBrowserEntry) HasDiff() bool {
+	return entry != nil && entry.DiffState != diff_state.Equal && entry.HasSnapshot()
+}
