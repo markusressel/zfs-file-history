@@ -45,15 +45,14 @@ func InitConfig(cfgFile string) {
 
 func setDefaultValues() {
 	viper.SetDefault("Diff", DiffConfig{
-		Mode: DiffModeExternal,
-		External: ExternalDiffConfig{
-			Editor: ExternalDiffEditorConfig{
-				Path: "",
-			},
-		},
+		Mode:     DiffModeExternal,
+		External: nil,
 	})
 	viper.SetDefault("Diff.Mode", DiffModeExternal)
-	viper.SetDefault("Diff.External.Editor.Path", "")
+	viper.SetDefault("Diff.External", nil)
+	//viper.SetDefault("Diff.External.Path", "")
+	//viper.SetDefault("Diff.External.Args", []string{})
+	//viper.SetDefault("Diff.External.WrapInPager", false)
 
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,

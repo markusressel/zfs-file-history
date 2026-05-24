@@ -8,14 +8,12 @@ const (
 )
 
 type DiffConfig struct {
-	Mode     DiffMode           `json:"mode"`
-	External ExternalDiffConfig `json:"external"`
+	Mode     DiffMode            `json:"mode"`
+	External *ExternalDiffConfig `json:"external,omitempty"`
 }
 
 type ExternalDiffConfig struct {
-	Editor ExternalDiffEditorConfig `json:"editor"`
-}
-
-type ExternalDiffEditorConfig struct {
-	Path string `json:"path"`
+	Path        string   `json:"path"`
+	Args        []string `json:"args"`
+	WrapInPager bool     `json:"wrapInPager"`
 }

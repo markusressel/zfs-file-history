@@ -11,9 +11,9 @@ import (
 )
 
 type ExternalDiffViewerConfig struct {
-	Path        string
-	Args        []string
-	WrapInPager bool
+	Path        string   `json:"path"`
+	Args        []string `json:"args"`
+	WrapInPager bool     `json:"wrapInPager"`
 }
 
 func (c ExternalDiffViewerConfig) computeRunArgs() []string {
@@ -71,14 +71,14 @@ var (
 	}
 )
 
-func determineExternalDiffViewer(editorPath string) (editorConfig *ExternalDiffViewerConfig) {
-	if editorPath != "" {
-		editorConfig = findEditorOption(editorPath, EditorOptions)
+func determineExternalDiffViewer(binaryPath string) (editorConfig *ExternalDiffViewerConfig) {
+	if binaryPath != "" {
+		editorConfig = findEditorOption(binaryPath, EditorOptions)
 		if editorConfig != nil {
 			return editorConfig
 		}
 
-		logging.Warning("Configured external editor '%s' is not recognized. Falling back to internal diff.", editorPath)
+		logging.Warning("Configured external diff viewer '%s' not found on system. Checking other options.", binaryPath)
 	}
 
 	for _, editor := range EditorOptions {
@@ -96,7 +96,7 @@ func determineExternalDiffViewer(editorPath string) (editorConfig *ExternalDiffV
 	if editorEnvValue == "" {
 		logging.Error("EDITOR environment variable not set and no external editor path configured. Falling back to internal diff.")
 	} else {
-		editorConfig = findEditorOption(editorPath, EditorOptions)
+		editorConfig = findEditorOption(binaryPath, EditorOptions)
 		if editorConfig == nil {
 			logging.Error("EDITOR environment variable is set to '%s' but it is not a recognized editor. Falling back to internal diff.", editorEnvValue)
 		} else {

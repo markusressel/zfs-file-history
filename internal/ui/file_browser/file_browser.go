@@ -550,8 +550,18 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 	snapshotFilePath := snapshot.Snapshot.GetSnapshotPath(selection.RealFile.Path)
 
 	if configuration.CurrentConfig.Diff.Mode == configuration.DiffModeExternal {
-		editorPath := configuration.CurrentConfig.Diff.External.Editor.Path
-		editorConf := determineExternalDiffViewer(editorPath)
+		externalConf := configuration.CurrentConfig.Diff.External
+		var editorConf *ExternalDiffViewerConfig
+		if externalConf == nil {
+			editorConf = determineExternalDiffViewer("")
+		} else {
+			editorConf = &ExternalDiffViewerConfig{
+				Path:        externalConf.Path,
+				Args:        externalConf.Args,
+				WrapInPager: externalConf.WrapInPager,
+			}
+		}
+
 		if editorConf == nil {
 			return
 		}
