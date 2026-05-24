@@ -10,6 +10,7 @@ import (
 )
 
 type Configuration struct {
+	Diff      DiffConfig      `json:"diff"`
 	Profiling ProfilingConfig `json:"profiling"`
 }
 
@@ -43,6 +44,17 @@ func InitConfig(cfgFile string) {
 }
 
 func setDefaultValues() {
+	viper.SetDefault("Diff", DiffConfig{
+		Mode: DiffModeExternal,
+		External: ExternalDiffConfig{
+			Editor: ExternalDiffEditorConfig{
+				Path: "",
+			},
+		},
+	})
+	viper.SetDefault("Diff.Mode", DiffModeExternal)
+	viper.SetDefault("Diff.External.Editor.Path", "")
+
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,
 		Host:    "localhost",
@@ -55,7 +67,7 @@ func setDefaultValues() {
 // DetectAndReadConfigFile detects the path of the first existing config file
 func DetectAndReadConfigFile() string {
 	_ = readInConfig()
-	return GetFilePath()
+	return viper.ConfigFileUsed()
 }
 
 // readInConfig reads and parses the config file

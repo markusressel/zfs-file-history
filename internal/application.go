@@ -20,7 +20,7 @@ func RunApplication(path string) {
 
 	var g run.Group
 	profiling.AddActor(&g, ctx)
-	ui.AddActor(&g, path)
+	ui.AddActor(&g, ctx, path)
 	addSignalHandlerActor(&g, cancel)
 
 	if err := g.Run(); err != nil {
