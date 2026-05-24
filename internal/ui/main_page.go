@@ -57,6 +57,9 @@ func NewMainPage(application *tview.Application) *MainPage {
 			mainPage.showStatusMessage(e.Message)
 		case file_browser.SelectedTableEntryChangedEvent:
 			snapshotBrowser.SetFileEntry(e.FileEntry)
+			if fileBrowser.HasFocus() {
+				mainPage.updateShortcutMap(fileBrowser)
+			}
 		}
 	})
 
@@ -64,6 +67,9 @@ func NewMainPage(application *tview.Application) *MainPage {
 		switch e := event.(type) {
 		case snapshot_browser.SelectedSnapshotChanged:
 			fileBrowser.SetSelectedSnapshot(e.Snapshot)
+			if snapshotBrowser.HasFocus() {
+				mainPage.updateShortcutMap(snapshotBrowser)
+			}
 		}
 	})
 
