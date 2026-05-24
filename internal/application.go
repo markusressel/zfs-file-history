@@ -20,7 +20,7 @@ func RunApplication(path string) {
 
 	var g run.Group
 	profiling.AddActor(&g, ctx)
-	ui.AddActor(&g, path)
+	ui.AddActor(&g, ctx, path)
 	addSignalHandlerActor(&g, cancel)
 
 	if err := g.Run(); err != nil {
@@ -45,7 +45,8 @@ func addSignalHandlerActor(g *run.Group, cancel context.CancelFunc) {
 
 		return nil
 	}, func(err error) {
-		defer close(sig)
+		signal.Stop(sig) // Stop notifying for signals
+		close(sig)       // Then close the channel
 		cancel()
 	})
 }

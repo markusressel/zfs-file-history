@@ -7,6 +7,7 @@ import (
 	path2 "path"
 	"slices"
 	"strings"
+	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
@@ -544,6 +545,30 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 	if selection == nil || snapshot == nil {
 		return
 	}
+
+	realFilePath := selection.RealFile.Path
+	snapshotFilePath := snapshot.Snapshot.GetSnapshotPath(selection.RealFile.Path)
+
+	if configuration.CurrentConfig.Diff.Mode == configuration.DiffModeExternal {
+		externalConf := configuration.CurrentConfig.Diff.External
+		var editorConf *ExternalDiffViewerConfig
+		if externalConf == nil {
+			editorConf = determineExternalDiffViewer("")
+		} else {
+			editorConf = &ExternalDiffViewerConfig{
+				Path:        externalConf.Path,
+				Args:        externalConf.Args,
+				WrapInPager: externalConf.WrapInPager,
+			}
+		}
+
+		if editorConf != nil {
+			runExternalDiffEditor(fileBrowser.application, *editorConf, realFilePath, snapshotFilePath)
+			return
+		}
+	}
+
+	// Internal diff display (or fallback from external if no editor path)
 	d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
 	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
 		switch action {

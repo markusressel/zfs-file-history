@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/zfs"
 
@@ -9,14 +10,16 @@ import (
 )
 
 // AddActor wires ZFS preload and UI lifecycle into the application run group.
-func AddActor(g *run.Group, path string) {
+func AddActor(g *run.Group, ctx context.Context, path string) {
 	g.Add(func() error {
 		logging.Info("Loading ZFS data...")
 		pterm.Info.Printfln("Loading ZFS data...")
 		zfs.RefreshZfsData()
 		pterm.Info.Printfln("Launching UI...")
 		logging.Info("Launching UI...")
-		return CreateUi(path, true).Run()
+
+		application := CreateUi(path, true)
+		return application.Run()
 	}, func(err error) {
 		if err != nil {
 			logging.Warning("Error stopping UI: %s", err.Error())
