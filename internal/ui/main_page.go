@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
@@ -10,8 +9,6 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
-	uiutil "zfs-file-history/internal/ui/util"
-	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -41,9 +38,9 @@ func NewMainPage(application *tview.Application) *MainPage {
 		snapshotBrowser: snapshotBrowser,
 	}
 
-	snapshotBrowser.SetEventCallback(func(event snapshot_browser.SnapshotBrowserEvent) {
+	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
 		switch event := event.(type) {
-		case uiutil.StatusMessageEvent:
+		case snapshot_browser.StatusMessageEvent:
 			mainPage.showStatusMessage(event.Message)
 		case snapshot_browser.SnapshotCreated:
 			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", event.SnapshotName)))
@@ -56,16 +53,22 @@ func NewMainPage(application *tview.Application) *MainPage {
 		mainPage.showStatusMessage(message)
 	})
 
-	fileBrowser.SetPathChangedCallback(func(path string) {
-		datasetInfo.SetPath(path)
-		snapshotBrowser.SetPath(path, false)
+	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
+		switch e := event.(type) {
+		case file_browser.PathChangedEvent:
+			datasetInfo.SetPath(e.NewPath)
+			snapshotBrowser.SetPath(e.NewPath, false)
+		}
 	})
 	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
 		snapshotBrowser.SetFileEntry(fileEntry)
 	})
 
-	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *data.SnapshotBrowserEntry) {
-		fileBrowser.SetSelectedSnapshot(snapshot)
+	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
+		switch e := event.(type) {
+		case snapshot_browser.SelectedSnapshotChanged:
+			fileBrowser.SetSelectedSnapshot(e.Snapshot)
+		}
 	})
 
 	mainPage.layout = mainPage.createLayout()
@@ -83,10 +86,12 @@ func NewMainPage(application *tview.Application) *MainPage {
 		return event
 	})
 
-	fileBrowser.SetEventCallback(func(event file_browser.FileBrowserEvent) {
-		switch event {
+	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
+		switch e := event.(type) {
+		case file_browser.RequestFocusEvent:
+			application.SetFocus(e.Layout)
 		case file_browser.CreateSnapshotEvent:
-			name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+			name := e.SnapshotName
 			err := datasetInfo.CreateSnapshot(name)
 			if err != nil {
 				logging.Error("Failed to create snapshot: %s", err)

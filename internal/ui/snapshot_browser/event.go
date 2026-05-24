@@ -1,12 +1,34 @@
 package snapshot_browser
 
-type SnapshotBrowserEvent interface {
+import (
+	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/status_message"
+)
+
+type Event interface {
+	isSnapshotBrowserEvent()
 }
+
+type SelectedSnapshotChanged struct {
+	Snapshot *data.SnapshotBrowserEntry
+}
+
+func (e SelectedSnapshotChanged) isSnapshotBrowserEvent() {}
 
 type SnapshotCreated struct {
 	SnapshotName string
 }
 
+func (e SnapshotCreated) isSnapshotBrowserEvent() {}
+
 type SnapshotDestroyed struct {
 	SnapshotName string
 }
+
+func (e SnapshotDestroyed) isSnapshotBrowserEvent() {}
+
+type StatusMessageEvent struct {
+	Message *status_message.StatusMessage
+}
+
+func (e StatusMessageEvent) isSnapshotBrowserEvent() {}

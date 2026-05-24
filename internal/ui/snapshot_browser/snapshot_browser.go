@@ -21,7 +21,7 @@ import (
 )
 
 type SnapshotBrowserComponent struct {
-	eventCallback func(event SnapshotBrowserEvent)
+	Events uiutil.Emitter[Event]
 
 	application *tview.Application
 
@@ -35,8 +35,6 @@ type SnapshotBrowserComponent struct {
 	currentFileEntry *data.FileBrowserEntry
 
 	selectedSnapshotMemory *uiutil.SelectionMemory[data.SnapshotBrowserEntry]
-
-	selectedSnapshotChangedCallback func(snapshot *data.SnapshotBrowserEntry)
 }
 
 var (
@@ -82,11 +80,10 @@ var (
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
 	snapshotBrowser := &SnapshotBrowserComponent{
-		eventCallback:                   func(event SnapshotBrowserEvent) {},
-		application:                     application,
-		currentSnapshots:                []*zfs.Snapshot{},
-		selectedSnapshotMemory:          uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
-		selectedSnapshotChangedCallback: func(snapshot *data.SnapshotBrowserEntry) {},
+		Events:                 uiutil.Emitter[Event]{},
+		application:            application,
+		currentSnapshots:       []*zfs.Snapshot{},
+		selectedSnapshotMemory: uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
 	}
 
 	snapshotBrowser.layout = snapshotBrowser.createLayout()
@@ -131,7 +128,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		snapshotBrowser.rememberSelectionForDataset(entry)
 		snapshotBrowser.updateTableTitle()
-		snapshotBrowser.selectedSnapshotChangedCallback(entry)
+		snapshotBrowser.emit(SelectedSnapshotChanged{entry})
 	})
 
 	layout.AddPage("snapshot-browser", snapshotBrowser.tableContainer.GetLayout(), true, true)
@@ -307,7 +304,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *data.SnapshotBrowserEntry) {
-	snapshotBrowser.selectedSnapshotChangedCallback(snapshot)
+	snapshotBrowser.emit(SelectedSnapshotChanged{snapshot})
 	if snapshotBrowser.GetSelection() == snapshot || snapshotBrowser.GetSelection() != nil && snapshot != nil && snapshotBrowser.GetSelection().Snapshot.Path == snapshot.Snapshot.Path {
 		return
 	}
@@ -316,10 +313,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *data.S
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetSelection() *data.SnapshotBrowserEntry {
 	return snapshotBrowser.tableContainer.GetSelectedEntry()
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) SetSelectedSnapshotChangedCallback(f func(snapshot *data.SnapshotBrowserEntry)) {
-	snapshotBrowser.selectedSnapshotChangedCallback = f
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*data.SnapshotBrowserEntry {
@@ -348,7 +341,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 				snapshotBrowser.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
 			}
 			snapshotBrowser.SelectLatest()
-			snapshotBrowser.sendUiEvent(SnapshotCreated{
+			snapshotBrowser.emit(SnapshotCreated{
 				SnapshotName: name,
 			})
 			return true
@@ -356,11 +349,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			err := snapshotBrowser.destroySnapshot(selection, false, false)
 			if err != nil {
 				logging.Error("Failed to destroy snapshot: %s", err.Error())
-				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+				snapshotBrowser.emit(StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
 			} else {
-				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+				snapshotBrowser.emit(StatusMessageEvent{
 					Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name)),
 				})
 			}
@@ -369,11 +362,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			err := snapshotBrowser.destroySnapshot(selection, true, true)
 			if err != nil {
 				logging.Error("Failed to destroy snapshot: %s", err.Error())
-				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+				snapshotBrowser.emit(StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
 			} else {
-				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+				snapshotBrowser.emit(StatusMessageEvent{
 					Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name)),
 				})
 			}
@@ -399,7 +392,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 				err := snapshotBrowser.destroySnapshot(entry, false, false)
 				if err != nil {
 					logging.Error("Failed to destroy snapshot: %s", err.Error())
-					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+					snapshotBrowser.emit(StatusMessageEvent{
 						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 					})
 				}
@@ -411,7 +404,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 				err := snapshotBrowser.destroySnapshot(entry, true, true)
 				if err != nil {
 					logging.Error("Failed to destroy snapshot: %s", err.Error())
-					snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+					snapshotBrowser.emit(StatusMessageEvent{
 						Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 					})
 				}
@@ -434,7 +427,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 			err := snapshotBrowser.destroySnapshot(selection, false, false)
 			if err != nil {
 				logging.Error("Failed to destroy snapshot: %s", err.Error())
-				snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+				snapshotBrowser.emit(StatusMessageEvent{
 					Message: status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to destroy snapshot: %s", err)),
 				})
 			}
@@ -499,17 +492,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) showStatusMessage(message *status_message.StatusMessage) {
-	snapshotBrowser.sendUiEvent(uiutil.StatusMessageEvent{
+	snapshotBrowser.emit(StatusMessageEvent{
 		Message: message,
 	})
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) sendUiEvent(event SnapshotBrowserEvent) {
-	snapshotBrowser.eventCallback(event)
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) SetEventCallback(f func(event SnapshotBrowserEvent)) {
-	snapshotBrowser.eventCallback = f
+func (snapshotBrowser *SnapshotBrowserComponent) emit(event Event) {
+	snapshotBrowser.Events.Emit(event)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) HasMultiSelection() bool {

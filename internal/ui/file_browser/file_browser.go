@@ -7,6 +7,7 @@ import (
 	path2 "path"
 	"slices"
 	"strings"
+	"time"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -64,7 +65,7 @@ var (
 )
 
 type FileBrowserComponent struct {
-	eventCallback func(event FileBrowserEvent)
+	Events *uiutil.Emitter[Event]
 
 	path string
 
@@ -78,16 +79,15 @@ type FileBrowserComponent struct {
 
 	statusCallback func(message *status_message.StatusMessage)
 
-	selectionMemory     *uiutil.SelectionMemory[data.FileBrowserEntry]
-	fileWatcher         *util.FileWatcher
-	pathChangedCallback func(path string)
+	selectionMemory *uiutil.SelectionMemory[data.FileBrowserEntry]
+	fileWatcher     *util.FileWatcher
 }
 
 func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	tableContainer := createFileBrowserTable(application)
 
 	fileBrowser := &FileBrowserComponent{
-		eventCallback: func(event FileBrowserEvent) {},
+		Events: uiutil.NewEmitter[Event](),
 
 		application: application,
 
@@ -95,7 +95,6 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 
 		tableContainer:               tableContainer,
 		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
-		pathChangedCallback:          func(path string) {},
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
@@ -152,6 +151,10 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	return fileBrowser
 }
 
+func (fileBrowser *FileBrowserComponent) emit(event Event) {
+	fileBrowser.Events.Emit(event)
+}
+
 func openDeleteDialogOnCurrentSelection(fileBrowser *FileBrowserComponent) {
 	currentSelection := fileBrowser.GetSelection()
 	if currentSelection != nil && currentSelection.HasReal() {
@@ -180,6 +183,9 @@ func (fileBrowser *FileBrowserComponent) createLayout() {
 }
 
 func (fileBrowser *FileBrowserComponent) Focus() {
+	fileBrowser.emit(RequestFocusEvent{
+		Layout: fileBrowser.tableContainer.GetLayout(),
+	})
 	fileBrowser.application.SetFocus(fileBrowser.tableContainer.GetLayout())
 }
 
@@ -383,7 +389,7 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 
 	if fileBrowser.path != newPath {
 		fileBrowser.path = newPath
-		fileBrowser.pathChangedCallback(newPath)
+		fileBrowser.emit(PathChangedEvent{NewPath: newPath})
 		fileBrowser.Refresh()
 	}
 }
@@ -641,7 +647,8 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.eventCallback(CreateSnapshotEvent)
+	snapshotName := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+	fileBrowser.emit(CreateSnapshotEvent{snapshotName})
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
@@ -655,10 +662,6 @@ func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
 
 func (fileBrowser *FileBrowserComponent) SetSelectedFileEntryChangedCallback(f func(fileEntry *data.FileBrowserEntry)) {
 	fileBrowser.selectedEntryChangedCallback = f
-}
-
-func (fileBrowser *FileBrowserComponent) SetPathChangedCallback(f func(path string)) {
-	fileBrowser.pathChangedCallback = f
 }
 
 func (fileBrowser *FileBrowserComponent) SetStatusCallback(f func(message *status_message.StatusMessage)) {
@@ -679,10 +682,6 @@ func (fileBrowser *FileBrowserComponent) GetEntries() []*data.FileBrowserEntry {
 
 func (fileBrowser *FileBrowserComponent) showError(err error) {
 	fileBrowser.showMessage(status_message.NewErrorStatusMessage(err.Error()))
-}
-
-func (fileBrowser *FileBrowserComponent) SetEventCallback(f func(event FileBrowserEvent)) {
-	fileBrowser.eventCallback = f
 }
 
 func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
