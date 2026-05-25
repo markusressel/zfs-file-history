@@ -362,6 +362,7 @@ func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, ne
 }
 
 func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists bool) {
+	// TODO use FileBrowserEntry.CanEnter()
 	if checkExists {
 		stat, err := os.Lstat(newPath)
 		if err != nil {
@@ -673,16 +674,26 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 }
 
 func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
-	if fileBrowser.GetSelection() != nil {
-		return []shortcut_helper.ShortcutEntry{
+	if selection := fileBrowser.GetSelection(); selection != nil {
+
+		shortcutMap := []shortcut_helper.ShortcutEntry{
 			uiutil.TableComponentShortcutUp,
 			uiutil.TableComponentShortcutDown,
-			{KeyCombo: []string{"Alt+Up", "Left"}, Name: "Navigate Up"},
-			{KeyCombo: []string{"Right"}, Name: "Navigate Into"},
-			{KeyCombo: []string{"Enter"}, Name: "Actions"},
-			{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
-			{KeyCombo: []string{"Ctrl+r"}, Name: "Restore"},
 		}
+
+		if ok, _ := selection.CanEnter(); ok {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"})
+		}
+
+		if selection.HasReal() {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"})
+		}
+
+		if selection.HasSnapshot() && selection.DiffState != diff_state.Equal {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+r"}, Name: "Restore"})
+		}
+
+		return shortcutMap
 	}
 
 	return uiutil.TableComponentShortcutEntries
