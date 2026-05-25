@@ -2,6 +2,7 @@ package shortcut_helper
 
 import (
 	"fmt"
+	"strings"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 
@@ -57,7 +58,9 @@ func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 	sm.ShortCutEntries = entries
 	var statusText string
 	for _, entry := range entries {
-		shortcuts := txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%s", entry.KeyCombo)
+		// comma separated list:
+		shortCutsText := strings.Join(entry.KeyCombo, "|")
+		shortcuts := txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "[%s]", shortCutsText)
 		name := txwidgets.Span(theme.Colors.ShortcutMap.Name, "%s", entry.Name)
 		statusText += fmt.Sprintf("%s: %s  ", shortcuts, name)
 	}

@@ -675,6 +675,10 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	if fileBrowser.GetSelection() != nil {
 		return []shortcut_helper.ShortcutEntry{
+			uiutil.TableComponentShortcutUp,
+			uiutil.TableComponentShortcutDown,
+			{KeyCombo: []string{"Alt+Up", "Left"}, Name: "Navigate Up"},
+			{KeyCombo: []string{"Right"}, Name: "Navigate Into"},
 			{KeyCombo: []string{"Enter"}, Name: "Actions"},
 			{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
 			{KeyCombo: []string{"Ctrl+r"}, Name: "Restore"},

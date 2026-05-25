@@ -66,7 +66,7 @@ var (
 		},
 		ShortcutMap: ShortcutMapColors{
 			KeyCombo: Primary,
-			Name:     OnBackground,
+			Name:     tcell.ColorLightGray,
 		},
 	}
 

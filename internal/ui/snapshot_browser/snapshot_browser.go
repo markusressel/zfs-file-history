@@ -514,6 +514,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
 func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	if snapshotBrowser.GetSelection() != nil {
 		return []shortcut_helper.ShortcutEntry{
+			uiutil.TableComponentShortcutUp,
+			uiutil.TableComponentShortcutDown,
 			{KeyCombo: []string{"Enter"}, Name: "Actions"},
 			{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
 		}
