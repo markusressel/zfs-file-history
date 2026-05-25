@@ -20,8 +20,8 @@ func CreateAttentionTextView(text string) *tview.TextView {
 }
 
 var (
-	TableComponentShortcutDown = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Down"}, Name: "Select Next Item"}
-	TableComponentShortcutUp   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Up"}, Name: "Select Previous Item"}
+	TableComponentShortcutDown = shortcut_helper.ShortcutEntry{KeyCombo: []string{"⬇️"}, Name: "Select Next Item"}
+	TableComponentShortcutUp   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"⬆️"}, Name: "Select Previous Item"}
 
 	TableComponentShortcutEntries = []shortcut_helper.ShortcutEntry{
 		TableComponentShortcutUp,
