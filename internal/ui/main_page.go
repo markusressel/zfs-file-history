@@ -2,15 +2,12 @@ package ui
 
 import (
 	"fmt"
-	"time"
-	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
-	uiutil "zfs-file-history/internal/ui/util"
-	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -19,6 +16,7 @@ import (
 type MainPage struct {
 	application     *tview.Application
 	header          *ApplicationHeaderComponent
+	shortcutMap     *shortcut_helper.ShortcutMapComponent
 	fileBrowser     *file_browser.FileBrowserComponent
 	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
@@ -39,9 +37,9 @@ func NewMainPage(application *tview.Application) *MainPage {
 		snapshotBrowser: snapshotBrowser,
 	}
 
-	snapshotBrowser.SetEventCallback(func(event snapshot_browser.SnapshotBrowserEvent) {
+	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
 		switch event := event.(type) {
-		case uiutil.StatusMessageEvent:
+		case snapshot_browser.StatusMessageEvent:
 			mainPage.showStatusMessage(event.Message)
 		case snapshot_browser.SnapshotCreated:
 			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", event.SnapshotName)))
@@ -50,20 +48,29 @@ func NewMainPage(application *tview.Application) *MainPage {
 		}
 	})
 
-	fileBrowser.SetStatusCallback(func(message *status_message.StatusMessage) {
-		mainPage.showStatusMessage(message)
+	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
+		switch e := event.(type) {
+		case file_browser.PathChangedEvent:
+			datasetInfo.SetPath(e.NewPath)
+			snapshotBrowser.SetPath(e.NewPath, false)
+		case file_browser.FileBrowserStatusEvent:
+			mainPage.showStatusMessage(e.Message)
+		case file_browser.SelectedTableEntryChangedEvent:
+			snapshotBrowser.SetFileEntry(e.FileEntry)
+			if fileBrowser.HasFocus() {
+				mainPage.updateShortcutMap(fileBrowser)
+			}
+		}
 	})
 
-	fileBrowser.SetPathChangedCallback(func(path string) {
-		datasetInfo.SetPath(path)
-		snapshotBrowser.SetPath(path, false)
-	})
-	fileBrowser.SetSelectedFileEntryChangedCallback(func(fileEntry *data.FileBrowserEntry) {
-		snapshotBrowser.SetFileEntry(fileEntry)
-	})
-
-	snapshotBrowser.SetSelectedSnapshotChangedCallback(func(snapshot *data.SnapshotBrowserEntry) {
-		fileBrowser.SetSelectedSnapshot(snapshot)
+	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
+		switch e := event.(type) {
+		case snapshot_browser.SelectedSnapshotChanged:
+			fileBrowser.SetSelectedSnapshot(e.Snapshot)
+			if snapshotBrowser.HasFocus() {
+				mainPage.updateShortcutMap(snapshotBrowser)
+			}
+		}
 	})
 
 	mainPage.layout = mainPage.createLayout()
@@ -81,10 +88,12 @@ func NewMainPage(application *tview.Application) *MainPage {
 		return event
 	})
 
-	fileBrowser.SetEventCallback(func(event file_browser.FileBrowserEvent) {
-		switch event {
+	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
+		switch e := event.(type) {
+		case file_browser.RequestFocusEvent:
+			application.SetFocus(e.Layout)
 		case file_browser.CreateSnapshotEvent:
-			name := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+			name := e.SnapshotName
 			err := datasetInfo.CreateSnapshot(name)
 			if err != nil {
 				logging.Error("Failed to create snapshot: %s", err)
@@ -120,6 +129,10 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	mainPage.header = header
 
+	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application)
+	mainPageLayout.AddItem(shortcutMap.GetLayout(), 1, 0, false)
+	mainPage.shortcutMap = shortcutMap
+
 	return mainPageLayout
 }
 
@@ -130,17 +143,42 @@ func (mainPage *MainPage) Init(path string) {
 }
 
 func (mainPage *MainPage) ToggleFocus() {
+	var nextFocusedComponent FocusableUiComponent
 	if mainPage.fileBrowser.HasFocus() {
-		mainPage.datasetInfo.Focus()
+		nextFocusedComponent = mainPage.datasetInfo
 	} else if mainPage.snapshotBrowser.HasFocus() {
-		mainPage.fileBrowser.Focus()
+		nextFocusedComponent = mainPage.fileBrowser
 	} else if mainPage.datasetInfo.HasFocus() {
-		mainPage.snapshotBrowser.Focus()
+		nextFocusedComponent = mainPage.snapshotBrowser
 	} else {
 		logging.Warning("Unexpected focus state")
 	}
+
+	nextFocusedComponent.Focus()
+	mainPage.updateShortcutMap(nextFocusedComponent)
 }
 
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
+}
+
+func (mainPage *MainPage) setShortcutMap(shortcutEntries []shortcut_helper.ShortcutEntry) {
+	mainPage.shortcutMap.SetEntries(shortcutEntries)
+}
+
+func (mainPage *MainPage) clearShortcutMap() {
+	mainPage.shortcutMap.Clear()
+}
+
+func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
+	if c, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
+		shortcutMap := c.GetShortcutMap()
+
+		globalShortcutMapEntries := []shortcut_helper.ShortcutEntry{}
+
+		shortcutMap = append(shortcutMap, globalShortcutMapEntries...)
+		mainPage.setShortcutMap(shortcutMap)
+	} else {
+		mainPage.clearShortcutMap()
+	}
 }

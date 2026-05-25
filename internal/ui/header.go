@@ -57,7 +57,7 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	statusTextView.SetTextColor(tcell.ColorGray)
 	statusTextView.SetTextAlign(tview.AlignLeft)
 
-	helpText := "Press '?' for help"
+	helpText := "Press F1 or '?' for help"
 	helpTextView := uiutil.CreateAttentionTextView(helpText)
 
 	layout.AddItem(nameTextView, len(nameText), 0, false)

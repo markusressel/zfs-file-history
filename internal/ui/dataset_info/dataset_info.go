@@ -3,6 +3,7 @@ package dataset_info
 import (
 	"fmt"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
@@ -143,4 +144,8 @@ func (datasetInfo *DatasetInfoComponent) CreateSnapshot(name string) error {
 		return fmt.Errorf("no dataset for current file selection")
 	}
 	return datasetInfo.dataset.CreateSnapshot(name)
+}
+
+func (datasetInfo *DatasetInfoComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
+	return []shortcut_helper.ShortcutEntry{}
 }

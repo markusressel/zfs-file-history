@@ -7,11 +7,13 @@ import (
 	path2 "path"
 	"slices"
 	"strings"
+	"time"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -63,7 +65,7 @@ var (
 )
 
 type FileBrowserComponent struct {
-	eventCallback func(event FileBrowserEvent)
+	Events *uiutil.Emitter[Event]
 
 	path string
 
@@ -72,36 +74,26 @@ type FileBrowserComponent struct {
 	application *tview.Application
 	layout      *tview.Pages
 
-	tableContainer               *table.RowSelectionTable[data.FileBrowserEntry]
-	selectedEntryChangedCallback func(fileEntry *data.FileBrowserEntry)
+	tableContainer *table.RowSelectionTable[data.FileBrowserEntry]
 
-	statusCallback func(message *status_message.StatusMessage)
-
-	selectionMemory     *uiutil.SelectionMemory[data.FileBrowserEntry]
-	fileWatcher         *util.FileWatcher
-	pathChangedCallback func(path string)
+	selectionMemory *uiutil.SelectionMemory[data.FileBrowserEntry]
+	fileWatcher     *util.FileWatcher
 }
 
 func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	tableContainer := createFileBrowserTable(application)
 
 	fileBrowser := &FileBrowserComponent{
-		eventCallback: func(event FileBrowserEvent) {},
+		Events: uiutil.NewEmitter[Event](),
 
 		application: application,
 
 		selectionMemory: uiutil.NewSelectionMemory[data.FileBrowserEntry](),
 
-		tableContainer:               tableContainer,
-		selectedEntryChangedCallback: func(fileEntry *data.FileBrowserEntry) {},
-		pathChangedCallback:          func(path string) {},
+		tableContainer: tableContainer,
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
-	tableContainer.SetDoubleClickCallback(func() {
-		fileBrowser.openActionDialog(fileBrowser.GetSelection())
-		application.Draw()
-	})
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 
@@ -121,10 +113,9 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 				openRestoreDialogOnCurrentSelection(fileBrowser)
 			case event.Rune() == 'd':
 				openDeleteDialogOnCurrentSelection(fileBrowser)
-				return nil
-			default:
-				return nil
 			}
+
+			return nil
 		}
 
 		if fileBrowser.GetSelection() != nil {
@@ -137,6 +128,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 				return nil
 			case key == tcell.KeyDelete:
 				openDeleteDialogOnCurrentSelection(fileBrowser)
+				return nil
 			}
 		}
 		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
@@ -147,12 +139,16 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	})
 	tableContainer.SetSelectionChangedCallback(func(selectedEntry *data.FileBrowserEntry) {
 		fileBrowser.rememberSelectionInfoForCurrentPath()
-		fileBrowser.selectedEntryChangedCallback(selectedEntry)
+		fileBrowser.Events.Emit(SelectedTableEntryChangedEvent{selectedEntry})
 	})
 
 	fileBrowser.createLayout()
 
 	return fileBrowser
+}
+
+func (fileBrowser *FileBrowserComponent) emit(event Event) {
+	fileBrowser.Events.Emit(event)
 }
 
 func openDeleteDialogOnCurrentSelection(fileBrowser *FileBrowserComponent) {
@@ -183,6 +179,9 @@ func (fileBrowser *FileBrowserComponent) createLayout() {
 }
 
 func (fileBrowser *FileBrowserComponent) Focus() {
+	fileBrowser.emit(RequestFocusEvent{
+		Layout: fileBrowser.tableContainer.GetLayout(),
+	})
 	fileBrowser.application.SetFocus(fileBrowser.tableContainer.GetLayout())
 }
 
@@ -363,6 +362,7 @@ func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, ne
 }
 
 func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists bool) {
+	// TODO use FileBrowserEntry.CanEnter()
 	if checkExists {
 		stat, err := os.Lstat(newPath)
 		if err != nil {
@@ -386,7 +386,7 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 
 	if fileBrowser.path != newPath {
 		fileBrowser.path = newPath
-		fileBrowser.pathChangedCallback(newPath)
+		fileBrowser.emit(PathChangedEvent{NewPath: newPath})
 		fileBrowser.Refresh()
 	}
 }
@@ -479,7 +479,7 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 }
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
-	fileBrowser.selectedEntryChangedCallback(newSelection)
+	fileBrowser.emit(SelectedTableEntryChangedEvent{newSelection})
 	if fileBrowser.GetSelection() == newSelection {
 		return
 	}
@@ -644,28 +644,17 @@ func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
 }
 
 func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
-	fileBrowser.eventCallback(CreateSnapshotEvent)
+	snapshotName := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+	fileBrowser.emit(CreateSnapshotEvent{snapshotName})
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
 	logging.Info("%s", message.Message)
-	fileBrowser.statusCallback(message)
+	fileBrowser.emit(FileBrowserStatusEvent{message})
 }
 
 func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
 	return fileBrowser.layout
-}
-
-func (fileBrowser *FileBrowserComponent) SetSelectedFileEntryChangedCallback(f func(fileEntry *data.FileBrowserEntry)) {
-	fileBrowser.selectedEntryChangedCallback = f
-}
-
-func (fileBrowser *FileBrowserComponent) SetPathChangedCallback(f func(path string)) {
-	fileBrowser.pathChangedCallback = f
-}
-
-func (fileBrowser *FileBrowserComponent) SetStatusCallback(f func(message *status_message.StatusMessage)) {
-	fileBrowser.statusCallback = f
 }
 
 func (fileBrowser *FileBrowserComponent) selectHeader() {
@@ -684,6 +673,32 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 	fileBrowser.showMessage(status_message.NewErrorStatusMessage(err.Error()))
 }
 
-func (fileBrowser *FileBrowserComponent) SetEventCallback(f func(event FileBrowserEvent)) {
-	fileBrowser.eventCallback = f
+func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
+	if selection := fileBrowser.GetSelection(); selection != nil {
+
+		shortcutMap := []shortcut_helper.ShortcutEntry{
+			uiutil.TableComponentShortcutUp,
+			uiutil.TableComponentShortcutDown,
+		}
+
+		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"⬅️"}, Name: "Parent directory"})
+
+		if ok, _ := selection.CanEnter(); ok {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"➡️"}, Name: "Enter directory"})
+		}
+
+		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"})
+
+		if selection.HasReal() {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"})
+		}
+
+		if selection.HasSnapshot() && selection.DiffState != diff_state.Equal {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+r"}, Name: "Restore"})
+		}
+
+		return shortcutMap
+	}
+
+	return uiutil.TableComponentShortcutEntries
 }

@@ -13,6 +13,8 @@ var (
 
 	OnPrimary   = tcell.ColorBlack
 	OnSecondary = tcell.ColorWhite
+
+	OnBackground = tcell.ColorWhite
 )
 
 var (
@@ -61,6 +63,10 @@ var (
 				MultiSelectionBackground: Secondary,
 				MultiSelectionForeground: OnSecondary,
 			},
+		},
+		ShortcutMap: ShortcutMapColors{
+			KeyCombo: Primary,
+			Name:     tcell.ColorLightGray,
 		},
 	}
 

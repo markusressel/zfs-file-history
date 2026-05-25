@@ -1,7 +1,42 @@
 package file_browser
 
-type FileBrowserEvent int
+import (
+	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/status_message"
 
-const (
-	CreateSnapshotEvent FileBrowserEvent = iota
+	"github.com/rivo/tview"
 )
+
+type Event interface {
+	isFileBrowserEvent()
+}
+
+type PathChangedEvent struct {
+	NewPath string
+}
+
+func (pathChangedEvent PathChangedEvent) isFileBrowserEvent() {}
+
+type CreateSnapshotEvent struct {
+	SnapshotName string
+}
+
+func (CreateSnapshotEvent) isFileBrowserEvent() {}
+
+type RequestFocusEvent struct {
+	Layout tview.Primitive
+}
+
+func (RequestFocusEvent) isFileBrowserEvent() {}
+
+type FileBrowserStatusEvent struct {
+	Message *status_message.StatusMessage
+}
+
+func (FileBrowserStatusEvent) isFileBrowserEvent() {}
+
+type SelectedTableEntryChangedEvent struct {
+	FileEntry *data.FileBrowserEntry
+}
+
+func (SelectedTableEntryChangedEvent) isFileBrowserEvent() {}

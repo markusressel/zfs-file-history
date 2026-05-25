@@ -14,7 +14,15 @@ const (
 	HelpDialog util.Page = "help"
 )
 
+type FocusableUiComponent interface {
+	Focus()
+	HasFocus() bool
+}
+
 func CreateUi(path string, fullscreen bool) *tview.Application {
+	// completely disable double click interval to avoid unnecessary delays
+	tview.DoubleClickInterval = 0
+
 	application := tview.NewApplication()
 	application.EnableMouse(true)
 
@@ -53,5 +61,9 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 
 	mainPage.Init(path)
 
-	return application.SetRoot(pagesLayout, fullscreen).SetFocus(mainPage.fileBrowser.GetLayout())
+	application.SetRoot(pagesLayout, fullscreen).
+		SetFocus(mainPage.fileBrowser.GetLayout())
+	mainPage.updateShortcutMap(mainPage.fileBrowser)
+
+	return application
 }

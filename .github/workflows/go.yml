@@ -12,6 +12,9 @@ jobs:
   generate:
     name: Generate cross-platform builds
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     container:
       image: ixsystems/zfs:latest
     steps:

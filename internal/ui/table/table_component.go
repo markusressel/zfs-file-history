@@ -60,7 +60,6 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	toTableCells     func(row int, columns []*Column, entry *T) (cells []*tview.TableCell)
 
 	inputCapture             func(event *tcell.EventKey) *tcell.EventKey
-	doubleClickCallback      func()
 	selectionChangedCallback func(selectedEntry *T)
 
 	columnSpec   []*Column
@@ -85,7 +84,6 @@ func NewTableContainer[T RowSelectionTableEntry](
 		inputCapture: func(event *tcell.EventKey) *tcell.EventKey {
 			return event
 		},
-		doubleClickCallback:      func() {},
 		selectionChangedCallback: func(selectedEntry *T) {},
 	}
 	tableContainer.createLayout()
@@ -99,17 +97,6 @@ func (c *RowSelectionTable[T]) SetMultiSelect(multiSelect bool) {
 
 func (c *RowSelectionTable[T]) createLayout() {
 	table := tview.NewTable()
-
-	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		switch action {
-		case tview.MouseLeftDoubleClick:
-			go func() {
-				c.doubleClickCallback()
-			}()
-			return action, nil
-		}
-		return action, event
-	})
 
 	table.SetBorder(true)
 	table.SetBorders(false)
@@ -214,10 +201,6 @@ func (c *RowSelectionTable[T]) SetData(entries []*T) {
 	c.SortBy(c.sortByColumn, c.sortInverted)
 	c.cleanupMultiSelection()
 	c.updateTableContents()
-}
-
-func (c *RowSelectionTable[T]) SetDoubleClickCallback(f func()) {
-	c.doubleClickCallback = f
 }
 
 func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {

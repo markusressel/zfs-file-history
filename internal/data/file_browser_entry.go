@@ -1,6 +1,7 @@
 package data
 
 import (
+	"errors"
 	"os"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/zfs"
@@ -103,4 +104,30 @@ func (entry *FileBrowserEntry) HasSnapshot() bool {
 // See HasSnapshot if you are looking for a snapshot file.
 func (entry *FileBrowserEntry) HasReal() bool {
 	return entry.RealFile != nil
+}
+
+func (entry *FileBrowserEntry) HasDiff() bool {
+	return entry != nil && entry.DiffState != diff_state.Equal && entry.HasSnapshot()
+}
+
+func (entry *FileBrowserEntry) CanEnter() (bool, error) {
+	newPath := entry.GetRealPath()
+	stat, err := os.Lstat(newPath)
+	if err != nil {
+		// cannot enter path, ignoring
+		return false, err
+	}
+
+	// TODO: add check if the file is a link and if it points to a directory, if so we should allow entering it
+	// TODO: also add a check if the file maybe exists only in a snapshot, if so we should also allow entering it, but we need to check if the file is a directory in the snapshot then
+	if !stat.IsDir() {
+		return false, errors.New("file is not a directory")
+	}
+
+	_, err = os.ReadDir(newPath)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
