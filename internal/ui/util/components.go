@@ -27,7 +27,7 @@ var (
 		TableComponentShortcutUp,
 		TableComponentShortcutDown,
 		{KeyCombo: []string{"Enter"}, Name: "Toggle Sort Direction"},
-		{KeyCombo: []string{"Left"}, Name: "Cycle Sort Column Left"},
-		{KeyCombo: []string{"Right"}, Name: "Cycle Sort Column Right"},
+		{KeyCombo: []string{"⬅️"}, Name: "Cycle Sort Column Left"},
+		{KeyCombo: []string{"➡️"}, Name: "Cycle Sort Column Right"},
 	}
 )

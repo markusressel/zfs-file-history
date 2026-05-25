@@ -681,9 +681,13 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 			uiutil.TableComponentShortcutDown,
 		}
 
+		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"⬅️"}, Name: "Go Up"})
+
 		if ok, _ := selection.CanEnter(); ok {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"})
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"➡️"}, Name: "Enter directory"})
 		}
+
+		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"})
 
 		if selection.HasReal() {
 			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"})
