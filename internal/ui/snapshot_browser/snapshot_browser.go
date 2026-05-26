@@ -305,7 +305,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset() {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *data.SnapshotBrowserEntry) {
-	snapshotBrowser.emit(SelectedSnapshotChanged{snapshot})
+	defer func() {
+		snapshotBrowser.emit(SelectedSnapshotChanged{snapshot})
+	}()
 	if snapshotBrowser.GetSelection() == snapshot || snapshotBrowser.GetSelection() != nil && snapshot != nil && snapshotBrowser.GetSelection().Snapshot.Path == snapshot.Snapshot.Path {
 		return
 	}

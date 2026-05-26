@@ -140,6 +140,7 @@ func (mainPage *MainPage) Init(path string) {
 	mainPage.datasetInfo.SetPath(path)
 	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)
+	mainPage.fileBrowser.SelectFirstEntryIfExists()
 }
 
 func (mainPage *MainPage) ToggleFocus() {
