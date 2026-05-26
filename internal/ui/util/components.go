@@ -20,14 +20,14 @@ func CreateAttentionTextView(text string) *tview.TextView {
 }
 
 var (
-	TableComponentShortcutDown = shortcut_helper.ShortcutEntry{KeyCombo: []string{"⬇️"}, Name: "Down"}
-	TableComponentShortcutUp   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"⬆️"}, Name: "Up"}
+	TableComponentShortcutDown = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↓"}, Name: "Down"}
+	TableComponentShortcutUp   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↑"}, Name: "Up"}
 
 	TableComponentShortcutEntries = []shortcut_helper.ShortcutEntry{
 		TableComponentShortcutUp,
 		TableComponentShortcutDown,
 		{KeyCombo: []string{"Enter"}, Name: "Toggle Sort Direction"},
-		{KeyCombo: []string{"⬅️"}, Name: "Cycle Sort Column Left"},
-		{KeyCombo: []string{"➡️"}, Name: "Cycle Sort Column Right"},
+		{KeyCombo: []string{"←"}, Name: "Cycle Sort Column Left"},
+		{KeyCombo: []string{"→"}, Name: "Cycle Sort Column Right"},
 	}
 )
