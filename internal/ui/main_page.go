@@ -151,6 +151,7 @@ func (mainPage *MainPage) ToggleFocus() {
 	} else if mainPage.datasetInfo.HasFocus() {
 		nextFocusedComponent = mainPage.snapshotBrowser
 	} else {
+		nextFocusedComponent = mainPage.fileBrowser
 		logging.Warning("Unexpected focus state")
 	}
 
