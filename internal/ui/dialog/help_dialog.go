@@ -34,12 +34,12 @@ func (p *HelpPage) createLayout() {
 
 	helpTableEntries := []*TableEntry{
 		{Key: "F1, ?", Value: "Opens help dialog"},
-		{Key: "up, k", Value: "Moves cursor up"},
-		{Key: "down, j", Value: "Moves cursor down"},
+		{Key: "↑, k", Value: "Moves cursor up"},
+		{Key: "↓, j", Value: "Moves cursor down"},
 		{Key: "←", Value: "Opens parent directory"},
 		{Key: "→", Value: "Enters selected directory"},
 		{Key: "space", Value: "Toggle Multi-Selection"},
-		{Key: "tab, shift+tab", Value: "Cycles window focus"},
+		{Key: "⭾, shift+⭾", Value: "Cycles window focus"},
 		emptyEntry,
 		{Key: "esc", Value: "Closes any currently open dialog"},
 		{Key: "ctrl+q", Value: "Quits zfs-file-history"},
