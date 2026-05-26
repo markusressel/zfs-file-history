@@ -24,38 +24,10 @@ func createFileBrowserTable(application *tview.Application) *table.RowSelectionT
 }
 
 func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
-	var status = "="
-	var statusColor = tcell.ColorGray
-	switch entry.DiffState {
-	case diff_state.Equal:
-		status = "="
-		statusColor = theme.Colors.FileBrowser.Table.State.Equal
-	case diff_state.Deleted:
-		status = "-"
-		statusColor = theme.Colors.FileBrowser.Table.State.Deleted
-	case diff_state.Added:
-		status = "+"
-		statusColor = theme.Colors.FileBrowser.Table.State.Added
-	case diff_state.Modified:
-		status = "≠"
-		statusColor = theme.Colors.FileBrowser.Table.State.Modified
-	case diff_state.Unknown:
-		status = "N/A"
-		statusColor = theme.Colors.FileBrowser.Table.State.Unknown
-	}
-
-	var typeCellText = "?"
-	var typeCellColor = tcell.ColorGray
-	switch entry.Type {
-	case data.File:
-		typeCellText = "F"
-	case data.Directory:
-		typeCellText = "D"
-		typeCellColor = theme.Colors.Layout.Table.Header
-	case data.Link:
-		typeCellText = "L"
-		typeCellColor = tcell.ColorYellow
-	}
+	status := determineStatusIndicator(entry)
+	statusColor := determineStatusColor(entry)
+	typeCellText := determineTypeCellText(entry)
+	typeCellColor := determineTypeCellColor(entry)
 
 	for _, column := range columns {
 		var cellColor = tcell.ColorWhite
@@ -122,10 +94,77 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			SetTextColor(cellColor).
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
+
+		// Keep row status visible while selected by using statusColor as selected background.
+		cell.SetSelectedStyle(
+			tcell.StyleDefault.
+				Foreground(theme.Colors.Layout.Table.SelectedForeground).
+				Background(statusColor),
+		)
 		cells = append(cells, cell)
 	}
 
 	return cells
+}
+
+func determineTypeCellColor(entry *data.FileBrowserEntry) tcell.Color {
+	switch entry.Type {
+	case data.Directory:
+		return theme.Colors.Layout.Table.Header
+	case data.Link:
+		return tcell.ColorYellow
+	case data.File:
+		fallthrough
+	default:
+		return tcell.ColorGray
+	}
+}
+
+func determineTypeCellText(entry *data.FileBrowserEntry) string {
+	switch entry.Type {
+	case data.File:
+		return "F"
+	case data.Directory:
+		return "D"
+	case data.Link:
+		return "L"
+	default:
+		return "?"
+	}
+}
+
+func determineStatusIndicator(entry *data.FileBrowserEntry) string {
+	switch entry.DiffState {
+	case diff_state.Equal:
+		return "="
+	case diff_state.Deleted:
+		return "-"
+	case diff_state.Added:
+		return "+"
+	case diff_state.Modified:
+		return "≠"
+	case diff_state.Unknown:
+		fallthrough
+	default:
+		return "N/A"
+	}
+}
+
+func determineStatusColor(entry *data.FileBrowserEntry) tcell.Color {
+	switch entry.DiffState {
+	case diff_state.Equal:
+		return theme.Colors.FileBrowser.Table.State.Equal
+	case diff_state.Deleted:
+		return theme.Colors.FileBrowser.Table.State.Deleted
+	case diff_state.Added:
+		return theme.Colors.FileBrowser.Table.State.Added
+	case diff_state.Modified:
+		return theme.Colors.FileBrowser.Table.State.Modified
+	case diff_state.Unknown:
+		fallthrough
+	default:
+		return theme.Colors.FileBrowser.Table.State.Unknown
+	}
 }
 
 func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.FileBrowserEntry {
