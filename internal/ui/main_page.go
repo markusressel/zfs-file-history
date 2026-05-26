@@ -140,6 +140,7 @@ func (mainPage *MainPage) Init(path string) {
 	mainPage.datasetInfo.SetPath(path)
 	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)
+	mainPage.fileBrowser.SelectFirstEntryIfExists()
 }
 
 func (mainPage *MainPage) ToggleFocus() {
@@ -151,6 +152,7 @@ func (mainPage *MainPage) ToggleFocus() {
 	} else if mainPage.datasetInfo.HasFocus() {
 		nextFocusedComponent = mainPage.snapshotBrowser
 	} else {
+		nextFocusedComponent = mainPage.fileBrowser
 		logging.Warning("Unexpected focus state")
 	}
 

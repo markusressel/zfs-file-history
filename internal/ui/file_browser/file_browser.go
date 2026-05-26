@@ -6,7 +6,6 @@ import (
 	"os"
 	path2 "path"
 	"slices"
-	"strings"
 	"time"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
@@ -353,8 +352,11 @@ func (fileBrowser *FileBrowserComponent) goUp() {
 
 func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, newSelection string) {
 	fileBrowser.SetPath(newPath, false)
+
+	// select the directory entry of the path we were coming from
+	parentEntryName := path2.Base(path2.Clean(newSelection))
 	for _, entry := range fileBrowser.GetEntries() {
-		if strings.Contains(entry.GetRealPath(), newSelection) {
+		if entry.Name == parentEntryName {
 			fileBrowser.selectFileEntry(entry)
 			return
 		}
@@ -475,11 +477,12 @@ func (fileBrowser *FileBrowserComponent) updateTableContents() {
 	fileBrowser.tableContainer.SetTitle(title)
 	newEntries := fileBrowser.computeTableEntries()
 	fileBrowser.tableContainer.SetData(newEntries)
-	fileBrowser.restoreSelectionForPath()
 }
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
-	fileBrowser.emit(SelectedTableEntryChangedEvent{newSelection})
+	defer func() {
+		fileBrowser.emit(SelectedTableEntryChangedEvent{newSelection})
+	}()
 	if fileBrowser.GetSelection() == newSelection {
 		return
 	}
@@ -504,7 +507,7 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
 		} else {
 			var index int
 			if rememberedSelectionInfo.Entry == nil {
-				fileBrowser.selectHeader()
+				fileBrowser.SelectHeader()
 				return true
 			} else {
 				index = slices.IndexFunc(entries, func(entry *data.FileBrowserEntry) bool {
@@ -580,7 +583,7 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 		fileBrowser.SetPath(selection.GetRealPath(), true)
 	}
 	if !fileBrowser.restoreSelectionForPath() {
-		fileBrowser.selectFirstEntryIfExists()
+		fileBrowser.SelectFirstEntryIfExists()
 	}
 }
 
@@ -657,11 +660,11 @@ func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
 	return fileBrowser.layout
 }
 
-func (fileBrowser *FileBrowserComponent) selectHeader() {
+func (fileBrowser *FileBrowserComponent) SelectHeader() {
 	fileBrowser.tableContainer.SelectHeader()
 }
 
-func (fileBrowser *FileBrowserComponent) selectFirstEntryIfExists() {
+func (fileBrowser *FileBrowserComponent) SelectFirstEntryIfExists() {
 	fileBrowser.tableContainer.SelectFirstIfExists()
 }
 
