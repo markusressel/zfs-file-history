@@ -79,6 +79,14 @@ var (
 		columnType,
 		columnDiff,
 	}
+
+	initialActiveTableColumns = []*table.Column{
+		columnSize,
+		columnDateTime,
+		columnName,
+		columnType,
+		columnDiff,
+	}
 )
 
 type FileBrowserComponent struct {
@@ -111,6 +119,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	}
 
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
+	tableContainer.SetActiveColumns(initialActiveTableColumns)
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if key == tcell.KeyF2 {

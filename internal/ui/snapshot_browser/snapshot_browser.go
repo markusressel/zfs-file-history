@@ -73,8 +73,13 @@ var (
 		Title:     "Clones",
 		Alignment: tview.AlignCenter,
 	}
+
 	tableColumns = []*table.Column{
 		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
+	}
+
+	initialActiveTableColumns = []*table.Column{
+		columnName, columnDate, columnDiff, columnUsed,
 	}
 )
 
@@ -130,6 +135,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 	})
 
 	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
+	snapshotBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		snapshotBrowser.rememberSelectionForDataset(entry)
 		snapshotBrowser.updateTableTitle()
