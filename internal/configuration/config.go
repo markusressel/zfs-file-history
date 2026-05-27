@@ -10,8 +10,9 @@ import (
 )
 
 type Configuration struct {
-	Diff      DiffConfig      `json:"diff"`
-	Profiling ProfilingConfig `json:"profiling"`
+	Diff        DiffConfig        `json:"diff"`
+	FileBrowser FileBrowserConfig `json:"fileBrowser"`
+	Profiling   ProfilingConfig   `json:"profiling"`
 }
 
 var CurrentConfig Configuration
@@ -53,6 +54,11 @@ func setDefaultValues() {
 	//viper.SetDefault("Diff.External.Path", "")
 	//viper.SetDefault("Diff.External.Args", []string{})
 	//viper.SetDefault("Diff.External.WrapInPager", false)
+
+	viper.SetDefault("FileBrowser", FileBrowserConfig{
+		Permissions: FileBrowserPermissionsFormatOctal,
+	})
+	viper.SetDefault("FileBrowser.Permissions", FileBrowserPermissionsFormatOctal)
 
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,

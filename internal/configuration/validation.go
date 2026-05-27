@@ -24,7 +24,21 @@ func validateConfig(config *Configuration, path string) error {
 		return fmt.Errorf("%s: %w", prefix, err)
 	}
 
+	err = validateFileBrowser(config.FileBrowser)
+	if err != nil {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+
 	return nil
+}
+
+func validateFileBrowser(fileBrowser FileBrowserConfig) error {
+	switch fileBrowser.Permissions {
+	case FileBrowserPermissionsFormatOctal, FileBrowserPermissionsFormatSymbolic:
+		return nil
+	default:
+		return fmt.Errorf("fileBrowser.permissions must be one of: %s, %s", FileBrowserPermissionsFormatOctal, FileBrowserPermissionsFormatSymbolic)
+	}
 }
 
 func validateProfiling(profiling ProfilingConfig) error {

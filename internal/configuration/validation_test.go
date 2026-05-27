@@ -22,7 +22,7 @@ func TestValidateConfig(t *testing.T) {
 				Enabled: false,
 				Host:    "",
 				Port:    0,
-			}},
+			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
 			wantErr: false,
 		},
 		{
@@ -31,7 +31,7 @@ func TestValidateConfig(t *testing.T) {
 				Enabled: true,
 				Host:    "127.0.0.1",
 				Port:    6060,
-			}},
+			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
 			wantErr: false,
 		},
 		{
@@ -40,7 +40,7 @@ func TestValidateConfig(t *testing.T) {
 				Enabled: true,
 				Host:    " ",
 				Port:    6060,
-			}},
+			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
 			wantErr: true,
 		},
 		{
@@ -49,7 +49,7 @@ func TestValidateConfig(t *testing.T) {
 				Enabled: true,
 				Host:    "localhost",
 				Port:    0,
-			}},
+			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
 			wantErr: true,
 		},
 		{
@@ -58,6 +58,13 @@ func TestValidateConfig(t *testing.T) {
 				Enabled: true,
 				Host:    "localhost",
 				Port:    70000,
+			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
+			wantErr: true,
+		},
+		{
+			name: "invalid file browser permissions format",
+			config: &Configuration{FileBrowser: FileBrowserConfig{
+				Permissions: "invalid",
 			}},
 			wantErr: true,
 		},

@@ -48,8 +48,13 @@ var (
 		Title:     "Diff",
 		Alignment: tview.AlignCenter,
 	}
-	columnName = &table.Column{
+	columnPermissions = &table.Column{
 		Id:        4,
+		Title:     "Perm",
+		Alignment: tview.AlignLeft,
+	}
+	columnName = &table.Column{
+		Id:        5,
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
@@ -59,6 +64,7 @@ var (
 		columnDateTime,
 		columnType,
 		columnDiff,
+		columnPermissions,
 		columnName,
 	}
 )

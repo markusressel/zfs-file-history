@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/util"
 
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
@@ -50,6 +52,9 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			cellText = status
 			cellColor = statusColor
 			cellAlignment = tview.AlignCenter
+		case columnPermissions:
+			cellText = determinePermissionsText(entry)
+			cellColor = tcell.ColorGray
 		case columnDateTime:
 			cellText = entry.GetStat().ModTime().Format(theme.Style.Format.DateTime)
 			switch entry.DiffState {
@@ -167,6 +172,15 @@ func determineStatusColor(entry *data.FileBrowserEntry) tcell.Color {
 	}
 }
 
+func determinePermissionsText(entry *data.FileBrowserEntry) string {
+	permissionsMode := configuration.CurrentConfig.FileBrowser.Permissions
+	if permissionsMode == configuration.FileBrowserPermissionsFormatSymbolic {
+		return util.UnixPermSymbolic(entry.GetStat().Mode())
+	}
+
+	return fmt.Sprintf("%04o", util.UnixPermissions(entry.GetStat().Mode()))
+}
+
 func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.FileBrowserEntry {
 	sort.SliceStable(entries, func(i, j int) bool {
 		a := entries[i]
@@ -184,6 +198,17 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 			result = int(a.GetStat().Size() - b.GetStat().Size())
 		case columnDiff:
 			result = int(b.DiffState - a.DiffState)
+		case columnPermissions:
+			permA := util.UnixPermissions(a.GetStat().Mode())
+			permB := util.UnixPermissions(b.GetStat().Mode())
+			switch {
+			case permA < permB:
+				result = -1
+			case permA > permB:
+				result = 1
+			default:
+				result = 0
+			}
 		}
 
 		if inverted {

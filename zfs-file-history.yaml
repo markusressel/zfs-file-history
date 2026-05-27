@@ -1,6 +1,9 @@
 diff:
   mode: external
 
+fileBrowser:
+  permissions: symbolic
+
 profiling:
   # Whether to enable the profiling webserver
   enabled: false
