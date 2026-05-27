@@ -18,54 +18,82 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "profiling disabled ignores host and port",
-			config: &Configuration{Profiling: ProfilingConfig{
-				Enabled: false,
-				Host:    "",
-				Port:    0,
-			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
+			config: &Configuration{
+				Profiling: ProfilingConfig{
+					Enabled: false,
+					Host:    "",
+					Port:    0,
+				},
+				FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal, Owner: FileBrowserOwnerFormatID},
+			},
 			wantErr: false,
 		},
 		{
 			name: "profiling enabled with valid host and port",
-			config: &Configuration{Profiling: ProfilingConfig{
-				Enabled: true,
-				Host:    "127.0.0.1",
-				Port:    6060,
-			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
+			config: &Configuration{
+				Profiling: ProfilingConfig{
+					Enabled: true,
+					Host:    "127.0.0.1",
+					Port:    6060,
+				},
+				FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal, Owner: FileBrowserOwnerFormatID},
+			},
 			wantErr: false,
 		},
 		{
 			name: "profiling enabled with empty host",
-			config: &Configuration{Profiling: ProfilingConfig{
-				Enabled: true,
-				Host:    " ",
-				Port:    6060,
-			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
+			config: &Configuration{
+				Profiling: ProfilingConfig{
+					Enabled: true,
+					Host:    " ",
+					Port:    6060,
+				},
+				FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal, Owner: FileBrowserOwnerFormatID},
+			},
 			wantErr: true,
 		},
 		{
 			name: "profiling enabled with invalid low port",
-			config: &Configuration{Profiling: ProfilingConfig{
-				Enabled: true,
-				Host:    "localhost",
-				Port:    0,
-			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
+			config: &Configuration{
+				Profiling: ProfilingConfig{
+					Enabled: true,
+					Host:    "localhost",
+					Port:    0,
+				},
+				FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal, Owner: FileBrowserOwnerFormatID},
+			},
 			wantErr: true,
 		},
 		{
 			name: "profiling enabled with invalid high port",
-			config: &Configuration{Profiling: ProfilingConfig{
-				Enabled: true,
-				Host:    "localhost",
-				Port:    70000,
-			}, FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal}},
+			config: &Configuration{
+				Profiling: ProfilingConfig{
+					Enabled: true,
+					Host:    "localhost",
+					Port:    70000,
+				},
+				FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal, Owner: FileBrowserOwnerFormatID},
+			},
 			wantErr: true,
 		},
 		{
 			name: "invalid file browser permissions format",
-			config: &Configuration{FileBrowser: FileBrowserConfig{
-				Permissions: "invalid",
-			}},
+			config: &Configuration{
+				FileBrowser: FileBrowserConfig{
+					Permissions: "invalid",
+					Owner:       FileBrowserOwnerFormatID,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid file browser owner format",
+			config: &Configuration{
+				FileBrowser: FileBrowserConfig{
+					Permissions: FileBrowserPermissionsFormatOctal,
+					Owner:       "invalid",
+				},
+			},
 			wantErr: true,
 		},
 	}

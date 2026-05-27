@@ -2,7 +2,10 @@ package util
 
 import (
 	"os"
+	"os/user"
 	path2 "path"
+	"strconv"
+	"syscall"
 )
 
 func ListFilesIn(path string) (result []string, err error) {
@@ -112,4 +115,33 @@ func UnixPermSymbolic(m os.FileMode) string {
 	}
 
 	return string(perms)
+}
+
+func UnixOwnerIDs(stat os.FileInfo) (uid uint32, gid uint32, ok bool) {
+	if stat == nil || stat.Sys() == nil {
+		return 0, 0, false
+	}
+
+	statT, typeOk := stat.Sys().(*syscall.Stat_t)
+	if !typeOk || statT == nil {
+		return 0, 0, false
+	}
+
+	return statT.Uid, statT.Gid, true
+}
+
+func LookupUserName(uid uint32) (string, error) {
+	u, err := user.LookupId(strconv.FormatUint(uint64(uid), 10))
+	if err != nil {
+		return "", err
+	}
+	return u.Username, nil
+}
+
+func LookupGroupName(gid uint32) (string, error) {
+	g, err := user.LookupGroupId(strconv.FormatUint(uint64(gid), 10))
+	if err != nil {
+		return "", err
+	}
+	return g.Name, nil
 }

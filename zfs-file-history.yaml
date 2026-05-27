@@ -2,7 +2,17 @@ diff:
   mode: external
 
 fileBrowser:
-  permissions: symbolic
+  # Permissions Column.
+  # Can be one of
+  #   - octal    (e.g. "0755")
+  #   - symbolic (e.g. "rwxr-xr-x")
+  permissions: octal
+  # UID/GID Column.
+  # Can be one of
+  #   - name (e.g. "root")
+  #   - id   (e.g. "0") or
+  #   - both (e.g. "0(root)")
+  owner: id
 
 profiling:
   # Whether to enable the profiling webserver

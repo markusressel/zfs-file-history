@@ -53,8 +53,18 @@ var (
 		Title:     "Perm",
 		Alignment: tview.AlignLeft,
 	}
-	columnName = &table.Column{
+	columnUID = &table.Column{
 		Id:        5,
+		Title:     "UID",
+		Alignment: tview.AlignLeft,
+	}
+	columnGID = &table.Column{
+		Id:        6,
+		Title:     "GID",
+		Alignment: tview.AlignLeft,
+	}
+	columnName = &table.Column{
+		Id:        7,
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
@@ -65,6 +75,8 @@ var (
 		columnType,
 		columnDiff,
 		columnPermissions,
+		columnUID,
+		columnGID,
 		columnName,
 	}
 )

@@ -35,9 +35,15 @@ func validateConfig(config *Configuration, path string) error {
 func validateFileBrowser(fileBrowser FileBrowserConfig) error {
 	switch fileBrowser.Permissions {
 	case FileBrowserPermissionsFormatOctal, FileBrowserPermissionsFormatSymbolic:
-		return nil
 	default:
 		return fmt.Errorf("fileBrowser.permissions must be one of: %s, %s", FileBrowserPermissionsFormatOctal, FileBrowserPermissionsFormatSymbolic)
+	}
+
+	switch fileBrowser.Owner {
+	case FileBrowserOwnerFormatName, FileBrowserOwnerFormatID, FileBrowserOwnerFormatBoth:
+		return nil
+	default:
+		return fmt.Errorf("fileBrowser.owner must be one of: %s, %s, %s", FileBrowserOwnerFormatName, FileBrowserOwnerFormatID, FileBrowserOwnerFormatBoth)
 	}
 }
 

@@ -57,8 +57,10 @@ func setDefaultValues() {
 
 	viper.SetDefault("FileBrowser", FileBrowserConfig{
 		Permissions: FileBrowserPermissionsFormatOctal,
+		Owner:       FileBrowserOwnerFormatBoth,
 	})
 	viper.SetDefault("FileBrowser.Permissions", FileBrowserPermissionsFormatOctal)
+	viper.SetDefault("FileBrowser.Owner", FileBrowserOwnerFormatBoth)
 
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,
