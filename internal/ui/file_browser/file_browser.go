@@ -70,14 +70,14 @@ var (
 	}
 
 	tableColumns = []*table.Column{
-		columnSize,
-		columnDateTime,
-		columnType,
-		columnDiff,
 		columnPermissions,
 		columnUID,
 		columnGID,
+		columnSize,
+		columnDateTime,
 		columnName,
+		columnType,
+		columnDiff,
 	}
 )
 
@@ -113,7 +113,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
-		if key == tcell.KeyF2 || (event.Modifiers()&tcell.ModShift != 0 && (event.Rune() == 'C' || event.Rune() == 'c')) {
+		if key == tcell.KeyF2 {
 			fileBrowser.openColumnSelectionDialog()
 			return nil
 		}
@@ -719,7 +719,7 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		shortcutMap := []shortcut_helper.ShortcutEntry{
 			uiutil.TableComponentShortcutUp,
 			uiutil.TableComponentShortcutDown,
-			{KeyCombo: []string{"F2", "Shift+C"}, Name: "Columns"},
+			{KeyCombo: []string{"F2"}, Name: "Columns"},
 		}
 
 		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory"})

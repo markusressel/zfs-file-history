@@ -537,7 +537,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 		return []shortcut_helper.ShortcutEntry{
 			uiutil.TableComponentShortcutUp,
 			uiutil.TableComponentShortcutDown,
-			{KeyCombo: []string{"F2", "Shift+C"}, Name: "Columns"},
+			{KeyCombo: []string{"F2"}, Name: "Columns"},
 			{KeyCombo: []string{"Enter"}, Name: "Actions"},
 			{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
 		}

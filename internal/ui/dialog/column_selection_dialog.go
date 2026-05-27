@@ -65,7 +65,7 @@ func (d *ColumnSelectionDialog) createLayout() {
 
 	d.refreshTables()
 
-	help := tview.NewTextView().SetText("Left/Right: switch | Enter: add | Del: remove | Esc: close")
+	help := tview.NewTextView().SetText("Left/Right: switch | Enter: add | Del: remove | Shift+Up/Down: reorder | Esc: close")
 	columns := tview.NewFlex().SetDirection(tview.FlexColumn)
 	columns.AddItem(d.activeTable, 0, 1, true)
 	columns.AddItem(d.availableTable, 0, 1, false)
@@ -116,6 +116,18 @@ func renderColumnTable(tableView *tview.Table, columns []*table.Column) {
 }
 
 func (d *ColumnSelectionDialog) captureInput(event *tcell.EventKey) *tcell.EventKey {
+	if d.focusActive && event.Modifiers()&tcell.ModShift != 0 {
+		switch event.Key() {
+		case tcell.KeyUp:
+			d.moveActiveColumnUp()
+			return nil
+		case tcell.KeyDown:
+			d.moveActiveColumnDown()
+			return nil
+		default:
+		}
+	}
+
 	switch event.Key() {
 	case tcell.KeyEscape:
 		d.Close()
@@ -172,6 +184,36 @@ func (d *ColumnSelectionDialog) removeSelectedActiveColumn() {
 	d.availableColumns = computeAvailableColumns(d.allColumns, d.activeColumns)
 	d.refreshTables()
 	d.activeTable.Select(min(row, len(d.activeColumns)-1), 0)
+	d.emitChange()
+}
+
+func (d *ColumnSelectionDialog) moveActiveColumnUp() {
+	if len(d.activeColumns) <= 1 {
+		return
+	}
+	row, _ := d.activeTable.GetSelection()
+	if row <= 0 || row >= len(d.activeColumns) {
+		return
+	}
+
+	d.activeColumns[row-1], d.activeColumns[row] = d.activeColumns[row], d.activeColumns[row-1]
+	d.refreshTables()
+	d.activeTable.Select(row-1, 0)
+	d.emitChange()
+}
+
+func (d *ColumnSelectionDialog) moveActiveColumnDown() {
+	if len(d.activeColumns) <= 1 {
+		return
+	}
+	row, _ := d.activeTable.GetSelection()
+	if row < 0 || row >= len(d.activeColumns)-1 {
+		return
+	}
+
+	d.activeColumns[row+1], d.activeColumns[row] = d.activeColumns[row], d.activeColumns[row+1]
+	d.refreshTables()
+	d.activeTable.Select(row+1, 0)
 	d.emitChange()
 }
 
