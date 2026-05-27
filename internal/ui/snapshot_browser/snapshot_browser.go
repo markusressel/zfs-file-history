@@ -100,6 +100,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) createLayout() *tview.Pages {
 
 	snapshotBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
+		if key == tcell.KeyF2 || (event.Modifiers()&tcell.ModShift != 0 && (event.Rune() == 'C' || event.Rune() == 'c')) {
+			snapshotBrowser.openColumnSelectionDialog()
+			return nil
+		}
 		if snapshotBrowser.GetSelection() != nil {
 			if key == tcell.KeyEnter {
 				if snapshotBrowser.HasMultiSelection() {
@@ -448,6 +452,21 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, act
 	dialog.ShowDialogOnPages(snapshotBrowser.application, snapshotBrowser.layout, d, actionHandler, nil)
 }
 
+func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {
+	d := dialog.NewColumnSelectionDialog(
+		snapshotBrowser.application,
+		"Configure Snapshot Columns",
+		tableColumns,
+		snapshotBrowser.tableContainer.GetColumnSpec(),
+		func(activeColumns []*table.Column) {
+			snapshotBrowser.tableContainer.SetActiveColumns(activeColumns)
+		},
+	)
+	snapshotBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
+		return false
+	})
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) (name string, err error) {
 	name = fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
 	err = entry.Snapshot.ParentDataset.CreateSnapshot(name)
@@ -518,6 +537,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 		return []shortcut_helper.ShortcutEntry{
 			uiutil.TableComponentShortcutUp,
 			uiutil.TableComponentShortcutDown,
+			{KeyCombo: []string{"F2", "Shift+C"}, Name: "Columns"},
 			{KeyCombo: []string{"Enter"}, Name: "Actions"},
 			{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
 		}

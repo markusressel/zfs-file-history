@@ -113,6 +113,10 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	tableContainer.SetColumnSpec(tableColumns, columnType, true)
 	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
+		if key == tcell.KeyF2 || (event.Modifiers()&tcell.ModShift != 0 && (event.Rune() == 'C' || event.Rune() == 'c')) {
+			fileBrowser.openColumnSelectionDialog()
+			return nil
+		}
 
 		if event.Modifiers()&tcell.ModAlt != 0 {
 			switch {
@@ -594,6 +598,21 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, actionHandler, nil)
 }
 
+func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
+	d := dialog.NewColumnSelectionDialog(
+		fileBrowser.application,
+		"Configure File Browser Columns",
+		tableColumns,
+		fileBrowser.tableContainer.GetColumnSpec(),
+		func(activeColumns []*table.Column) {
+			fileBrowser.tableContainer.SetActiveColumns(activeColumns)
+		},
+	)
+	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
+		return false
+	})
+}
+
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
 	if !selection.HasReal() && selection.HasSnapshot() {
 		fileBrowser.SetPath(selection.GetRealPath(), false)
@@ -700,6 +719,7 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		shortcutMap := []shortcut_helper.ShortcutEntry{
 			uiutil.TableComponentShortcutUp,
 			uiutil.TableComponentShortcutDown,
+			{KeyCombo: []string{"F2", "Shift+C"}, Name: "Columns"},
 		}
 
 		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory"})
