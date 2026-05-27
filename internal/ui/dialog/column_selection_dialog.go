@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"slices"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/util"
 
@@ -28,6 +29,7 @@ type ColumnSelectionDialog struct {
 	actionChannel  chan DialogActionId
 	activeTable    *tview.Table
 	availableTable *tview.Table
+	shortcutMap    *shortcut_helper.ShortcutMapComponent
 	focusActive    bool
 }
 
@@ -65,13 +67,14 @@ func (d *ColumnSelectionDialog) createLayout() {
 
 	d.refreshTables()
 
-	help := tview.NewTextView().SetText("Left/Right: switch | Enter: add | Del: remove | Shift+Up/Down: reorder | Esc: close")
+	d.shortcutMap = shortcut_helper.NewShortcutMap(d.application)
+	d.updateShortcutMap()
 	columns := tview.NewFlex().SetDirection(tview.FlexColumn)
 	columns.AddItem(d.activeTable, 0, 1, true)
 	columns.AddItem(d.availableTable, 0, 1, false)
 
 	content := tview.NewFlex().SetDirection(tview.FlexRow)
-	content.AddItem(help, 1, 0, false)
+	content.AddItem(d.shortcutMap.GetLayout(), 1, 0, false)
 	content.AddItem(columns, 0, 1, true)
 
 	d.layout = createModal(d.title, content, 70, 20)
@@ -98,11 +101,36 @@ func (d *ColumnSelectionDialog) Close() {
 func (d *ColumnSelectionDialog) refreshTables() {
 	renderColumnTable(d.activeTable, d.activeColumns)
 	renderColumnTable(d.availableTable, d.availableColumns)
+	d.updateShortcutMap()
 	if d.focusActive {
 		d.application.SetFocus(d.activeTable)
 	} else {
 		d.application.SetFocus(d.availableTable)
 	}
+}
+
+func (d *ColumnSelectionDialog) updateShortcutMap() {
+	if d.shortcutMap == nil {
+		return
+	}
+
+	entries := []shortcut_helper.ShortcutEntry{
+		{KeyCombo: []string{"←", "→"}, Name: "Switch Side"},
+		{KeyCombo: []string{"Esc"}, Name: "Close"},
+	}
+
+	if d.focusActive {
+		entries = append(entries,
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Del"}, Name: "Deactivate"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Shift+↑", "Shift+↓"}, Name: "Reorder"},
+		)
+	} else {
+		entries = append(entries,
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Activate"},
+		)
+	}
+
+	d.shortcutMap.SetEntries(entries)
 }
 
 func renderColumnTable(tableView *tview.Table, columns []*table.Column) {
@@ -134,10 +162,12 @@ func (d *ColumnSelectionDialog) captureInput(event *tcell.EventKey) *tcell.Event
 		return nil
 	case tcell.KeyLeft:
 		d.focusActive = true
+		d.updateShortcutMap()
 		d.application.SetFocus(d.activeTable)
 		return nil
 	case tcell.KeyRight:
 		d.focusActive = false
+		d.updateShortcutMap()
 		d.application.SetFocus(d.availableTable)
 		return nil
 	case tcell.KeyEnter:
