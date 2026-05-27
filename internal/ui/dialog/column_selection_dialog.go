@@ -230,10 +230,3 @@ func computeAvailableColumns(allColumns []*table.Column, activeColumns []*table.
 		})
 	})
 }
-
-func min(a int, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
