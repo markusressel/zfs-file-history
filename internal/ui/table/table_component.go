@@ -64,6 +64,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	columnSpec   []*Column
 	sortInverted bool
+
+	defaultSortColumn   *Column
+	defaultSortInverted bool
 }
 
 func NewTableContainer[T RowSelectionTableEntry](
@@ -189,9 +192,42 @@ func (c *RowSelectionTable[T]) SetTitle(title string) {
 }
 
 func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColumn *Column, inverted bool) {
-	c.columnSpec = columns
-	c.SortBy(defaultSortColumn, inverted)
+	c.defaultSortColumn = defaultSortColumn
+	c.defaultSortInverted = inverted
+	c.columnSpec = slices.Clone(columns)
+
+	c.sortByColumn = defaultSortColumn
+	c.sortInverted = inverted
+	if len(c.columnSpec) > 0 && !slices.Contains(c.columnSpec, c.sortByColumn) {
+		c.sortByColumn = c.columnSpec[0]
+	}
+
+	c.SortBy(c.sortByColumn, c.sortInverted)
 	c.updateTableContents()
+}
+
+func (c *RowSelectionTable[T]) SetActiveColumns(columns []*Column) {
+	if len(columns) <= 0 {
+		return
+	}
+
+	c.columnSpec = slices.Clone(columns)
+
+	if !slices.Contains(c.columnSpec, c.sortByColumn) {
+		if c.defaultSortColumn != nil && slices.Contains(c.columnSpec, c.defaultSortColumn) {
+			c.sortByColumn = c.defaultSortColumn
+			c.sortInverted = c.defaultSortInverted
+		} else {
+			c.sortByColumn = c.columnSpec[0]
+		}
+	}
+
+	c.SortBy(c.sortByColumn, c.sortInverted)
+	c.updateTableContents()
+}
+
+func (c *RowSelectionTable[T]) GetColumnSpec() []*Column {
+	return slices.Clone(c.columnSpec)
 }
 
 func (c *RowSelectionTable[T]) SetData(entries []*T) {

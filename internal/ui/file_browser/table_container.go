@@ -3,11 +3,14 @@ package file_browser
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
+	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/util"
 
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
@@ -50,6 +53,15 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			cellText = status
 			cellColor = statusColor
 			cellAlignment = tview.AlignCenter
+		case columnPermissions:
+			cellText = determinePermissionsText(entry)
+			cellColor = tcell.ColorGray
+		case columnUID:
+			cellText = determineUIDText(entry)
+			cellColor = tcell.ColorGray
+		case columnGID:
+			cellText = determineGIDText(entry)
+			cellColor = tcell.ColorGray
 		case columnDateTime:
 			cellText = entry.GetStat().ModTime().Format(theme.Style.Format.DateTime)
 			switch entry.DiffState {
@@ -167,6 +179,57 @@ func determineStatusColor(entry *data.FileBrowserEntry) tcell.Color {
 	}
 }
 
+func determinePermissionsText(entry *data.FileBrowserEntry) string {
+	permissionsMode := configuration.CurrentConfig.FileBrowser.Permissions
+	if permissionsMode == configuration.FileBrowserPermissionsFormatSymbolic {
+		return util.UnixPermSymbolic(entry.GetStat().Mode())
+	}
+
+	return fmt.Sprintf("%04o", util.UnixPermissions(entry.GetStat().Mode()))
+}
+
+func determineUIDText(entry *data.FileBrowserEntry) string {
+	uid, _, ok := util.UnixOwnerIDs(entry.GetStat())
+	if !ok {
+		return "N/A"
+	}
+
+	return formatIdentity(uid, util.LookupUserName)
+}
+
+func determineGIDText(entry *data.FileBrowserEntry) string {
+	_, gid, ok := util.UnixOwnerIDs(entry.GetStat())
+	if !ok {
+		return "N/A"
+	}
+
+	return formatIdentity(gid, util.LookupGroupName)
+}
+
+func formatIdentity(id uint32, lookupName func(uint32) (string, error)) string {
+	idStr := strconv.FormatUint(uint64(id), 10)
+	displayMode := configuration.CurrentConfig.FileBrowser.Owner
+
+	name, err := lookupName(id)
+	if err != nil {
+		if displayMode == configuration.FileBrowserOwnerFormatName {
+			return idStr
+		}
+		return idStr
+	}
+
+	switch displayMode {
+	case configuration.FileBrowserOwnerFormatName:
+		return name
+	case configuration.FileBrowserOwnerFormatBoth:
+		return fmt.Sprintf("%s(%s)", idStr, name)
+	case configuration.FileBrowserOwnerFormatID:
+		fallthrough
+	default:
+		return idStr
+	}
+}
+
 func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.FileBrowserEntry {
 	sort.SliceStable(entries, func(i, j int) bool {
 		a := entries[i]
@@ -184,6 +247,25 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 			result = int(a.GetStat().Size() - b.GetStat().Size())
 		case columnDiff:
 			result = int(b.DiffState - a.DiffState)
+		case columnPermissions:
+			permA := util.UnixPermissions(a.GetStat().Mode())
+			permB := util.UnixPermissions(b.GetStat().Mode())
+			switch {
+			case permA < permB:
+				result = -1
+			case permA > permB:
+				result = 1
+			default:
+				result = 0
+			}
+		case columnUID:
+			uidA, _, okA := util.UnixOwnerIDs(a.GetStat())
+			uidB, _, okB := util.UnixOwnerIDs(b.GetStat())
+			result = compareUint32WithMissing(uidA, okA, uidB, okB)
+		case columnGID:
+			_, gidA, okA := util.UnixOwnerIDs(a.GetStat())
+			_, gidB, okB := util.UnixOwnerIDs(b.GetStat())
+			result = compareUint32WithMissing(gidA, okA, gidB, okB)
 		}
 
 		if inverted {
@@ -223,4 +305,25 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 		}
 	})
 	return entries
+}
+
+func compareUint32WithMissing(a uint32, okA bool, b uint32, okB bool) int {
+	if !okA && !okB {
+		return 0
+	}
+	if !okA {
+		return -1
+	}
+	if !okB {
+		return 1
+	}
+
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
 }

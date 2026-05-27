@@ -24,7 +24,27 @@ func validateConfig(config *Configuration, path string) error {
 		return fmt.Errorf("%s: %w", prefix, err)
 	}
 
+	err = validateFileBrowser(config.FileBrowser)
+	if err != nil {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+
 	return nil
+}
+
+func validateFileBrowser(fileBrowser FileBrowserConfig) error {
+	switch fileBrowser.Permissions {
+	case FileBrowserPermissionsFormatOctal, FileBrowserPermissionsFormatSymbolic:
+	default:
+		return fmt.Errorf("fileBrowser.permissions must be one of: %s, %s", FileBrowserPermissionsFormatOctal, FileBrowserPermissionsFormatSymbolic)
+	}
+
+	switch fileBrowser.Owner {
+	case FileBrowserOwnerFormatName, FileBrowserOwnerFormatID, FileBrowserOwnerFormatBoth:
+		return nil
+	default:
+		return fmt.Errorf("fileBrowser.owner must be one of: %s, %s, %s", FileBrowserOwnerFormatName, FileBrowserOwnerFormatID, FileBrowserOwnerFormatBoth)
+	}
 }
 
 func validateProfiling(profiling ProfilingConfig) error {

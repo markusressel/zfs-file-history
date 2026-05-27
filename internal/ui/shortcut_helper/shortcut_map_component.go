@@ -14,13 +14,6 @@ type ShortcutEntry struct {
 	Name     string
 }
 
-func NewShortcutEntry(keyCombo []string, name string) *ShortcutEntry {
-	return &ShortcutEntry{
-		KeyCombo: keyCombo,
-		Name:     name,
-	}
-}
-
 type ShortcutMapComponent struct {
 	application *tview.Application
 
