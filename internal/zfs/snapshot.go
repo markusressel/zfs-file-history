@@ -297,20 +297,24 @@ func (s *Snapshot) ContainsFile(entry string) (bool, error) {
 
 // DetermineDiffState Determine the diff state between a real file and its snapshot counterpart
 func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
-	containsFile, err := s.ContainsFile(path)
+	snapshotContainsFile, err := s.ContainsFile(path)
 	if err != nil {
 		logging.Error("Could not determine if snapshot contains file %s: %s", path, err.Error())
 		return diff_state.Unknown
 	}
-	if containsFile {
+	realFileExists := util.FileExists(path)
+	if snapshotContainsFile && realFileExists {
 		if s.IsRealFileDifferent(path) {
 			return diff_state.Modified
-		} else {
-			return diff_state.Equal
 		}
-	} else {
+		return diff_state.Equal
+	} else if snapshotContainsFile {
+		return diff_state.Deleted
+	} else if realFileExists {
 		return diff_state.Added
 	}
+
+	return diff_state.Equal
 }
 
 func (s *Snapshot) Destroy(recursive bool, dependantClones bool) error {

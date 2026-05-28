@@ -8,119 +8,116 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 )
 
+type fileState struct {
+	exists  bool
+	content string
+	modTime time.Time
+}
+
 func TestDetermineDiffState(t *testing.T) {
+	// 1. Setup baseline shared structs
 	tempDir := t.TempDir()
-
-	// Setup mock dataset and snapshot structure
 	datasetPath := filepath.Join(tempDir, "dataset")
-	err := os.MkdirAll(datasetPath, 0755)
-	if err != nil {
-		t.Fatalf("failed to create dataset path: %v", err)
-	}
-
 	snapDirBase := filepath.Join(datasetPath, ".zfs", "snapshot")
-	snapName := "snap1"
-	snapPath := filepath.Join(snapDirBase, snapName)
-	err = os.MkdirAll(snapPath, 0755)
-	if err != nil {
-		t.Fatalf("failed to create snapshot path: %v", err)
-	}
+	snapPath := filepath.Join(snapDirBase, "snap1")
 
 	dataset := &Dataset{
 		Path:          datasetPath,
 		HiddenZfsPath: filepath.Join(datasetPath, ".zfs"),
 	}
-
 	snapshot := &Snapshot{
-		Name:          snapName,
+		Name:          "snap1",
 		Path:          snapPath,
 		ParentDataset: dataset,
 	}
 
-	t.Run("Added", func(t *testing.T) {
-		// File exists in real but NOT in snapshot
-		filePath := filepath.Join(datasetPath, "newfile.txt")
-		err := os.WriteFile(filePath, []byte("content"), 0644)
-		if err != nil {
-			t.Fatalf("failed to create file: %v", err)
-		}
-		defer os.Remove(filePath)
+	now := time.Now().Truncate(time.Second)
 
-		state := snapshot.DetermineDiffState(filePath)
-		if state != diff_state.Added {
-			t.Errorf("expected Added, got %v", state)
-		}
-	})
+	// 2. The Table: Declare all scenarios cleanly as data
+	tests := []struct {
+		name      string
+		filename  string
+		realState fileState
+		snapState fileState
+		wantState diff_state.DiffState
+	}{
+		{
+			name:      "Added",
+			filename:  "added.txt",
+			realState: fileState{exists: true, content: "content"},
+			snapState: fileState{exists: false},
+			wantState: diff_state.Added,
+		},
+		{
+			name:      "Equal",
+			filename:  "equal.txt",
+			realState: fileState{exists: true, content: "identical content", modTime: now},
+			snapState: fileState{exists: true, content: "identical content", modTime: now},
+			wantState: diff_state.Equal,
+		},
+		{
+			name:      "Modified",
+			filename:  "modified.txt",
+			realState: fileState{exists: true, content: "new content", modTime: now},
+			snapState: fileState{exists: true, content: "old content", modTime: now.Add(-time.Hour)},
+			wantState: diff_state.Modified,
+		},
+		{
+			name:      "Deleted",
+			filename:  "deleted.txt",
+			realState: fileState{exists: false},
+			snapState: fileState{exists: true, content: "was here"},
+			wantState: diff_state.Deleted,
+		},
+		{
+			name:      "NeitherExists",
+			filename:  "nonexistent.txt",
+			realState: fileState{exists: false},
+			snapState: fileState{exists: false},
+			wantState: diff_state.Equal,
+		},
+	}
 
-	t.Run("Equal", func(t *testing.T) {
-		// File exists in both and is identical
-		fileName := "equal.txt"
-		realFilePath := filepath.Join(datasetPath, fileName)
-		snapFilePath := filepath.Join(snapPath, fileName)
+	// 3. Execution Loop
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			realFilePath := filepath.Join(datasetPath, tt.filename)
+			snapFilePath := filepath.Join(snapPath, tt.filename)
 
-		content := []byte("identical content")
-		now := time.Now().Truncate(time.Second) // filesystem might truncate
+			// Automatically handle filesystem setups based on table configurations
+			setupFile(t, realFilePath, tt.realState)
+			setupFile(t, snapFilePath, tt.snapState)
 
-		err := os.WriteFile(realFilePath, content, 0644)
-		if err != nil {
-			t.Fatalf("failed to create real file: %v", err)
-		}
-		defer os.Remove(realFilePath)
+			// Run assertion
+			gotState := snapshot.DetermineDiffState(realFilePath)
+			if gotState != tt.wantState {
+				t.Errorf("DetermineDiffState() = %v, want %v", gotState, tt.wantState)
+			}
+		})
+	}
+}
 
-		err = os.WriteFile(snapFilePath, content, 0644)
-		if err != nil {
-			t.Fatalf("failed to create snap file: %v", err)
-		}
-		defer os.Remove(snapFilePath)
+// Helper function to keep execution loop completely readable
+func setupFile(t *testing.T, path string, state fileState) {
+	t.Helper() // Flags this function as a test helper for clearer stack traces
+	if !state.exists {
+		return
+	}
 
-		// Ensure same mod time
-		err = os.Chtimes(realFilePath, now, now)
-		if err != nil {
-			t.Fatalf("failed to set times: %v", err)
-		}
-		err = os.Chtimes(snapFilePath, now, now)
-		if err != nil {
-			t.Fatalf("failed to set times: %v", err)
-		}
+	// Ensure directories exist
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create dir for %s: %v", path, err)
+	}
 
-		state := snapshot.DetermineDiffState(realFilePath)
-		if state != diff_state.Equal {
-			t.Errorf("expected Equal, got %v", state)
-		}
-	})
+	// Write content
+	if err := os.WriteFile(path, []byte(state.content), 0644); err != nil {
+		t.Fatalf("failed to write file %s: %v", path, err)
+	}
 
-	t.Run("Modified", func(t *testing.T) {
-		// File exists in both but is different
-		fileName := "modified.txt"
-		realFilePath := filepath.Join(datasetPath, fileName)
-		snapFilePath := filepath.Join(snapPath, fileName)
-
-		err := os.WriteFile(realFilePath, []byte("new content"), 0644)
-		if err != nil {
-			t.Fatalf("failed to create real file: %v", err)
+	// Adjust times if explicitly requested
+	if !state.modTime.IsZero() {
+		if err := os.Chtimes(path, state.modTime, state.modTime); err != nil {
+			t.Fatalf("failed to set times on %s: %v", path, err)
 		}
-		defer os.Remove(realFilePath)
-
-		err = os.WriteFile(snapFilePath, []byte("old content"), 0644)
-		if err != nil {
-			t.Fatalf("failed to create snap file: %v", err)
-		}
-		defer os.Remove(snapFilePath)
-
-		// Set different mod times to ensure IsRealFileDifferent returns true
-		now := time.Now().Truncate(time.Second)
-		err = os.Chtimes(realFilePath, now, now)
-		if err != nil {
-			t.Fatalf("failed to set real times: %v", err)
-		}
-		err = os.Chtimes(snapFilePath, now.Add(-time.Hour), now.Add(-time.Hour))
-		if err != nil {
-			t.Fatalf("failed to set snap times: %v", err)
-		}
-
-		state := snapshot.DetermineDiffState(realFilePath)
-		if state != diff_state.Modified {
-			t.Errorf("expected Modified, got %v", state)
-		}
-	})
+	}
 }
