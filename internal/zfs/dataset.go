@@ -77,6 +77,60 @@ func FindHostDataset(path string) (*Dataset, error) {
 	}
 }
 
+func (dataset *Dataset) getPropertyString(libProp golibzfs.Prop, goProp string) string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(libProp)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty(goProp)
+		if err == nil {
+			return val
+		}
+	}
+	return ""
+}
+
+func (dataset *Dataset) getPropertyInt(libProp golibzfs.Prop, goProp string, defaultValue int) int {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(libProp)
+		if err == nil {
+			val, err := strconv.Atoi(prop.Value)
+			if err == nil {
+				return val
+			}
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		prop, err := dataset.rawGozfsData.GetProperty(goProp)
+		if err == nil {
+			val, err := strconv.Atoi(prop)
+			if err == nil {
+				return val
+			}
+		}
+	}
+	return defaultValue
+}
+
+func (dataset *Dataset) getPropertyUint64(libProp golibzfs.Prop, goValue uint64) uint64 {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(libProp)
+		if err == nil {
+			number, err := strconv.ParseUint(prop.Value, 10, 64)
+			if err == nil {
+				return number
+			}
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		return goValue
+	}
+	return 0
+}
+
 func (dataset *Dataset) GetSnapshotsDir() string {
 	return path2.Join(dataset.HiddenZfsPath, "snapshot")
 }
@@ -138,287 +192,89 @@ func (dataset *Dataset) GetCreationString() time.Time {
 }
 
 func (dataset *Dataset) GetType() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropType)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Type
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropType, "type")
 }
 
 func (dataset *Dataset) GetMountPoint() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropMountpoint)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Mountpoint
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropMountpoint, "mountpoint")
 }
 
 func (dataset *Dataset) GetVolSize() uint64 {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropVolsize)
-		if err == nil {
-			number, err := strconv.ParseUint(prop.Value, 10, 64)
-			if err == nil {
-				return number
-			}
-		}
-	}
+	var goValue uint64
 	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Volsize
+		goValue = dataset.rawGozfsData.Volsize
 	}
-	return 0
+	return dataset.getPropertyUint64(golibzfs.DatasetPropVolsize, goValue)
 }
 
 func (dataset *Dataset) GetAvailable() uint64 {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropAvailable)
-		if err == nil {
-			number, err := strconv.ParseUint(prop.Value, 10, 64)
-			if err == nil {
-				return number
-			}
-		}
-	}
+	var goValue uint64
 	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Avail
+		goValue = dataset.rawGozfsData.Avail
 	}
-	return 0
+	return dataset.getPropertyUint64(golibzfs.DatasetPropAvailable, goValue)
 }
 
 func (dataset *Dataset) GetUsed() uint64 {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUsed)
-		if err == nil {
-			number, err := strconv.ParseUint(prop.Value, 10, 64)
-			if err == nil {
-				return number
-			}
-		}
-	}
+	var goValue uint64
 	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Used
+		goValue = dataset.rawGozfsData.Used
 	}
-	return 0
+	return dataset.getPropertyUint64(golibzfs.DatasetPropUsed, goValue)
 }
 
 func (dataset *Dataset) GetCompression() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCompression)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Compression
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropCompression, "compression")
 }
 
 func (dataset *Dataset) GetCompressRatio() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCompressratio)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropCompressratio, "compressratio")
 }
 
 func (dataset *Dataset) GetOrigin() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropOrigin)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Origin
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropOrigin, "origin")
 }
 
 func (dataset *Dataset) GetSnapshotCount() int {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropSnapshotCount)
-		if err == nil {
-			val, err := strconv.Atoi(prop.Value)
-			if err == nil {
-				return val
-			}
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		prop, err := dataset.rawGozfsData.GetProperty("snapshot_count")
-		if err == nil {
-			val, err := strconv.Atoi(prop)
-			if err == nil {
-				return val
-			}
-		}
-	}
-	return 0
+	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotCount, "snapshot_count", 0)
 }
 
 // GetSnapshotLimit returns the maximum number of snapshots that can be created
 func (dataset *Dataset) GetSnapshotLimit() int {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropSnapshotLimit)
-		if err == nil {
-			val, err := strconv.Atoi(prop.Value)
-			if err == nil {
-				return val
-			}
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		prop, err := dataset.rawGozfsData.GetProperty("snapshot_limit")
-		if err == nil {
-			val, err := strconv.Atoi(prop)
-			if err == nil {
-				return val
-			}
-		}
-	}
-	return -1
+	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotLimit, "snapshot_limit", -1)
 }
 
 func (dataset *Dataset) GetMounted() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropMounted)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("mounted")
-		if err == nil {
-			return val
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropMounted, "mounted")
 }
 
 // on or off
 func (dataset *Dataset) GetReadonly() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropReadonly)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("readonly")
-		if err == nil {
-			return val
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropReadonly, "readonly")
 }
 
 func (dataset *Dataset) GetSnapdir() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropSnapdir)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("snapdir")
-		if err == nil {
-			return val
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropSnapdir, "snapdir")
 }
 
 func (dataset *Dataset) GetCaseSensitivity() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCase)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("case")
-		if err == nil {
-			return val
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropCase, "case")
 }
 
 func (dataset *Dataset) GetQuota() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropQuota)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("quota")
-		if err == nil {
-			return val
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropQuota, "quota")
 }
 
 func (dataset *Dataset) IsEncrypted() bool {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropEncryption)
-		if err == nil {
-			return prop.Value != "off"
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("encryption")
-		if err == nil {
-			return val != "off"
-		}
-	}
-	return false
+	return dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption") != "off"
 }
 
 func (dataset *Dataset) GetEncryption() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropEncryption)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("encryption")
-		if err == nil {
-			return val
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption")
 }
 
 func (dataset *Dataset) GetKeyStatus() string {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropKeyStatus)
-		if err == nil {
-			return prop.Value
-		}
-	}
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty("key_status")
-		if err == nil {
-			return val
-		}
-	}
-	return ""
+	return dataset.getPropertyString(golibzfs.DatasetPropKeyStatus, "key_status")
 }
 
 func (dataset *Dataset) CreateSnapshot(name string) error {
