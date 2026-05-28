@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -33,16 +34,11 @@ func (file *SnapshotFile) Equal(e SnapshotFile) bool {
 }
 
 func (file *SnapshotFile) HasChanged() bool {
-	return file.Snapshot.CheckIfFileHasChanged(file.Path)
+	return file.Snapshot.IsRealFileDifferent(file.Path)
 }
 
 func (file *SnapshotFile) Exists() bool {
-	statSnap, err := os.Lstat(file.Path)
-	if os.IsNotExist(err) {
-		return false
-	} else {
-		return statSnap != nil
-	}
+	return util.FileExists(file.Path)
 }
 
 type FileBrowserEntryType int
