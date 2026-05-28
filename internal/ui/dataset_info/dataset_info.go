@@ -126,7 +126,7 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 		// Format key with trailing colon, maintaining clean alignment padding
 		labelText := fmt.Sprintf("%s:", entry.Name)
 
-		out.WriteString(fmt.Sprintf("%s%-*s[-] %s%s[-]\n",
+		out.WriteString(fmt.Sprintf("%s%*s[-] %s%s[-]\n",
 			keyColorTag,
 			maxKeyLen+1, // +1 maps to the colon addition
 			tview.Escape(labelText),
