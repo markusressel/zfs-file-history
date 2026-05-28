@@ -43,10 +43,10 @@ func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *da
 				cellColor = theme.Colors.SnapshotBrowser.Table.State.Equal
 			case diff_state.Deleted:
 				cellText = "+"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Deleted
+				cellColor = theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
 			case diff_state.Added:
 				cellText = "-"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Added
+				cellColor = theme.Colors.SnapshotBrowser.Table.State.LocalOnly
 			case diff_state.Modified:
 				cellText = "≠"
 				cellColor = theme.Colors.SnapshotBrowser.Table.State.Modified

@@ -43,11 +43,11 @@ var (
 		SnapshotBrowser: SnapshotBrowserColors{
 			Table: SnapshotBrowserTableColors{
 				State: SnapshotBrowserTableStatusColors{
-					Unknown:  tcell.ColorGray,
-					Modified: tcell.ColorYellow,
-					Added:    tcell.ColorRed,
-					Deleted:  tcell.ColorGreen,
-					Equal:    tcell.ColorGray,
+					Unknown:      tcell.ColorGray,
+					Modified:     tcell.ColorYellow,
+					LocalOnly:    tcell.ColorRed,
+					SnapshotOnly: tcell.ColorGreen,
+					Equal:        tcell.ColorGray,
 				},
 			},
 		},

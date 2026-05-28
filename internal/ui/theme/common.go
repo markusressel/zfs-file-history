@@ -45,11 +45,11 @@ type SnapshotBrowserTableColors struct {
 }
 
 type SnapshotBrowserTableStatusColors struct {
-	Unknown  tcell.Color
-	Modified tcell.Color
-	Added    tcell.Color
-	Deleted  tcell.Color
-	Equal    tcell.Color
+	Unknown      tcell.Color
+	Modified     tcell.Color
+	LocalOnly    tcell.Color
+	SnapshotOnly tcell.Color
+	Equal        tcell.Color
 }
 
 type DialogColors struct {
