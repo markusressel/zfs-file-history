@@ -10,8 +10,7 @@ import (
 var (
 	Primary   = tcell.ColorIsRGB | tcell.ColorValid | 0xFFA333
 	Secondary = tcell.ColorIsRGB | tcell.ColorValid | 0x48525C
-	// Secondary = tcell.ColorGray
-	Accent = tcell.ColorDarkOrange
+	Accent    = tcell.ColorDarkOrange
 
 	OnPrimary   = tcell.ColorBlack
 	OnSecondary = tcell.ColorWhite
