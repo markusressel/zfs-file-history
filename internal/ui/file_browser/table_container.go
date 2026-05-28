@@ -27,8 +27,8 @@ func createFileBrowserTable(application *tview.Application) *table.RowSelectionT
 }
 
 func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
-	status := determineStatusIndicator(entry)
-	statusColor := determineStatusColor(entry)
+	statusCellText := determineStatusIndicator(entry)
+	statusCellColor := determineStatusColor(entry)
 	typeCellText := determineTypeCellText(entry)
 	typeCellColor := determineTypeCellColor(entry)
 
@@ -44,14 +44,14 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			if entry.GetStat().IsDir() {
 				cellText = fmt.Sprintf("/%s", cellText)
 			}
-			cellColor = statusColor
+			cellColor = statusCellColor
 		case columnType:
 			cellText = typeCellText
 			cellColor = typeCellColor
 			cellAlignment = tview.AlignCenter
 		case columnDiff:
-			cellText = status
-			cellColor = statusColor
+			cellText = statusCellText
+			cellColor = statusCellColor
 			cellAlignment = tview.AlignCenter
 		case columnPermissions:
 			cellText = determinePermissionsText(entry)
@@ -66,10 +66,10 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			cellText = entry.GetStat().ModTime().Format(theme.Style.Format.DateTime)
 			switch entry.DiffState {
 			case diff_state.Added, diff_state.Deleted:
-				cellColor = statusColor
+				cellColor = statusCellColor
 			case diff_state.Modified:
 				if entry.RealFile.Stat.ModTime() != entry.SnapshotFiles[0].Stat.ModTime() {
-					cellColor = statusColor
+					cellColor = statusCellColor
 				} else {
 					cellColor = tcell.ColorWhite
 				}
@@ -87,10 +87,10 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			}
 			switch entry.DiffState {
 			case diff_state.Added, diff_state.Deleted:
-				cellColor = statusColor
+				cellColor = statusCellColor
 			case diff_state.Modified:
 				if entry.RealFile.Stat.Size() != entry.SnapshotFiles[0].Stat.Size() {
-					cellColor = statusColor
+					cellColor = statusCellColor
 				} else {
 					cellColor = tcell.ColorWhite
 				}
@@ -107,11 +107,11 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
 
-		// Keep row status visible while selected by using statusColor as selected background.
+		// Keep row statusCellText visible while selected by using statusCellColor as selected background.
 		cell.SetSelectedStyle(
 			tcell.StyleDefault.
 				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(statusColor),
+				Background(statusCellColor),
 		)
 		cells = append(cells, cell)
 	}

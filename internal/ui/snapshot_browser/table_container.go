@@ -26,10 +26,11 @@ func createSnapshotBrowserTable(application *tview.Application) *table.RowSelect
 
 func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
 	result := []*tview.TableCell{}
+	statusColor := determineStatusColor(entry)
 	for _, column := range columns {
 		cellText := "N/A"
 		cellAlign := tview.AlignLeft
-		cellColor := tcell.ColorWhite
+		cellColor := determineBaseTextColor(entry)
 		switch column {
 		case columnDate:
 			cellText = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
@@ -65,10 +66,47 @@ func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *da
 			cellText = fmt.Sprintf("%d", entry.Snapshot.Properties.Clones)
 		}
 		cell := tview.NewTableCell(cellText).
-			SetTextColor(cellColor).SetAlign(cellAlign)
+			SetTextColor(cellColor).
+			SetAlign(cellAlign)
+
+		cell.SetSelectedStyle(
+			tcell.StyleDefault.
+				Foreground(theme.Colors.Layout.Table.SelectedForeground).
+				Background(statusColor),
+		)
 		result = append(result, cell)
 	}
 	return result
+}
+
+func determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
+	switch entry.DiffState {
+	case diff_state.Equal:
+		return theme.Colors.SnapshotBrowser.Table.State.Equal
+	case diff_state.Deleted:
+		return theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
+	case diff_state.Added:
+		return theme.Colors.SnapshotBrowser.Table.State.LocalOnly
+	case diff_state.Modified:
+		return theme.Colors.SnapshotBrowser.Table.State.Modified
+	case diff_state.Unknown:
+		fallthrough
+	default:
+		return theme.Colors.SnapshotBrowser.Table.State.Unknown
+	}
+}
+
+func determineBaseTextColor(entry *data.SnapshotBrowserEntry) tcell.Color {
+	switch entry.DiffState {
+	case diff_state.Deleted:
+		fallthrough
+	case diff_state.Added:
+		fallthrough
+	case diff_state.Modified:
+		return tcell.ColorWhite
+	default:
+		return tcell.ColorGray
+	}
 }
 
 func createSnapshotBrowserTableSortFunction(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.SnapshotBrowserEntry {
