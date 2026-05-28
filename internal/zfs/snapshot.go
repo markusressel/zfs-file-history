@@ -254,7 +254,7 @@ func (s *Snapshot) RestoreFile(srcPath string) error {
 	return err
 }
 
-func (s *Snapshot) CheckIfFileHasChanged(path string) bool {
+func (s *Snapshot) IsRealFileDifferent(path string) bool {
 	realPath := path
 	snapshotPath := s.GetSnapshotPath(path)
 
@@ -295,6 +295,7 @@ func (s *Snapshot) ContainsFile(entry string) (bool, error) {
 	return true, nil
 }
 
+// DetermineDiffState Determine the diff state between a real file and its snapshot counterpart
 func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
 	containsFile, err := s.ContainsFile(path)
 	if err != nil {
@@ -302,7 +303,7 @@ func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
 		return diff_state.Unknown
 	}
 	if containsFile {
-		if s.CheckIfFileHasChanged(path) {
+		if s.IsRealFileDifferent(path) {
 			return diff_state.Modified
 		} else {
 			return diff_state.Equal

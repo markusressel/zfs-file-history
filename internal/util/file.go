@@ -8,6 +8,15 @@ import (
 	"syscall"
 )
 
+func FileExists(path string) bool {
+	statSnap, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+
+	return statSnap != nil
+}
+
 func ListFilesIn(path string) (result []string, err error) {
 	if _, err = os.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
