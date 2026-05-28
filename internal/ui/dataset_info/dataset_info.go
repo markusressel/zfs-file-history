@@ -86,7 +86,7 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 	properties := []*DatasetInfoTableEntry{
 		{Name: "Type", Value: dataset.GetType()},
 		{Name: "Name", Value: dataset.GetName()},
-		{Name: "Creation", Value: dataset.GetCreationString()}, // e.g., "Mon May 25 14:23 2025"
+		{Name: "Creation", Value: dataset.GetCreationString().Format(theme.Style.Format.DateTime)},
 		{Name: "Mountpoint", Value: dataset.GetMountPoint()},
 		{Name: "Mounted", Value: dataset.GetMounted()},
 		{Name: "Readonly", Value: dataset.GetReadonly()}, // "on" or "off"

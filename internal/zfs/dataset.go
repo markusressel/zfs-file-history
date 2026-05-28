@@ -6,6 +6,7 @@ import (
 	"os"
 	path2 "path"
 	"strconv"
+	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 
@@ -119,14 +120,21 @@ func (dataset *Dataset) GetName() string {
 	return dataset.Path
 }
 
-func (dataset *Dataset) GetCreationString() string {
+func (dataset *Dataset) GetCreationString() time.Time {
 	if dataset.rawGolibzfsData != nil {
 		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
 		if err == nil {
-			return prop.Value
+			rawValue := prop.Value
+			valueInt, err := strconv.ParseInt(rawValue, 10, 64)
+			if err != nil {
+				logging.Error("Could not parse creation time for dataset %s: %s", dataset.Path, err.Error())
+				return time.Time{}
+			}
+			// convert integer to *time.Time
+			return time.Unix(valueInt, 0)
 		}
 	}
-	return ""
+	return time.Time{}
 }
 
 func (dataset *Dataset) GetType() string {
