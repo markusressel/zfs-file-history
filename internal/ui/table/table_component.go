@@ -52,6 +52,7 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	entries      []*T
 	entriesMutex sync.Mutex
 
+	lastSelectedEntry      *T
 	multiSelectEnabled     bool
 	multiSelectionEntryMap map[string]*T
 
@@ -119,7 +120,15 @@ func (c *RowSelectionTable[T]) createLayout() {
 	table.SetSelectable(true, false)
 	table.SetSelectionChangedFunc(func(row, column int) {
 		selectedEntry := c.GetSelectedEntry()
+
+		if c.lastSelectedEntry != nil && selectedEntry == nil {
+			// workaround to the table not scrolling to the top when PgUp is pressed and a page jump will
+			// select the table header row.
+			table.ScrollToBeginning()
+		}
 		c.selectionChangedCallback(selectedEntry)
+
+		c.lastSelectedEntry = selectedEntry
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -476,4 +485,12 @@ func (c *RowSelectionTable[T]) Down() {
 	if row < len(c.entries) {
 		c.layout.Select(row+1, col)
 	}
+}
+
+func (c *RowSelectionTable[T]) PageUp() {
+
+}
+
+func (c *RowSelectionTable[T]) PageDown() {
+
 }
