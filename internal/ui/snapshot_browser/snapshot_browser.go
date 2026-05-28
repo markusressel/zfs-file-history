@@ -79,7 +79,10 @@ var (
 	}
 
 	initialActiveTableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed,
+		columnName,
+		columnDiff,
+		columnDate,
+		columnUsed,
 	}
 )
 
