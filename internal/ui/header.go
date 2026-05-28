@@ -39,6 +39,7 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	layout := tview.NewFlex().SetDirection(tview.FlexColumn)
 
 	nameTextView := tview.NewTextView()
+	nameTextView.SetTextStyle(tcell.StyleDefault.Bold(true))
 	nameTextView.SetTextColor(theme.Colors.Header.Name)
 	nameTextView.SetBackgroundColor(theme.Colors.Header.NameBackground)
 	nameText := fmt.Sprintf(" %s ", applicationHeader.name)

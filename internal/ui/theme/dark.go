@@ -8,8 +8,10 @@ import (
 )
 
 var (
-	Primary   = tcell.ColorDarkOrange
-	Secondary = tcell.ColorSlateGray
+	Primary   = tcell.ColorIsRGB | tcell.ColorValid | 0xFFA333
+	Secondary = tcell.ColorIsRGB | tcell.ColorValid | 0x48525C
+	// Secondary = tcell.ColorGray
+	Accent = tcell.ColorDarkOrange
 
 	OnPrimary   = tcell.ColorBlack
 	OnSecondary = tcell.ColorWhite
@@ -20,8 +22,8 @@ var (
 var (
 	Colors = Color{
 		Header: HeaderColors{
-			NameBackground: Primary,
-			Name:           OnPrimary,
+			NameBackground: tcell.ColorBlack,
+			Name:           Accent,
 
 			VersionBackground: Secondary,
 			Version:           OnSecondary,
@@ -52,10 +54,10 @@ var (
 			},
 		},
 		Layout: LayoutColors{
-			Title:  Primary,
+			Title:  Accent,
 			Border: Secondary,
 			Table: LayoutTableColors{
-				Header: Primary,
+				Header: Accent,
 
 				SelectedForeground: tcell.ColorBlack,
 				SelectedBackground: tcell.ColorWhite,
@@ -65,7 +67,7 @@ var (
 			},
 		},
 		ShortcutMap: ShortcutMapColors{
-			KeyCombo: Primary,
+			KeyCombo: Accent,
 			Name:     tcell.ColorLightGray,
 		},
 	}
