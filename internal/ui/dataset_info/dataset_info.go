@@ -10,7 +10,6 @@ import (
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -90,9 +89,9 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 		{Name: "Mountpoint", Value: dataset.GetMountPoint()},
 		{Name: "Mounted", Value: dataset.GetMounted()},
 		{Name: "Readonly", Value: dataset.GetReadonly()}, // "on" or "off"
-		{Name: "Volsize", Value: humanize.IBytes(dataset.GetVolSize())},
-		{Name: "Avail", Value: humanize.IBytes(dataset.GetAvailable())},
-		{Name: "Used", Value: humanize.IBytes(dataset.GetUsed())},
+		{Name: "Volsize", Value: uiutil.StableLengthHumanizedBytes(dataset.GetVolSize())},
+		{Name: "Avail", Value: uiutil.StableLengthHumanizedBytes(dataset.GetAvailable())},
+		{Name: "Used", Value: uiutil.StableLengthHumanizedBytes(dataset.GetUsed())},
 		{Name: "Compression", Value: fmt.Sprintf("%s (%s)", dataset.GetCompression(), dataset.GetCompressRatio())}, // Combine for compact view
 		{Name: "Snapdir", Value: dataset.GetSnapdir()},                                                             // "visible" or "hidden"
 		{Name: "Case", Value: dataset.GetCaseSensitivity()},                                                        // "sensitive" / "insensitive"

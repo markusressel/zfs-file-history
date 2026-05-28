@@ -10,9 +10,9 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 
-	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -77,14 +77,7 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 				cellColor = tcell.ColorGray
 			}
 		case columnSize:
-			cellText = humanize.IBytes(uint64(entry.GetStat().Size()))
-			if strings.HasSuffix(cellText, " B") {
-				withoutSuffix := strings.TrimSuffix(cellText, " B")
-				cellText = fmt.Sprintf("%s   B", withoutSuffix)
-			}
-			if len(cellText) < 10 {
-				cellText = fmt.Sprintf("%s%s", strings.Repeat(" ", 10-len(cellText)), cellText)
-			}
+			cellText = uiutil.StableLengthHumanizedBytes(uint64(entry.GetStat().Size()))
 			switch entry.DiffState {
 			case diff_state.Added, diff_state.Deleted:
 				cellColor = statusCellColor

@@ -9,8 +9,8 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 
-	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -56,9 +56,9 @@ func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *da
 				cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
 			}
 		case columnUsed:
-			cellText = humanize.IBytes(entry.Snapshot.Properties.Used)
+			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Used)
 		case columnRefer:
-			cellText = humanize.IBytes(entry.Snapshot.Properties.Referenced)
+			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Referenced)
 		case columnRatio:
 			ratio := entry.Snapshot.Properties.CompressionRatio
 			cellText = fmt.Sprintf("%.2fx", ratio)
