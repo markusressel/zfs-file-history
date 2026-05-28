@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	Primary   = tcell.ColorTeal
-	Secondary = tcell.ColorDarkOliveGreen
+	Primary   = tcell.ColorDarkOrange
+	Secondary = tcell.ColorSlateGray
 
 	OnPrimary   = tcell.ColorBlack
 	OnSecondary = tcell.ColorWhite
