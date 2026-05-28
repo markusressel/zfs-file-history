@@ -86,12 +86,23 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 	properties := []*DatasetInfoTableEntry{
 		{Name: "Type", Value: dataset.GetType()},
 		{Name: "Name", Value: dataset.GetName()},
+		{Name: "Creation", Value: dataset.GetCreationString()}, // e.g., "Mon May 25 14:23 2025"
 		{Name: "Mountpoint", Value: dataset.GetMountPoint()},
 		{Name: "Mounted", Value: dataset.GetMounted()},
+		{Name: "Readonly", Value: dataset.GetReadonly()}, // "on" or "off"
 		{Name: "Volsize", Value: humanize.IBytes(dataset.GetVolSize())},
 		{Name: "Avail", Value: humanize.IBytes(dataset.GetAvailable())},
 		{Name: "Used", Value: humanize.IBytes(dataset.GetUsed())},
-		{Name: "Compression", Value: dataset.GetCompression()},
+		{Name: "Compression", Value: fmt.Sprintf("%s (%s)", dataset.GetCompression(), dataset.GetCompressRatio())}, // Combine for compact view
+		{Name: "Snapdir", Value: dataset.GetSnapdir()},                                                             // "visible" or "hidden"
+		{Name: "Case", Value: dataset.GetCaseSensitivity()},                                                        // "sensitive" / "insensitive"
+	}
+
+	// If encryption is utilized on the host pool
+	if dataset.IsEncrypted() {
+		properties = append(properties, &DatasetInfoTableEntry{
+			Name: "Encryption", Value: fmt.Sprintf("%s [%s]", dataset.GetEncryption(), dataset.GetKeyStatus()),
+		})
 	}
 
 	if !util.IsBlank(dataset.GetOrigin()) {
@@ -173,22 +184,32 @@ func resolveValueColor(name, value string) tcell.Color {
 		return tcell.ColorGray
 	}
 
+	lowerName := strings.ToLower(name)
+	lowerValue := strings.ToLower(value)
+
+	// Warning / Restrictive States
+	if lowerName == "readonly" && lowerValue == "on" {
+		return tcell.ColorOrange // Visual cue that writes/restores are blocked
+	}
+	if strings.Contains(lowerValue, "unavailable") {
+		return tcell.ColorRed // Key is missing/locked
+	}
+
 	// Paths / Mountpoints
-	if strings.HasPrefix(value, "/") || strings.EqualFold(name, "mountpoint") || strings.EqualFold(name, "origin") {
+	if strings.HasPrefix(value, "/") || lowerName == "mountpoint" || lowerName == "origin" {
 		return tcell.ColorLightBlue
 	}
 
-	// Booleans (yes/no)
-	if strings.EqualFold(value, "yes") || strings.EqualFold(value, "true") {
+	// Booleans / Positive Flags
+	if lowerValue == "yes" || lowerValue == "true" || lowerValue == "on" || lowerValue == "visible" {
 		return tcell.ColorGreen
 	}
-	if strings.EqualFold(value, "no") || strings.EqualFold(value, "false") {
+	if lowerValue == "no" || lowerValue == "false" || lowerValue == "off" || lowerValue == "hidden" {
 		return tcell.ColorRed
 	}
 
-	// File Sizes (Volsize, Avail, Used)
-	lowerName := strings.ToLower(name)
-	if lowerName == "volsize" || lowerName == "avail" || lowerName == "used" {
+	// File Sizes & Ratios
+	if lowerName == "volsize" || lowerName == "avail" || lowerName == "used" || strings.Contains(lowerValue, "x") {
 		return tcell.ColorYellow
 	}
 

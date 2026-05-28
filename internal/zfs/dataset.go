@@ -119,6 +119,16 @@ func (dataset *Dataset) GetName() string {
 	return dataset.Path
 }
 
+func (dataset *Dataset) GetCreationString() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	return ""
+}
+
 func (dataset *Dataset) GetType() string {
 	if dataset.rawGolibzfsData != nil {
 		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropType)
@@ -206,6 +216,16 @@ func (dataset *Dataset) GetCompression() string {
 	return ""
 }
 
+func (dataset *Dataset) GetCompressRatio() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCompressratio)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	return ""
+}
+
 func (dataset *Dataset) GetOrigin() string {
 	if dataset.rawGolibzfsData != nil {
 		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropOrigin)
@@ -273,6 +293,119 @@ func (dataset *Dataset) GetMounted() string {
 	}
 	if dataset.rawGozfsData != nil {
 		val, err := dataset.rawGozfsData.GetProperty("mounted")
+		if err == nil {
+			return val
+		}
+	}
+	return ""
+}
+
+// on or off
+func (dataset *Dataset) GetReadonly() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropReadonly)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty("readonly")
+		if err == nil {
+			return val
+		}
+	}
+	return ""
+}
+
+func (dataset *Dataset) GetSnapdir() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropSnapdir)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty("snapdir")
+		if err == nil {
+			return val
+		}
+	}
+	return ""
+}
+
+func (dataset *Dataset) GetCaseSensitivity() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCase)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty("case")
+		if err == nil {
+			return val
+		}
+	}
+	return ""
+}
+
+func (dataset *Dataset) GetQuota() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropQuota)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty("quota")
+		if err == nil {
+			return val
+		}
+	}
+	return ""
+}
+
+func (dataset *Dataset) IsEncrypted() bool {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropEncryption)
+		if err == nil {
+			return prop.Value != "off"
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty("encryption")
+		if err == nil {
+			return val != "off"
+		}
+	}
+	return false
+}
+
+func (dataset *Dataset) GetEncryption() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropEncryption)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty("encryption")
+		if err == nil {
+			return val
+		}
+	}
+	return ""
+}
+
+func (dataset *Dataset) GetKeyStatus() string {
+	if dataset.rawGolibzfsData != nil {
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropKeyStatus)
+		if err == nil {
+			return prop.Value
+		}
+	}
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty("key_status")
 		if err == nil {
 			return val
 		}
