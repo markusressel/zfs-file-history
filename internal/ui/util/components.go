@@ -26,7 +26,7 @@ var (
 	TableComponentShortcutEntries = []shortcut_helper.ShortcutEntry{
 		TableComponentShortcutUp,
 		TableComponentShortcutDown,
-		{KeyCombo: []string{"Enter"}, Name: "Toggle Sort Direction"},
+		{KeyCombo: []string{"Enter"}, Name: "Flip Direction"},
 		{KeyCombo: []string{"←"}, Name: "Cycle Sort Column Left"},
 		{KeyCombo: []string{"→"}, Name: "Cycle Sort Column Right"},
 	}
