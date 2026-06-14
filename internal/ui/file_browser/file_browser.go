@@ -5,6 +5,7 @@ import (
 	"os"
 	path2 "path"
 	"slices"
+	"strings"
 	"time"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
@@ -388,7 +389,16 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 
 	if fileBrowser.path != newPath {
 		fileBrowser.path = newPath
-		fileBrowser.currentSnapshot = nil
+
+		// Optimization: only clear the current snapshot if the new path is no longer within its dataset.
+		// This ensures diffs stay visible if we are just navigating within the same dataset.
+		if fileBrowser.currentSnapshot != nil {
+			dsPath := fileBrowser.currentSnapshot.Snapshot.ParentDataset.Path
+			if newPath != dsPath && !strings.HasPrefix(newPath, dsPath+"/") {
+				fileBrowser.currentSnapshot = nil
+			}
+		}
+
 		fileBrowser.emit(PathChangedEvent{NewPath: newPath})
 		fileBrowser.Refresh()
 	}

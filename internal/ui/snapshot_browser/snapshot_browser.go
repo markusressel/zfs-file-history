@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -115,14 +116,17 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		OnLoad(func(result snapshotLoadResult) {
 			snapshotBrowser.container.SetIsLoading(false)
 
-			if snapshotBrowser.hostDataset == nil || result.dataset == nil || snapshotBrowser.hostDataset.Path != result.dataset.Path {
+			datasetChanged := snapshotBrowser.hostDataset == nil || result.dataset == nil || snapshotBrowser.hostDataset.Path != result.dataset.Path
+			if datasetChanged {
 				snapshotBrowser.ClearMultiSelection()
 			}
 
 			snapshotBrowser.hostDataset = result.dataset
 			snapshotBrowser.currentSnapshots = result.snapshots
 			snapshotBrowser.updateCurrentSnapshotEntries(true)
-			// Manually emit the event AFTER we've cleared the loading state
+
+			// ALWAYS emit the event after a load to ensure all components (like FileBrowser)
+			// are synced with the latest selection, even if logically it's the same path.
 			snapshotBrowser.emit(SelectedSnapshotChanged{snapshotBrowser.GetSelection()})
 		}).
 		OnError(func(err error) {
@@ -211,6 +215,25 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.Fi
 func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force bool) {
 	path := snapshotBrowser.path
 
+	// Optimized check: if we are not forcing a refresh and we are still
+	// within the current dataset, we can load quietly.
+	isSubpath := false
+	if snapshotBrowser.hostDataset != nil {
+		dsPath := snapshotBrowser.hostDataset.Path
+		if path == dsPath || strings.HasPrefix(path, dsPath+"/") {
+			isSubpath = true
+		}
+	}
+
+	// If we know it's a different dataset (or force), clear state immediately
+	// to avoid showing outdated snapshots while the new ones load.
+	if force || !isSubpath {
+		snapshotBrowser.currentSnapshots = []*zfs.Snapshot{}
+		snapshotBrowser.ClearMultiSelection()
+		snapshotBrowser.updateTableEntries()
+		snapshotBrowser.emit(SelectedSnapshotChanged{nil})
+	}
+
 	loadFunc := func() (snapshotLoadResult, error) {
 		ds, err := zfs.FindHostDataset(path)
 		if err != nil {
@@ -230,18 +253,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force boo
 		return snapshotLoadResult{dataset: ds, snapshots: snapshots}, nil
 	}
 
-	// Use LoadQuietly if we know we likely don't need a full UI refresh
-	if !force && snapshotBrowser.hostDataset != nil {
-		// We still want to check if the host dataset is the same for the new path
-		// but we do it inside the load func. If we want to be truly quiet,
-		// we should probably check if we can determine the dataset quickly.
-		// For now, let's just use LoadQuietly if we already have a dataset.
+	if !force && isSubpath {
 		snapshotBrowser.loader.LoadQuietly(loadFunc)
 	} else {
 		snapshotBrowser.loader.Load(loadFunc)
 	}
 }
-
 func (snapshotBrowser *SnapshotBrowserComponent) updateCurrentSnapshotEntries(quiet bool) {
 	snapshotBrowser.updateTableEntries()
 	snapshotBrowser.restoreSelectionForDataset(quiet)
