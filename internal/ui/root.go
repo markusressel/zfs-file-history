@@ -2,7 +2,6 @@ package ui
 
 import (
 	"zfs-file-history/internal/ui/dialog"
-	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -26,7 +25,7 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 	application := tview.NewApplication()
 	application.EnableMouse(true)
 
-	mainPage := NewMainPage(application)
+	mainPage := NewMainPage(application, path)
 	helpPage := dialog.NewHelpPage()
 
 	pagesLayout := tview.NewPages().
@@ -36,8 +35,8 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// ignore events, if some other page is open
 		name, _ := pagesLayout.GetFrontPage()
-		fileBrowserPage, _ := mainPage.fileBrowser.GetLayout().GetFrontPage()
-		if name != string(Main) || fileBrowserPage != string(file_browser.FileBrowserPage) {
+
+		if name != string(Main) {
 			return event
 		}
 

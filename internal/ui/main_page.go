@@ -8,6 +8,8 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
+	uiutil "zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -21,9 +23,11 @@ type MainPage struct {
 	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
 	layout          *tview.Flex
+
+	wasInitialized bool
 }
 
-func NewMainPage(application *tview.Application) *MainPage {
+func NewMainPage(application *tview.Application, path string) *MainPage {
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
@@ -74,13 +78,23 @@ func NewMainPage(application *tview.Application) *MainPage {
 	})
 
 	mainPage.layout = mainPage.createLayout()
+
+	if zfs.IsDatasetsLoaded() {
+		mainPage.Init(path)
+	}
+
+	uiutil.SubscribeUI(zfs.DatasetsLoaded, application, func(_ struct{}) {
+		if !mainPage.wasInitialized {
+			mainPage.Init(path)
+		}
+	})
+
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		switch key {
 		case tcell.KeyTab, tcell.KeyBacktab:
 			mainPage.ToggleFocus()
 		case tcell.KeyF5:
-			fileBrowser.Refresh()
 			snapshotBrowser.Refresh(true)
 			fileBrowser.Refresh()
 		default:
@@ -137,6 +151,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 }
 
 func (mainPage *MainPage) Init(path string) {
+	mainPage.wasInitialized = true
 	mainPage.datasetInfo.SetPath(path)
 	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)

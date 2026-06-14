@@ -1,11 +1,11 @@
 package file_browser
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	path2 "path"
 	"slices"
+	"strings"
 	"time"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
@@ -21,10 +21,6 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-)
-
-const (
-	FileBrowserPage uiutil.Page = "FileBrowserPage"
 )
 
 var (
@@ -90,7 +86,7 @@ var (
 )
 
 type FileBrowserComponent struct {
-	Events *uiutil.Emitter[Event]
+	Events *util.Emitter[Event]
 
 	path string
 
@@ -109,7 +105,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	tableContainer := createFileBrowserTable(application)
 
 	fileBrowser := &FileBrowserComponent{
-		Events: uiutil.NewEmitter[Event](),
+		Events: util.NewEmitter[Event](),
 
 		application: application,
 
@@ -118,9 +114,21 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 		tableContainer: tableContainer,
 	}
 
-	tableContainer.SetColumnSpec(tableColumns, columnType, true)
-	tableContainer.SetActiveColumns(initialActiveTableColumns)
-	tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	fileBrowser.createLayout()
+	fileBrowser.setupTable()
+
+	return fileBrowser
+}
+
+func (fileBrowser *FileBrowserComponent) createLayout() {
+	fileBrowser.layout = tview.NewPages().
+		AddPage("file-browser", fileBrowser.tableContainer.GetLayout(), true, true)
+}
+
+func (fileBrowser *FileBrowserComponent) setupTable() {
+	fileBrowser.tableContainer.SetColumnSpec(tableColumns, columnType, true)
+	fileBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
+	fileBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if key == tcell.KeyF2 {
 			fileBrowser.openColumnSelectionDialog()
@@ -167,14 +175,10 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 		}
 		return event
 	})
-	tableContainer.SetSelectionChangedCallback(func(selectedEntry *data.FileBrowserEntry) {
+	fileBrowser.tableContainer.SetSelectionChangedCallback(func(selectedEntry *data.FileBrowserEntry) {
 		fileBrowser.rememberSelectionInfoForCurrentPath()
 		fileBrowser.Events.Emit(SelectedTableEntryChangedEvent{selectedEntry})
 	})
-
-	fileBrowser.createLayout()
-
-	return fileBrowser
 }
 
 func (fileBrowser *FileBrowserComponent) emit(event Event) {
@@ -195,49 +199,25 @@ func openRestoreDialogOnCurrentSelection(fileBrowser *FileBrowserComponent) {
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) createLayout() {
-	fileBrowserLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
-
-	tableContainer := fileBrowser.tableContainer.GetLayout()
-
-	fileBrowserLayout.AddItem(tableContainer, 0, 1, true)
-
-	fileBrowserPages := tview.NewPages()
-	fileBrowserPages.AddPage(string(FileBrowserPage), tableContainer, true, true)
-
-	fileBrowser.layout = fileBrowserPages
-}
-
 func (fileBrowser *FileBrowserComponent) Focus() {
-	fileBrowser.emit(RequestFocusEvent{
-		Layout: fileBrowser.tableContainer.GetLayout(),
-	})
-	fileBrowser.application.SetFocus(fileBrowser.tableContainer.GetLayout())
+	fileBrowser.application.SetFocus(fileBrowser.layout)
 }
 
-func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrowserEntry {
+func (fileBrowser *FileBrowserComponent) computeTableEntries() ([]*data.FileBrowserEntry, error) {
 	path := fileBrowser.path
 	snapshotEntry := fileBrowser.currentSnapshot
 
 	// list files in current path
 	realFiles, err := util.ListFilesIn(path)
-	if os.IsPermission(err) {
-		fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
-		return nil
-	} else if err != nil {
-		fileBrowser.showError(errors.New("Cannot list real path: " + err.Error()))
+	if err != nil {
+		return nil, err
 	}
 
 	// list snapshot files in currently path with currently selected snapshot
 	var snapshotFilePaths []string
 	if snapshotEntry != nil {
 		snapshotPath := snapshotEntry.Snapshot.GetSnapshotPath(path)
-		snapshotFilePaths, err = util.ListFilesIn(snapshotPath)
-		if os.IsPermission(err) {
-			fileBrowser.showError(errors.New("Permission Error: " + err.Error()))
-		} else if err != nil {
-			fileBrowser.showError(errors.New("Cannot list snapshot path: " + err.Error()))
-		}
+		snapshotFilePaths, _ = util.ListFilesIn(snapshotPath)
 	}
 
 	fileEntries := []*data.FileBrowserEntry{}
@@ -247,8 +227,6 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		_, realFileName := path2.Split(realFilePath)
 		realFileStat, err := os.Lstat(realFilePath)
 		if err != nil {
-			// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
-			fileBrowser.showError(err)
 			continue
 		}
 
@@ -290,8 +268,6 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 
 			statSnap, err := os.Lstat(snapshotFilePath)
 			if err != nil {
-				fileBrowser.showError(err)
-				// TODO: this causes files to be missing from the list, we should probably handle this gracefully somehow
 				continue
 			}
 
@@ -313,7 +289,7 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries() []*data.FileBrows
 		entry.DiffState = fileBrowser.determineDiffState(entry, snapshotEntry)
 	}
 
-	return fileEntries
+	return fileEntries, nil
 }
 
 func (fileBrowser *FileBrowserComponent) computeSnapshotEntryForRealPathIfExists(
@@ -409,16 +385,20 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 			fileBrowser.SetPath(path2.Dir(newPath), false)
 			return
 		}
-
-		_, err = os.ReadDir(newPath)
-		if err != nil {
-			fileBrowser.showError(err)
-			return
-		}
 	}
 
 	if fileBrowser.path != newPath {
 		fileBrowser.path = newPath
+
+		// Optimization: only clear the current snapshot if the new path is no longer within its dataset.
+		// This ensures diffs stay visible if we are just navigating within the same dataset.
+		if fileBrowser.currentSnapshot != nil {
+			dsPath := fileBrowser.currentSnapshot.Snapshot.ParentDataset.Path
+			if newPath != dsPath && !strings.HasPrefix(newPath, dsPath+"/") {
+				fileBrowser.currentSnapshot = nil
+			}
+		}
+
 		fileBrowser.emit(PathChangedEvent{NewPath: newPath})
 		fileBrowser.Refresh()
 	}
@@ -491,35 +471,42 @@ func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileB
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
+	if fileBrowser.currentSnapshot == snapshot {
+		return
+	}
+
+	if fileBrowser.currentSnapshot != nil && snapshot != nil && fileBrowser.currentSnapshot.Snapshot.Path == snapshot.Snapshot.Path {
+		return
+	}
+
 	fileBrowser.currentSnapshot = snapshot
 	fileBrowser.Refresh()
 }
 
 func (fileBrowser *FileBrowserComponent) Refresh() {
 	fileBrowser.showMessage(status_message.NewInfoStatusMessage("Refreshing..."))
-	fileBrowser.updateTableContents()
-	fileBrowser.updateFileWatcher()
-	// TODO: clearing the message like this will hide error messages instantly...
+	title := fmt.Sprintf("Path: %s", fileBrowser.path)
+	fileBrowser.tableContainer.SetTitle(title)
+
+	entries, err := fileBrowser.computeTableEntries()
+	if err != nil {
+		fileBrowser.showError(err)
+	} else {
+		fileBrowser.tableContainer.SetData(entries)
+		fileBrowser.restoreSelectionForPath()
+		fileBrowser.updateFileWatcher()
+	}
 	fileBrowser.showMessage(status_message.NewInfoStatusMessage(""))
 }
 
-func (fileBrowser *FileBrowserComponent) updateTableContents() {
-	title := fmt.Sprintf("Path: %s", fileBrowser.path)
-	fileBrowser.tableContainer.SetTitle(title)
-	newEntries := fileBrowser.computeTableEntries()
-	fileBrowser.tableContainer.SetData(newEntries)
-}
-
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
+	if fileBrowser.GetSelection() == newSelection || (fileBrowser.GetSelection() != nil && newSelection != nil && fileBrowser.GetSelection().GetRealPath() == newSelection.GetRealPath()) {
+		return
+	}
+
 	defer func() {
 		fileBrowser.emit(SelectedTableEntryChangedEvent{newSelection})
 	}()
-	if fileBrowser.GetSelection() == newSelection {
-		return
-	}
-	if fileBrowser.GetSelection() != nil && newSelection != nil && fileBrowser.GetSelection().GetRealPath() == newSelection.GetRealPath() {
-		return
-	}
 
 	fileBrowser.tableContainer.Select(newSelection)
 }
@@ -600,7 +587,7 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 }
 
 func (fileBrowser *FileBrowserComponent) HasFocus() bool {
-	return fileBrowser.tableContainer.HasFocus()
+	return fileBrowser.layout.HasFocus()
 }
 
 func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
@@ -702,7 +689,7 @@ func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.Sta
 	fileBrowser.emit(FileBrowserStatusEvent{message})
 }
 
-func (fileBrowser *FileBrowserComponent) GetLayout() *tview.Pages {
+func (fileBrowser *FileBrowserComponent) GetLayout() tview.Primitive {
 	return fileBrowser.layout
 }
 

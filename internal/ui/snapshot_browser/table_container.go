@@ -119,7 +119,7 @@ func createSnapshotBrowserTableSortFunction(entries []*data.SnapshotBrowserEntry
 		case columnName:
 			result = strings.Compare(strings.ToLower(a.Snapshot.Name), strings.ToLower(b.Snapshot.Name))
 		case columnDate:
-			result = a.Snapshot.Properties.CreationDate.Compare(*b.Snapshot.Properties.CreationDate)
+			result = a.Snapshot.Properties.CreationDate.Compare(b.Snapshot.Properties.CreationDate)
 		case columnDiff:
 			result = int(b.DiffState - a.DiffState)
 		case columnUsed:

@@ -1,6 +1,23 @@
 package configuration
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestValidate(t *testing.T) {
+	// Save original
+	original := CurrentConfig
+	defer func() { CurrentConfig = original }()
+
+	CurrentConfig = Configuration{
+		FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal, Owner: FileBrowserOwnerFormatID},
+	}
+
+	err := Validate("test.yaml")
+	assert.NoError(t, err)
+}
 
 func TestValidateConfig(t *testing.T) {
 	t.Parallel()

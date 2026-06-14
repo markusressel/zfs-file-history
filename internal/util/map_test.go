@@ -47,3 +47,13 @@ func TestExtractKeysWithDistinctValues(t *testing.T) {
 		0, 64, 244,
 	}, result)
 }
+
+func TestValues(t *testing.T) {
+	input := map[string]int{
+		"a": 1,
+		"b": 2,
+		"c": 3,
+	}
+	expected := []int{1, 2, 3}
+	assert.ElementsMatch(t, expected, Values(input))
+}
