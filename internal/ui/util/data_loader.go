@@ -1,6 +1,8 @@
 package util
 
 import (
+	"context"
+	"sync"
 	"sync/atomic"
 
 	"github.com/rivo/tview"
@@ -13,6 +15,9 @@ type DataLoader[T any] struct {
 	onLoad  func(T)
 	onError func(error)
 	onStart func()
+
+	mu     sync.Mutex
+	cancel context.CancelFunc
 }
 
 func NewDataLoader[T any](app *tview.Application) *DataLoader[T] {
@@ -23,21 +28,30 @@ func (l *DataLoader[T]) OnLoad(f func(T)) *DataLoader[T]      { l.onLoad = f; re
 func (l *DataLoader[T]) OnError(f func(error)) *DataLoader[T] { l.onError = f; return l }
 func (l *DataLoader[T]) OnStart(f func()) *DataLoader[T]      { l.onStart = f; return l }
 
-func (l *DataLoader[T]) Load(f func() (T, error)) {
+func (l *DataLoader[T]) Load(f func(ctx context.Context) (T, error)) {
 	l.load(f, true)
 }
 
-func (l *DataLoader[T]) LoadQuietly(f func() (T, error)) {
+func (l *DataLoader[T]) LoadQuietly(f func(ctx context.Context) (T, error)) {
 	l.load(f, false)
 }
 
-func (l *DataLoader[T]) load(f func() (T, error), showLoading bool) {
+func (l *DataLoader[T]) load(f func(ctx context.Context) (T, error), showLoading bool) {
 	seq := l.seq.Add(1)
+
+	l.mu.Lock()
+	if l.cancel != nil {
+		l.cancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	l.cancel = cancel
+	l.mu.Unlock()
+
 	if showLoading && l.onStart != nil {
 		l.onStart()
 	}
 	go func() {
-		data, err := f()
+		data, err := f(ctx)
 		l.app.QueueUpdateDraw(func() {
 			if l.seq.Load() != seq {
 				return
@@ -63,7 +77,7 @@ const (
 // LoadingContainer is a tview.Pages wrapper that handles switching between a loading view and content.
 type LoadingContainer struct {
 	*tview.Pages
-	loadingView *tview.TextView
+	loadingView *LoadingView
 	content     tview.Primitive
 	isLoading   bool
 }
@@ -87,8 +101,10 @@ func (c *LoadingContainer) SetIsLoading(isLoading bool) {
 	}
 	c.isLoading = isLoading
 	if isLoading {
+		c.loadingView.Start()
 		c.SwitchToPage(LoadingContainerLoadingPage)
 	} else {
+		c.loadingView.Stop()
 		c.SwitchToPage(LoadingContainerContentPage)
 	}
 }

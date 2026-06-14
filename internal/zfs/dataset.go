@@ -13,6 +13,25 @@ import (
 	gozfs "github.com/mistifyio/go-zfs/v4"
 )
 
+const (
+	propType            = "type"
+	propMountpoint      = "mountpoint"
+	propMounted         = "mounted"
+	propReadonly        = "readonly"
+	propVolsize         = "volsize"
+	propAvailable       = "available"
+	propUsed            = "used"
+	propCompression     = "compression"
+	propCompressratio   = "compressratio"
+	propSnapdir         = "snapdir"
+	propCasesensitivity = "casesensitivity"
+	propEncryption      = "encryption"
+	propKeystatus       = "keystatus"
+	propOrigin          = "origin"
+	propSnapshotLimit   = "snapshot_limit"
+	propSnapshotCount   = "snapshot_count"
+)
+
 type Dataset struct {
 	Path          string
 	HiddenZfsPath string
@@ -127,7 +146,7 @@ func (dataset *Dataset) getPropertyUint64(libProp golibzfs.Prop, goProp string) 
 }
 
 func (dataset *Dataset) GetType() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropType, "type")
+	return dataset.getPropertyString(golibzfs.DatasetPropType, propType)
 }
 
 func (dataset *Dataset) GetCreationString() time.Time {
@@ -144,69 +163,69 @@ func (dataset *Dataset) GetCreationString() time.Time {
 }
 
 func (dataset *Dataset) GetMountPoint() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropMountpoint, "mountpoint")
+	return dataset.getPropertyString(golibzfs.DatasetPropMountpoint, propMountpoint)
 }
 
 func (dataset *Dataset) GetMounted() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropMounted, "mounted")
+	return dataset.getPropertyString(golibzfs.DatasetPropMounted, propMounted)
 }
 
 func (dataset *Dataset) GetReadonly() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropReadonly, "readonly")
+	return dataset.getPropertyString(golibzfs.DatasetPropReadonly, propReadonly)
 }
 
 func (dataset *Dataset) GetVolSize() uint64 {
-	return dataset.getPropertyUint64(golibzfs.DatasetPropVolsize, "volsize")
+	return dataset.getPropertyUint64(golibzfs.DatasetPropVolsize, propVolsize)
 }
 
 func (dataset *Dataset) GetAvailable() uint64 {
-	return dataset.getPropertyUint64(golibzfs.DatasetPropAvailable, "available")
+	return dataset.getPropertyUint64(golibzfs.DatasetPropAvailable, propAvailable)
 }
 
 func (dataset *Dataset) GetUsed() uint64 {
-	return dataset.getPropertyUint64(golibzfs.DatasetPropUsed, "used")
+	return dataset.getPropertyUint64(golibzfs.DatasetPropUsed, propUsed)
 }
 
 func (dataset *Dataset) GetCompression() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropCompression, "compression")
+	return dataset.getPropertyString(golibzfs.DatasetPropCompression, propCompression)
 }
 
 func (dataset *Dataset) GetCompressRatio() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropCompressratio, "compressratio")
+	return dataset.getPropertyString(golibzfs.DatasetPropCompressratio, propCompressratio)
 }
 
 func (dataset *Dataset) GetSnapdir() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropSnapdir, "snapdir")
+	return dataset.getPropertyString(golibzfs.DatasetPropSnapdir, propSnapdir)
 }
 
 func (dataset *Dataset) GetCaseSensitivity() string {
 	// golibzfs.DatasetPropCasesensitivity might not exist, use a string if needed
-	return dataset.getPropertyString(golibzfs.Prop(115), "casesensitivity")
+	return dataset.getPropertyString(golibzfs.Prop(115), propCasesensitivity)
 }
 
 func (dataset *Dataset) IsEncrypted() bool {
-	encryption := dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption")
+	encryption := dataset.getPropertyString(golibzfs.DatasetPropEncryption, propEncryption)
 	return encryption != "" && encryption != "off"
 }
 
 func (dataset *Dataset) GetEncryption() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption")
+	return dataset.getPropertyString(golibzfs.DatasetPropEncryption, propEncryption)
 }
 
 func (dataset *Dataset) GetKeyStatus() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropKeyStatus, "keystatus")
+	return dataset.getPropertyString(golibzfs.DatasetPropKeyStatus, propKeystatus)
 }
 
 func (dataset *Dataset) GetOrigin() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropOrigin, "origin")
+	return dataset.getPropertyString(golibzfs.DatasetPropOrigin, propOrigin)
 }
 
 func (dataset *Dataset) GetSnapshotLimit() int {
-	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotLimit, "snapshot_limit", 0)
+	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotLimit, propSnapshotLimit, 0)
 }
 
 func (dataset *Dataset) GetSnapshotCount() int {
-	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotCount, "snapshot_count", 0)
+	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotCount, propSnapshotCount, 0)
 }
 
 func (dataset *Dataset) CreateSnapshot(name string) error {

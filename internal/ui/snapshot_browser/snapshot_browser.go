@@ -1,6 +1,7 @@
 package snapshot_browser
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -238,7 +239,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force boo
 		snapshotBrowser.emit(SelectedSnapshotChanged{nil})
 	}
 
-	loadFunc := func() (snapshotLoadResult, error) {
+	loadFunc := func(ctx context.Context) (snapshotLoadResult, error) {
 		ds, err := zfs.FindHostDataset(path)
 		if err != nil {
 			return snapshotLoadResult{}, err

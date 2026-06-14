@@ -2,6 +2,7 @@ package file_browser
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -359,6 +360,19 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 		}
 	})
 	return entries
+}
+
+func compareWithMissingStats(a, b *data.FileBrowserEntry, compareFunc func(statA, statB os.FileInfo) int) int {
+	statA := a.GetStat()
+	statB := b.GetStat()
+	if statA != nil && statB != nil {
+		return compareFunc(statA, statB)
+	} else if statA == nil && statB != nil {
+		return -1
+	} else if statA != nil && statB == nil {
+		return 1
+	}
+	return 0
 }
 
 func compareUint32WithMissing(a uint32, okA bool, b uint32, okB bool) int {

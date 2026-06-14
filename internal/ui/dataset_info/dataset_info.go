@@ -1,6 +1,7 @@
 package dataset_info
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -57,7 +58,7 @@ func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 		return
 	}
 
-	loadFunc := func() (*zfs.Dataset, error) {
+	loadFunc := func(ctx context.Context) (*zfs.Dataset, error) {
 		return zfs.FindHostDataset(path)
 	}
 
