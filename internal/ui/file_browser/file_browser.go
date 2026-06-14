@@ -485,7 +485,22 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.Snap
 
 func (fileBrowser *FileBrowserComponent) Refresh() {
 	fileBrowser.showMessage(status_message.NewInfoStatusMessage("Refreshing..."))
-	title := fmt.Sprintf("Path: %s", fileBrowser.path)
+
+	_, _, width, _ := fileBrowser.tableContainer.GetLayout().GetRect()
+	if width == 0 {
+		width = 80
+	}
+	// title is " Path: Path: <path> "
+	// theme.CreateTitleText adds 2 spaces.
+	// Box adds borders (2 chars).
+	// "Path: " is 6 chars.
+	// So available is width - 2 (borders) - 2 (spaces) - 6 (prefix) = width - 10.
+	maxWidth := width - 10
+	if maxWidth < 20 {
+		maxWidth = 20
+	}
+
+	title := fmt.Sprintf("Path: %s", fileBrowser.truncatePath(fileBrowser.path, maxWidth))
 	fileBrowser.tableContainer.SetTitle(title)
 
 	entries, err := fileBrowser.computeTableEntries()
@@ -497,6 +512,48 @@ func (fileBrowser *FileBrowserComponent) Refresh() {
 		fileBrowser.updateFileWatcher()
 	}
 	fileBrowser.showMessage(status_message.NewInfoStatusMessage(""))
+}
+
+func (fileBrowser *FileBrowserComponent) truncatePath(path string, maxWidth int) string {
+	if len([]rune(path)) <= maxWidth {
+		return path
+	}
+
+	separator := string(os.PathSeparator)
+	parts := strings.Split(path, separator)
+
+	if len(parts) <= 1 {
+		runes := []rune(path)
+		if len(runes) > maxWidth && maxWidth > 3 {
+			return "..." + string(runes[len(runes)-maxWidth+3:])
+		}
+		return path
+	}
+
+	// Try shortening parts from left to right, except the last one
+	for i := 0; i < len(parts)-1; i++ {
+		if parts[i] == "" || parts[i] == "." || parts[i] == ".." {
+			continue
+		}
+
+		runes := []rune(parts[i])
+		if len(runes) > 1 {
+			parts[i] = string(runes[0]) + "…"
+			newPath := strings.Join(parts, separator)
+			if len([]rune(newPath)) <= maxWidth {
+				return newPath
+			}
+		}
+	}
+
+	// If still too long, truncate the resulting path with ellipsis at the beginning
+	finalPath := strings.Join(parts, separator)
+	finalRunes := []rune(finalPath)
+	if len(finalRunes) > maxWidth && maxWidth > 3 {
+		return "..." + string(finalRunes[len(finalRunes)-maxWidth+3:])
+	}
+
+	return finalPath
 }
 
 func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.FileBrowserEntry) {
