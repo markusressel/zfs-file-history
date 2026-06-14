@@ -41,7 +41,10 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 		switch column {
 		case columnName:
 			cellText = entry.Name
-			if entry.GetStat().IsDir() {
+			stat := entry.GetStat()
+			if stat != nil && stat.IsDir() {
+				cellText = fmt.Sprintf("/%s", cellText)
+			} else if entry.Type == data.Directory {
 				cellText = fmt.Sprintf("/%s", cellText)
 			}
 			cellColor = statusCellColor
@@ -101,10 +104,16 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			SetExpansion(cellExpansion)
 
 		// Keep row statusCellText visible while selected by using statusCellColor as selected background.
+		// If status is unknown, use default selected background to avoid 'flash'.
+		bg := statusCellColor
+		if entry.DiffState == diff_state.Unknown {
+			bg = theme.Colors.Layout.Table.SelectedBackground
+		}
+
 		cell.SetSelectedStyle(
 			tcell.StyleDefault.
 				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(statusCellColor),
+				Background(bg),
 		)
 		cells = append(cells, cell)
 	}
@@ -173,16 +182,24 @@ func determineStatusColor(entry *data.FileBrowserEntry) tcell.Color {
 }
 
 func determinePermissionsText(entry *data.FileBrowserEntry) string {
+	stat := entry.GetStat()
+	if stat == nil {
+		return "Loading..."
+	}
 	permissionsMode := configuration.CurrentConfig.FileBrowser.Permissions
 	if permissionsMode == configuration.FileBrowserPermissionsFormatSymbolic {
-		return util.UnixPermSymbolic(entry.GetStat().Mode())
+		return util.UnixPermSymbolic(stat.Mode())
 	}
 
-	return fmt.Sprintf("%04o", util.UnixPermissions(entry.GetStat().Mode()))
+	return fmt.Sprintf("%04o", util.UnixPermissions(stat.Mode()))
 }
 
 func determineUIDText(entry *data.FileBrowserEntry) string {
-	uid, _, ok := util.UnixOwnerIDs(entry.GetStat())
+	stat := entry.GetStat()
+	if stat == nil {
+		return "Loading..."
+	}
+	uid, _, ok := util.UnixOwnerIDs(stat)
 	if !ok {
 		return "N/A"
 	}
@@ -191,7 +208,11 @@ func determineUIDText(entry *data.FileBrowserEntry) string {
 }
 
 func determineGIDText(entry *data.FileBrowserEntry) string {
-	_, gid, ok := util.UnixOwnerIDs(entry.GetStat())
+	stat := entry.GetStat()
+	if stat == nil {
+		return "Loading..."
+	}
+	_, gid, ok := util.UnixOwnerIDs(stat)
 	if !ok {
 		return "N/A"
 	}
@@ -233,32 +254,72 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 		case columnName:
 			result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 		case columnDateTime:
-			result = a.GetStat().ModTime().Compare(b.GetStat().ModTime())
+			statA := a.GetStat()
+			statB := b.GetStat()
+			if statA != nil && statB != nil {
+				result = statA.ModTime().Compare(statB.ModTime())
+			} else if statA == nil && statB != nil {
+				result = -1
+			} else if statA != nil && statB == nil {
+				result = 1
+			}
 		case columnType:
 			result = int(b.Type - a.Type)
 		case columnSize:
-			result = int(a.GetStat().Size() - b.GetStat().Size())
+			statA := a.GetStat()
+			statB := b.GetStat()
+			if statA != nil && statB != nil {
+				result = int(statA.Size() - statB.Size())
+			} else if statA == nil && statB != nil {
+				result = -1
+			} else if statA != nil && statB == nil {
+				result = 1
+			}
 		case columnDiff:
 			result = int(b.DiffState - a.DiffState)
 		case columnPermissions:
-			permA := util.UnixPermissions(a.GetStat().Mode())
-			permB := util.UnixPermissions(b.GetStat().Mode())
-			switch {
-			case permA < permB:
+			statA := a.GetStat()
+			statB := b.GetStat()
+			if statA != nil && statB != nil {
+				permA := util.UnixPermissions(statA.Mode())
+				permB := util.UnixPermissions(statB.Mode())
+				switch {
+				case permA < permB:
+					result = -1
+				case permA > permB:
+					result = 1
+				default:
+					result = 0
+				}
+			} else if statA == nil && statB != nil {
 				result = -1
-			case permA > permB:
+			} else if statA != nil && statB == nil {
 				result = 1
-			default:
-				result = 0
 			}
 		case columnUID:
-			uidA, _, okA := util.UnixOwnerIDs(a.GetStat())
-			uidB, _, okB := util.UnixOwnerIDs(b.GetStat())
-			result = compareUint32WithMissing(uidA, okA, uidB, okB)
+			statA := a.GetStat()
+			statB := b.GetStat()
+			if statA != nil && statB != nil {
+				uidA, _, okA := util.UnixOwnerIDs(statA)
+				uidB, _, okB := util.UnixOwnerIDs(statB)
+				result = compareUint32WithMissing(uidA, okA, uidB, okB)
+			} else if statA == nil && statB != nil {
+				result = -1
+			} else if statA != nil && statB == nil {
+				result = 1
+			}
 		case columnGID:
-			_, gidA, okA := util.UnixOwnerIDs(a.GetStat())
-			_, gidB, okB := util.UnixOwnerIDs(b.GetStat())
-			result = compareUint32WithMissing(gidA, okA, gidB, okB)
+			statA := a.GetStat()
+			statB := b.GetStat()
+			if statA != nil && statB != nil {
+				_, gidA, okA := util.UnixOwnerIDs(statA)
+				_, gidB, okB := util.UnixOwnerIDs(statB)
+				result = compareUint32WithMissing(gidA, okA, gidB, okB)
+			} else if statA == nil && statB != nil {
+				result = -1
+			} else if statA != nil && statB == nil {
+				result = 1
+			}
 		}
 
 		if inverted {

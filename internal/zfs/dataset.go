@@ -4,10 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	path2 "path"
+	gopath "path"
 	"strconv"
 	"time"
-	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 
 	golibzfs "github.com/kraudcloud/go-libzfs"
@@ -23,26 +22,37 @@ type Dataset struct {
 }
 
 func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
+	path = gopath.Clean(path)
 	dataset := &Dataset{
 		Path:          path,
 		HiddenZfsPath: hiddenZfsPath,
 	}
 
+	// Try to find the dataset metadata in the golibzfs cache
 	ds := findDataset(allDatasets, path)
-	dataset.rawGolibzfsData = ds
+	if ds != nil {
+		dataset.rawGolibzfsData = ds
 
-	datasets, err := gozfs.Filesystems(path)
-	if err != nil {
-		return dataset, err
-	} else {
-		if len(datasets) > 0 {
-			dataset.rawGozfsData = datasets[0]
+		// Use the name found in golibzfs to fetch full metadata from gozfs
+		nameProp, err := ds.GetProperty(golibzfs.DatasetPropName)
+		if err == nil {
+			gozfsDs, err := gozfs.GetDataset(nameProp.Value)
+			if err == nil {
+				dataset.rawGozfsData = gozfsDs
+			}
 		}
-		if len(datasets) > 1 {
-			// TODO: is this a real case?
-			//  Can we automatically select the "correct" one or should the user
-			//  decide which one to use?
-			logging.Warning("Found multiple datasets for path %s", path)
+	}
+
+	// Fallback: if we haven't found metadata yet, try mistify/go-zfs directly.
+	if dataset.rawGozfsData == nil {
+		gozfsList, err := gozfs.Filesystems("")
+		if err == nil {
+			for _, fs := range gozfsList {
+				if gopath.Clean(fs.Mountpoint) == path {
+					dataset.rawGozfsData = fs
+					break
+				}
+			}
 		}
 	}
 
@@ -55,24 +65,23 @@ func FindHostDataset(path string) (*Dataset, error) {
 		return nil, errors.New("cannot find host dataset for empty path")
 	}
 
-	var currentPath = path
+	var currentPath = gopath.Clean(path)
 	for {
-		pathToTest := path2.Join(currentPath, ".zfs")
+		pathToTest := gopath.Join(currentPath, ".zfs")
 		stat, err := os.Lstat(pathToTest)
-		if os.IsNotExist(err) || !stat.IsDir() {
-			old := currentPath
-			currentPath = path2.Dir(currentPath)
-			if old == currentPath {
-				return nil, fmt.Errorf("could not find dataset for path: %s", path)
-			} else {
-				continue
-			}
-		} else if os.IsPermission(err) {
-			return nil, err
-		} else if err != nil {
-			return nil, err
-		} else {
+		if err == nil && stat.IsDir() {
 			return NewDataset(currentPath, pathToTest)
+		}
+
+		if os.IsPermission(err) {
+			return nil, err
+		}
+
+		// Navigate up
+		old := currentPath
+		currentPath = gopath.Dir(currentPath)
+		if old == currentPath {
+			return nil, fmt.Errorf("could not find dataset for path: %s", path)
 		}
 	}
 }
@@ -94,45 +103,144 @@ func (dataset *Dataset) getPropertyString(libProp golibzfs.Prop, goProp string) 
 }
 
 func (dataset *Dataset) getPropertyInt(libProp golibzfs.Prop, goProp string, defaultValue int) int {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(libProp)
-		if err == nil {
-			val, err := strconv.Atoi(prop.Value)
-			if err == nil {
-				return val
-			}
-		}
+	str := dataset.getPropertyString(libProp, goProp)
+	if str == "" {
+		return defaultValue
 	}
-	if dataset.rawGozfsData != nil {
-		prop, err := dataset.rawGozfsData.GetProperty(goProp)
-		if err == nil {
-			val, err := strconv.Atoi(prop)
-			if err == nil {
-				return val
-			}
-		}
+	val, err := strconv.Atoi(str)
+	if err != nil {
+		return defaultValue
 	}
-	return defaultValue
+	return val
 }
 
-func (dataset *Dataset) getPropertyUint64(libProp golibzfs.Prop, goValue uint64) uint64 {
+func (dataset *Dataset) getPropertyUint64(libProp golibzfs.Prop, goProp string) uint64 {
+	str := dataset.getPropertyString(libProp, goProp)
+	if str == "" {
+		return 0
+	}
+	val, err := strconv.ParseUint(str, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return val
+}
+
+func (dataset *Dataset) GetType() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropType, "type")
+}
+
+func (dataset *Dataset) GetCreationString() time.Time {
 	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(libProp)
+		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
 		if err == nil {
-			number, err := strconv.ParseUint(prop.Value, 10, 64)
+			i, err := strconv.ParseInt(prop.Value, 10, 64)
 			if err == nil {
-				return number
+				return time.Unix(i, 0)
 			}
 		}
 	}
+	return time.Time{}
+}
+
+func (dataset *Dataset) GetMountPoint() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropMountpoint, "mountpoint")
+}
+
+func (dataset *Dataset) GetMounted() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropMounted, "mounted")
+}
+
+func (dataset *Dataset) GetReadonly() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropReadonly, "readonly")
+}
+
+func (dataset *Dataset) GetVolSize() uint64 {
+	return dataset.getPropertyUint64(golibzfs.DatasetPropVolsize, "volsize")
+}
+
+func (dataset *Dataset) GetAvailable() uint64 {
+	return dataset.getPropertyUint64(golibzfs.DatasetPropAvailable, "available")
+}
+
+func (dataset *Dataset) GetUsed() uint64 {
+	return dataset.getPropertyUint64(golibzfs.DatasetPropUsed, "used")
+}
+
+func (dataset *Dataset) GetCompression() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropCompression, "compression")
+}
+
+func (dataset *Dataset) GetCompressRatio() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropCompressratio, "compressratio")
+}
+
+func (dataset *Dataset) GetSnapdir() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropSnapdir, "snapdir")
+}
+
+func (dataset *Dataset) GetCaseSensitivity() string {
+	// golibzfs.DatasetPropCasesensitivity might not exist, use a string if needed
+	return dataset.getPropertyString(golibzfs.Prop(115), "casesensitivity")
+}
+
+func (dataset *Dataset) IsEncrypted() bool {
+	encryption := dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption")
+	return encryption != "" && encryption != "off"
+}
+
+func (dataset *Dataset) GetEncryption() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption")
+}
+
+func (dataset *Dataset) GetKeyStatus() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropKeyStatus, "keystatus")
+}
+
+func (dataset *Dataset) GetOrigin() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropOrigin, "origin")
+}
+
+func (dataset *Dataset) GetSnapshotLimit() int {
+	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotLimit, "snapshot_limit", 0)
+}
+
+func (dataset *Dataset) GetSnapshotCount() int {
+	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotCount, "snapshot_count", 0)
+}
+
+func (dataset *Dataset) CreateSnapshot(name string) error {
 	if dataset.rawGozfsData != nil {
-		return goValue
+		_, err := dataset.rawGozfsData.Snapshot(name, false)
+		return err
 	}
-	return 0
+	return errors.New("cannot create snapshot: no dataset metadata available")
+}
+
+func (dataset *Dataset) DestroySnapshot(name string, recursive bool, dependantClones bool) error {
+	if dataset.rawGozfsData != nil {
+		fullName := fmt.Sprintf("%s@%s", dataset.rawGozfsData.Name, name)
+		snapshots, err := gozfs.Snapshots(fullName)
+		if err != nil {
+			return err
+		}
+		if len(snapshots) == 0 {
+			return errors.New("snapshot not found")
+		}
+		flags := gozfs.DestroyDefault
+		if recursive {
+			flags = gozfs.DestroyRecursive
+		}
+		if dependantClones {
+			flags = flags | gozfs.DestroyRecursiveClones
+		}
+		return snapshots[0].Destroy(flags)
+	}
+	return errors.New("cannot destroy snapshot: no dataset metadata available")
 }
 
 func (dataset *Dataset) GetSnapshotsDir() string {
-	return path2.Join(dataset.HiddenZfsPath, "snapshot")
+	return gopath.Join(dataset.HiddenZfsPath, "snapshot")
 }
 
 // GetSnapshots returns all snapshots for this dataset
@@ -144,13 +252,18 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 	if err != nil {
 		return []*Snapshot{}, err
 	}
-	for _, file := range snapshotDirs {
-		_, name := path2.Split(file)
 
-		s := findSnapshot(AllSnapshots[dataset.GetName()], name)
-		if s != nil {
-		} else {
-			logging.Warning("Could not find snapshot %s on dataset %s", name, dataset.GetName())
+	var rawSnapshots []golibzfs.Dataset
+	if dataset.rawGolibzfsData != nil {
+		rawSnapshots, _ = dataset.rawGolibzfsData.Snapshots()
+	}
+
+	for _, file := range snapshotDirs {
+		_, name := gopath.Split(file)
+
+		var s *golibzfs.Dataset
+		if len(rawSnapshots) > 0 {
+			s = findSnapshot(rawSnapshots, name)
 		}
 
 		result = append(result, NewSnapshot(name, file, dataset, s))
@@ -165,166 +278,9 @@ func (dataset *Dataset) GetName() string {
 	}
 	if dataset.rawGolibzfsData != nil {
 		nameProperty, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropName)
-		if err != nil {
-			logging.Error("Could not get name property for dataset %s: %s", dataset.Path, err.Error())
-		} else {
+		if err == nil {
 			return nameProperty.Value
 		}
 	}
-	return dataset.Path
-}
-
-func (dataset *Dataset) GetCreationString() time.Time {
-	if dataset.rawGolibzfsData != nil {
-		prop, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
-		if err == nil {
-			rawValue := prop.Value
-			valueInt, err := strconv.ParseInt(rawValue, 10, 64)
-			if err != nil {
-				logging.Error("Could not parse creation time for dataset %s: %s", dataset.Path, err.Error())
-				return time.Time{}
-			}
-			// convert integer to *time.Time
-			return time.Unix(valueInt, 0)
-		}
-	}
-	return time.Time{}
-}
-
-func (dataset *Dataset) GetType() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropType, "type")
-}
-
-func (dataset *Dataset) GetMountPoint() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropMountpoint, "mountpoint")
-}
-
-func (dataset *Dataset) GetVolSize() uint64 {
-	var goValue uint64
-	if dataset.rawGozfsData != nil {
-		goValue = dataset.rawGozfsData.Volsize
-	}
-	return dataset.getPropertyUint64(golibzfs.DatasetPropVolsize, goValue)
-}
-
-func (dataset *Dataset) GetAvailable() uint64 {
-	var goValue uint64
-	if dataset.rawGozfsData != nil {
-		goValue = dataset.rawGozfsData.Avail
-	}
-	return dataset.getPropertyUint64(golibzfs.DatasetPropAvailable, goValue)
-}
-
-func (dataset *Dataset) GetUsed() uint64 {
-	var goValue uint64
-	if dataset.rawGozfsData != nil {
-		goValue = dataset.rawGozfsData.Used
-	}
-	return dataset.getPropertyUint64(golibzfs.DatasetPropUsed, goValue)
-}
-
-func (dataset *Dataset) GetCompression() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropCompression, "compression")
-}
-
-func (dataset *Dataset) GetCompressRatio() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropCompressratio, "compressratio")
-}
-
-func (dataset *Dataset) GetOrigin() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropOrigin, "origin")
-}
-
-func (dataset *Dataset) GetSnapshotCount() int {
-	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotCount, "snapshot_count", 0)
-}
-
-// GetSnapshotLimit returns the maximum number of snapshots that can be created
-func (dataset *Dataset) GetSnapshotLimit() int {
-	return dataset.getPropertyInt(golibzfs.DatasetPropSnapshotLimit, "snapshot_limit", -1)
-}
-
-func (dataset *Dataset) GetMounted() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropMounted, "mounted")
-}
-
-// on or off
-func (dataset *Dataset) GetReadonly() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropReadonly, "readonly")
-}
-
-func (dataset *Dataset) GetSnapdir() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropSnapdir, "snapdir")
-}
-
-func (dataset *Dataset) GetCaseSensitivity() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropCase, "case")
-}
-
-func (dataset *Dataset) GetQuota() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropQuota, "quota")
-}
-
-func (dataset *Dataset) IsEncrypted() bool {
-	return dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption") != "off"
-}
-
-func (dataset *Dataset) GetEncryption() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropEncryption, "encryption")
-}
-
-func (dataset *Dataset) GetKeyStatus() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropKeyStatus, "key_status")
-}
-
-func (dataset *Dataset) CreateSnapshot(name string) error {
-	if dataset.rawGolibzfsData != nil {
-		_, err := golibzfs.DatasetCreate(dataset.GetMountPoint()+"@"+name, golibzfs.DatasetTypeSnapshot, nil)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	if dataset.rawGozfsData != nil {
-		_, err := dataset.rawGozfsData.Snapshot(name, false)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	return errors.New("missing ZFS data, could not create snapshot")
-}
-
-func (dataset *Dataset) DestroySnapshot(name string, recursive bool, dependantClones bool) (err error) {
-	if dataset.rawGozfsData != nil {
-		flags := gozfs.DestroyDefault
-		if recursive {
-			flags = gozfs.DestroyRecursive
-		}
-		if dependantClones {
-			flags = flags | gozfs.DestroyRecursiveClones
-		}
-		err = dataset.rawGozfsData.Destroy(flags)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	if dataset.rawGolibzfsData != nil {
-		snapshot := findSnapshot(AllSnapshots[dataset.GetName()], name)
-		if snapshot == nil {
-			return errors.New("could not find snapshot")
-		} else {
-			if recursive {
-				err = snapshot.DestroyRecursive()
-			} else {
-				err = snapshot.Destroy(false)
-			}
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return errors.New("missing ZFS data, could not destroy snapshot")
+	return ""
 }

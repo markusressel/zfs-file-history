@@ -2,7 +2,9 @@ package zfs
 
 import (
 	"strings"
+	"sync"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/util"
 
 	golibzfs "github.com/kraudcloud/go-libzfs"
 )
@@ -12,13 +14,20 @@ const (
 )
 
 var (
-	allDatasets  = []golibzfs.Dataset{}
-	AllSnapshots = map[string][]golibzfs.Dataset{}
+	allDatasets      = []golibzfs.Dataset{}
+	datasetsMtx      sync.RWMutex
+	DatasetsLoaded   = util.NewEmitter[struct{}]()
+	isDatasetsLoaded bool
 )
 
 func RefreshZfsData() {
-	loadDatasets()
-	loadSnapshots(allDatasets)
+	go loadDatasets()
+}
+
+func IsDatasetsLoaded() bool {
+	datasetsMtx.RLock()
+	defer datasetsMtx.RUnlock()
+	return isDatasetsLoaded
 }
 
 func loadDatasets() {
@@ -26,31 +35,27 @@ func loadDatasets() {
 	if err != nil {
 		logging.Error("Could not load ZFS datasets: %s", err.Error())
 	} else {
+		datasetsMtx.Lock()
 		allDatasets = datasets
-	}
-}
-
-func loadSnapshots(datasets []golibzfs.Dataset) {
-	for _, dataset := range datasets {
-		nameProperty := dataset.Properties[golibzfs.DatasetPropName]
-		//mountPointProperty := dataset.Properties[golibzfs.DatasetPropMountpoint]
-		snapshots, err := dataset.Snapshots()
-		if err != nil {
-			logging.Error("Could not load snapshots for dataset %s: %s", nameProperty.Value, err.Error())
-		} else {
-			AllSnapshots[nameProperty.Value] = snapshots
-		}
-		loadSnapshots(dataset.Children)
+		isDatasetsLoaded = true
+		datasetsMtx.Unlock()
+		DatasetsLoaded.Emit(struct{}{})
 	}
 }
 
 func findDataset(datasets []golibzfs.Dataset, path string) *golibzfs.Dataset {
+	datasetsMtx.RLock()
+	defer datasetsMtx.RUnlock()
+	return findDatasetRecursive(datasets, path)
+}
+
+func findDatasetRecursive(datasets []golibzfs.Dataset, path string) *golibzfs.Dataset {
 	for _, dataset := range datasets {
 		mountPoint := dataset.Properties[golibzfs.DatasetPropMountpoint]
 		if mountPoint.Value == path {
 			return &dataset
 		}
-		dataset := findDataset(dataset.Children, path)
+		dataset := findDatasetRecursive(dataset.Children, path)
 		if dataset != nil {
 			return dataset
 		}
@@ -61,13 +66,13 @@ func findDataset(datasets []golibzfs.Dataset, path string) *golibzfs.Dataset {
 func findSnapshot(snapshots []golibzfs.Dataset, name string) *golibzfs.Dataset {
 	for _, snapshot := range snapshots {
 		nameProperty := snapshot.Properties[golibzfs.DatasetPropName]
-		currentName := strings.Split(nameProperty.Value, "@")[1]
+		parts := strings.Split(nameProperty.Value, "@")
+		if len(parts) < 2 {
+			continue
+		}
+		currentName := parts[1]
 		if currentName == name {
 			return &snapshot
-		}
-		snapshot := findSnapshot(snapshot.Children, name)
-		if snapshot != nil {
-			return snapshot
 		}
 	}
 	return nil

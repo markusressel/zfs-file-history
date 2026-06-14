@@ -12,10 +12,8 @@ import (
 // AddActor wires ZFS preload and UI lifecycle into the application run group.
 func AddActor(g *run.Group, ctx context.Context, path string) {
 	g.Add(func() error {
-		logging.Info("Loading ZFS data...")
-		pterm.Info.Printfln("Loading ZFS data...")
+		logging.Info("Initializing ZFS data...")
 		zfs.RefreshZfsData()
-		pterm.Info.Printfln("Launching UI...")
 		logging.Info("Launching UI...")
 
 		application := CreateUi(path, true)
