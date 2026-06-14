@@ -4,6 +4,8 @@ import (
 	"os"
 	"syscall"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestUnixPermissions(t *testing.T) {
@@ -18,6 +20,53 @@ func TestUnixPermissions(t *testing.T) {
 	if got, want := UnixPermissions(mode), uint32(0o4755); got != want {
 		t.Fatalf("UnixPermissions() with setuid = %04o, want %04o", got, want)
 	}
+}
+
+func TestUnixPerm(t *testing.T) {
+	t.Parallel()
+
+	mode := os.FileMode(0o755)
+	assert.Equal(t, uint32(0o755), UnixPerm(mode))
+
+	mode = os.FileMode(0o755) | os.ModeSetuid
+	assert.Equal(t, uint32(0o4755), UnixPerm(mode))
+
+	mode = os.FileMode(0o755) | os.ModeSetgid
+	assert.Equal(t, uint32(0o2755), UnixPerm(mode))
+
+	mode = os.FileMode(0o755) | os.ModeSticky
+	assert.Equal(t, uint32(0o1755), UnixPerm(mode))
+}
+
+func TestFileExists(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	tmpFile, _ := os.CreateTemp(tmpDir, "exists-test")
+	defer tmpFile.Close()
+
+	assert.True(t, FileExists(tmpDir))
+	assert.True(t, FileExists(tmpFile.Name()))
+	assert.False(t, FileExists("/non/existent/path"))
+}
+
+func TestListFilesIn(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	f1, _ := os.CreateTemp(tmpDir, "file1")
+	f2, _ := os.CreateTemp(tmpDir, "file2")
+	defer f1.Close()
+	defer f2.Close()
+
+	files, err := ListFilesIn(tmpDir)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{f1.Name(), f2.Name()}, files)
+
+	// Test non-existent directory
+	files, err = ListFilesIn("/non/existent/dir")
+	assert.NoError(t, err)
+	assert.Empty(t, files)
 }
 
 func TestUnixPermSymbolic(t *testing.T) {

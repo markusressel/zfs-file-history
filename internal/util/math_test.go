@@ -21,6 +21,24 @@ func TestRatio(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
+func TestCoerce(t *testing.T) {
+	assert.Equal(t, 5, Coerce(5, 0, 10))
+	assert.Equal(t, 0, Coerce(-1, 0, 10))
+	assert.Equal(t, 10, Coerce(11, 0, 10))
+}
+
+func TestAvg(t *testing.T) {
+	assert.Equal(t, 5.0, Avg([]float64{0, 5, 10}))
+	assert.Equal(t, 0.0, Avg([]float64{0}))
+}
+
+func TestHexString(t *testing.T) {
+	assert.Equal(t, "A", HexString("a"))
+	assert.Equal(t, "A", HexString("0a"))
+	assert.Equal(t, "FF", HexString("ff"))
+	assert.Equal(t, "invalid", HexString("invalid"))
+}
+
 func TestFindClosest(t *testing.T) {
 	// GIVEN
 	options := []int{
