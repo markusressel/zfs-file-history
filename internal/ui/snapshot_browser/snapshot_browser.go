@@ -211,7 +211,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) SetFileEntry(fileEntry *data.Fi
 func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force bool) {
 	path := snapshotBrowser.path
 
-	snapshotBrowser.loader.Load(func() (snapshotLoadResult, error) {
+	loadFunc := func() (snapshotLoadResult, error) {
 		ds, err := zfs.FindHostDataset(path)
 		if err != nil {
 			return snapshotLoadResult{}, err
@@ -228,7 +228,18 @@ func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force boo
 		}
 
 		return snapshotLoadResult{dataset: ds, snapshots: snapshots}, nil
-	})
+	}
+
+	// Use LoadQuietly if we know we likely don't need a full UI refresh
+	if !force && snapshotBrowser.hostDataset != nil {
+		// We still want to check if the host dataset is the same for the new path
+		// but we do it inside the load func. If we want to be truly quiet,
+		// we should probably check if we can determine the dataset quickly.
+		// For now, let's just use LoadQuietly if we already have a dataset.
+		snapshotBrowser.loader.LoadQuietly(loadFunc)
+	} else {
+		snapshotBrowser.loader.Load(loadFunc)
+	}
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) updateCurrentSnapshotEntries(quiet bool) {

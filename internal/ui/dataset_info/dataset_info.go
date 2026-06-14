@@ -53,9 +53,19 @@ func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 }
 
 func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
-	datasetInfo.loader.Load(func() (*zfs.Dataset, error) {
+	if datasetInfo.dataset != nil && datasetInfo.dataset.Path == path {
+		return
+	}
+
+	loadFunc := func() (*zfs.Dataset, error) {
 		return zfs.FindHostDataset(path)
-	})
+	}
+
+	if datasetInfo.dataset != nil {
+		datasetInfo.loader.LoadQuietly(loadFunc)
+	} else {
+		datasetInfo.loader.Load(loadFunc)
+	}
 }
 
 func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {
