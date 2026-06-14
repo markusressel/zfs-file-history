@@ -225,9 +225,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force boo
 		}
 	}
 
+	capturedHostDataset := snapshotBrowser.hostDataset
+	capturedSnapshots := snapshotBrowser.currentSnapshots
+
 	// If we know it's a different dataset (or force), clear state immediately
 	// to avoid showing outdated snapshots while the new ones load.
 	if force || !isSubpath {
+		snapshotBrowser.hostDataset = nil
 		snapshotBrowser.currentSnapshots = []*zfs.Snapshot{}
 		snapshotBrowser.ClearMultiSelection()
 		snapshotBrowser.updateTableEntries()
@@ -241,8 +245,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force boo
 		}
 
 		// Optimization: if the dataset hasn't changed, we don't need to reload the snapshots
-		if !force && snapshotBrowser.hostDataset != nil && snapshotBrowser.hostDataset.Path == ds.Path {
-			return snapshotLoadResult{dataset: ds, snapshots: snapshotBrowser.currentSnapshots}, nil
+		if !force && capturedHostDataset != nil && capturedHostDataset.Path == ds.Path {
+			return snapshotLoadResult{dataset: ds, snapshots: capturedSnapshots}, nil
 		}
 
 		snapshots, err := ds.GetSnapshots()
