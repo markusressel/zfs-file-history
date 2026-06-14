@@ -66,4 +66,13 @@ func TestFindClosest(t *testing.T) {
 	// THEN
 	assert.Equal(t, 90, closest)
 
+	// WHEN - Exact match
+	closest = FindClosest(30, options)
+	// THEN
+	assert.Equal(t, 30, closest)
+
+	// WHEN - Target between values requiring loop
+	closest = FindClosest(15, options)
+	// THEN
+	assert.Equal(t, 20, closest)
 }

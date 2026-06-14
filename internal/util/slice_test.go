@@ -38,12 +38,14 @@ func TestContainsString_Invalid(t *testing.T) {
 
 func TestMin(t *testing.T) {
 	assert.Equal(t, 1.0, Min([]float64{1, 2, 3}))
+	assert.Equal(t, 1.0, Min([]float64{3, 2, 1}))
 	assert.Equal(t, 0.0, Min([]float64{}))
 	assert.Equal(t, 5.0, Min([]float64{5}))
 }
 
 func TestMax(t *testing.T) {
 	assert.Equal(t, 3.0, Max([]float64{1, 2, 3}))
+	assert.Equal(t, 3.0, Max([]float64{1, 3, 2}))
 	assert.Equal(t, 0.0, Max([]float64{}))
 	assert.Equal(t, 5.0, Max([]float64{5}))
 }
