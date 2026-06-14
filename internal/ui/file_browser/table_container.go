@@ -255,72 +255,42 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 		case columnName:
 			result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 		case columnDateTime:
-			statA := a.GetStat()
-			statB := b.GetStat()
-			if statA != nil && statB != nil {
-				result = statA.ModTime().Compare(statB.ModTime())
-			} else if statA == nil && statB != nil {
-				result = -1
-			} else if statA != nil && statB == nil {
-				result = 1
-			}
+			result = compareWithMissingStats(a, b, func(statA, statB os.FileInfo) int {
+				return statA.ModTime().Compare(statB.ModTime())
+			})
 		case columnType:
 			result = int(b.Type - a.Type)
 		case columnSize:
-			statA := a.GetStat()
-			statB := b.GetStat()
-			if statA != nil && statB != nil {
-				result = int(statA.Size() - statB.Size())
-			} else if statA == nil && statB != nil {
-				result = -1
-			} else if statA != nil && statB == nil {
-				result = 1
-			}
+			result = compareWithMissingStats(a, b, func(statA, statB os.FileInfo) int {
+				return int(statA.Size() - statB.Size())
+			})
 		case columnDiff:
 			result = int(b.DiffState - a.DiffState)
 		case columnPermissions:
-			statA := a.GetStat()
-			statB := b.GetStat()
-			if statA != nil && statB != nil {
+			result = compareWithMissingStats(a, b, func(statA, statB os.FileInfo) int {
 				permA := util.UnixPermissions(statA.Mode())
 				permB := util.UnixPermissions(statB.Mode())
 				switch {
 				case permA < permB:
-					result = -1
+					return -1
 				case permA > permB:
-					result = 1
+					return 1
 				default:
-					result = 0
+					return 0
 				}
-			} else if statA == nil && statB != nil {
-				result = -1
-			} else if statA != nil && statB == nil {
-				result = 1
-			}
+			})
 		case columnUID:
-			statA := a.GetStat()
-			statB := b.GetStat()
-			if statA != nil && statB != nil {
+			result = compareWithMissingStats(a, b, func(statA, statB os.FileInfo) int {
 				uidA, _, okA := util.UnixOwnerIDs(statA)
 				uidB, _, okB := util.UnixOwnerIDs(statB)
-				result = compareUint32WithMissing(uidA, okA, uidB, okB)
-			} else if statA == nil && statB != nil {
-				result = -1
-			} else if statA != nil && statB == nil {
-				result = 1
-			}
+				return compareUint32WithMissing(uidA, okA, uidB, okB)
+			})
 		case columnGID:
-			statA := a.GetStat()
-			statB := b.GetStat()
-			if statA != nil && statB != nil {
+			result = compareWithMissingStats(a, b, func(statA, statB os.FileInfo) int {
 				_, gidA, okA := util.UnixOwnerIDs(statA)
 				_, gidB, okB := util.UnixOwnerIDs(statB)
-				result = compareUint32WithMissing(gidA, okA, gidB, okB)
-			} else if statA == nil && statB != nil {
-				result = -1
-			} else if statA != nil && statB == nil {
-				result = 1
-			}
+				return compareUint32WithMissing(gidA, okA, gidB, okB)
+			})
 		}
 
 		if inverted {
