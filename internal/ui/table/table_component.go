@@ -107,9 +107,7 @@ func (c *RowSelectionTable[T]) SetMultiSelect(multiSelect bool) {
 func (c *RowSelectionTable[T]) createLayout() {
 	table := tview.NewTable()
 
-	table.SetBorder(true)
 	table.SetBorders(false)
-	table.SetBorderPadding(0, 0, 1, 1)
 
 	// fixed header row
 	table.SetFixed(1, 0)
@@ -119,8 +117,6 @@ func (c *RowSelectionTable[T]) createLayout() {
 			Foreground(theme.Colors.Layout.Table.SelectedForeground).
 			Background(theme.Colors.Layout.Table.SelectedBackground),
 	)
-
-	uiutil.SetupWindow(table, "")
 
 	table.SetSelectable(true, false)
 	table.SetSelectionChangedFunc(func(row, column int) {
@@ -203,6 +199,10 @@ func (c *RowSelectionTable[T]) createLayout() {
 		SetDirection(tview.FlexColumn).
 		AddItem(c.table, 0, 1, true).
 		AddItem(c.scrollbar.GetLayout(), 1, 0, false)
+
+	c.layout.SetBorder(true)
+	c.layout.SetBorderPadding(0, 0, 1, 1)
+	uiutil.SetupWindow(c.layout, "")
 }
 
 func (c *RowSelectionTable[T]) syncScrollbar() {
@@ -248,7 +248,7 @@ func (c *RowSelectionTable[T]) GetLayout() tview.Primitive {
 }
 
 func (c *RowSelectionTable[T]) SetTitle(title string) {
-	uiutil.SetupWindow(c.table, title)
+	uiutil.SetupWindow(c.layout, title)
 }
 
 func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColumn *Column, inverted bool) {
