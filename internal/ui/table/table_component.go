@@ -71,6 +71,8 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	defaultSortColumn   *Column
 	defaultSortInverted bool
+
+	isScrollbarVisible bool
 }
 
 func NewTableContainer[T RowSelectionTableEntry](
@@ -196,6 +198,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.table = table
 	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
 
+	c.isScrollbarVisible = true
 	c.layout = tview.NewFlex().
 		SetDirection(tview.FlexColumn).
 		AddItem(c.table, 0, 1, true).
@@ -211,9 +214,33 @@ func (c *RowSelectionTable[T]) syncScrollbar() {
 	rowCount := c.table.GetRowCount()
 	_, _, _, height := c.table.GetInnerRect()
 
-	c.scrollbar.SetMax(rowCount)
-	c.scrollbar.SetPosition(rowOffset)
-	c.scrollbar.SetWidth(height)
+	// rowCount - 1 because of the header row
+	if rowCount-1 <= height {
+		c.hideScrollbar()
+		return
+	} else {
+		c.showScrollbar()
+	}
+
+	if c.isScrollbarVisible {
+		c.scrollbar.SetMax(rowCount)
+		c.scrollbar.SetPosition(rowOffset)
+		c.scrollbar.SetWidth(height)
+	}
+}
+
+func (c *RowSelectionTable[T]) showScrollbar() {
+	if !c.isScrollbarVisible {
+		c.layout.AddItem(c.scrollbar.GetLayout(), 1, 0, false)
+		c.isScrollbarVisible = true
+	}
+}
+
+func (c *RowSelectionTable[T]) hideScrollbar() {
+	if c.isScrollbarVisible {
+		c.layout.RemoveItem(c.scrollbar.GetLayout())
+		c.isScrollbarVisible = false
+	}
 }
 
 func (c *RowSelectionTable[T]) GetLayout() tview.Primitive {
