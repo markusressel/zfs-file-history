@@ -208,6 +208,7 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 
 		globalShortcutMapEntries := []shortcut_helper.ShortcutEntry{
 			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Cycle focus"},
+			{KeyCombo: []string{"F5"}, Name: "Refresh"},
 			{KeyCombo: []string{"ctrl+q"}, Name: "Quit"},
 		}
 
