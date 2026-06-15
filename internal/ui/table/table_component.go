@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 
@@ -47,7 +48,9 @@ type Column struct {
 type RowSelectionTable[T RowSelectionTableEntry] struct {
 	application *tview.Application
 
-	layout *tview.Table
+	layout    *tview.Flex
+	table     *tview.Table
+	scrollbar *scrollbar.ScrollbarComponent
 
 	entries      []*T
 	entriesMutex sync.Mutex
@@ -129,6 +132,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 		c.selectionChangedCallback(selectedEntry)
 
 		c.lastSelectedEntry = selectedEntry
+		c.syncScrollbar()
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -189,15 +193,35 @@ func (c *RowSelectionTable[T]) createLayout() {
 		return event
 	})
 
-	c.layout = table
+	c.table = table
+	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
+
+	c.layout = tview.NewFlex().
+		SetDirection(tview.FlexColumn).
+		AddItem(c.table, 0, 1, true).
+		AddItem(c.scrollbar.GetLayout(), 1, 0, false)
 }
 
-func (c *RowSelectionTable[T]) GetLayout() *tview.Table {
+func (c *RowSelectionTable[T]) syncScrollbar() {
+	if c.scrollbar == nil || c.table == nil {
+		return
+	}
+
+	rowOffset, _ := c.table.GetOffset()
+	rowCount := c.table.GetRowCount()
+	_, _, _, height := c.table.GetInnerRect()
+
+	c.scrollbar.SetMax(rowCount)
+	c.scrollbar.SetPosition(rowOffset)
+	c.scrollbar.SetWidth(height)
+}
+
+func (c *RowSelectionTable[T]) GetLayout() tview.Primitive {
 	return c.layout
 }
 
 func (c *RowSelectionTable[T]) SetTitle(title string) {
-	uiutil.SetupWindow(c.layout, title)
+	uiutil.SetupWindow(c.table, title)
 }
 
 func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColumn *Column, inverted bool) {
@@ -280,7 +304,7 @@ func (c *RowSelectionTable[T]) toggleSortDirection() {
 
 func (c *RowSelectionTable[T]) updateTableContents() {
 
-	table := c.layout
+	table := c.table
 	if table == nil {
 		return
 	}
@@ -323,6 +347,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 			table.SetCell(row+1, column, cell)
 		}
 	}
+	c.syncScrollbar()
 }
 
 func (c *RowSelectionTable[T]) Select(entry *T) {
@@ -336,9 +361,10 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 		}
 	}
 	if index <= 1 {
-		c.layout.ScrollToBeginning()
+		c.table.ScrollToBeginning()
 	}
-	c.layout.Select(index, 0)
+	c.table.Select(index, 0)
+	c.syncScrollbar()
 	c.application.ForceDraw()
 }
 
@@ -351,7 +377,7 @@ func (c *RowSelectionTable[T]) GetEntries() []*T {
 }
 
 func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
-	row, _ := c.layout.GetSelection()
+	row, _ := c.table.GetSelection()
 	row -= 1
 	if row >= 0 && row < len(c.entries) {
 		return c.entries[row]
@@ -373,9 +399,9 @@ func (c *RowSelectionTable[T]) SetSelectionChangedCallback(f func(selectedEntry 
 }
 
 func (c *RowSelectionTable[T]) SelectHeader() {
-	row, col := c.layout.GetSelection()
+	row, col := c.table.GetSelection()
 	if row != 0 || col != 0 {
-		c.layout.Select(0, 0)
+		c.table.Select(0, 0)
 	}
 }
 
@@ -473,17 +499,17 @@ func (c *RowSelectionTable[T]) cleanupMultiSelection() {
 
 // Up moves the current selection up one row
 func (c *RowSelectionTable[T]) Up() {
-	row, col := c.layout.GetSelection()
+	row, col := c.table.GetSelection()
 	if row > 0 {
-		c.layout.Select(row-1, col)
+		c.table.Select(row-1, col)
 	}
 }
 
 // Down moves the current selection down one row
 func (c *RowSelectionTable[T]) Down() {
-	row, col := c.layout.GetSelection()
+	row, col := c.table.GetSelection()
 	if row < len(c.entries) {
-		c.layout.Select(row+1, col)
+		c.table.Select(row+1, col)
 	}
 }
 

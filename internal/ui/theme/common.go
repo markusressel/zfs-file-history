@@ -36,6 +36,17 @@ type FileBrowserTableStatusColors struct {
 	Equal    tcell.Color
 }
 
+type ListColors struct {
+	Scrollbar ScrollbarColors
+}
+
+type ScrollbarColors struct {
+	Background        tcell.Color
+	Bar               tcell.Color
+	IndicatorActive   tcell.Color
+	IndicatorInactive tcell.Color
+}
+
 type SnapshotBrowserColors struct {
 	Table SnapshotBrowserTableColors
 }
@@ -75,6 +86,7 @@ type Color struct {
 	Dialog          DialogColors
 	FileBrowser     FileBrowserColors
 	SnapshotBrowser SnapshotBrowserColors
+	List            ListColors
 	Layout          LayoutColors
 	ShortcutMap     ShortcutMapColors
 }
