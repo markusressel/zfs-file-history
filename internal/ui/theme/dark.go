@@ -52,6 +52,14 @@ var (
 				},
 			},
 		},
+		List: ListColors{
+			Scrollbar: ScrollbarColors{
+				Background:        tcell.ColorBlack,
+				Bar:               tcell.ColorDarkGray,
+				IndicatorActive:   Accent,
+				IndicatorInactive: tcell.ColorGray,
+			},
+		},
 		Layout: LayoutColors{
 			Title:  Accent,
 			Border: Secondary,

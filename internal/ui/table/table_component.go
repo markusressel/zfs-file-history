@@ -5,6 +5,8 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 
@@ -47,7 +49,9 @@ type Column struct {
 type RowSelectionTable[T RowSelectionTableEntry] struct {
 	application *tview.Application
 
-	layout *tview.Table
+	layout    *tview.Flex
+	table     *tview.Table
+	scrollbar *scrollbar.ScrollbarComponent
 
 	entries      []*T
 	entriesMutex sync.Mutex
@@ -68,6 +72,11 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	defaultSortColumn   *Column
 	defaultSortInverted bool
+
+	isScrollbarVisible bool
+
+	lastSyncHeight int
+	resizeTimer    *time.Timer
 }
 
 func NewTableContainer[T RowSelectionTableEntry](
@@ -91,7 +100,25 @@ func NewTableContainer[T RowSelectionTableEntry](
 		selectionChangedCallback: func(selectedEntry *T) {},
 	}
 	tableContainer.createLayout()
+	tableContainer.setupResizeMonitor()
 	return tableContainer
+}
+
+func (c *RowSelectionTable[T]) setupResizeMonitor() {
+	c.table.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		if height > 0 && height != c.lastSyncHeight {
+			c.lastSyncHeight = height
+			if c.resizeTimer != nil {
+				c.resizeTimer.Stop()
+			}
+			c.resizeTimer = time.AfterFunc(50*time.Millisecond, func() {
+				c.application.QueueUpdateDraw(func() {
+					c.syncScrollbar()
+				})
+			})
+		}
+		return x, y, width, height
+	})
 }
 
 func (c *RowSelectionTable[T]) SetMultiSelect(multiSelect bool) {
@@ -102,9 +129,7 @@ func (c *RowSelectionTable[T]) SetMultiSelect(multiSelect bool) {
 func (c *RowSelectionTable[T]) createLayout() {
 	table := tview.NewTable()
 
-	table.SetBorder(true)
 	table.SetBorders(false)
-	table.SetBorderPadding(0, 0, 1, 1)
 
 	// fixed header row
 	table.SetFixed(1, 0)
@@ -114,8 +139,6 @@ func (c *RowSelectionTable[T]) createLayout() {
 			Foreground(theme.Colors.Layout.Table.SelectedForeground).
 			Background(theme.Colors.Layout.Table.SelectedBackground),
 	)
-
-	uiutil.SetupWindow(table, "")
 
 	table.SetSelectable(true, false)
 	table.SetSelectionChangedFunc(func(row, column int) {
@@ -129,6 +152,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 		c.selectionChangedCallback(selectedEntry)
 
 		c.lastSelectedEntry = selectedEntry
+		c.syncScrollbar()
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -189,10 +213,60 @@ func (c *RowSelectionTable[T]) createLayout() {
 		return event
 	})
 
-	c.layout = table
+	c.table = table
+
+	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
+
+	c.isScrollbarVisible = true
+	c.layout = tview.NewFlex().
+		SetDirection(tview.FlexColumn).
+		AddItem(c.table, 0, 1, true).
+		AddItem(c.scrollbar.GetLayout(), 1, 0, false)
+
+	c.layout.SetBorder(true)
+	c.layout.SetBorderPadding(0, 0, 1, 1)
+	uiutil.SetupWindow(c.layout, "")
 }
 
-func (c *RowSelectionTable[T]) GetLayout() *tview.Table {
+func (c *RowSelectionTable[T]) syncScrollbar() {
+	if c.scrollbar == nil || c.table == nil {
+		return
+	}
+
+	rowOffset, _ := c.table.GetOffset()
+	rowCount := c.table.GetRowCount()
+	_, _, _, height := c.table.GetInnerRect()
+
+	// rowCount - 1 because of the header row
+	if rowCount-1 <= height {
+		c.hideScrollbar()
+		return
+	} else {
+		c.showScrollbar()
+	}
+
+	if c.isScrollbarVisible {
+		c.scrollbar.SetMax(rowCount)
+		c.scrollbar.SetPosition(rowOffset)
+		c.scrollbar.SetWidth(height)
+	}
+}
+
+func (c *RowSelectionTable[T]) showScrollbar() {
+	if !c.isScrollbarVisible {
+		c.layout.AddItem(c.scrollbar.GetLayout(), 1, 0, false)
+		c.isScrollbarVisible = true
+	}
+}
+
+func (c *RowSelectionTable[T]) hideScrollbar() {
+	if c.isScrollbarVisible {
+		c.layout.RemoveItem(c.scrollbar.GetLayout())
+		c.isScrollbarVisible = false
+	}
+}
+
+func (c *RowSelectionTable[T]) GetLayout() tview.Primitive {
 	return c.layout
 }
 
@@ -280,7 +354,7 @@ func (c *RowSelectionTable[T]) toggleSortDirection() {
 
 func (c *RowSelectionTable[T]) updateTableContents() {
 
-	table := c.layout
+	table := c.table
 	if table == nil {
 		return
 	}
@@ -323,6 +397,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 			table.SetCell(row+1, column, cell)
 		}
 	}
+	c.syncScrollbar()
 }
 
 func (c *RowSelectionTable[T]) Select(entry *T) {
@@ -336,9 +411,10 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 		}
 	}
 	if index <= 1 {
-		c.layout.ScrollToBeginning()
+		c.table.ScrollToBeginning()
 	}
-	c.layout.Select(index, 0)
+	c.table.Select(index, 0)
+	c.syncScrollbar()
 	c.application.ForceDraw()
 }
 
@@ -351,7 +427,7 @@ func (c *RowSelectionTable[T]) GetEntries() []*T {
 }
 
 func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
-	row, _ := c.layout.GetSelection()
+	row, _ := c.table.GetSelection()
 	row -= 1
 	if row >= 0 && row < len(c.entries) {
 		return c.entries[row]
@@ -373,9 +449,9 @@ func (c *RowSelectionTable[T]) SetSelectionChangedCallback(f func(selectedEntry 
 }
 
 func (c *RowSelectionTable[T]) SelectHeader() {
-	row, col := c.layout.GetSelection()
+	row, col := c.table.GetSelection()
 	if row != 0 || col != 0 {
-		c.layout.Select(0, 0)
+		c.table.Select(0, 0)
 	}
 }
 
@@ -473,17 +549,17 @@ func (c *RowSelectionTable[T]) cleanupMultiSelection() {
 
 // Up moves the current selection up one row
 func (c *RowSelectionTable[T]) Up() {
-	row, col := c.layout.GetSelection()
+	row, col := c.table.GetSelection()
 	if row > 0 {
-		c.layout.Select(row-1, col)
+		c.table.Select(row-1, col)
 	}
 }
 
 // Down moves the current selection down one row
 func (c *RowSelectionTable[T]) Down() {
-	row, col := c.layout.GetSelection()
+	row, col := c.table.GetSelection()
 	if row < len(c.entries) {
-		c.layout.Select(row+1, col)
+		c.table.Select(row+1, col)
 	}
 }
 
