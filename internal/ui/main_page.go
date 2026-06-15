@@ -92,8 +92,10 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		switch key {
-		case tcell.KeyTab, tcell.KeyBacktab:
-			mainPage.ToggleFocus()
+		case tcell.KeyTab:
+			mainPage.CycleFocus(false)
+		case tcell.KeyBacktab:
+			mainPage.CycleFocus(true)
 		case tcell.KeyF5:
 			snapshotBrowser.Refresh(true)
 			fileBrowser.Refresh()
@@ -158,19 +160,32 @@ func (mainPage *MainPage) Init(path string) {
 	mainPage.fileBrowser.SelectFirstEntryIfExists()
 }
 
-func (mainPage *MainPage) ToggleFocus() {
-	var nextFocusedComponent FocusableUiComponent
-	if mainPage.fileBrowser.HasFocus() {
-		nextFocusedComponent = mainPage.datasetInfo
-	} else if mainPage.snapshotBrowser.HasFocus() {
-		nextFocusedComponent = mainPage.fileBrowser
-	} else if mainPage.datasetInfo.HasFocus() {
-		nextFocusedComponent = mainPage.snapshotBrowser
-	} else {
-		nextFocusedComponent = mainPage.fileBrowser
-		logging.Warning("Unexpected focus state")
+func (mainPage *MainPage) CycleFocus(reversed bool) {
+	components := []FocusableUiComponent{
+		mainPage.fileBrowser,
+		mainPage.datasetInfo,
+		mainPage.snapshotBrowser,
 	}
 
+	currentIndex := -1
+	for i, component := range components {
+		if component.HasFocus() {
+			currentIndex = i
+			break
+		}
+	}
+
+	var nextIndex int
+	if currentIndex == -1 {
+		nextIndex = 0
+		logging.Warning("Unexpected focus state")
+	} else if reversed {
+		nextIndex = (currentIndex - 1 + len(components)) % len(components)
+	} else {
+		nextIndex = (currentIndex + 1) % len(components)
+	}
+
+	nextFocusedComponent := components[nextIndex]
 	nextFocusedComponent.Focus()
 	mainPage.updateShortcutMap(nextFocusedComponent)
 }
