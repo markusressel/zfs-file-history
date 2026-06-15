@@ -6,9 +6,11 @@ import (
 	"sort"
 	"strings"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -142,16 +144,60 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 		return properties[i].Name < properties[j].Name
 	})
 
+	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Header)
 	var out strings.Builder
 	for _, prop := range properties {
-		out.WriteString(fmt.Sprintf(" [gray]%*s:[-]  %s\n",
+		valueColor := resolveValueColor(prop.Name, prop.Value)
+		valueColorTag := txwidgets.ColorTag(valueColor)
+
+		out.WriteString(fmt.Sprintf(" %s%*s:[-]  %s%s[-]\n",
+			keyColorTag,
 			maxKeyLen,
-			prop.Name,
-			prop.Value,
+			tview.Escape(prop.Name),
+			valueColorTag,
+			tview.Escape(prop.Value),
 		))
 	}
 
 	datasetInfo.textView.SetText(out.String())
+}
+
+func resolveValueColor(name, value string) tcell.Color {
+	if value == "" || value == "-" || strings.EqualFold(value, "none") {
+		return tcell.ColorGray
+	}
+
+	lowerName := strings.ToLower(name)
+	lowerValue := strings.ToLower(value)
+
+	// Warning / Restrictive States
+	if lowerName == "readonly" && lowerValue == "on" {
+		return tcell.ColorOrange // Visual cue that writes/restores are blocked
+	}
+	if strings.Contains(lowerValue, "unavailable") {
+		return tcell.ColorRed // Key is missing/locked
+	}
+
+	// Paths / Mountpoints
+	if strings.HasPrefix(value, "/") || lowerName == "mount point" || lowerName == "origin" {
+		return tcell.ColorLightBlue
+	}
+
+	// Booleans / Positive Flags
+	if lowerValue == "yes" || lowerValue == "true" || lowerValue == "on" || lowerValue == "visible" || lowerValue == "mounted" || (lowerName == "compression" && lowerValue != "off") {
+		return tcell.ColorGreen
+	}
+	if lowerValue == "no" || lowerValue == "false" || lowerValue == "off" || lowerValue == "hidden" {
+		return tcell.ColorRed
+	}
+
+	// File Sizes & Ratios
+	if lowerName == "vol size" || lowerName == "available" || lowerName == "used" || lowerName == "snapshots" || strings.Contains(lowerValue, "x") {
+		return tcell.ColorYellow
+	}
+
+	// Fallback Default String Color
+	return tcell.ColorWhite
 }
 
 func (datasetInfo *DatasetInfoComponent) HasFocus() bool {
