@@ -11,6 +11,15 @@ import (
 
 type ScrollBarOrientation int
 
+type ScrollbarRuneType int
+
+const (
+	ScrollbarRuneTypeLeft ScrollbarRuneType = iota
+	ScrollbarRuneTypeRight
+	ScrollbarRuneTypeTop
+	ScrollbarRuneTypeBottom
+)
+
 const (
 	ScrollBarVertical ScrollBarOrientation = iota
 	ScrollBarHorizontal
@@ -197,32 +206,38 @@ func (c *ScrollbarComponent) calculateBarWidth() int {
 
 func (c *ScrollbarComponent) updateTopEndText() {
 	c.layout.ResizeItem(c.topArrow, 1, 0)
-	text := ""
-	textColor := theme.Colors.List.Scrollbar.IndicatorInactive
 	isAtLimit := c.scrollPosition <= c.min
-	text, textColor = c.determineRuneAndColor(isAtLimit, text, textColor)
+	text, textColor := c.determineRuneAndColor(ScrollbarRuneTypeTop, isAtLimit)
 	c.topArrow.SetText(text)
 	c.topArrow.SetTextColor(textColor)
 }
 
 func (c *ScrollbarComponent) updateBottomEndText() {
 	c.layout.ResizeItem(c.bottomArrow, 1, 0)
-	text := ""
-	textColor := theme.Colors.List.Scrollbar.IndicatorInactive
 	isAtLimit := c.scrollPosition+c.barWidth >= c.max
-	text, textColor = c.determineRuneAndColor(isAtLimit, text, textColor)
+	text, textColor := c.determineRuneAndColor(ScrollbarRuneTypeBottom, isAtLimit)
 	c.bottomArrow.SetText(text)
 	c.bottomArrow.SetTextColor(textColor)
 }
 
-func (c *ScrollbarComponent) determineRuneAndColor(isAtLimit bool, text string, textColor tcell.Color) (string, tcell.Color) {
+func (c *ScrollbarComponent) determineRuneAndColor(
+	scrollbarRuneType ScrollbarRuneType,
+	isAtLimit bool,
+) (text string, textColor tcell.Color) {
 	switch c.orientation {
 	case ScrollBarVertical:
 		if isAtLimit {
 			text = ScrollIndicatorMiddle
 			textColor = theme.Colors.List.Scrollbar.IndicatorInactive
 		} else {
-			text = ScrollIndicatorBottom
+			switch scrollbarRuneType {
+			case ScrollbarRuneTypeBottom:
+				text = ScrollIndicatorBottom
+			case ScrollbarRuneTypeTop:
+				fallthrough
+			default:
+				text = ScrollIndicatorTop
+			}
 			textColor = theme.Colors.List.Scrollbar.IndicatorActive
 		}
 	case ScrollBarHorizontal:
@@ -230,7 +245,14 @@ func (c *ScrollbarComponent) determineRuneAndColor(isAtLimit bool, text string, 
 			text = ScrollIndicatorMiddle
 			textColor = theme.Colors.List.Scrollbar.IndicatorInactive
 		} else {
-			text = ScrollIndicatorRight
+			switch scrollbarRuneType {
+			case ScrollbarRuneTypeRight:
+				text = ScrollIndicatorRight
+			case ScrollbarRuneTypeLeft:
+				fallthrough
+			default:
+				text = ScrollIndicatorLeft
+			}
 			textColor = theme.Colors.List.Scrollbar.IndicatorActive
 		}
 	}
