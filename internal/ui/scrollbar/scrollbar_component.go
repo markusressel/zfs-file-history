@@ -11,15 +11,6 @@ import (
 
 type ScrollBarOrientation int
 
-type ScrollbarRuneType int
-
-const (
-	ScrollbarRuneTypeLeft ScrollbarRuneType = iota
-	ScrollbarRuneTypeRight
-	ScrollbarRuneTypeTop
-	ScrollbarRuneTypeBottom
-)
-
 const (
 	ScrollBarVertical ScrollBarOrientation = iota
 	ScrollBarHorizontal
@@ -31,14 +22,21 @@ const (
 	ScrollIndicatorRight   = "▸"
 )
 
+type ScrollbarRuneType int
+
+const (
+	ScrollbarRuneTypeTop ScrollbarRuneType = iota
+	ScrollbarRuneTypeBottom
+	ScrollbarRuneTypeLeft
+	ScrollbarRuneTypeRight
+)
+
 type ScrollbarComponent struct {
 	application *tview.Application
 
 	layout       *tview.Flex
 	topArrow     *tview.TextView
-	upperBox     *tview.Box
-	scrollBarBox *tview.Box
-	lowerBox     *tview.Box
+	scrollbarBox *tview.Box
 	bottomArrow  *tview.TextView
 
 	inputCapture func(event *tcell.EventKey) *tcell.EventKey
@@ -86,31 +84,93 @@ func (c *ScrollbarComponent) createLayout() {
 	c.topArrow = tview.NewTextView().SetTextAlign(tview.AlignCenter)
 	layout.AddItem(c.topArrow, 1, 0, false)
 
-	c.upperBox = tview.NewBox()
-	c.upperBox.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		uiutil.DrawScrollbarLine(screen, x, y, width, height, theme.Colors.List.Scrollbar.Background, c.orientation == ScrollBarHorizontal, false)
-		return x, y, width, height
-	})
-	layout.AddItem(c.upperBox, 1, 0, false)
-
-	c.scrollBarBox = tview.NewBox()
-	c.scrollBarBox.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		uiutil.DrawScrollbarLine(screen, x, y, width, height, theme.Colors.List.Scrollbar.Bar, c.orientation == ScrollBarHorizontal, true)
-		return x, y, width, height
-	})
-	layout.AddItem(c.scrollBarBox, 1, 0, false)
-
-	c.lowerBox = tview.NewBox()
-	c.lowerBox.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		uiutil.DrawScrollbarLine(screen, x, y, width, height, theme.Colors.List.Scrollbar.Background, c.orientation == ScrollBarHorizontal, false)
-		return x, y, width, height
-	})
-	layout.AddItem(c.lowerBox, 1, 0, false)
+	c.scrollbarBox = tview.NewBox()
+	c.scrollbarBox.SetDrawFunc(c.DrawFunc)
+	layout.AddItem(c.scrollbarBox, 0, 1, false)
 
 	c.bottomArrow = tview.NewTextView().SetTextAlign(tview.AlignCenter)
 	layout.AddItem(c.bottomArrow, 1, 0, false)
 
 	c.layout = layout
+}
+
+func (c *ScrollbarComponent) DrawFunc(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+	if height <= 0 || width <= 0 {
+		return x, y, width, height
+	}
+
+	totalUnits := height * 2
+	if c.orientation == ScrollBarHorizontal {
+		totalUnits = width * 2
+	}
+
+	scale := float64(totalUnits) / math.Max(1, float64(c.max-c.min))
+	barStart := float64(c.scrollPosition) * scale
+	barEnd := barStart + float64(c.barWidth)*scale
+
+	for i := 0; i < height; i++ {
+		if c.orientation == ScrollBarHorizontal {
+			// Horizontal logic will be added below for ix
+			continue
+		}
+
+		// Vertical logic
+		topUnit := float64(i * 2)
+		bottomUnit := float64(i*2 + 1)
+
+		topIsBar := topUnit >= barStart && topUnit < barEnd
+		bottomIsBar := bottomUnit >= barStart && bottomUnit < barEnd
+
+		var char rune
+		var fg tcell.Color
+		if topIsBar && bottomIsBar {
+			char = '┃' // Full bar
+			fg = theme.Colors.List.Scrollbar.Bar
+		} else if !topIsBar && !bottomIsBar {
+			char = '│' // Full track
+			fg = theme.Colors.List.Scrollbar.Background
+		} else if !topIsBar && bottomIsBar {
+			char = '╽' // Transition entering
+			fg = theme.Colors.List.Scrollbar.Bar
+		} else {
+			char = '╿' // Transition exiting
+			fg = theme.Colors.List.Scrollbar.Bar
+		}
+
+		style := tcell.StyleDefault.Foreground(fg)
+		screen.SetContent(x, y+i, char, nil, style)
+	}
+
+	if c.orientation == ScrollBarHorizontal {
+		for i := 0; i < width; i++ {
+			leftUnit := float64(i * 2)
+			rightUnit := float64(i*2 + 1)
+
+			leftIsBar := leftUnit >= barStart && leftUnit < barEnd
+			rightIsBar := rightUnit >= barStart && rightUnit < barEnd
+
+			var char rune
+			var fg tcell.Color
+			if leftIsBar && rightIsBar {
+				char = '━'
+				fg = theme.Colors.List.Scrollbar.Bar
+			} else if !leftIsBar && !rightIsBar {
+				char = '─'
+				fg = theme.Colors.List.Scrollbar.Background
+			} else if !leftIsBar && rightIsBar {
+				char = '╾'
+				fg = theme.Colors.List.Scrollbar.Bar
+			} else {
+				char = '╼'
+				fg = theme.Colors.List.Scrollbar.Bar
+			}
+
+			style := tcell.StyleDefault.Foreground(fg)
+			screen.SetContent(x+i, y, char, nil, style)
+		}
+	}
+
+	return x, y, width, height
 }
 
 func (c *ScrollbarComponent) UpdateLayout() {
@@ -273,51 +333,7 @@ func (c *ScrollbarComponent) determineRuneAndColor(
 }
 
 func (c *ScrollbarComponent) updateScrollbar() {
-	// calculate the box sizes
-	upperBoxStart := float64(c.min)
-	upperBoxEnd := float64(c.min + c.scrollPosition)
-	scrollBarBoxEnd := upperBoxEnd + float64(c.barWidth)
-	lowerBoxEnd := float64(c.max)
-
-	//x, y, width, height := c.layout.GetInnerRect()
-	_, _, width, height := c.layout.GetInnerRect()
-	var total = height - 2
-	if c.orientation == ScrollBarHorizontal {
-		total = width - 2
-	}
-
-	if total <= 0 {
-		return
-	}
-
-	scale := float64(total) / math.Max(1, lowerBoxEnd-upperBoxStart)
-
-	upperBoxEndScaled := (upperBoxEnd - upperBoxStart) * scale
-	scrollBarBoxEndScaled := (scrollBarBoxEnd - upperBoxStart) * scale
-
-	upperBoxSize := int(math.Round(upperBoxEndScaled))
-	scrollBarBoxEndInt := int(math.Round(scrollBarBoxEndScaled))
-
-	scrollBarBoxSize := scrollBarBoxEndInt - upperBoxSize
-	if scrollBarBoxSize < 1 {
-		scrollBarBoxSize = 1
-		if upperBoxSize+scrollBarBoxSize > total {
-			upperBoxSize = total - scrollBarBoxSize
-			if upperBoxSize < 0 {
-				upperBoxSize = 0
-			}
-		}
-	}
-
-	lowerBoxSize := total - (upperBoxSize + scrollBarBoxSize)
-	if lowerBoxSize < 0 {
-		lowerBoxSize = 0
-	}
-
-	// update scrollbar and "padding" boxes
-	c.layout.ResizeItem(c.upperBox, upperBoxSize, 0)
-	c.layout.ResizeItem(c.scrollBarBox, scrollBarBoxSize, 0)
-	c.layout.ResizeItem(c.lowerBox, lowerBoxSize, 0)
+	c.application.ForceDraw()
 }
 
 func (c *ScrollbarComponent) SetWidth(width int) {
