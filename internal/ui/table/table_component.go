@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -73,6 +74,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	defaultSortInverted bool
 
 	isScrollbarVisible bool
+
+	lastSyncHeight int
+	resizeTimer    *time.Timer
 }
 
 func NewTableContainer[T RowSelectionTableEntry](
@@ -96,7 +100,25 @@ func NewTableContainer[T RowSelectionTableEntry](
 		selectionChangedCallback: func(selectedEntry *T) {},
 	}
 	tableContainer.createLayout()
+	tableContainer.setupResizeMonitor()
 	return tableContainer
+}
+
+func (c *RowSelectionTable[T]) setupResizeMonitor() {
+	c.table.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		if height > 0 && height != c.lastSyncHeight {
+			c.lastSyncHeight = height
+			if c.resizeTimer != nil {
+				c.resizeTimer.Stop()
+			}
+			c.resizeTimer = time.AfterFunc(50*time.Millisecond, func() {
+				c.application.QueueUpdateDraw(func() {
+					c.syncScrollbar()
+				})
+			})
+		}
+		return x, y, width, height
+	})
 }
 
 func (c *RowSelectionTable[T]) SetMultiSelect(multiSelect bool) {
@@ -192,6 +214,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	})
 
 	c.table = table
+
 	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
 
 	c.isScrollbarVisible = true
