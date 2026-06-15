@@ -28,7 +28,7 @@ jobs:
         with:
           go-version: '^1.23'
 
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v4
 
       - name: Test
         run: just test
@@ -110,7 +110,7 @@ jobs:
         with:
           go-version: '^1.23'
 
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v4
 
       - name: Generate build files (${{ matrix.goarch }})
         env:
