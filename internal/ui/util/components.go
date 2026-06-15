@@ -20,14 +20,12 @@ func CreateAttentionTextView(text string) *tview.TextView {
 }
 
 var (
-	TableComponentShortcutDown = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↓"}, Name: "Down"}
-	TableComponentShortcutUp   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↑"}, Name: "Up"}
-
-	TableComponentShortcutEntries = []shortcut_helper.ShortcutEntry{
-		TableComponentShortcutUp,
-		TableComponentShortcutDown,
-		{KeyCombo: []string{"Enter"}, Name: "Flip Direction"},
-		{KeyCombo: []string{"←"}, Name: "Cycle Sort Column Left"},
-		{KeyCombo: []string{"→"}, Name: "Cycle Sort Column Right"},
-	}
+	TableComponentShortcutActions              = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"}
+	TableComponentShortcutDelete               = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Delete"}, Name: "Delete"}
+	TableComponentShortcutColumns              = shortcut_helper.ShortcutEntry{KeyCombo: []string{"F2"}, Name: "Columns"}
+	TableComponentShortcutDown                 = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↓"}, Name: "Down"}
+	TableComponentShortcutUp                   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↑"}, Name: "Up"}
+	TableComponentShortcutFlipColumnDirection  = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Flip Direction"}
+	TableComponentShortcutCycleSortColumnLeft  = shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Cycle Sort Column Left"}
+	TableComponentShortcutCycleSortColumnRight = shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Cycle Sort Column Right"}
 )

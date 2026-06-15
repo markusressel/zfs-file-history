@@ -767,32 +767,35 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 }
 
 func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
+	shortcutMap := []shortcut_helper.ShortcutEntry{
+		uiutil.TableComponentShortcutUp,
+		uiutil.TableComponentShortcutDown,
+		uiutil.TableComponentShortcutColumns,
+	}
+
 	if selection := fileBrowser.GetSelection(); selection != nil {
-
-		shortcutMap := []shortcut_helper.ShortcutEntry{
-			uiutil.TableComponentShortcutUp,
-			uiutil.TableComponentShortcutDown,
-			{KeyCombo: []string{"F2"}, Name: "Columns"},
-		}
-
 		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory"})
 
 		if ok, _ := selection.CanEnter(); ok {
 			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Enter directory"})
 		}
 
-		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"})
+		shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutActions)
 
 		if selection.HasReal() {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"})
+			shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutDelete)
 		}
 
 		if selection.HasSnapshot() && selection.DiffState != diff_state.Equal {
 			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+r"}, Name: "Restore"})
 		}
-
-		return shortcutMap
+	} else {
+		shortcutMap = append(shortcutMap,
+			uiutil.TableComponentShortcutFlipColumnDirection,
+			uiutil.TableComponentShortcutCycleSortColumnLeft,
+			uiutil.TableComponentShortcutCycleSortColumnRight,
+		)
 	}
 
-	return uiutil.TableComponentShortcutEntries
+	return shortcutMap
 }

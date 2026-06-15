@@ -603,15 +603,24 @@ func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
-	if snapshotBrowser.GetSelection() != nil {
-		return []shortcut_helper.ShortcutEntry{
-			uiutil.TableComponentShortcutUp,
-			uiutil.TableComponentShortcutDown,
-			{KeyCombo: []string{"F2"}, Name: "Columns"},
-			{KeyCombo: []string{"Enter"}, Name: "Actions"},
-			{KeyCombo: []string{"Ctrl+d"}, Name: "Delete"},
-		}
+	shortcutMap := []shortcut_helper.ShortcutEntry{
+		uiutil.TableComponentShortcutUp,
+		uiutil.TableComponentShortcutDown,
+		uiutil.TableComponentShortcutColumns,
 	}
 
-	return uiutil.TableComponentShortcutEntries
+	if snapshotBrowser.GetSelection() != nil {
+		shortcutMap = append(shortcutMap,
+			uiutil.TableComponentShortcutActions,
+			uiutil.TableComponentShortcutDelete,
+		)
+	} else {
+		shortcutMap = append(shortcutMap,
+			uiutil.TableComponentShortcutFlipColumnDirection,
+			uiutil.TableComponentShortcutCycleSortColumnLeft,
+			uiutil.TableComponentShortcutCycleSortColumnRight,
+		)
+	}
+
+	return shortcutMap
 }
