@@ -57,29 +57,21 @@ jobs:
           # Optional: if set to true then the action don't cache or restore ~/.cache/go-build.
           # skip-build-cache: true
 
+      - uses: extractions/setup-just@v2
+
       - name: Test
-        run: make test
+        run: just test
 
       - name: Build
-        run: make build
+        run: just build
 
-      - name: Generate build files
+      - name: Generate build files (linux/amd64)
         run: |
-          GOOS="linux"
-          GOARCH="amd64"
-          GOFLAGS="-buildmode=exe"
-          NAME="zfs-file-history-${GOOS}-${GOARCH}"
-          OUTPUT_BIN="dist/${NAME}"          
-          make build GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}"
+          GOOS="linux" GOARCH="amd64" just GO_FLAGS="-buildmode=exe" OUTPUT_BIN="dist/zfs-file-history-linux-amd64" build
 
-      - name: Generate build files
+      - name: Generate build files (linux/arm64)
         run: |
-          GOOS="linux"
-          GOARCH="arm64"
-          GOFLAGS="-buildmode=exe"
-          NAME="zfs-file-history-${GOOS}-${GOARCH}"
-          OUTPUT_BIN="dist/${NAME}"          
-          make build GOOS="${GOOS}" OARCH="${GOARCH}" GOFLAGS="${GOFLAGS}" OUTPUT_BIN="${OUTPUT_BIN}"
+          GOOS="linux" GOARCH="arm64" just GO_FLAGS="-buildmode=exe" OUTPUT_BIN="dist/zfs-file-history-linux-arm64" build
 
       - name: Release
         uses: softprops/action-gh-release@v3
