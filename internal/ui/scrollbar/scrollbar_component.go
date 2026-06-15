@@ -200,24 +200,7 @@ func (c *ScrollbarComponent) updateTopEndText() {
 	text := ""
 	textColor := theme.Colors.List.Scrollbar.IndicatorInactive
 	isAtLimit := c.scrollPosition <= c.min
-	switch c.orientation {
-	case ScrollBarVertical:
-		if isAtLimit {
-			text = ScrollIndicatorMiddle
-			textColor = theme.Colors.List.Scrollbar.IndicatorInactive
-		} else {
-			text = ScrollIndicatorTop
-			textColor = theme.Colors.List.Scrollbar.IndicatorActive
-		}
-	case ScrollBarHorizontal:
-		if isAtLimit {
-			text = ScrollIndicatorMiddle
-			textColor = theme.Colors.List.Scrollbar.IndicatorInactive
-		} else {
-			text = ScrollIndicatorLeft
-			textColor = theme.Colors.List.Scrollbar.IndicatorActive
-		}
-	}
+	text, textColor = c.determineRuneAndColor(isAtLimit, text, textColor)
 	c.topArrow.SetText(text)
 	c.topArrow.SetTextColor(textColor)
 }
@@ -227,6 +210,12 @@ func (c *ScrollbarComponent) updateBottomEndText() {
 	text := ""
 	textColor := theme.Colors.List.Scrollbar.IndicatorInactive
 	isAtLimit := c.scrollPosition+c.barWidth >= c.max
+	text, textColor = c.determineRuneAndColor(isAtLimit, text, textColor)
+	c.bottomArrow.SetText(text)
+	c.bottomArrow.SetTextColor(textColor)
+}
+
+func (c *ScrollbarComponent) determineRuneAndColor(isAtLimit bool, text string, textColor tcell.Color) (string, tcell.Color) {
 	switch c.orientation {
 	case ScrollBarVertical:
 		if isAtLimit {
@@ -245,8 +234,7 @@ func (c *ScrollbarComponent) updateBottomEndText() {
 			textColor = theme.Colors.List.Scrollbar.IndicatorActive
 		}
 	}
-	c.bottomArrow.SetText(text)
-	c.bottomArrow.SetTextColor(textColor)
+	return text, textColor
 }
 
 func (c *ScrollbarComponent) updateScrollbar() {
