@@ -29,3 +29,26 @@ var (
 	TableComponentShortcutCycleSortColumnLeft  = shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Cycle Sort Column Left"}
 	TableComponentShortcutCycleSortColumnRight = shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Cycle Sort Column Right"}
 )
+
+func DrawScrollbarLine(screen tcell.Screen, x, y, width, height int, fg tcell.Color, isHorizontal bool, isBar bool) {
+	style := tcell.StyleDefault.Foreground(fg)
+	var char rune
+	if isHorizontal {
+		if isBar {
+			char = '━' // Heavy horizontal
+		} else {
+			char = '─' // Light horizontal
+		}
+	} else {
+		if isBar {
+			char = '┃' // Heavy vertical
+		} else {
+			char = '│' // Light vertical
+		}
+	}
+	for iy := 0; iy < height; iy++ {
+		for ix := 0; ix < width; ix++ {
+			screen.SetContent(x+ix, y+iy, char, nil, style)
+		}
+	}
+}

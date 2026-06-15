@@ -24,11 +24,11 @@ const (
 	ScrollBarVertical ScrollBarOrientation = iota
 	ScrollBarHorizontal
 
-	ScrollIndicatorMiddle = "■"
-	ScrollIndicatorTop    = "▲"
-	ScrollIndicatorBottom = "▼"
-	ScrollIndicatorLeft   = "◀"
-	ScrollIndicatorRight  = "▶"
+	ScrollIndicatorAtLimit = "•"
+	ScrollIndicatorTop     = "▴"
+	ScrollIndicatorBottom  = "▾"
+	ScrollIndicatorLeft    = "◂"
+	ScrollIndicatorRight   = "▸"
 )
 
 type ScrollbarComponent struct {
@@ -83,18 +83,31 @@ func NewScrollbarComponent(
 func (c *ScrollbarComponent) createLayout() {
 	layout := tview.NewFlex()
 
-	c.topArrow = tview.NewTextView()
+	c.topArrow = tview.NewTextView().SetTextAlign(tview.AlignCenter)
 	layout.AddItem(c.topArrow, 1, 0, false)
+
 	c.upperBox = tview.NewBox()
-	c.upperBox.SetBackgroundColor(theme.Colors.List.Scrollbar.Background)
+	c.upperBox.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		uiutil.DrawScrollbarLine(screen, x, y, width, height, theme.Colors.List.Scrollbar.Background, c.orientation == ScrollBarHorizontal, false)
+		return x, y, width, height
+	})
 	layout.AddItem(c.upperBox, 1, 0, false)
+
 	c.scrollBarBox = tview.NewBox()
-	c.scrollBarBox.SetBackgroundColor(theme.Colors.List.Scrollbar.Bar)
+	c.scrollBarBox.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		uiutil.DrawScrollbarLine(screen, x, y, width, height, theme.Colors.List.Scrollbar.Bar, c.orientation == ScrollBarHorizontal, true)
+		return x, y, width, height
+	})
 	layout.AddItem(c.scrollBarBox, 1, 0, false)
+
 	c.lowerBox = tview.NewBox()
-	c.lowerBox.SetBackgroundColor(theme.Colors.List.Scrollbar.Background)
+	c.lowerBox.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		uiutil.DrawScrollbarLine(screen, x, y, width, height, theme.Colors.List.Scrollbar.Background, c.orientation == ScrollBarHorizontal, false)
+		return x, y, width, height
+	})
 	layout.AddItem(c.lowerBox, 1, 0, false)
-	c.bottomArrow = tview.NewTextView()
+
+	c.bottomArrow = tview.NewTextView().SetTextAlign(tview.AlignCenter)
 	layout.AddItem(c.bottomArrow, 1, 0, false)
 
 	c.layout = layout
@@ -227,7 +240,7 @@ func (c *ScrollbarComponent) determineRuneAndColor(
 	switch c.orientation {
 	case ScrollBarVertical:
 		if isAtLimit {
-			text = ScrollIndicatorMiddle
+			text = ScrollIndicatorAtLimit
 			textColor = theme.Colors.List.Scrollbar.IndicatorInactive
 		} else {
 			switch scrollbarRuneType {
@@ -242,7 +255,7 @@ func (c *ScrollbarComponent) determineRuneAndColor(
 		}
 	case ScrollBarHorizontal:
 		if isAtLimit {
-			text = ScrollIndicatorMiddle
+			text = ScrollIndicatorAtLimit
 			textColor = theme.Colors.List.Scrollbar.IndicatorInactive
 		} else {
 			switch scrollbarRuneType {
