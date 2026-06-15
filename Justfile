@@ -3,7 +3,6 @@ NAME := "zfs-file-history"
 OUTPUT_BIN := "bin/" + NAME
 PACKAGE := "github.com/markusressel/" + NAME
 GIT_REV := `git rev-parse --short HEAD`
-SOURCE_DATE_EPOCH := `date +%s`
 DATE := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
 VERSION := "0.8.0"
 
@@ -33,6 +32,10 @@ build:
         -X {{NAME}}/cmd/global.Date={{DATE}} \
         -X {{PACKAGE}}/cmd/global.Date={{DATE}}" \
         -a -tags netgo -o {{OUTPUT_BIN}} main.go
+
+# Builds the CLI for cross-compilation (ensures CGO is enabled)
+build-cross:
+    CGO_ENABLED=1 just build
 
 # Build and run the CLI
 run: build
