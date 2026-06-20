@@ -313,18 +313,21 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 	snapshotBrowser.tableContainer.SetData(initialEntries)
 	snapshotBrowser.updateTableTitle()
 
-	// Step 2: Compute actual diffs in background goroutine
+	// Get the sorted entries from the table container (determines screen top-to-bottom layout)
+	sortedEntries := snapshotBrowser.tableContainer.GetEntries()
+
+	// Step 2: Compute actual diffs in background goroutine, processing them in sorted order
 	go func() {
 		filePath := ""
 		if fileEntry != nil {
 			filePath = fileEntry.GetRealPath()
 		}
 
-		// Keep a local working copy of entries
-		localEntries := make([]*data.SnapshotBrowserEntry, len(snapshots))
-		for i, snap := range snapshots {
+		// Keep a local working copy in the exact sorted order
+		localEntries := make([]*data.SnapshotBrowserEntry, len(sortedEntries))
+		for i, entry := range sortedEntries {
 			localEntries[i] = &data.SnapshotBrowserEntry{
-				Snapshot:  snap,
+				Snapshot:  entry.Snapshot,
 				DiffState: diff_state.Unknown,
 			}
 		}
