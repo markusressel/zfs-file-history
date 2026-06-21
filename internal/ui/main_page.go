@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/file_browser"
@@ -48,6 +49,8 @@ type MainPage struct {
 	isDragging      bool
 	dragType        dragType
 	hoveredBoundary boundaryType
+	lastDragRedraw  time.Time
+	dragTimer       *time.Timer
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
@@ -169,7 +172,8 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	mainPage.windowLayout = windowLayout
 	mainPage.infoLayout = infoLayout
 
-	windowLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	// Set mouse capture on the top-level layout to capture drags anywhere on the screen
+	mainPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		mouseX, mouseY := event.Position()
 		buttons := event.Buttons()
 
@@ -183,42 +187,36 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 				mainPage.isDragging = false
 				mainPage.dragType = dragNone
 				mainPage.hoveredBoundary = boundaryNone
+				if mainPage.dragTimer != nil {
+					mainPage.dragTimer.Stop()
+					mainPage.dragTimer = nil
+				}
 				mainPage.updateBorderHighlights()
 				return tview.MouseConsumed, nil
 			}
 
-			if mainPage.dragType == dragVertical {
-				newLeftWidth := mouseX - winX
-				minWidth := 10
-				if newLeftWidth < minWidth {
-					newLeftWidth = minWidth
+			// Rate limit updates to 30ms to prevent redraw flooding/input lag
+			now := time.Now()
+			if now.Sub(mainPage.lastDragRedraw) > 30*time.Millisecond {
+				mainPage.lastDragRedraw = now
+				if mainPage.dragTimer != nil {
+					mainPage.dragTimer.Stop()
+					mainPage.dragTimer = nil
 				}
-				if newLeftWidth > winW-minWidth {
-					newLeftWidth = winW - minWidth
+				mainPage.applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH)
+				return tview.MouseConsumed, nil
+			} else {
+				// Schedule a trailing redraw for the final drag position
+				if mainPage.dragTimer != nil {
+					mainPage.dragTimer.Stop()
 				}
-				newRightWidth := winW - newLeftWidth
-
-				windowLayout.ResizeItem(mainPage.fileBrowser.GetLayout(), 0, newLeftWidth)
-				windowLayout.ResizeItem(infoLayout, 0, newRightWidth)
-			} else if mainPage.dragType == dragHorizontal {
-				infoH := diH + sbH
-				infoY := diY
-				newTopHeight := mouseY - infoY
-				minTopHeight := 4
-				minBottomHeight := 5
-				if newTopHeight < minTopHeight {
-					newTopHeight = minTopHeight
-				}
-				if newTopHeight > infoH-minBottomHeight {
-					newTopHeight = infoH - minBottomHeight
-				}
-				newBottomHeight := infoH - newTopHeight
-
-				infoLayout.ResizeItem(mainPage.datasetInfo.GetLayout(), 0, newTopHeight)
-				infoLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, newBottomHeight)
+				mainPage.dragTimer = time.AfterFunc(30*time.Millisecond, func() {
+					mainPage.application.QueueUpdateDraw(func() {
+						mainPage.applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH)
+					})
+				})
+				return action, nil // consume event for children but do not trigger immediate screen redraw
 			}
-
-			return tview.MouseConsumed, nil
 		}
 
 		// 2. Not dragging: detect hover boundaries
@@ -254,15 +252,55 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 			if isOnHorizontal {
 				mainPage.isDragging = true
 				mainPage.dragType = dragHorizontal
+				mainPage.lastDragRedraw = time.Now()
 				return tview.MouseConsumed, nil
 			} else if isOnVertical {
 				mainPage.isDragging = true
 				mainPage.dragType = dragVertical
+				mainPage.lastDragRedraw = time.Now()
 				return tview.MouseConsumed, nil
 			}
 		}
 
 		return action, event
+	})
+
+	// Configure drawing of highlighted adjacent borders after the screen draws
+	mainPage.application.SetAfterDrawFunc(func(screen tcell.Screen) {
+		// Highlight vertical boundary adjacent line segment
+		if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
+			_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
+			diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
+			_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+
+			if diW > 0 && sbH > 0 {
+				highlightColor := theme.Primary
+				for y := diY; y < sbY+sbH; y++ {
+					for _, x := range []int{diX - 1, diX} {
+						primary, combining, style, _ := screen.GetContent(x, y)
+						newStyle := style.Foreground(highlightColor)
+						screen.SetContent(x, y, primary, combining, newStyle)
+					}
+				}
+			}
+		}
+
+		// Highlight horizontal boundary adjacent line segment
+		if mainPage.hoveredBoundary == boundaryHorizontal || (mainPage.isDragging && mainPage.dragType == dragHorizontal) {
+			diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
+			_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+
+			if diW > 0 && sbH > 0 {
+				highlightColor := theme.Primary
+				for x := diX; x < diX+diW; x++ {
+					for _, y := range []int{sbY - 1, sbY} {
+						primary, combining, style, _ := screen.GetContent(x, y)
+						newStyle := style.Foreground(highlightColor)
+						screen.SetContent(x, y, primary, combining, newStyle)
+					}
+				}
+			}
+		}
 	})
 
 	mainPage.header = header
@@ -341,32 +379,39 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 	}
 }
 
-func (mainPage *MainPage) setPanelBorderColor(panel FocusableUiComponent, color tcell.Color) {
-	if fb, ok := panel.(*file_browser.FileBrowserComponent); ok {
-		fb.SetBorderColor(color)
-	} else if di, ok := panel.(*dataset_info.DatasetInfoComponent); ok {
-		di.SetBorderColor(color)
-	} else if sb, ok := panel.(*snapshot_browser.SnapshotBrowserComponent); ok {
-		sb.SetBorderColor(color)
-	}
+func (mainPage *MainPage) updateBorderHighlights() {
+	// Redraw logic is handled by SetAfterDrawFunc based on the hoveredBoundary/isDragging states.
 }
 
-func (mainPage *MainPage) updateBorderHighlights() {
-	defaultColor := theme.Colors.Layout.Border
-	highlightColor := theme.Primary
+func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH int) {
+	if mainPage.dragType == dragVertical {
+		newLeftWidth := mouseX - winX
+		minWidth := 10
+		if newLeftWidth < minWidth {
+			newLeftWidth = minWidth
+		}
+		if newLeftWidth > winW-minWidth {
+			newLeftWidth = winW - minWidth
+		}
+		newRightWidth := winW - newLeftWidth
 
-	switch mainPage.hoveredBoundary {
-	case boundaryVertical:
-		mainPage.setPanelBorderColor(mainPage.fileBrowser, highlightColor)
-		mainPage.setPanelBorderColor(mainPage.datasetInfo, highlightColor)
-		mainPage.setPanelBorderColor(mainPage.snapshotBrowser, highlightColor)
-	case boundaryHorizontal:
-		mainPage.setPanelBorderColor(mainPage.fileBrowser, defaultColor)
-		mainPage.setPanelBorderColor(mainPage.datasetInfo, highlightColor)
-		mainPage.setPanelBorderColor(mainPage.snapshotBrowser, highlightColor)
-	case boundaryNone:
-		mainPage.setPanelBorderColor(mainPage.fileBrowser, defaultColor)
-		mainPage.setPanelBorderColor(mainPage.datasetInfo, defaultColor)
-		mainPage.setPanelBorderColor(mainPage.snapshotBrowser, defaultColor)
+		mainPage.windowLayout.ResizeItem(mainPage.fileBrowser.GetLayout(), 0, newLeftWidth)
+		mainPage.windowLayout.ResizeItem(mainPage.infoLayout, 0, newRightWidth)
+	} else if mainPage.dragType == dragHorizontal {
+		infoH := diH + sbH
+		infoY := diY
+		newTopHeight := mouseY - infoY
+		minTopHeight := 4
+		minBottomHeight := 5
+		if newTopHeight < minTopHeight {
+			newTopHeight = minTopHeight
+		}
+		if newTopHeight > infoH-minBottomHeight {
+			newTopHeight = infoH - minBottomHeight
+		}
+		newBottomHeight := infoH - newTopHeight
+
+		mainPage.infoLayout.ResizeItem(mainPage.datasetInfo.GetLayout(), 0, newTopHeight)
+		mainPage.infoLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, newBottomHeight)
 	}
 }
