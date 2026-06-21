@@ -357,7 +357,31 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			filePath = fileEntry.GetRealPath()
 		}
 
-		for _, entry := range entriesToProcess {
+		type diffResult struct {
+			entry *data.SnapshotBrowserEntry
+			state diff_state.DiffState
+		}
+		var batch []diffResult
+
+		pushBatch := func() {
+			if len(batch) == 0 {
+				return
+			}
+			batchCopy := batch
+			batch = nil
+			snapshotBrowser.application.QueueUpdateDraw(func() {
+				if !snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
+					return
+				}
+				for _, res := range batchCopy {
+					res.entry.DiffState = res.state
+					res.entry.IsLoading = false
+					snapshotBrowser.tableContainer.UpdateEntry(res.entry)
+				}
+			})
+		}
+
+		for i, entry := range entriesToProcess {
 			if ctx.Err() != nil {
 				return
 			}
@@ -367,14 +391,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 				diffState = entry.Snapshot.DetermineDiffState(filePath)
 			}
 
-			snapshotBrowser.application.QueueUpdateDraw(func() {
-				if !snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
-					return
-				}
-				entry.DiffState = diffState
-				entry.IsLoading = false
-				snapshotBrowser.tableContainer.UpdateEntry(entry)
-			})
+			batch = append(batch, diffResult{entry: entry, state: diffState})
+
+			// Push batch for first few items for instant feedback, then every 10 items, or at the end
+			if i < 5 || len(batch) >= 10 || i == len(entriesToProcess)-1 {
+				pushBatch()
+			}
 		}
 	}()
 }

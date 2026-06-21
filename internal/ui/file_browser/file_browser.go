@@ -394,16 +394,12 @@ func (fileBrowser *FileBrowserComponent) goUp() {
 }
 
 func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, newSelection string) {
-	fileBrowser.SetPath(newPath, false)
-
-	// select the directory entry of the path we were coming from
+	// Remember the intended selection for the new path before triggering async refresh
 	parentEntryName := path2.Base(path2.Clean(newSelection))
-	for _, entry := range fileBrowser.GetEntries() {
-		if entry.Name == parentEntryName {
-			fileBrowser.selectFileEntry(entry)
-			return
-		}
-	}
+	fakeEntry := &data.FileBrowserEntry{Name: parentEntryName}
+	fileBrowser.selectionMemory.Remember(newPath, 0, fakeEntry)
+
+	fileBrowser.SetPath(newPath, false)
 }
 
 func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists bool) {
@@ -536,21 +532,43 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 	go func() {
 		defer fileBrowser.diffLoader.Stop(seq)
 
-		for _, entry := range entriesToProcess {
+		type diffResult struct {
+			entry *data.FileBrowserEntry
+			state diff_state.DiffState
+		}
+		var batch []diffResult
+
+		pushBatch := func() {
+			if len(batch) == 0 {
+				return
+			}
+			batchCopy := batch
+			batch = nil
+			fileBrowser.application.QueueUpdateDraw(func() {
+				if !fileBrowser.diffLoader.IsCurrentSequence(seq) {
+					return
+				}
+				for _, res := range batchCopy {
+					res.entry.DiffState = res.state
+					res.entry.IsLoading = false
+					fileBrowser.tableContainer.UpdateEntry(res.entry)
+				}
+			})
+		}
+
+		for i, entry := range entriesToProcess {
 			if ctx.Err() != nil {
 				return
 			}
 
 			diffState := fileBrowser.determineDiffState(entry, snapshotEntry)
 
-			fileBrowser.application.QueueUpdateDraw(func() {
-				if !fileBrowser.diffLoader.IsCurrentSequence(seq) {
-					return
-				}
-				entry.DiffState = diffState
-				entry.IsLoading = false
-				fileBrowser.tableContainer.UpdateEntry(entry)
-			})
+			batch = append(batch, diffResult{entry: entry, state: diffState})
+
+			// Push batch for first few items, then every 10 items, or at the end
+			if i < 5 || len(batch) >= 10 || i == len(entriesToProcess)-1 {
+				pushBatch()
+			}
 		}
 	}()
 }
@@ -569,6 +587,9 @@ func (fileBrowser *FileBrowserComponent) Refresh() {
 
 	title := fmt.Sprintf("Path: %s", fileBrowser.truncatePath(fileBrowser.path, maxWidth))
 	fileBrowser.tableContainer.SetTitle(title)
+
+	// Synchronously clear the table so the UI correctly reflects that we are loading a new directory
+	fileBrowser.tableContainer.SetData([]*data.FileBrowserEntry{})
 
 	ctx, seq := fileBrowser.refreshLoader.Start()
 
