@@ -15,16 +15,16 @@ import (
 	"github.com/rivo/tview"
 )
 
-func createSnapshotBrowserTable(application *tview.Application) *table.RowSelectionTable[data.SnapshotBrowserEntry] {
+func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTable(application *tview.Application) *table.RowSelectionTable[data.SnapshotBrowserEntry] {
 	tableContainer := table.NewTableContainer[data.SnapshotBrowserEntry](
 		application,
-		createSnapshotBrowserTableCells,
+		snapshotBrowser.createSnapshotBrowserTableCells,
 		createSnapshotBrowserTableSortFunction,
 	)
 	return tableContainer
 }
 
-func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
+func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
 	result := []*tview.TableCell{}
 	statusColor := determineStatusColor(entry)
 	for _, column := range columns {
@@ -38,22 +38,27 @@ func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *da
 			cellText = entry.Snapshot.Name
 		case columnDiff:
 			cellAlign = tview.AlignCenter
-			switch entry.DiffState {
-			case diff_state.Equal:
-				cellText = "="
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Equal
-			case diff_state.Deleted:
-				cellText = "+"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
-			case diff_state.Added:
-				cellText = "-"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.LocalOnly
-			case diff_state.Modified:
-				cellText = "≠"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Modified
-			case diff_state.Unknown:
-				cellText = "N/A"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
+			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
+				cellText = "⟳"
+				cellColor = tcell.ColorYellow
+			} else {
+				switch entry.DiffState {
+				case diff_state.Equal:
+					cellText = "="
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Equal
+				case diff_state.Deleted:
+					cellText = "+"
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
+				case diff_state.Added:
+					cellText = "-"
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.LocalOnly
+				case diff_state.Modified:
+					cellText = "≠"
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Modified
+				default:
+					cellText = "?"
+					cellColor = tcell.ColorGray
+				}
 			}
 		case columnUsed:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Used)

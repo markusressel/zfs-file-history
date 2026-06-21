@@ -22,7 +22,8 @@ func TestCreateSnapshotBrowserTableCells_ClonesColumn(t *testing.T) {
 		DiffState: diff_state.Unknown,
 	}
 
-	cells := createSnapshotBrowserTableCells(0, []*table.Column{columnClones}, entry)
+	snapshotBrowser := &SnapshotBrowserComponent{}
+	cells := snapshotBrowser.createSnapshotBrowserTableCells(0, []*table.Column{columnClones}, entry)
 
 	if assert.Len(t, cells, 1) {
 		assert.Equal(t, "42", cells[0].Text)
