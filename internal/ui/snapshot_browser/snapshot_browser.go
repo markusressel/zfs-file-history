@@ -376,14 +376,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			state diff_state.DiffState
 		}
 		var batch []diffResult
+		lastDrawTime := time.Now()
 
-		pushBatch := func() {
+		pushBatch := func(forceDraw bool) {
 			if len(batch) == 0 {
 				return
 			}
 			batchCopy := batch
 			batch = nil
-			snapshotBrowser.application.QueueUpdateDraw(func() {
+
+			updateFunc := func() {
 				if !snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
 					return
 				}
@@ -392,7 +394,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 					res.entry.IsLoading = false
 					snapshotBrowser.tableContainer.UpdateEntry(res.entry)
 				}
-			})
+			}
+
+			if forceDraw {
+				snapshotBrowser.application.QueueUpdateDraw(updateFunc)
+			} else {
+				snapshotBrowser.application.QueueUpdate(updateFunc)
+			}
 		}
 
 		for i, entry := range entriesToProcess {
@@ -407,9 +415,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 
 			batch = append(batch, diffResult{entry: entry, state: diffState})
 
-			// Push batch for first few items for instant feedback, then every 10 items, or at the end
-			if i < 5 || len(batch) >= 10 || i == len(entriesToProcess)-1 {
-				pushBatch()
+			now := time.Now()
+			isLast := i == len(entriesToProcess)-1
+			// Draw at most once every 50ms to prevent SSH connection flooding
+			if isLast || now.Sub(lastDrawTime) > 50*time.Millisecond {
+				pushBatch(true)
+				lastDrawTime = now
+			} else if len(batch) >= 10 {
+				pushBatch(false)
 			}
 		}
 	}()

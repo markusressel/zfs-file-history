@@ -16,6 +16,7 @@ type DebouncedLoader struct {
 	sequenceCounter    atomic.Uint64
 	timer              *time.Timer
 	showLoadingSpinner bool
+	isLoading          bool
 	mutex              sync.Mutex
 }
 
@@ -35,13 +36,15 @@ func (l *DebouncedLoader) Start() (context.Context, uint64) {
 	l.cancelContext = cancel
 	seq := l.sequenceCounter.Add(1)
 	l.showLoadingSpinner = false
+	l.isLoading = true
 
 	l.timer = time.AfterFunc(100*time.Millisecond, func() {
 		l.application.QueueUpdateDraw(func() {
-			if seq != l.sequenceCounter.Load() {
+			l.mutex.Lock()
+			if seq != l.sequenceCounter.Load() || !l.isLoading {
+				l.mutex.Unlock()
 				return
 			}
-			l.mutex.Lock()
 			l.showLoadingSpinner = true
 			l.mutex.Unlock()
 			l.onShowSpinner()
@@ -51,23 +54,23 @@ func (l *DebouncedLoader) Start() (context.Context, uint64) {
 }
 
 func (l *DebouncedLoader) Stop(seq uint64) {
-	l.application.QueueUpdateDraw(func() {
-		if seq != l.sequenceCounter.Load() {
-			return
-		}
-		l.mutex.Lock()
-		defer l.mutex.Unlock()
-		if l.timer != nil {
-			l.timer.Stop()
-			l.timer = nil
-		}
-	})
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if seq != l.sequenceCounter.Load() {
+		return
+	}
+	l.isLoading = false
+	if l.timer != nil {
+		l.timer.Stop()
+		l.timer = nil
+	}
 }
 
 func (l *DebouncedLoader) Cancel() {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
+	l.isLoading = false
 	if l.cancelContext != nil {
 		l.cancelContext()
 		l.cancelContext = nil

@@ -93,6 +93,38 @@ func TestDebouncedLoader_ShowSpinner(t *testing.T) {
 	loader.mutex.Unlock()
 }
 
+func TestDebouncedLoader_SequenceMismatchAndEdgeCases(t *testing.T) {
+	app := tview.NewApplication()
+	simScreen := tcell.NewSimulationScreen("")
+	app.SetScreen(simScreen)
+	go app.Run()
+	defer app.Stop()
+
+	loader := NewDebouncedLoader(app, func() {})
+
+	_, seq := loader.Start()
+
+	// 1. Try to stop with a sequence mismatch
+	loader.Stop(seq - 1)
+
+	// Since sequence mismatch occurred, the loader is still loading the original sequence
+	loader.mutex.Lock()
+	if !loader.isLoading {
+		t.Fatal("expected loader to still be loading despite mismatched Stop call")
+	}
+	loader.mutex.Unlock()
+
+	// 2. Start a new loader sequence to cause a mismatch on the original timer
+	_, seq2 := loader.Start()
+
+	// Wait for the timer of the first start or second start to fire
+	time.Sleep(150 * time.Millisecond)
+
+	// Verify that the second sequence loader stopped normally
+	loader.Stop(seq2)
+	loader.Stop(seq2) // Stopping again when timer is already nil/stopped is a safe no-op
+}
+
 func BenchmarkDebouncedLoader_StartCancel(b *testing.B) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")

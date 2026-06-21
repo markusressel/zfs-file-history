@@ -78,17 +78,20 @@ func NewFileBrowserEntry(name string, latestFile *RealFile, snapshots []*Snapsho
 func (entry *FileBrowserEntry) GetRealPath() string {
 	if entry.HasReal() {
 		return entry.RealFile.Path
-	} else {
+	} else if len(entry.SnapshotFiles) > 0 && entry.SnapshotFiles[0] != nil {
 		return entry.SnapshotFiles[0].OriginalPath
 	}
+	return ""
 }
 
 func (entry *FileBrowserEntry) GetStat() os.FileInfo {
 	if entry.HasReal() {
 		return entry.RealFile.Stat
 	}
-
-	return entry.SnapshotFiles[0].Stat
+	if len(entry.SnapshotFiles) > 0 && entry.SnapshotFiles[0] != nil {
+		return entry.SnapshotFiles[0].Stat
+	}
+	return nil
 }
 
 // HasSnapshot indicated whether a snapshot file exists on the dataset for this entry.

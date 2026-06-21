@@ -215,7 +215,7 @@ func (fileBrowser *FileBrowserComponent) Focus() {
 	fileBrowser.application.SetFocus(fileBrowser.layout)
 }
 
-func (fileBrowser *FileBrowserComponent) computeTableEntries(ctx context.Context) ([]*data.FileBrowserEntry, error) {
+func (fileBrowser *FileBrowserComponent) computeTableEntries(ctx context.Context, previousDiffs map[string]diff_state.DiffState) ([]*data.FileBrowserEntry, error) {
 	path := fileBrowser.path
 	snapshotEntry := fileBrowser.currentSnapshot
 
@@ -304,13 +304,6 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries(ctx context.Context
 
 			snapshotFiles := []*data.SnapshotFile{snapshotFile}
 			fileEntries = append(fileEntries, data.NewFileBrowserEntry(snapshotFileName, nil, snapshotFiles, entryType))
-		}
-	}
-
-	previousDiffs := make(map[string]diff_state.DiffState)
-	for _, entry := range fileBrowser.tableContainer.GetEntries() {
-		if entry != nil {
-			previousDiffs[entry.GetRealPath()] = entry.DiffState
 		}
 	}
 
@@ -619,6 +612,13 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	title := fmt.Sprintf("Path: %s", fileBrowser.truncatePath(fileBrowser.path, maxWidth))
 	fileBrowser.tableContainer.SetTitle(title)
 
+	previousDiffs := make(map[string]diff_state.DiffState)
+	for _, entry := range fileBrowser.tableContainer.GetEntries() {
+		if entry != nil {
+			previousDiffs[entry.GetRealPath()] = entry.DiffState
+		}
+	}
+
 	ctx, seq := fileBrowser.refreshLoader.Start()
 
 	go func() {
@@ -631,7 +631,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 			}
 		}
 
-		entries, err := fileBrowser.computeTableEntries(ctx)
+		entries, err := fileBrowser.computeTableEntries(ctx, previousDiffs)
 
 		fileBrowser.application.QueueUpdateDraw(func() {
 			if !fileBrowser.refreshLoader.IsCurrentSequence(seq) {
