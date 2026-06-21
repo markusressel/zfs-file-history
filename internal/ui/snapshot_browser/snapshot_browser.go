@@ -6,7 +6,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -42,8 +41,7 @@ type SnapshotBrowserComponent struct {
 
 	isRestoringSelection bool
 
-	diffCancel context.CancelFunc
-	diffSeq    atomic.Uint64
+	diffLoader *uiutil.DebouncedLoader
 }
 
 type snapshotLoadResult struct {
@@ -89,10 +87,11 @@ var (
 	}
 
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
+		table.ColumnLoading, columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
 	}
 
 	initialActiveTableColumns = []*table.Column{
+		table.ColumnLoading,
 		columnName,
 		columnDiff,
 		columnDate,
@@ -108,7 +107,18 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		selectedSnapshotMemory: uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
 	}
 
-	snapshotBrowser.tableContainer = createSnapshotBrowserTable(snapshotBrowser.application)
+	snapshotBrowser.diffLoader = uiutil.NewDebouncedLoader(application, func() {
+		currentSelection := snapshotBrowser.GetSelection()
+		snapshotBrowser.isRestoringSelection = true
+		snapshotBrowser.tableContainer.SetData(snapshotBrowser.tableContainer.GetEntries())
+		if currentSelection != nil {
+			snapshotBrowser.tableContainer.Select(currentSelection)
+		}
+		snapshotBrowser.isRestoringSelection = false
+		snapshotBrowser.updateTableTitle()
+	})
+
+	snapshotBrowser.tableContainer = snapshotBrowser.createSnapshotBrowserTable(snapshotBrowser.application)
 	snapshotBrowser.tableContainer.SetMultiSelect(true)
 
 	snapshotBrowser.container = uiutil.NewLoadingContainer(application, snapshotBrowser.tableContainer.GetLayout(), "Snapshots", "Loading snapshots...")
@@ -278,101 +288,93 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateTableEntries() {
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) cancelDiffCalculation() {
-	if snapshotBrowser.diffCancel != nil {
-		snapshotBrowser.diffCancel()
-		snapshotBrowser.diffCancel = nil
+	if snapshotBrowser.diffLoader != nil {
+		snapshotBrowser.diffLoader.Cancel()
 	}
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
-	snapshotBrowser.cancelDiffCalculation()
-
 	snapshots := snapshotBrowser.currentSnapshots
 	fileEntry := snapshotBrowser.currentFileEntry
 
-	// If no snapshots, clear the table instantly
 	if len(snapshots) == 0 {
 		snapshotBrowser.tableContainer.SetData([]*data.SnapshotBrowserEntry{})
 		snapshotBrowser.updateTableTitle()
 		return
 	}
 
-	// Create cancellable context and increment sequence
-	ctx, cancel := context.WithCancel(context.Background())
-	snapshotBrowser.diffCancel = cancel
-	seq := snapshotBrowser.diffSeq.Add(1)
+	ctx, seq := snapshotBrowser.diffLoader.Start()
 
-	// Step 1: Instantly render table with Unknown ("N/A") states
-	initialEntries := make([]*data.SnapshotBrowserEntry, len(snapshots))
-	for i, snap := range snapshots {
-		initialEntries[i] = &data.SnapshotBrowserEntry{
-			Snapshot:  snap,
-			DiffState: diff_state.Unknown,
+	currentEntries := snapshotBrowser.tableContainer.GetEntries()
+	sameSnapshots := len(currentEntries) == len(snapshots)
+	if sameSnapshots {
+		for i, entry := range currentEntries {
+			if entry == nil || entry.Snapshot == nil || entry.Snapshot.Name != snapshots[i].Name {
+				sameSnapshots = false
+				break
+			}
 		}
 	}
-	snapshotBrowser.tableContainer.SetData(initialEntries)
-	snapshotBrowser.updateTableTitle()
 
-	// Get the sorted entries from the table container (determines screen top-to-bottom layout)
-	sortedEntries := snapshotBrowser.tableContainer.GetEntries()
+	if sameSnapshots {
+		for _, entry := range currentEntries {
+			if entry != nil {
+				entry.IsLoading = true
+				snapshotBrowser.tableContainer.UpdateEntry(entry)
+			}
+		}
+	} else {
+		previousDiffs := make(map[string]diff_state.DiffState)
+		for _, entry := range currentEntries {
+			if entry != nil {
+				previousDiffs[entry.Snapshot.Name] = entry.DiffState
+			}
+		}
 
-	// Step 2: Compute actual diffs in background goroutine, processing them in sorted order
+		initialEntries := make([]*data.SnapshotBrowserEntry, len(snapshots))
+		for i, snap := range snapshots {
+			diffState := diff_state.Unknown
+			if oldState, exists := previousDiffs[snap.Name]; exists {
+				diffState = oldState
+			}
+			initialEntries[i] = &data.SnapshotBrowserEntry{
+				Snapshot:  snap,
+				DiffState: diffState,
+				IsLoading: true,
+			}
+		}
+		snapshotBrowser.tableContainer.SetData(initialEntries)
+		snapshotBrowser.updateTableTitle()
+	}
+
+	entriesToProcess := slices.Clone(snapshotBrowser.tableContainer.GetEntries())
+
 	go func() {
+		defer snapshotBrowser.diffLoader.Stop(seq)
+
 		filePath := ""
 		if fileEntry != nil {
 			filePath = fileEntry.GetRealPath()
 		}
 
-		// Keep a local working copy in the exact sorted order
-		localEntries := make([]*data.SnapshotBrowserEntry, len(sortedEntries))
-		for i, entry := range sortedEntries {
-			localEntries[i] = &data.SnapshotBrowserEntry{
-				Snapshot:  entry.Snapshot,
-				DiffState: diff_state.Unknown,
-			}
-		}
-
-		// Closure to safely push local updates to UI thread
-		updateUI := func() {
-			entriesCopy := make([]*data.SnapshotBrowserEntry, len(localEntries))
-			for i, entry := range localEntries {
-				entriesCopy[i] = &data.SnapshotBrowserEntry{
-					Snapshot:  entry.Snapshot,
-					DiffState: entry.DiffState,
-				}
-			}
-
-			snapshotBrowser.application.QueueUpdateDraw(func() {
-				// Discard update if a newer selection calculation has started
-				if seq != snapshotBrowser.diffSeq.Load() {
-					return
-				}
-				snapshotBrowser.tableContainer.SetData(entriesCopy)
-				snapshotBrowser.updateTableTitle()
-			})
-		}
-
-		for i, entry := range localEntries {
-			// Abort immediately if user changed selection and cancelled context
+		for _, entry := range entriesToProcess {
 			if ctx.Err() != nil {
 				return
 			}
 
+			diffState := diff_state.Unknown
 			if filePath != "" {
-				entry.DiffState = entry.Snapshot.DetermineDiffState(filePath)
+				diffState = entry.Snapshot.DetermineDiffState(filePath)
 			}
 
-			// Incremental Redraw Logic:
-			// - First 5 entries: Redraw after each (gives instant feedback on visible entries)
-			// - Remaining entries: Batch update every 10 entries (optimizes UI rendering)
-			// - Final entry: Always push the final update
-			isFirstFew := i < 5
-			isBatchEnd := (i+1)%10 == 0
-			isLast := i == len(localEntries)-1
-
-			if isFirstFew || isBatchEnd || isLast {
-				updateUI()
-			}
+			snapshotBrowser.application.QueueUpdateDraw(func() {
+				if !snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
+					return
+				}
+				entry.DiffState = diffState
+				entry.IsLoading = false
+				snapshotBrowser.tableContainer.UpdateEntry(entry)
+			})
 		}
 	}()
 }
@@ -610,13 +612,18 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, act
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {
+	currentActive := snapshotBrowser.tableContainer.GetColumnSpec()
+	configurableActive := slices.DeleteFunc(slices.Clone(currentActive), func(c *table.Column) bool {
+		return c.Id == table.ColumnLoading.Id
+	})
+
 	d := dialog.NewColumnSelectionDialog(
 		snapshotBrowser.application,
 		"Configure Snapshot Columns",
 		tableColumns,
-		snapshotBrowser.tableContainer.GetColumnSpec(),
+		configurableActive,
 		func(activeColumns []*table.Column) {
-			snapshotBrowser.tableContainer.SetActiveColumns(activeColumns)
+			snapshotBrowser.tableContainer.SetActiveColumns(append([]*table.Column{table.ColumnLoading}, activeColumns...))
 		},
 	)
 	snapshotBrowser.showDialog(d, func(action dialog.DialogActionId) bool {

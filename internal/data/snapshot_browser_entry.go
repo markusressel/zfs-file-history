@@ -8,6 +8,7 @@ import (
 type SnapshotBrowserEntry struct {
 	Snapshot  *zfs.Snapshot
 	DiffState diff_state.DiffState
+	IsLoading bool
 }
 
 func (s SnapshotBrowserEntry) TableRowId() string {

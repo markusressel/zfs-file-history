@@ -33,6 +33,12 @@ type Column struct {
 	Alignment int
 }
 
+var ColumnLoading = &Column{
+	Id:        99,
+	Title:     "",
+	Alignment: tview.AlignCenter,
+}
+
 // RowSelectionTable is a table component for the special case where
 // only a single table row can be highlighted at a time instead of a table cell.
 //
@@ -55,6 +61,8 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	entries      []*T
 	entriesMutex sync.Mutex
+
+	isUpdatingData bool
 
 	lastSelectedEntry      *T
 	multiSelectEnabled     bool
@@ -142,6 +150,10 @@ func (c *RowSelectionTable[T]) createLayout() {
 
 	table.SetSelectable(true, false)
 	table.SetSelectionChangedFunc(func(row, column int) {
+		if c.isUpdatingData {
+			return
+		}
+
 		selectedEntry := c.GetSelectedEntry()
 
 		if c.lastSelectedEntry != nil && selectedEntry == nil {
@@ -314,12 +326,41 @@ func (c *RowSelectionTable[T]) GetColumnSpec() []*Column {
 }
 
 func (c *RowSelectionTable[T]) SetData(entries []*T) {
+	c.isUpdatingData = true
+	defer func() { c.isUpdatingData = false }()
+
 	c.entriesMutex.Lock()
 	c.entries = entries
 	c.entriesMutex.Unlock()
 	c.SortBy(c.sortByColumn, c.sortInverted)
 	c.cleanupMultiSelection()
 	c.updateTableContents()
+}
+
+func (c *RowSelectionTable[T]) UpdateEntry(entry *T) {
+	c.entriesMutex.Lock()
+	defer c.entriesMutex.Unlock()
+
+	if entry == nil {
+		return
+	}
+
+	index := slices.Index(c.entries, entry)
+	if index < 0 {
+		return
+	}
+
+	cells := c.toTableCells(index, c.columnSpec, entry)
+	for column, cell := range cells {
+		if c.isInMultiSelection(entry) {
+			cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
+			cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionForeground)
+			cell.SetSelectedStyle(
+				tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
+			)
+		}
+		c.table.SetCell(index+1, column, cell)
+	}
 }
 
 func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {

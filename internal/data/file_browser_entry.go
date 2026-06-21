@@ -55,6 +55,7 @@ type FileBrowserEntry struct {
 	SnapshotFiles []*SnapshotFile
 	Type          FileBrowserEntryType
 	DiffState     diff_state.DiffState
+	IsLoading     bool
 }
 
 func (entry FileBrowserEntry) TableRowId() string {

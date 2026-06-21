@@ -15,16 +15,16 @@ import (
 	"github.com/rivo/tview"
 )
 
-func createSnapshotBrowserTable(application *tview.Application) *table.RowSelectionTable[data.SnapshotBrowserEntry] {
+func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTable(application *tview.Application) *table.RowSelectionTable[data.SnapshotBrowserEntry] {
 	tableContainer := table.NewTableContainer[data.SnapshotBrowserEntry](
 		application,
-		createSnapshotBrowserTableCells,
+		snapshotBrowser.createSnapshotBrowserTableCells,
 		createSnapshotBrowserTableSortFunction,
 	)
 	return tableContainer
 }
 
-func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
+func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
 	result := []*tview.TableCell{}
 	statusColor := determineStatusColor(entry)
 	for _, column := range columns {
@@ -32,6 +32,14 @@ func createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *da
 		cellAlign := tview.AlignLeft
 		cellColor := determineBaseTextColor(entry)
 		switch column {
+		case table.ColumnLoading:
+			cellAlign = tview.AlignCenter
+			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
+				cellText = "⟳"
+				cellColor = tcell.ColorYellow
+			} else {
+				cellText = ""
+			}
 		case columnDate:
 			cellText = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
 		case columnName:

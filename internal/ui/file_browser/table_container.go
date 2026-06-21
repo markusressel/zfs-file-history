@@ -18,16 +18,16 @@ import (
 	"github.com/rivo/tview"
 )
 
-func createFileBrowserTable(application *tview.Application) *table.RowSelectionTable[data.FileBrowserEntry] {
+func (fileBrowser *FileBrowserComponent) createFileBrowserTable(application *tview.Application) *table.RowSelectionTable[data.FileBrowserEntry] {
 	tableContainer := table.NewTableContainer[data.FileBrowserEntry](
 		application,
-		fileBrowserEntryTableCellsFunction,
+		fileBrowser.fileBrowserEntryTableCellsFunction,
 		fileBrowserEntrySortFunction,
 	)
 	return tableContainer
 }
 
-func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
+func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry *data.FileBrowserEntry) (cells []*tview.TableCell) {
 	statusCellText := determineStatusIndicator(entry)
 	statusCellColor := determineStatusColor(entry)
 	typeCellText := determineTypeCellText(entry)
@@ -40,6 +40,14 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 		var cellExpansion = 0
 
 		switch column {
+		case table.ColumnLoading:
+			cellAlignment = tview.AlignCenter
+			if entry.IsLoading && fileBrowser.diffLoader != nil && fileBrowser.diffLoader.ShowLoadingSpinner() {
+				cellText = "⟳"
+				cellColor = tcell.ColorYellow
+			} else {
+				cellText = ""
+			}
 		case columnName:
 			cellText = entry.Name
 			stat := entry.GetStat()
@@ -67,12 +75,15 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 			cellText = determineGIDText(entry)
 			cellColor = tcell.ColorGray
 		case columnDateTime:
-			cellText = entry.GetStat().ModTime().Format(theme.Style.Format.DateTime)
+			stat := entry.GetStat()
+			if stat != nil {
+				cellText = stat.ModTime().Format(theme.Style.Format.DateTime)
+			}
 			switch entry.DiffState {
 			case diff_state.Added, diff_state.Deleted:
 				cellColor = statusCellColor
 			case diff_state.Modified:
-				if entry.RealFile.Stat.ModTime() != entry.SnapshotFiles[0].Stat.ModTime() {
+				if entry.RealFile != nil && len(entry.SnapshotFiles) > 0 && entry.SnapshotFiles[0] != nil && entry.RealFile.Stat.ModTime() != entry.SnapshotFiles[0].Stat.ModTime() {
 					cellColor = statusCellColor
 				} else {
 					cellColor = tcell.ColorWhite
@@ -81,12 +92,15 @@ func fileBrowserEntryTableCellsFunction(row int, columns []*table.Column, entry 
 				cellColor = tcell.ColorGray
 			}
 		case columnSize:
-			cellText = uiutil.StableLengthHumanizedBytes(uint64(entry.GetStat().Size()))
+			stat := entry.GetStat()
+			if stat != nil {
+				cellText = uiutil.StableLengthHumanizedBytes(uint64(stat.Size()))
+			}
 			switch entry.DiffState {
 			case diff_state.Added, diff_state.Deleted:
 				cellColor = statusCellColor
 			case diff_state.Modified:
-				if entry.RealFile.Stat.Size() != entry.SnapshotFiles[0].Stat.Size() {
+				if entry.RealFile != nil && len(entry.SnapshotFiles) > 0 && entry.SnapshotFiles[0] != nil && entry.RealFile.Stat.Size() != entry.SnapshotFiles[0].Stat.Size() {
 					cellColor = statusCellColor
 				} else {
 					cellColor = tcell.ColorWhite
