@@ -32,36 +32,33 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 		cellAlign := tview.AlignLeft
 		cellColor := determineBaseTextColor(entry)
 		switch column {
-		case table.ColumnLoading:
-			cellAlign = tview.AlignCenter
-			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
-				cellText = "⟳"
-				cellColor = tcell.ColorYellow
-			} else {
-				cellText = ""
-			}
 		case columnDate:
 			cellText = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
 		case columnName:
 			cellText = entry.Snapshot.Name
 		case columnDiff:
 			cellAlign = tview.AlignCenter
-			switch entry.DiffState {
-			case diff_state.Equal:
-				cellText = "="
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Equal
-			case diff_state.Deleted:
-				cellText = "+"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
-			case diff_state.Added:
-				cellText = "-"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.LocalOnly
-			case diff_state.Modified:
-				cellText = "≠"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Modified
-			case diff_state.Unknown:
-				cellText = "N/A"
-				cellColor = theme.Colors.SnapshotBrowser.Table.State.Unknown
+			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
+				cellText = "⟳"
+				cellColor = tcell.ColorYellow
+			} else {
+				switch entry.DiffState {
+				case diff_state.Equal:
+					cellText = "="
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Equal
+				case diff_state.Deleted:
+					cellText = "+"
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
+				case diff_state.Added:
+					cellText = "-"
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.LocalOnly
+				case diff_state.Modified:
+					cellText = "≠"
+					cellColor = theme.Colors.SnapshotBrowser.Table.State.Modified
+				default:
+					cellText = "?"
+					cellColor = tcell.ColorGray
+				}
 			}
 		case columnUsed:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Used)

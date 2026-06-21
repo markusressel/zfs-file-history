@@ -67,7 +67,6 @@ var (
 	}
 
 	tableColumns = []*table.Column{
-		table.ColumnLoading,
 		columnPermissions,
 		columnUID,
 		columnGID,
@@ -79,7 +78,6 @@ var (
 	}
 
 	initialActiveTableColumns = []*table.Column{
-		table.ColumnLoading,
 		columnSize,
 		columnDateTime,
 		columnName,
@@ -794,17 +792,14 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandl
 
 func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
 	currentActive := fileBrowser.tableContainer.GetColumnSpec()
-	configurableActive := slices.DeleteFunc(slices.Clone(currentActive), func(c *table.Column) bool {
-		return c.Id == table.ColumnLoading.Id
-	})
 
 	d := dialog.NewColumnSelectionDialog(
 		fileBrowser.application,
 		"Configure File Browser Columns",
 		tableColumns,
-		configurableActive,
+		slices.Clone(currentActive),
 		func(activeColumns []*table.Column) {
-			fileBrowser.tableContainer.SetActiveColumns(append([]*table.Column{table.ColumnLoading}, activeColumns...))
+			fileBrowser.tableContainer.SetActiveColumns(activeColumns)
 		},
 	)
 	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {

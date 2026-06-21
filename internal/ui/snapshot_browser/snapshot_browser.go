@@ -87,11 +87,10 @@ var (
 	}
 
 	tableColumns = []*table.Column{
-		table.ColumnLoading, columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
+		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
 	}
 
 	initialActiveTableColumns = []*table.Column{
-		table.ColumnLoading,
 		columnName,
 		columnDiff,
 		columnDate,
@@ -650,17 +649,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, act
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {
 	currentActive := snapshotBrowser.tableContainer.GetColumnSpec()
-	configurableActive := slices.DeleteFunc(slices.Clone(currentActive), func(c *table.Column) bool {
-		return c.Id == table.ColumnLoading.Id
-	})
 
 	d := dialog.NewColumnSelectionDialog(
 		snapshotBrowser.application,
 		"Configure Snapshot Columns",
 		tableColumns,
-		configurableActive,
+		slices.Clone(currentActive),
 		func(activeColumns []*table.Column) {
-			snapshotBrowser.tableContainer.SetActiveColumns(append([]*table.Column{table.ColumnLoading}, activeColumns...))
+			snapshotBrowser.tableContainer.SetActiveColumns(activeColumns)
 		},
 	)
 	snapshotBrowser.showDialog(d, func(action dialog.DialogActionId) bool {

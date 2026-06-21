@@ -33,12 +33,6 @@ type Column struct {
 	Alignment int
 }
 
-var ColumnLoading = &Column{
-	Id:        99,
-	Title:     "",
-	Alignment: tview.AlignCenter,
-}
-
 // RowSelectionTable is a table component for the special case where
 // only a single table row can be highlighted at a time instead of a table cell.
 //

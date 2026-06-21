@@ -40,14 +40,6 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 		var cellExpansion = 0
 
 		switch column {
-		case table.ColumnLoading:
-			cellAlignment = tview.AlignCenter
-			if entry.IsLoading && fileBrowser.diffLoader != nil && fileBrowser.diffLoader.ShowLoadingSpinner() {
-				cellText = "⟳"
-				cellColor = tcell.ColorYellow
-			} else {
-				cellText = ""
-			}
 		case columnName:
 			cellText = entry.Name
 			stat := entry.GetStat()
@@ -62,8 +54,13 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 			cellColor = typeCellColor
 			cellAlignment = tview.AlignCenter
 		case columnDiff:
-			cellText = statusCellText
-			cellColor = statusCellColor
+			if entry.IsLoading && fileBrowser.diffLoader != nil && fileBrowser.diffLoader.ShowLoadingSpinner() {
+				cellText = "⟳"
+				cellColor = tcell.ColorYellow
+			} else {
+				cellText = statusCellText
+				cellColor = statusCellColor
+			}
 			cellAlignment = tview.AlignCenter
 		case columnPermissions:
 			cellText = determinePermissionsText(entry)
