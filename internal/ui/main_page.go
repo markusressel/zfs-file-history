@@ -98,7 +98,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			mainPage.CycleFocus(true)
 		case tcell.KeyF5:
 			snapshotBrowser.Refresh(true)
-			fileBrowser.Refresh()
+			fileBrowser.Refresh(false)
 		default:
 		}
 		return event

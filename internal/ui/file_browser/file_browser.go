@@ -432,7 +432,7 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 		}
 
 		fileBrowser.emit(PathChangedEvent{NewPath: newPath})
-		fileBrowser.Refresh()
+		fileBrowser.Refresh(false)
 	}
 }
 
@@ -512,7 +512,7 @@ func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.Snap
 	}
 
 	fileBrowser.currentSnapshot = snapshot
-	fileBrowser.Refresh()
+	fileBrowser.Refresh(true)
 }
 
 func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
@@ -606,7 +606,7 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 	}()
 }
 
-func (fileBrowser *FileBrowserComponent) Refresh() {
+func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	fileBrowser.showMessage(status_message.NewInfoStatusMessage("Refreshing..."))
 
 	_, _, width, _ := fileBrowser.tableContainer.GetLayout().GetRect()
@@ -625,10 +625,12 @@ func (fileBrowser *FileBrowserComponent) Refresh() {
 
 	go func() {
 		// Debounce rapid calls to Refresh (e.g. from fast scrolling in SnapshotBrowser)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(50 * time.Millisecond):
+		if debounce {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
 		}
 
 		entries, err := fileBrowser.computeTableEntries(ctx)
@@ -773,7 +775,7 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 	}
 	fileBrowser.fileWatcher = util.NewFileWatcher(path)
 	action := func(s string) {
-		fileBrowser.Refresh()
+		fileBrowser.Refresh(false)
 		fileBrowser.application.Draw()
 	}
 	err := fileBrowser.fileWatcher.Watch(action)
@@ -826,7 +828,7 @@ func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBr
 	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
 		switch action {
 		case dialog.DialogCloseActionId:
-			fileBrowser.Refresh()
+			fileBrowser.Refresh(false)
 		}
 		return false
 	})
@@ -864,7 +866,7 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
 		switch action {
 		case dialog.DialogCloseActionId:
-			fileBrowser.Refresh()
+			fileBrowser.Refresh(false)
 		}
 		return false
 	})

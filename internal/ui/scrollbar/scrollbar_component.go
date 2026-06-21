@@ -177,8 +177,6 @@ func (c *ScrollbarComponent) UpdateLayout() {
 	c.updateTopEndText()
 	c.updateScrollbar()
 	c.updateBottomEndText()
-
-	c.application.ForceDraw()
 }
 
 func (c *ScrollbarComponent) SetOrientation(orientation ScrollBarOrientation) {
@@ -333,7 +331,7 @@ func (c *ScrollbarComponent) determineRuneAndColor(
 }
 
 func (c *ScrollbarComponent) updateScrollbar() {
-	c.application.ForceDraw()
+	// Redraw handled by UpdateLayout QueueUpdateDraw
 }
 
 func (c *ScrollbarComponent) SetWidth(width int) {

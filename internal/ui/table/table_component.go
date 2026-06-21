@@ -456,7 +456,6 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 	}
 	c.table.Select(index, 0)
 	c.syncScrollbar()
-	c.application.ForceDraw()
 }
 
 func (c *RowSelectionTable[T]) HasFocus() bool {

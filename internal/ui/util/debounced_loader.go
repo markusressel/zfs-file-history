@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +16,7 @@ type DebouncedLoader struct {
 	sequenceCounter    atomic.Uint64
 	timer              *time.Timer
 	showLoadingSpinner bool
+	mutex              sync.Mutex
 }
 
 func NewDebouncedLoader(application *tview.Application, onShowSpinner func()) *DebouncedLoader {
@@ -26,6 +28,9 @@ func NewDebouncedLoader(application *tview.Application, onShowSpinner func()) *D
 
 func (l *DebouncedLoader) Start() (context.Context, uint64) {
 	l.Cancel()
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	l.cancelContext = cancel
 	seq := l.sequenceCounter.Add(1)
@@ -36,7 +41,9 @@ func (l *DebouncedLoader) Start() (context.Context, uint64) {
 			if seq != l.sequenceCounter.Load() {
 				return
 			}
+			l.mutex.Lock()
 			l.showLoadingSpinner = true
+			l.mutex.Unlock()
 			l.onShowSpinner()
 		})
 	})
@@ -48,6 +55,8 @@ func (l *DebouncedLoader) Stop(seq uint64) {
 		if seq != l.sequenceCounter.Load() {
 			return
 		}
+		l.mutex.Lock()
+		defer l.mutex.Unlock()
 		if l.timer != nil {
 			l.timer.Stop()
 			l.timer = nil
@@ -56,6 +65,9 @@ func (l *DebouncedLoader) Stop(seq uint64) {
 }
 
 func (l *DebouncedLoader) Cancel() {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
 	if l.cancelContext != nil {
 		l.cancelContext()
 		l.cancelContext = nil
@@ -71,5 +83,7 @@ func (l *DebouncedLoader) IsCurrentSequence(seq uint64) bool {
 }
 
 func (l *DebouncedLoader) ShowLoadingSpinner() bool {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
 	return l.showLoadingSpinner
 }
