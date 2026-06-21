@@ -598,8 +598,6 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 }
 
 func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
-	fileBrowser.showMessage(status_message.NewInfoStatusMessage("Refreshing..."))
-
 	_, _, width, _ := fileBrowser.tableContainer.GetLayout().GetRect()
 	if width == 0 {
 		width = 80
@@ -648,7 +646,6 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 
 				fileBrowser.emit(SelectedTableEntryChangedEvent{fileBrowser.GetSelection()})
 			}
-			fileBrowser.showMessage(status_message.NewInfoStatusMessage(""))
 		})
 	}()
 }
