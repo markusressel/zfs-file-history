@@ -352,7 +352,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			case <-time.After(50 * time.Millisecond):
 			}
 
-			// Pre-emptively set loading state in case computation takes a while
+			// Preemptively set loading state in case computation takes a while
 			snapshotBrowser.application.QueueUpdate(func() {
 				if !snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
 					return

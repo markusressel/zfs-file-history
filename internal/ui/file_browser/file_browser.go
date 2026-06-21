@@ -530,7 +530,7 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 		case <-time.After(50 * time.Millisecond):
 		}
 
-		// Pre-emptively set loading state in case computation takes a while
+		// Preemptively set loading state in case computation takes a while
 		fileBrowser.application.QueueUpdate(func() {
 			if !fileBrowser.diffLoader.IsCurrentSequence(seq) {
 				return
