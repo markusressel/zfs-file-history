@@ -888,6 +888,12 @@ func (fileBrowser *FileBrowserComponent) GetLayout() tview.Primitive {
 	return fileBrowser.layout
 }
 
+func (fileBrowser *FileBrowserComponent) SetBorderColor(color tcell.Color) {
+	if flex, ok := fileBrowser.tableContainer.GetLayout().(*tview.Flex); ok {
+		flex.SetBorderColor(color)
+	}
+}
+
 func (fileBrowser *FileBrowserComponent) SelectHeader() {
 	fileBrowser.tableContainer.SelectHeader()
 }

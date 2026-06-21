@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -111,4 +112,17 @@ func (c *LoadingContainer) SetIsLoading(isLoading bool) {
 
 func (c *LoadingContainer) GetFrontPage() (string, tview.Primitive) {
 	return c.Pages.GetFrontPage()
+}
+
+func (c *LoadingContainer) SetBorderColor(color tcell.Color) {
+	if c.loadingView != nil {
+		c.loadingView.SetBorderColor(color)
+	}
+	if c.content != nil {
+		if box, ok := c.content.(interface{ SetBorderColor(tcell.Color) *tview.Box }); ok {
+			box.SetBorderColor(color)
+		} else if flex, ok := c.content.(*tview.Flex); ok {
+			flex.SetBorderColor(color)
+		}
+	}
 }

@@ -8,11 +8,28 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+)
+
+type dragType int
+
+const (
+	dragNone dragType = iota
+	dragVertical
+	dragHorizontal
+)
+
+type boundaryType int
+
+const (
+	boundaryNone boundaryType = iota
+	boundaryVertical
+	boundaryHorizontal
 )
 
 type MainPage struct {
@@ -23,8 +40,14 @@ type MainPage struct {
 	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
 	layout          *tview.Flex
+	windowLayout    *tview.Flex
+	infoLayout      *tview.Flex
 
 	wasInitialized bool
+
+	isDragging      bool
+	dragType        dragType
+	hoveredBoundary boundaryType
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
@@ -143,6 +166,105 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	mainPageLayout.AddItem(windowLayout, 0, 1, true)
 
+	mainPage.windowLayout = windowLayout
+	mainPage.infoLayout = infoLayout
+
+	windowLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		mouseX, mouseY := event.Position()
+		buttons := event.Buttons()
+
+		diX, diY, diW, diH := mainPage.datasetInfo.GetLayout().GetRect()
+		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+		winX, _, winW, _ := windowLayout.GetRect()
+
+		// 1. If currently dragging
+		if mainPage.isDragging {
+			if buttons == tcell.ButtonNone || action == tview.MouseLeftUp {
+				mainPage.isDragging = false
+				mainPage.dragType = dragNone
+				mainPage.hoveredBoundary = boundaryNone
+				mainPage.updateBorderHighlights()
+				return tview.MouseConsumed, nil
+			}
+
+			if mainPage.dragType == dragVertical {
+				newLeftWidth := mouseX - winX
+				minWidth := 10
+				if newLeftWidth < minWidth {
+					newLeftWidth = minWidth
+				}
+				if newLeftWidth > winW-minWidth {
+					newLeftWidth = winW - minWidth
+				}
+				newRightWidth := winW - newLeftWidth
+
+				windowLayout.ResizeItem(mainPage.fileBrowser.GetLayout(), 0, newLeftWidth)
+				windowLayout.ResizeItem(infoLayout, 0, newRightWidth)
+			} else if mainPage.dragType == dragHorizontal {
+				infoH := diH + sbH
+				infoY := diY
+				newTopHeight := mouseY - infoY
+				minTopHeight := 4
+				minBottomHeight := 5
+				if newTopHeight < minTopHeight {
+					newTopHeight = minTopHeight
+				}
+				if newTopHeight > infoH-minBottomHeight {
+					newTopHeight = infoH - minBottomHeight
+				}
+				newBottomHeight := infoH - newTopHeight
+
+				infoLayout.ResizeItem(mainPage.datasetInfo.GetLayout(), 0, newTopHeight)
+				infoLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, newBottomHeight)
+			}
+
+			return tview.MouseConsumed, nil
+		}
+
+		// 2. Not dragging: detect hover boundaries
+		isOnVertical := false
+		if mouseY >= diY && mouseY < sbY+sbH {
+			if mouseX == diX || mouseX == diX-1 {
+				isOnVertical = true
+			}
+		}
+
+		isOnHorizontal := false
+		if mouseX >= diX && mouseX < diX+diW {
+			if mouseY == sbY || mouseY == sbY-1 {
+				isOnHorizontal = true
+			}
+		}
+
+		newHover := boundaryNone
+		if isOnHorizontal {
+			newHover = boundaryHorizontal
+		} else if isOnVertical {
+			newHover = boundaryVertical
+		}
+
+		if newHover != mainPage.hoveredBoundary {
+			mainPage.hoveredBoundary = newHover
+			mainPage.updateBorderHighlights()
+			return tview.MouseConsumed, nil
+		}
+
+		// 3. Initiate dragging
+		if buttons&tcell.Button1 != 0 && action == tview.MouseLeftDown {
+			if isOnHorizontal {
+				mainPage.isDragging = true
+				mainPage.dragType = dragHorizontal
+				return tview.MouseConsumed, nil
+			} else if isOnVertical {
+				mainPage.isDragging = true
+				mainPage.dragType = dragVertical
+				return tview.MouseConsumed, nil
+			}
+		}
+
+		return action, event
+	})
+
 	mainPage.header = header
 
 	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application)
@@ -216,5 +338,35 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 		mainPage.setShortcutMap(shortcutMap)
 	} else {
 		mainPage.clearShortcutMap()
+	}
+}
+
+func (mainPage *MainPage) setPanelBorderColor(panel FocusableUiComponent, color tcell.Color) {
+	if fb, ok := panel.(*file_browser.FileBrowserComponent); ok {
+		fb.SetBorderColor(color)
+	} else if di, ok := panel.(*dataset_info.DatasetInfoComponent); ok {
+		di.SetBorderColor(color)
+	} else if sb, ok := panel.(*snapshot_browser.SnapshotBrowserComponent); ok {
+		sb.SetBorderColor(color)
+	}
+}
+
+func (mainPage *MainPage) updateBorderHighlights() {
+	defaultColor := theme.Colors.Layout.Border
+	highlightColor := theme.Primary
+
+	switch mainPage.hoveredBoundary {
+	case boundaryVertical:
+		mainPage.setPanelBorderColor(mainPage.fileBrowser, highlightColor)
+		mainPage.setPanelBorderColor(mainPage.datasetInfo, highlightColor)
+		mainPage.setPanelBorderColor(mainPage.snapshotBrowser, highlightColor)
+	case boundaryHorizontal:
+		mainPage.setPanelBorderColor(mainPage.fileBrowser, defaultColor)
+		mainPage.setPanelBorderColor(mainPage.datasetInfo, highlightColor)
+		mainPage.setPanelBorderColor(mainPage.snapshotBrowser, highlightColor)
+	case boundaryNone:
+		mainPage.setPanelBorderColor(mainPage.fileBrowser, defaultColor)
+		mainPage.setPanelBorderColor(mainPage.datasetInfo, defaultColor)
+		mainPage.setPanelBorderColor(mainPage.snapshotBrowser, defaultColor)
 	}
 }

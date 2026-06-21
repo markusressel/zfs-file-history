@@ -202,6 +202,15 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetLayout() *uiutil.LoadingCont
 	return snapshotBrowser.container
 }
 
+func (snapshotBrowser *SnapshotBrowserComponent) SetBorderColor(color tcell.Color) {
+	if flex, ok := snapshotBrowser.tableContainer.GetLayout().(*tview.Flex); ok {
+		flex.SetBorderColor(color)
+	}
+	if snapshotBrowser.container != nil {
+		snapshotBrowser.container.SetBorderColor(color)
+	}
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) SetPath(path string, force bool) {
 	if !force && snapshotBrowser.path == path {
 		return
