@@ -537,14 +537,16 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 			state diff_state.DiffState
 		}
 		var batch []diffResult
+		lastDrawTime := time.Now()
 
-		pushBatch := func() {
+		pushBatch := func(forceDraw bool) {
 			if len(batch) == 0 {
 				return
 			}
 			batchCopy := batch
 			batch = nil
-			fileBrowser.application.QueueUpdateDraw(func() {
+
+			updateFunc := func() {
 				if !fileBrowser.diffLoader.IsCurrentSequence(seq) {
 					return
 				}
@@ -553,7 +555,13 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 					res.entry.IsLoading = false
 					fileBrowser.tableContainer.UpdateEntry(res.entry)
 				}
-			})
+			}
+
+			if forceDraw {
+				fileBrowser.application.QueueUpdateDraw(updateFunc)
+			} else {
+				fileBrowser.application.QueueUpdate(updateFunc)
+			}
 		}
 
 		for i, entry := range entriesToProcess {
@@ -565,9 +573,14 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 
 			batch = append(batch, diffResult{entry: entry, state: diffState})
 
-			// Push batch for first few items, then every 10 items, or at the end
-			if i < 5 || len(batch) >= 10 || i == len(entriesToProcess)-1 {
-				pushBatch()
+			now := time.Now()
+			isLast := i == len(entriesToProcess)-1
+			// Draw at most once every 50ms to prevent SSH connection flooding
+			if isLast || now.Sub(lastDrawTime) > 50*time.Millisecond {
+				pushBatch(true)
+				lastDrawTime = now
+			} else if len(batch) >= 10 {
+				pushBatch(false)
 			}
 		}
 	}()
@@ -587,9 +600,6 @@ func (fileBrowser *FileBrowserComponent) Refresh() {
 
 	title := fmt.Sprintf("Path: %s", fileBrowser.truncatePath(fileBrowser.path, maxWidth))
 	fileBrowser.tableContainer.SetTitle(title)
-
-	// Synchronously clear the table so the UI correctly reflects that we are loading a new directory
-	fileBrowser.tableContainer.SetData([]*data.FileBrowserEntry{})
 
 	ctx, seq := fileBrowser.refreshLoader.Start()
 
