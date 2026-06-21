@@ -316,14 +316,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 		}
 	}
 
-	if sameSnapshots {
-		for _, entry := range currentEntries {
-			if entry != nil {
-				entry.IsLoading = true
-				snapshotBrowser.tableContainer.UpdateEntry(entry)
-			}
-		}
-	} else {
+	if !sameSnapshots {
 		previousDiffs := make(map[string]diff_state.DiffState)
 		for _, entry := range currentEntries {
 			if entry != nil {
@@ -351,6 +344,28 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 
 	go func() {
 		defer snapshotBrowser.diffLoader.Stop(seq)
+
+		// Debounce rapid scrolling
+		if sameSnapshots {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
+
+			// Pre-emptively set loading state in case computation takes a while
+			snapshotBrowser.application.QueueUpdate(func() {
+				if !snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
+					return
+				}
+				for _, entry := range entriesToProcess {
+					if entry != nil {
+						entry.IsLoading = true
+						snapshotBrowser.tableContainer.UpdateEntry(entry)
+					}
+				}
+			})
+		}
 
 		filePath := ""
 		if fileEntry != nil {

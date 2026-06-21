@@ -532,6 +532,26 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 	go func() {
 		defer fileBrowser.diffLoader.Stop(seq)
 
+		// Debounce rapid scrolling
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(50 * time.Millisecond):
+		}
+
+		// Pre-emptively set loading state in case computation takes a while
+		fileBrowser.application.QueueUpdate(func() {
+			if !fileBrowser.diffLoader.IsCurrentSequence(seq) {
+				return
+			}
+			for _, entry := range entriesToProcess {
+				if entry != nil {
+					entry.IsLoading = true
+					fileBrowser.tableContainer.UpdateEntry(entry)
+				}
+			}
+		})
+
 		type diffResult struct {
 			entry *data.FileBrowserEntry
 			state diff_state.DiffState
@@ -604,6 +624,13 @@ func (fileBrowser *FileBrowserComponent) Refresh() {
 	ctx, seq := fileBrowser.refreshLoader.Start()
 
 	go func() {
+		// Debounce rapid calls to Refresh (e.g. from fast scrolling in SnapshotBrowser)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(50 * time.Millisecond):
+		}
+
 		entries, err := fileBrowser.computeTableEntries(ctx)
 
 		fileBrowser.application.QueueUpdateDraw(func() {
