@@ -212,6 +212,13 @@ func (datasetInfo *DatasetInfoComponent) GetLayout() *uiutil.LoadingContainer {
 	return datasetInfo.container
 }
 
+func (datasetInfo *DatasetInfoComponent) SetBorderColor(color tcell.Color) {
+	datasetInfo.textView.SetBorderColor(color)
+	if datasetInfo.container != nil {
+		datasetInfo.container.SetBorderColor(color)
+	}
+}
+
 func (datasetInfo *DatasetInfoComponent) CreateSnapshot(name string) error {
 	if datasetInfo.dataset == nil {
 		return fmt.Errorf("no dataset selected")
