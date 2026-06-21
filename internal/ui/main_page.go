@@ -306,6 +306,9 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	mainPage.header = header
 
 	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application)
+	shortcutMap.SetOnHeightChanged(func(height int) {
+		mainPageLayout.ResizeItem(shortcutMap.GetLayout(), height, 0)
+	})
 	mainPageLayout.AddItem(shortcutMap.GetLayout(), 1, 0, false)
 	mainPage.shortcutMap = shortcutMap
 
