@@ -46,3 +46,8 @@ func TestSetHelpTableRow_EmptyEntry_LeavesKeyEmpty(t *testing.T) {
 	assert.Equal(t, tcell.ColorWhite, keyFg)
 	assert.Equal(t, "", valueCell.Text)
 }
+
+func TestNewHelpPage(t *testing.T) {
+	p := NewHelpPage()
+	assert.NotNil(t, p.GetLayout())
+}
