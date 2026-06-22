@@ -748,6 +748,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 	shortcutMap := []shortcut_helper.ShortcutEntry{
 		uiutil.TableComponentShortcutUp,
 		uiutil.TableComponentShortcutDown,
+		uiutil.TableComponentShortcutPageUp,
+		uiutil.TableComponentShortcutPageDown,
 		uiutil.TableComponentShortcutColumns,
 	}
 

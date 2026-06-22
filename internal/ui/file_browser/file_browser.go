@@ -914,6 +914,8 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 	shortcutMap := []shortcut_helper.ShortcutEntry{
 		uiutil.TableComponentShortcutUp,
 		uiutil.TableComponentShortcutDown,
+		uiutil.TableComponentShortcutPageUp,
+		uiutil.TableComponentShortcutPageDown,
 		uiutil.TableComponentShortcutColumns,
 	}
 

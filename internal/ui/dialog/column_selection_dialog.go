@@ -121,7 +121,7 @@ func (d *ColumnSelectionDialog) updateShortcutMap() {
 
 	if d.focusActive {
 		entries = append(entries,
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Del"}, Name: "Deactivate"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Delete"}, Name: "Deactivate"},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Shift+↑", "Shift+↓"}, Name: "Reorder"},
 		)
 	} else {
