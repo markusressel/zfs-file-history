@@ -143,6 +143,10 @@ func ShowDialogOnPages(
 	onUpdate func(),
 ) {
 	layout := d.GetLayout()
+	var previousFocus tview.Primitive
+	if !layout.HasFocus() {
+		previousFocus = application.GetFocus()
+	}
 	go func() {
 		for {
 			action := <-d.GetActionChannel()
@@ -152,6 +156,9 @@ func ShowDialogOnPages(
 			if action == DialogCloseActionId {
 				application.QueueUpdateDraw(func() {
 					pages.RemovePage(d.GetName())
+					if previousFocus != nil {
+						application.SetFocus(previousFocus)
+					}
 					if onUpdate != nil {
 						onUpdate()
 					}
@@ -162,6 +169,9 @@ func ShowDialogOnPages(
 	// Opening dialogs is usually triggered from input handlers on the UI goroutine.
 	// Calling QueueUpdateDraw there can deadlock, so update directly.
 	pages.AddPage(d.GetName(), layout, true, true)
+	if !layout.HasFocus() {
+		application.SetFocus(layout)
+	}
 	if onUpdate != nil {
 		onUpdate()
 	}

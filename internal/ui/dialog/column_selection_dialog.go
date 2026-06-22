@@ -79,7 +79,6 @@ func (d *ColumnSelectionDialog) createLayout() {
 
 	d.layout = createModal(d.title, content, 70, 20)
 	d.layout.SetInputCapture(d.captureInput)
-	d.application.SetFocus(d.activeTable)
 }
 
 func (d *ColumnSelectionDialog) GetName() string {
@@ -102,10 +101,12 @@ func (d *ColumnSelectionDialog) refreshTables() {
 	renderColumnTable(d.activeTable, d.activeColumns)
 	renderColumnTable(d.availableTable, d.availableColumns)
 	d.updateShortcutMap()
-	if d.focusActive {
-		d.application.SetFocus(d.activeTable)
-	} else {
-		d.application.SetFocus(d.availableTable)
+	if d.layout != nil {
+		if d.focusActive {
+			d.application.SetFocus(d.activeTable)
+		} else {
+			d.application.SetFocus(d.availableTable)
+		}
 	}
 }
 
