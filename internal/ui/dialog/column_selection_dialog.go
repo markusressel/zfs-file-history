@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"slices"
+	"unicode/utf8"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/util"
@@ -97,7 +98,25 @@ func (d *ColumnSelectionDialog) createLayout() {
 		return action, event
 	})
 
-	d.layout = createModal(d.title, content, 70, 20)
+	maxColWidth := 0
+	for _, col := range d.allColumns {
+		if col != nil {
+			if l := utf8.RuneCountInString(col.Title); l > maxColWidth {
+				maxColWidth = l
+			}
+		}
+	}
+
+	extraWidth := 2 * (maxColWidth + 4)
+	staticHeight := 1 + len(d.allColumns) + 2
+
+	width, height := CalculateDialogSize(DialogSizeConstraints{
+		Title:             d.title,
+		ExtraContentWidth: extraWidth,
+		StaticHeight:      staticHeight,
+	})
+
+	d.layout = createModal(d.title, content, width, height)
 	d.layout.SetInputCapture(d.captureInput)
 }
 

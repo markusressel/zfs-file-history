@@ -50,7 +50,5 @@ func NewMultiSnapshotActionDialog(application *tview.Application, snapshots []*d
 		localization.LocalizationSelectActionDialogTitle,
 		fmt.Sprintf("What do you want to do with '%v'?", snapshotNames),
 		dialogOptions,
-		50,
-		10,
 	)
 }

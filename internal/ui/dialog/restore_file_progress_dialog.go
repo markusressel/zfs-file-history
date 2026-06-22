@@ -26,6 +26,8 @@ type RestoreFileProgressDialog struct {
 	layout              *tview.Flex
 	descriptionTextView *tview.TextView
 	actionsHelpTextView *tview.TextView
+	actionPages         *tview.Pages
+	closeTable          *tview.Table
 
 	progress      *tvxwidgets.PercentageModeGauge
 	progressValue int
@@ -63,8 +65,12 @@ func (d *RestoreFileProgressDialog) createLayout() {
 			if !d.isRunning {
 				break
 			}
-			spinner.Pulse()
-			d.application.Draw()
+			d.application.QueueUpdateDraw(func() {
+				if !d.isRunning {
+					return
+				}
+				spinner.Pulse()
+			})
 		}
 	}
 	go updateSpinner()
@@ -76,6 +82,22 @@ func (d *RestoreFileProgressDialog) createLayout() {
 	abortTextView := uiutil.CreateAttentionTextView("Press 'q' to abort")
 	d.actionsHelpTextView = abortTextView
 
+	dialogOptions := []*DialogOption{
+		{
+			Id:   DialogCloseActionId,
+			Name: "Close",
+		},
+	}
+	closeTable := createOptionTable(d.application, dialogOptions, func(option *DialogOption) {
+		d.Close()
+	})
+	d.closeTable = closeTable
+
+	actionPages := tview.NewPages().
+		AddPage("running", abortTextView, true, true).
+		AddPage("finished", closeTable, true, false)
+	d.actionPages = actionPages
+
 	progress := tvxwidgets.NewPercentageModeGauge()
 	progressTitle := theme.CreateTitleText("Progress")
 	progress.SetTitle(progressTitle)
@@ -85,12 +107,22 @@ func (d *RestoreFileProgressDialog) createLayout() {
 	progressLayout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(descriptionLayout, 0, 1, false).
 		AddItem(progress, 3, 0, false).
-		AddItem(abortTextView, 1, 0, false)
+		AddItem(actionPages, 1, 0, false)
 	progressLayout.SetBorderPadding(0, 0, 1, 1)
 
-	dialog := createModal(dialogTitle, progressLayout, 60, 10)
+	width, height := CalculateDialogSize(DialogSizeConstraints{
+		Title:        dialogTitle,
+		Description:  text,
+		StaticHeight: 4, // 3 for progress bar, 1 for actionPages
+	})
+
+	dialog := createModal(dialogTitle, progressLayout, width, height)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
+			d.Close()
+			return nil
+		}
+		if !d.isRunning && event.Key() == tcell.KeyEnter {
 			d.Close()
 			return nil
 		}
@@ -131,7 +163,6 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 			for i := 0; i < 2; i++ {
 				err := snapshot.RestoreRecursive(srcFilePath)
 				d.handleError(err)
-				d.application.Draw()
 				if err != nil {
 					return
 				}
@@ -139,14 +170,12 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 		} else {
 			err := snapshot.Restore(srcFilePath)
 			d.handleError(err)
-			d.application.Draw()
 			if err != nil {
 				return
 			}
 		}
 
 		d.handleDone()
-		d.application.Draw()
 	}()
 
 	d.progressValue = 0
@@ -159,9 +188,13 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 			if !d.isRunning {
 				break
 			}
-			d.progressValue = int(math.Min(float64(d.progress.GetMaxValue()), float64(d.progressValue)))
-			d.progress.SetValue(d.progressValue)
-			d.application.Draw()
+			d.application.QueueUpdateDraw(func() {
+				if !d.isRunning {
+					return
+				}
+				d.progressValue = int(math.Min(float64(d.progress.GetMaxValue()), float64(d.progressValue)))
+				d.progress.SetValue(d.progressValue)
+			})
 		}
 	}
 	go progressUpdate()
@@ -171,18 +204,24 @@ func (d *RestoreFileProgressDialog) handleError(err error) {
 	if err != nil {
 		logging.Error("Error during restore: %s", err.Error())
 		d.isRunning = false
-		d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
-		d.progress.SetTitle(theme.CreateTitleText("Failed!"))
-		d.progress.SetTitleColor(tcell.ColorRed)
-		d.actionsHelpTextView.SetText("Press 'esc' to close")
+		d.application.QueueUpdateDraw(func() {
+			d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
+			d.progress.SetTitle(theme.CreateTitleText("Failed!"))
+			d.progress.SetTitleColor(tcell.ColorRed)
+			d.actionPages.ShowPage("finished")
+			d.application.SetFocus(d.closeTable)
+		})
 	}
 }
 
 func (d *RestoreFileProgressDialog) handleDone() {
 	d.isRunning = false
-	finishedValue := d.progress.GetMaxValue()
-	d.progress.SetValue(finishedValue)
-	d.progress.SetTitle(theme.CreateTitleText("Done!"))
-	d.progress.SetTitleColor(tcell.ColorGreen)
-	d.actionsHelpTextView.SetText(uiutil.CreateAttentionText("Press 'esc' to close"))
+	d.application.QueueUpdateDraw(func() {
+		finishedValue := d.progress.GetMaxValue()
+		d.progress.SetValue(finishedValue)
+		d.progress.SetTitle(theme.CreateTitleText("Done!"))
+		d.progress.SetTitleColor(tcell.ColorGreen)
+		d.actionPages.ShowPage("finished")
+		d.application.SetFocus(d.closeTable)
+	})
 }

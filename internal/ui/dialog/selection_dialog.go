@@ -1,6 +1,10 @@
 package dialog
 
-import "github.com/rivo/tview"
+import (
+	"unicode/utf8"
+
+	"github.com/rivo/tview"
+)
 
 type SelectionDialog struct {
 	application   *tview.Application
@@ -18,8 +22,6 @@ func NewSelectionDialog(
 	title string,
 	description string,
 	options []*DialogOption,
-	width int,
-	height int,
 ) *SelectionDialog {
 	d := &SelectionDialog{
 		application:   application,
@@ -29,19 +31,63 @@ func NewSelectionDialog(
 		options:       options,
 		actionChannel: make(chan DialogActionId),
 	}
-	d.createLayout(width, height)
+	d.createLayout()
 	return d
 }
 
-func (d *SelectionDialog) createLayout(width int, height int) {
-	textDescriptionView := tview.NewTextView().SetText(d.description)
+func (d *SelectionDialog) createLayout() {
+	maxOptWidth := 0
+	for _, opt := range d.options {
+		prefixLen := 2 // E.g. "1."
+		if opt.Id == DialogCloseActionId {
+			prefixLen = 4 // E.g. "Esc."
+		}
+		optWidth := prefixLen + 1 + utf8.RuneCountInString(opt.Name)
+		if optWidth > maxOptWidth {
+			maxOptWidth = optWidth
+		}
+	}
+
+	actualTableRows := len(d.options)
+	if len(d.options) > 1 {
+		hasClose := false
+		for _, opt := range d.options {
+			if opt.Id == DialogCloseActionId {
+				hasClose = true
+				break
+			}
+		}
+		if hasClose {
+			actualTableRows++
+		}
+	}
+
+	dialogWidth, dialogHeight := CalculateDialogSize(DialogSizeConstraints{
+		Title:             d.title,
+		Description:       d.description,
+		ExtraContentWidth: maxOptWidth,
+		StaticHeight:      1 + actualTableRows, // 1 line for the spacer box
+	})
+
+	textLineWidth := dialogWidth - 6
+	if textLineWidth < 5 {
+		textLineWidth = 5
+	}
+	descHeight := calculateWrappedHeight(d.description, textLineWidth)
+
+	textDescriptionView := tview.NewTextView().
+		SetText(d.description).
+		SetWrap(true).
+		SetWordWrap(true)
+
 	optionTable := createOptionTable(d.application, d.options, d.selectAction)
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDescriptionView, 0, 1, false)
-	dialogContent.AddItem(optionTable, 0, 1, true)
+	dialogContent.AddItem(textDescriptionView, descHeight, 0, false)
+	dialogContent.AddItem(tview.NewBox(), 1, 0, false) // 1 line spacer/padding
+	dialogContent.AddItem(optionTable, actualTableRows, 0, true)
 
-	dialog := createModal(d.title, dialogContent, width, height)
+	dialog := createModal(d.title, dialogContent, dialogWidth, dialogHeight)
 	dialog.SetInputCapture(createOptionDialogInputCapture(optionTable, d.options, d.selectAction, d.Close))
 	d.layout = dialog
 }
