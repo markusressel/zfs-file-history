@@ -1,12 +1,9 @@
 package dialog
 
 import (
-	"os"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/rivo/tview"
-	"golang.org/x/term"
 )
 
 type SelectionDialog struct {
@@ -39,47 +36,12 @@ func NewSelectionDialog(
 }
 
 func (d *SelectionDialog) createLayout() {
-	termWidth, termHeight, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil || termWidth <= 0 || termHeight <= 0 {
-		termWidth = 80
-		termHeight = 24
-	}
-
-	minWidth := 40
-	maxWidth := 80
-	if maxWidth > termWidth-4 {
-		maxWidth = termWidth - 4
-	}
-	if minWidth > maxWidth {
-		minWidth = maxWidth
-	}
-	if minWidth < 10 {
-		minWidth = 10
-	}
-
-	maxContentWidth := utf8.RuneCountInString(d.title)
-	if l := utf8.RuneCountInString(d.description); l > maxContentWidth {
-		maxContentWidth = l
-	}
+	maxOptWidth := 0
 	for _, opt := range d.options {
-		if l := utf8.RuneCountInString(opt.Name); l > maxContentWidth {
-			maxContentWidth = l
+		if l := utf8.RuneCountInString(opt.Name); l > maxOptWidth {
+			maxOptWidth = l
 		}
 	}
-
-	dialogWidth := maxContentWidth + 6
-	if dialogWidth < minWidth {
-		dialogWidth = minWidth
-	}
-	if dialogWidth > maxWidth {
-		dialogWidth = maxWidth
-	}
-
-	textLineWidth := dialogWidth - 6
-	if textLineWidth < 5 {
-		textLineWidth = 5
-	}
-	descHeight := calculateWrappedHeight(d.description, textLineWidth)
 
 	actualTableRows := len(d.options)
 	if len(d.options) > 1 {
@@ -95,14 +57,18 @@ func (d *SelectionDialog) createLayout() {
 		}
 	}
 
-	dialogHeight := 2 + descHeight + 1 + actualTableRows
-	maxHeight := termHeight - 2
-	if maxHeight < 5 {
-		maxHeight = 5
+	dialogWidth, dialogHeight := CalculateDialogSize(DialogSizeConstraints{
+		Title:             d.title,
+		Description:       d.description,
+		ExtraContentWidth: maxOptWidth,
+		StaticHeight:      1 + actualTableRows, // 1 line for the spacer box
+	})
+
+	textLineWidth := dialogWidth - 6
+	if textLineWidth < 5 {
+		textLineWidth = 5
 	}
-	if dialogHeight > maxHeight {
-		dialogHeight = maxHeight
-	}
+	descHeight := calculateWrappedHeight(d.description, textLineWidth)
 
 	textDescriptionView := tview.NewTextView().
 		SetText(d.description).
@@ -139,18 +105,4 @@ func (d *SelectionDialog) Close() {
 
 func (d *SelectionDialog) selectAction(option *DialogOption) {
 	emitDialogActions(d.actionChannel, DialogCloseActionId, option.Id)
-}
-
-func calculateWrappedHeight(text string, maxLineWidth int) int {
-	lines := strings.Split(text, "\n")
-	height := 0
-	for _, line := range lines {
-		runes := utf8.RuneCountInString(line)
-		if runes == 0 {
-			height += 1
-			continue
-		}
-		height += (runes + maxLineWidth - 1) / maxLineWidth
-	}
-	return height
 }

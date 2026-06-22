@@ -1,13 +1,17 @@
 package dialog
 
 import (
+	"os"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 	"zfs-file-history/internal/ui/localization"
 	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"golang.org/x/term"
 )
 
 type DialogActionId int
@@ -243,4 +247,86 @@ func ShowDialogOnPages(
 	if onUpdate != nil {
 		onUpdate()
 	}
+}
+
+// DialogSizeConstraints holds the input parameters for calculating a dialog's size.
+type DialogSizeConstraints struct {
+	Title             string
+	Description       string
+	ExtraContentWidth int
+	StaticHeight      int
+}
+
+// CalculateDialogSize computes a sane width and height for a dialog based on terminal bounds and content needs.
+func CalculateDialogSize(constraints DialogSizeConstraints) (width int, height int) {
+	termWidth, termHeight, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || termWidth <= 0 || termHeight <= 0 {
+		termWidth = 80
+		termHeight = 24
+	}
+
+	minWidth := 40
+	maxWidth := 80
+	if maxWidth > termWidth-4 {
+		maxWidth = termWidth - 4
+	}
+	if minWidth > maxWidth {
+		minWidth = maxWidth
+	}
+	if minWidth < 10 {
+		minWidth = 10
+	}
+
+	maxContentWidth := utf8.RuneCountInString(constraints.Title)
+	if constraints.Description != "" {
+		if l := utf8.RuneCountInString(constraints.Description); l > maxContentWidth {
+			maxContentWidth = l
+		}
+	}
+	if constraints.ExtraContentWidth > maxContentWidth {
+		maxContentWidth = constraints.ExtraContentWidth
+	}
+
+	dialogWidth := maxContentWidth + 6
+	if dialogWidth < minWidth {
+		dialogWidth = minWidth
+	}
+	if dialogWidth > maxWidth {
+		dialogWidth = maxWidth
+	}
+
+	textLineWidth := dialogWidth - 6
+	if textLineWidth < 5 {
+		textLineWidth = 5
+	}
+
+	descHeight := 0
+	if constraints.Description != "" {
+		descHeight = calculateWrappedHeight(constraints.Description, textLineWidth)
+	}
+
+	dialogHeight := 2 + descHeight + constraints.StaticHeight
+	maxHeight := termHeight - 2
+	if maxHeight < 5 {
+		maxHeight = 5
+	}
+	if dialogHeight > maxHeight {
+		dialogHeight = maxHeight
+	}
+
+	return dialogWidth, dialogHeight
+}
+
+func calculateWrappedHeight(text string, maxLineWidth int) int {
+	lines := strings.Split(text, "\n")
+	height := 0
+	for _, line := range lines {
+		runes := utf8.RuneCountInString(line)
+		if runes == 0 {
+			height += 1
+			continue
+		}
+		height += (runes + maxLineWidth - 1) / maxLineWidth
+	}
+	return height
 }

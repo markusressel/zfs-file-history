@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"fmt"
+	"unicode/utf8"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -49,7 +50,33 @@ func (p *HelpPage) createLayout() {
 		setHelpTableRow(helpTable, row, entry)
 	}
 
-	p.layout = createModal(" ℹ️ Help ", helpTable, 60, 14)
+	maxKeyWidth := 0
+	maxValueWidth := 0
+	for _, entry := range helpTableEntries {
+		if entry == emptyEntry {
+			continue
+		}
+		kw := utf8.RuneCountInString(entry.Key) + 1 // key + colon
+		if kw > maxKeyWidth {
+			maxKeyWidth = kw
+		}
+		vw := utf8.RuneCountInString(entry.Value)
+		if vw > maxValueWidth {
+			maxValueWidth = vw
+		}
+	}
+
+	// Total width is the sum of both columns plus the 1-character table column gap
+	maxHelpWidth := maxKeyWidth + 1 + maxValueWidth
+
+	title := " ℹ️ Help "
+	width, height := CalculateDialogSize(DialogSizeConstraints{
+		Title:             title,
+		ExtraContentWidth: maxHelpWidth,
+		StaticHeight:      len(helpTableEntries),
+	})
+
+	p.layout = createModal(title, helpTable, width, height)
 }
 
 func setHelpTableRow(helpTable *tview.Table, row int, entry *TableEntry) {
