@@ -24,8 +24,6 @@ func NewRestoreFileDialog(application *tview.Application, file *data.FileBrowser
 		" ♻️ Restore File ",
 		fmt.Sprintf("Restore '%s'?", file.Name),
 		buildRestoreDialogOptions(file),
-		50,
-		6,
 	)
 }
 

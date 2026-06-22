@@ -45,7 +45,5 @@ func NewSnapshotActionDialog(application *tview.Application, snapshot *data.Snap
 		localization.LocalizationSelectActionDialogTitle,
 		fmt.Sprintf("What do you want to do with '%s'?", snapshot.Snapshot.Name),
 		dialogOptions,
-		50,
-		10,
 	)
 }
