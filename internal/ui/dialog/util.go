@@ -85,7 +85,10 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 	optionTable.SetSelectable(true, false)
 	optionTable.Select(0, 0)
 
-	for row, option := range options {
+	tableRow := 0
+	hasMultipleOptions := len(options) > 1
+
+	for _, option := range options {
 		var textColor tcell.Color
 		switch option.Severity {
 		case DialogSeverityNeutral:
@@ -97,13 +100,33 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 		case DialogSeverityDanger:
 			textColor = tcell.ColorRed
 		}
-		optionTable.SetCell(row, 0,
-			tview.NewTableCell(option.Name).
-				SetTextColor(textColor).
-				SetAlign(tview.AlignLeft).
-				SetExpansion(1),
-		)
+
+		if option.Id == DialogCloseActionId && hasMultipleOptions {
+			optionTable.SetCell(tableRow, 0,
+				tview.NewTableCell("").
+					SetSelectable(false),
+			)
+			tableRow++
+		}
+
+		cell := tview.NewTableCell(option.Name).
+			SetTextColor(textColor).
+			SetAlign(tview.AlignLeft).
+			SetExpansion(1)
+		cell.SetReference(option)
+
+		optionTable.SetCell(tableRow, 0, cell)
+		tableRow++
 	}
+
+	optionTable.SetSelectedFunc(func(row, column int) {
+		cell := optionTable.GetCell(row, column)
+		if cell != nil && cell.GetReference() != nil {
+			if option, ok := cell.GetReference().(*DialogOption); ok {
+				onSelect(option)
+			}
+		}
+	})
 
 	return optionTable
 }
@@ -121,7 +144,12 @@ func createOptionDialogInputCapture(
 		}
 		if event.Key() == tcell.KeyEnter {
 			row, _ := optionTable.GetSelection()
-			onSelect(options[row])
+			cell := optionTable.GetCell(row, 0)
+			if cell != nil && cell.GetReference() != nil {
+				if option, ok := cell.GetReference().(*DialogOption); ok {
+					onSelect(option)
+				}
+			}
 			return nil
 		}
 		return event

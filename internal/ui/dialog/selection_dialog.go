@@ -81,7 +81,21 @@ func (d *SelectionDialog) createLayout() {
 	}
 	descHeight := calculateWrappedHeight(d.description, textLineWidth)
 
-	dialogHeight := 2 + descHeight + 1 + len(d.options)
+	actualTableRows := len(d.options)
+	if len(d.options) > 1 {
+		hasClose := false
+		for _, opt := range d.options {
+			if opt.Id == DialogCloseActionId {
+				hasClose = true
+				break
+			}
+		}
+		if hasClose {
+			actualTableRows++
+		}
+	}
+
+	dialogHeight := 2 + descHeight + 1 + actualTableRows
 	maxHeight := termHeight - 2
 	if maxHeight < 5 {
 		maxHeight = 5
@@ -99,8 +113,8 @@ func (d *SelectionDialog) createLayout() {
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	dialogContent.AddItem(textDescriptionView, descHeight, 0, false)
-	dialogContent.AddItem(nil, 1, 0, false) // 1 line spacer/padding
-	dialogContent.AddItem(optionTable, len(d.options), 0, true)
+	dialogContent.AddItem(tview.NewBox(), 1, 0, false) // 1 line spacer/padding
+	dialogContent.AddItem(optionTable, actualTableRows, 0, true)
 
 	dialog := createModal(d.title, dialogContent, dialogWidth, dialogHeight)
 	dialog.SetInputCapture(createOptionDialogInputCapture(optionTable, d.options, d.selectAction, d.Close))
