@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -91,6 +92,7 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 
 	tableRow := 0
 	hasMultipleOptions := len(options) > 1
+	nonCloseIndex := 0
 
 	for _, option := range options {
 		var textColor tcell.Color
@@ -106,25 +108,39 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 		}
 
 		if option.Id == DialogCloseActionId && hasMultipleOptions {
-			optionTable.SetCell(tableRow, 0,
-				tview.NewTableCell("").
-					SetSelectable(false),
-			)
+			optionTable.SetCell(tableRow, 0, tview.NewTableCell("").SetSelectable(false))
+			optionTable.SetCell(tableRow, 1, tview.NewTableCell("").SetSelectable(false))
 			tableRow++
 		}
 
-		cell := tview.NewTableCell(option.Name).
+		prefixText := ""
+		if option.Id == DialogCloseActionId {
+			prefixText = "Esc."
+		} else {
+			nonCloseIndex++
+			prefixText = fmt.Sprintf("%d.", nonCloseIndex)
+		}
+
+		prefixCell := tview.NewTableCell(prefixText).
+			SetTextColor(tcell.ColorGray).
+			SetAlign(tview.AlignRight)
+		prefixCell.SetSelectedStyle(tcell.StyleDefault.
+			Foreground(tcell.ColorGray).
+			Background(tview.Styles.PrimitiveBackgroundColor))
+
+		nameCell := tview.NewTableCell(option.Name).
 			SetTextColor(textColor).
 			SetAlign(tview.AlignLeft).
 			SetExpansion(1)
-		cell.SetReference(option)
+		nameCell.SetReference(option)
 
-		optionTable.SetCell(tableRow, 0, cell)
+		optionTable.SetCell(tableRow, 0, prefixCell)
+		optionTable.SetCell(tableRow, 1, nameCell)
 		tableRow++
 	}
 
 	optionTable.SetSelectedFunc(func(row, column int) {
-		cell := optionTable.GetCell(row, column)
+		cell := optionTable.GetCell(row, 1)
 		if cell != nil && cell.GetReference() != nil {
 			if option, ok := cell.GetReference().(*DialogOption); ok {
 				onSelect(option)
@@ -148,13 +164,36 @@ func createOptionDialogInputCapture(
 		}
 		if event.Key() == tcell.KeyEnter {
 			row, _ := optionTable.GetSelection()
-			cell := optionTable.GetCell(row, 0)
+			cell := optionTable.GetCell(row, 1)
 			if cell != nil && cell.GetReference() != nil {
 				if option, ok := cell.GetReference().(*DialogOption); ok {
 					onSelect(option)
 				}
 			}
 			return nil
+		}
+		if event.Key() == tcell.KeyRune {
+			r := event.Rune()
+			if r >= '1' && r <= '9' {
+				targetIndex := int(r - '0')
+				optionCounter := 0
+				rowCount := optionTable.GetRowCount()
+				for row := 0; row < rowCount; row++ {
+					cell := optionTable.GetCell(row, 1)
+					if cell != nil && cell.GetReference() != nil {
+						if opt, ok := cell.GetReference().(*DialogOption); ok {
+							if opt.Id != DialogCloseActionId {
+								optionCounter++
+								if optionCounter == targetIndex {
+									optionTable.Select(row, 0)
+									return nil
+								}
+							}
+						}
+					}
+				}
+				return nil // consume digits even if out of bounds
+			}
 		}
 		return event
 	}

@@ -38,8 +38,13 @@ func NewSelectionDialog(
 func (d *SelectionDialog) createLayout() {
 	maxOptWidth := 0
 	for _, opt := range d.options {
-		if l := utf8.RuneCountInString(opt.Name); l > maxOptWidth {
-			maxOptWidth = l
+		prefixLen := 2 // E.g. "1."
+		if opt.Id == DialogCloseActionId {
+			prefixLen = 4 // E.g. "Esc."
+		}
+		optWidth := prefixLen + 1 + utf8.RuneCountInString(opt.Name)
+		if optWidth > maxOptWidth {
+			maxOptWidth = optWidth
 		}
 	}
 
