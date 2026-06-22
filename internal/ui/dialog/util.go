@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"slices"
+	"time"
 	"zfs-file-history/internal/ui/localization"
 	uiutil "zfs-file-history/internal/ui/util"
 
@@ -172,6 +173,45 @@ func ShowDialogOnPages(
 	if !layout.HasFocus() {
 		application.SetFocus(layout)
 	}
+
+	var lastValidFocus tview.Primitive = layout
+	if layout.HasFocus() {
+		if f := application.GetFocus(); f != nil {
+			lastValidFocus = f
+		}
+	}
+
+	// Ensure that clicking outside the focusable elements doesn't lose focus
+	layout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		currentFocus := application.GetFocus()
+		if currentFocus != nil && layout.HasFocus() {
+			switch currentFocus.(type) {
+			case *tview.Table, *tview.InputField:
+				lastValidFocus = currentFocus
+			}
+		}
+
+		if action == tview.MouseLeftDown {
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				application.QueueUpdateDraw(func() {
+					newFocus := application.GetFocus()
+					isLeaf := false
+					if newFocus != nil {
+						switch newFocus.(type) {
+						case *tview.Table, *tview.InputField:
+							isLeaf = true
+						}
+					}
+					if !isLeaf || !layout.HasFocus() {
+						application.SetFocus(lastValidFocus)
+					}
+				})
+			}()
+		}
+		return action, event
+	})
+
 	if onUpdate != nil {
 		onUpdate()
 	}

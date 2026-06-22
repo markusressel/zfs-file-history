@@ -76,6 +76,26 @@ func (d *ColumnSelectionDialog) createLayout() {
 	content := tview.NewFlex().SetDirection(tview.FlexRow)
 	content.AddItem(d.shortcutMap.GetLayout(), 1, 0, false)
 	content.AddItem(columns, 0, 1, true)
+	content.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action == tview.MouseLeftDown {
+			x, y := event.Position()
+
+			ax, ay, aw, ah := d.activeTable.GetRect()
+			inActive := x >= ax && x < ax+aw && y >= ay && y < ay+ah
+
+			avx, avy, avw, avh := d.availableTable.GetRect()
+			inAvailable := x >= avx && x < avx+avw && y >= avy && y < avy+avh
+
+			if inActive {
+				d.focusActive = true
+				d.updateShortcutMap()
+			} else if inAvailable {
+				d.focusActive = false
+				d.updateShortcutMap()
+			}
+		}
+		return action, event
+	})
 
 	d.layout = createModal(d.title, content, 70, 20)
 	d.layout.SetInputCapture(d.captureInput)
