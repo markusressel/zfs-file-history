@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"testing"
-	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 
@@ -129,17 +128,4 @@ func optionIds(options []*DialogOption) []DialogActionId {
 		result = append(result, option.Id)
 	}
 	return result
-}
-
-func TestFileActionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
-	d := &FileActionDialog{actionChannel: make(chan DialogActionId, 1)}
-
-	d.selectAction(&DialogOption{Id: DialogCloseActionId, Name: "Close"})
-
-	select {
-	case action := <-d.actionChannel:
-		assert.Equal(t, DialogCloseActionId, action)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("expected close action to be emitted")
-	}
 }

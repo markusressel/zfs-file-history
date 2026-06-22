@@ -17,42 +17,16 @@ const (
 	RestoreFileDialogRestoreRecursiveActionId
 )
 
-type RestoreFileDialog struct {
-	application   *tview.Application
-	file          *data.FileBrowserEntry
-	layout        *tview.Flex
-	actionChannel chan DialogActionId
-}
-
-func NewRestoreFileDialog(application *tview.Application, file *data.FileBrowserEntry) *RestoreFileDialog {
-	dialog := &RestoreFileDialog{
-		application:   application,
-		file:          file,
-		actionChannel: make(chan DialogActionId),
-	}
-
-	dialog.createLayout()
-
-	return dialog
-}
-
-func (d *RestoreFileDialog) createLayout() {
-	dialogTitle := " ♻️ Restore File "
-
-	textDescription := fmt.Sprintf("Restore '%s'?", d.file.Name)
-	textDescriptionView := tview.NewTextView().SetText(textDescription)
-
-	dialogOptions := buildRestoreDialogOptions(d.file)
-
-	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
-
-	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDescriptionView, 0, 1, false)
-	dialogContent.AddItem(optionTable, 0, 1, true)
-
-	dialog := createModal(dialogTitle, dialogContent, 50, 6)
-	dialog.SetInputCapture(createOptionDialogInputCapture(optionTable, dialogOptions, d.selectAction, d.Close))
-	d.layout = dialog
+func NewRestoreFileDialog(application *tview.Application, file *data.FileBrowserEntry) *SelectionDialog {
+	return NewSelectionDialog(
+		application,
+		string(RestoreFileDialogPage),
+		" ♻️ Restore File ",
+		fmt.Sprintf("Restore '%s'?", file.Name),
+		buildRestoreDialogOptions(file),
+		50,
+		6,
+	)
 }
 
 func buildRestoreDialogOptions(file *data.FileBrowserEntry) []*DialogOption {
@@ -84,41 +58,4 @@ func buildRestoreDialogOptions(file *data.FileBrowserEntry) []*DialogOption {
 	}
 
 	return ensureDialogCloseIsLast(dialogOptions)
-}
-
-func (d *RestoreFileDialog) GetName() string {
-	return string(RestoreFileDialogPage)
-}
-
-func (d *RestoreFileDialog) GetLayout() *tview.Flex {
-	return d.layout
-}
-
-func (d *RestoreFileDialog) GetActionChannel() <-chan DialogActionId {
-	return d.actionChannel
-}
-
-func (d *RestoreFileDialog) Close() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId)
-}
-
-func (d *RestoreFileDialog) selectAction(option *DialogOption) {
-	switch option.Id {
-	case RestoreFileDialogRestoreFileActionId:
-		d.RestoreFile()
-	case RestoreFileDialogRestoreRecursiveActionId:
-		d.RestoreFileRecursive()
-	case DialogCloseActionId:
-		d.Close()
-	default:
-		d.Close()
-	}
-}
-
-func (d *RestoreFileDialog) RestoreFile() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, RestoreFileDialogRestoreFileActionId)
-}
-
-func (d *RestoreFileDialog) RestoreFileRecursive() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, RestoreFileDialogRestoreRecursiveActionId)
 }

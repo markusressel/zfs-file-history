@@ -17,35 +17,11 @@ const (
 	MultiSnapshotDialogDestroySnapshotRecursivelyActionId
 )
 
-type MultiSnapshotActionDialog struct {
-	application   *tview.Application
-	snapshots     []*data.SnapshotBrowserEntry
-	layout        *tview.Flex
-	actionChannel chan DialogActionId
-}
-
-func NewMultiSnapshotActionDialog(application *tview.Application, snapshots []*data.SnapshotBrowserEntry) *MultiSnapshotActionDialog {
-	dialog := &MultiSnapshotActionDialog{
-		application:   application,
-		snapshots:     snapshots,
-		actionChannel: make(chan DialogActionId),
-	}
-
-	dialog.createLayout()
-
-	return dialog
-}
-
-func (d *MultiSnapshotActionDialog) createLayout() {
-	dialogTitle := localization.LocalizationSelectActionDialogTitle
-
+func NewMultiSnapshotActionDialog(application *tview.Application, snapshots []*data.SnapshotBrowserEntry) *SelectionDialog {
 	snapshotNames := make([]string, 0)
-	for _, snapshot := range d.snapshots {
+	for _, snapshot := range snapshots {
 		snapshotNames = append(snapshotNames, snapshot.Snapshot.Name)
 	}
-
-	textDescription := fmt.Sprintf("What do you want to do with '%v'?", snapshotNames)
-	textDescriptionView := tview.NewTextView().SetText(textDescription)
 
 	dialogOptions := []*DialogOption{
 		{
@@ -68,56 +44,13 @@ func (d *MultiSnapshotActionDialog) createLayout() {
 		},
 	}
 
-	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
-
-	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDescriptionView, 0, 1, false)
-	dialogContent.AddItem(optionTable, 0, 1, true)
-
-	dialog := createModal(dialogTitle, dialogContent, 50, 10)
-	dialog.SetInputCapture(createOptionDialogInputCapture(optionTable, dialogOptions, d.selectAction, d.Close))
-	d.layout = dialog
-}
-
-func (d *MultiSnapshotActionDialog) GetName() string {
-	return string(MultiSnapshotActionDialogPage)
-}
-
-func (d *MultiSnapshotActionDialog) GetLayout() *tview.Flex {
-	return d.layout
-}
-
-func (d *MultiSnapshotActionDialog) GetActionChannel() <-chan DialogActionId {
-	return d.actionChannel
-}
-
-func (d *MultiSnapshotActionDialog) Close() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId)
-}
-
-func (d *MultiSnapshotActionDialog) selectAction(option *DialogOption) {
-	switch option.Id {
-	case MultiSnapshotDialogClearSelectionActionId:
-		d.ClearSelection()
-	case MultiSnapshotDialogDestroySnapshotActionId:
-		d.DestroyAllSnapshots()
-	case MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
-		d.DestroyAllSnapshotsRecursively()
-	case DialogCloseActionId:
-		d.Close()
-	default:
-		d.Close()
-	}
-}
-
-func (d *MultiSnapshotActionDialog) ClearSelection() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, MultiSnapshotDialogClearSelectionActionId)
-}
-
-func (d *MultiSnapshotActionDialog) DestroyAllSnapshots() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, MultiSnapshotDialogDestroySnapshotActionId)
-}
-
-func (d *MultiSnapshotActionDialog) DestroyAllSnapshotsRecursively() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, MultiSnapshotDialogDestroySnapshotRecursivelyActionId)
+	return NewSelectionDialog(
+		application,
+		string(MultiSnapshotActionDialogPage),
+		localization.LocalizationSelectActionDialogTitle,
+		fmt.Sprintf("What do you want to do with '%v'?", snapshotNames),
+		dialogOptions,
+		50,
+		10,
+	)
 }

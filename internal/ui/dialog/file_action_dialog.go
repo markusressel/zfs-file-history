@@ -14,7 +14,6 @@ import (
 const (
 	ActionDialog util.Page = "ActionDialog"
 
-	// recursively restores all files and folders top to bottom starting with the given entry
 	FileDialogShowDiffActionId DialogActionId = iota
 	FileDialogRestoreFileActionId
 	FileDialogRestoreRecursiveDialogActionId
@@ -22,41 +21,18 @@ const (
 	FileDialogCreateSnapshotDialogActionId
 )
 
-type FileActionDialog struct {
-	application   *tview.Application
-	file          *data.FileBrowserEntry
-	layout        *tview.Flex
-	actionChannel chan DialogActionId
-}
+func NewFileActionDialog(application *tview.Application, file *data.FileBrowserEntry) *SelectionDialog {
+	dialogOptions := buildFileDialogOptions(file, DiffBinExists())
 
-func NewFileActionDialog(application *tview.Application, file *data.FileBrowserEntry) *FileActionDialog {
-	dialog := &FileActionDialog{
-		application:   application,
-		file:          file,
-		actionChannel: make(chan DialogActionId),
-	}
-
-	dialog.createLayout()
-
-	return dialog
-}
-
-func (d *FileActionDialog) createLayout() {
-	dialogTitle := localization.LocalizationSelectActionDialogTitle
-
-	textDescription := fmt.Sprintf("What do you want to do with '%s'?", d.file.Name)
-	textDescriptionView := tview.NewTextView().SetText(textDescription)
-
-	dialogOptions := buildFileDialogOptions(d.file, DiffBinExists())
-	optionTable := createOptionTable(d.application, dialogOptions, d.selectAction)
-
-	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
-	dialogContent.AddItem(textDescriptionView, 0, 1, false)
-	dialogContent.AddItem(optionTable, 0, 1, true)
-
-	dialog := createModal(dialogTitle, dialogContent, 50, 15)
-	dialog.SetInputCapture(createOptionDialogInputCapture(optionTable, dialogOptions, d.selectAction, d.Close))
-	d.layout = dialog
+	return NewSelectionDialog(
+		application,
+		string(ActionDialog),
+		localization.LocalizationSelectActionDialogTitle,
+		fmt.Sprintf("What do you want to do with '%s'?", file.Name),
+		dialogOptions,
+		50,
+		15,
+	)
 }
 
 func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) []*DialogOption {
@@ -130,59 +106,4 @@ func DiffBinExists() bool {
 		return false
 	}
 	return true
-}
-
-func (d *FileActionDialog) GetName() string {
-	return string(ActionDialog)
-}
-
-func (d *FileActionDialog) GetLayout() *tview.Flex {
-	return d.layout
-}
-
-func (d *FileActionDialog) GetActionChannel() <-chan DialogActionId {
-	return d.actionChannel
-}
-
-func (d *FileActionDialog) Close() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId)
-}
-
-func (d *FileActionDialog) RestoreFile() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, FileDialogRestoreFileActionId)
-}
-
-func (d *FileActionDialog) selectAction(option *DialogOption) {
-	switch option.Id {
-	case FileDialogShowDiffActionId:
-		d.ShowDiff()
-	case FileDialogRestoreFileActionId:
-		d.RestoreFile()
-	case FileDialogRestoreRecursiveDialogActionId:
-		d.RestoreRecursive()
-	case FileDialogDeleteDialogActionId:
-		d.DeleteFile()
-	case FileDialogCreateSnapshotDialogActionId:
-		d.CreateSnapshot()
-	case DialogCloseActionId:
-		d.Close()
-	default:
-		d.Close()
-	}
-}
-
-func (d *FileActionDialog) RestoreRecursive() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, FileDialogRestoreRecursiveDialogActionId)
-}
-
-func (d *FileActionDialog) DeleteFile() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, FileDialogDeleteDialogActionId)
-}
-
-func (d *FileActionDialog) CreateSnapshot() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, FileDialogCreateSnapshotDialogActionId)
-}
-
-func (d *FileActionDialog) ShowDiff() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, FileDialogShowDiffActionId)
 }
