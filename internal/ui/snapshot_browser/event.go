@@ -15,18 +15,6 @@ type SelectedSnapshotChanged struct {
 
 func (e SelectedSnapshotChanged) isSnapshotBrowserEvent() {}
 
-type SnapshotCreated struct {
-	SnapshotName string
-}
-
-func (e SnapshotCreated) isSnapshotBrowserEvent() {}
-
-type SnapshotDestroyed struct {
-	SnapshotName string
-}
-
-func (e SnapshotDestroyed) isSnapshotBrowserEvent() {}
-
 type StatusMessageEvent struct {
 	Message *status_message.StatusMessage
 }

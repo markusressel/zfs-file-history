@@ -593,9 +593,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		switch option.Id {
 		case dialog.SnapshotDialogCreateSnapshotActionId:
 			snapshotBrowser.selectLatestOnNextLoad = true
-			snapshotBrowser.emit(SnapshotCreated{
-				SnapshotName: createdName,
-			})
 
 			successDialog := dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshot Created", fmt.Sprintf("Snapshot '%s' created successfully.", createdName))
 			snapshotBrowser.showDialog(successDialog, nil)
