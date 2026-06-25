@@ -891,7 +891,6 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 }
 
 func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) error {
-	time.Sleep(3000 * time.Millisecond)
 	path := entry.RealFile.Path
 	err := os.RemoveAll(path)
 	if err != nil {
