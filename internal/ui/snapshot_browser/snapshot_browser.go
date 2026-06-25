@@ -682,8 +682,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 	snapshotBrowser.showDialog(deleteDialog, nil)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onUpdate func()) {
-	dialog.ShowDialogOnPages(snapshotBrowser.application, snapshotBrowser.container.Pages, d, onUpdate)
+func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
+	dialog.ShowDialogOnPages(snapshotBrowser.application, snapshotBrowser.container.Pages, d, onClosed)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {

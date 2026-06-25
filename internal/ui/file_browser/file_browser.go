@@ -813,8 +813,8 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.layout.HasFocus()
 }
 
-func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, onUpdate func()) {
-	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, onUpdate)
+func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
+	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, onClosed)
 }
 
 func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {

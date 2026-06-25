@@ -212,7 +212,7 @@ func ShowDialogOnPages(
 	application *tview.Application,
 	pages *tview.Pages,
 	d Dialog,
-	onUpdate func(),
+	onClosed func(),
 ) {
 	layout := d.GetLayout()
 	var previousFocus tview.Primitive
@@ -231,8 +231,8 @@ func ShowDialogOnPages(
 						application.SetFocus(previousFocus)
 					}
 
-					if onUpdate != nil {
-						onUpdate()
+					if onClosed != nil {
+						onClosed()
 					}
 				})
 				return
@@ -283,8 +283,8 @@ func ShowDialogOnPages(
 		return action, event
 	})
 
-	if onUpdate != nil {
-		onUpdate()
+	if onClosed != nil {
+		onClosed()
 	}
 }
 

@@ -18,7 +18,7 @@ func TestNewSelectionDialog(t *testing.T) {
 		{Id: DialogActionId(1), Name: "Option 1"},
 		{Id: DialogCloseActionId, Name: "Cancel"},
 	}
-	d := NewSelectionDialog(app, "test-dialog", "Title", "Description Text", options)
+	d := NewSelectionDialog(app, "test-dialog", "Title", "Description Text", options, nil, nil)
 
 	assert.Equal(t, "test-dialog", d.GetName())
 	assert.NotNil(t, d.GetLayout())
@@ -75,7 +75,7 @@ func TestNewDeleteFileDialog(t *testing.T) {
 		RealFile: &data.RealFile{Name: "to_delete.txt"},
 	}
 
-	d := NewDeleteFileDialog(app, file)
+	d := NewDeleteFileDialog(app, file, nil, nil)
 	assert.Equal(t, "DeleteFileDialog", d.GetName())
 }
 
@@ -91,7 +91,7 @@ func TestNewDeleteSnapshotDialog(t *testing.T) {
 		},
 	}
 
-	d := NewDeleteSnapshotDialog(app, snapshot)
+	d := NewDeleteSnapshotDialog(app, snapshot, nil, nil)
 	assert.Equal(t, "DeleteSnapshotDialog", d.GetName())
 }
 
@@ -116,7 +116,7 @@ func TestNewFileActionDialog(t *testing.T) {
 		},
 	}
 
-	d := NewFileActionDialog(app, file)
+	d := NewFileActionDialog(app, file, nil, nil)
 	assert.Equal(t, "ActionDialog", d.GetName())
 }
 
@@ -132,7 +132,7 @@ func TestNewSnapshotActionDialog(t *testing.T) {
 		},
 	}
 
-	d := NewSnapshotActionDialog(app, snapshot)
+	d := NewSnapshotActionDialog(app, snapshot, nil, nil)
 	assert.Equal(t, "SnapshotActionDialog", d.GetName())
 }
 
@@ -159,7 +159,7 @@ func TestNewMultiSnapshotActionDialog(t *testing.T) {
 		},
 	}
 
-	d := NewMultiSnapshotActionDialog(app, snapshots)
+	d := NewMultiSnapshotActionDialog(app, snapshots, nil, nil)
 	assert.Equal(t, "MultiSnapshotActionDialog", d.GetName())
 }
 
@@ -170,7 +170,7 @@ func TestNewRestoreFileDialog(t *testing.T) {
 		Type: data.File,
 	}
 
-	d := NewRestoreFileDialog(app, file)
+	d := NewRestoreFileDialog(app, file, nil, nil)
 	assert.Equal(t, "RestoreFileDialog", d.GetName())
 
 	opts := buildRestoreDialogOptions(file)
