@@ -22,14 +22,17 @@ func TestShowDialogOnPages(t *testing.T) {
 	}
 	d := NewSelectionDialog(app, "test-dialog", "Title", "Desc", options, nil, nil)
 
-	handler := func() {}
+	onClosedCalled := false
+	onClosed := func() {
+		onClosedCalled = true
+	}
 
-	ShowDialogOnPages(app, pages, d, handler)
+	ShowDialogOnPages(app, pages, d, onClosed)
 
 	assert.True(t, pages.HasPage("test-dialog"))
 
 	d.Close()
 
 	time.Sleep(50 * time.Millisecond)
-	assert.True(t, actionHandled)
+	assert.True(t, onClosedCalled)
 }
