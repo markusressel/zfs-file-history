@@ -431,66 +431,110 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	if selection == nil {
 		return
 	}
-	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
-	actionHandler := func(action dialog.DialogActionId) bool {
+	actionDialog := dialog.NewFileActionDialog(fileBrowser.application, selection)
+
+	// 1. Define the blocking work
+	asyncWork := func(action dialog.DialogActionId) error {
 		switch action {
 		case dialog.FileDialogShowDiffActionId:
-			fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
-			return true
+			return fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
 		case dialog.FileDialogCreateSnapshotDialogActionId:
-			fileBrowser.createSnapshot(selection)
-			return true
+			return fileBrowser.createSnapshot(selection)
 		case dialog.FileDialogRestoreRecursiveDialogActionId:
-			fileBrowser.runRestoreFileAction(selection, true)
-			return true
+			return fileBrowser.runRestoreFileAction(selection, true)
 		case dialog.FileDialogRestoreFileActionId:
-			fileBrowser.runRestoreFileAction(selection, false)
-			return true
+			return fileBrowser.runRestoreFileAction(selection, false)
 		case dialog.FileDialogDeleteDialogActionId:
-			fileBrowser.delete(selection)
-			return true
-		default:
-			return false
+			return fileBrowser.delete(selection)
+		}
+		return nil
+	}
+
+	// 2. Define the UI updates after the work finishes
+	onComplete := func(option *dialog.DialogOption, err error) {
+		fileBrowser.Refresh(false)
+
+		// Trigger the channel to unmount the current modal
+		actionDialog.Close()
+
+		// Automatically show the generic error dialog if something failed
+		if err != nil {
+			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Action Failed", err)
+			fileBrowser.showDialog(errDialog, nil)
+		} else {
+			successDialog := dialog.NewSuccessDialog(
+				fileBrowser.application,
+				fmt.Sprintf("Action '%s' Completed", option.Name),
+				"The action completed successfully.",
+			)
+			fileBrowser.showDialog(successDialog, nil)
 		}
 	}
-	fileBrowser.showDialog(actionDialogLayout, actionHandler)
+
+	actionDialog.SetHandler(asyncWork, onComplete)
+	fileBrowser.showDialog(actionDialog, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBrowserEntry) {
 	if selection == nil || !selection.HasReal() {
 		return
 	}
-	deleteDialogLayout := dialog.NewDeleteFileDialog(fileBrowser.application, selection)
-	deleteHandler := func(action dialog.DialogActionId) bool {
-		switch action {
-		case dialog.DeleteFileDialogDeleteFileActionId:
-			fileBrowser.delete(selection)
-			return true
-		default:
-			return false
+	deleteDialog := dialog.NewDeleteFileDialog(fileBrowser.application, selection)
+
+	// 1. The blocking background work
+	asyncWork := func(action dialog.DialogActionId) error {
+		if action == dialog.DeleteFileDialogDeleteFileActionId {
+			// Note: If your delete() function doesn't return an error,
+			// just call it and return nil.
+			return fileBrowser.delete(selection)
+		}
+		return nil
+	}
+
+	// 2. The main-thread UI update
+	onComplete := func(option *dialog.DialogOption, err error) {
+		deleteDialog.Close() // Unmount the selection dialog
+
+		if err != nil {
+			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Delete Failed", err)
+			fileBrowser.showDialog(errDialog, nil)
+		} else {
+			// Refresh the UI once the file is deleted
+			fileBrowser.Refresh(false)
 		}
 	}
-	fileBrowser.showDialog(deleteDialogLayout, deleteHandler)
-}
 
+	deleteDialog.SetHandler(asyncWork, onComplete)
+	fileBrowser.showDialog(deleteDialog, nil) // nil for the onUpdate callback
+}
 func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileBrowserEntry) {
 	if selection == nil || !selection.HasSnapshot() {
 		return
 	}
-	restoreDialogLayout := dialog.NewRestoreFileDialog(fileBrowser.application, selection)
-	restoreHandler := func(action dialog.DialogActionId) bool {
-		switch action {
+	restoreDialog := dialog.NewRestoreFileDialog(fileBrowser.application, selection)
+
+	var chosenAction dialog.DialogActionId
+
+	// 1. Capture the intent (finishes instantly)
+	asyncWork := func(action dialog.DialogActionId) error {
+		chosenAction = action
+		return nil
+	}
+
+	// 2. Safely trigger the next UI state on the main thread
+	onComplete := func(option *dialog.DialogOption, err error) {
+		restoreDialog.Close() // Close the selection menu
+
+		switch chosenAction {
 		case dialog.RestoreFileDialogRestoreFileActionId:
 			fileBrowser.runRestoreFileAction(selection, false)
-			return true
 		case dialog.RestoreFileDialogRestoreRecursiveActionId:
 			fileBrowser.runRestoreFileAction(selection, true)
-			return true
-		default:
-			return false
 		}
 	}
-	fileBrowser.showDialog(restoreDialogLayout, restoreHandler)
+
+	restoreDialog.SetHandler(asyncWork, onComplete)
+	fileBrowser.showDialog(restoreDialog, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
@@ -783,8 +827,8 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.layout.HasFocus()
 }
 
-func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
-	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, actionHandler, nil)
+func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, onUpdate func()) {
+	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, onUpdate)
 }
 
 func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
@@ -799,9 +843,7 @@ func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
 			fileBrowser.tableContainer.SetActiveColumns(activeColumns)
 		},
 	)
-	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
-		return false
-	})
+	fileBrowser.showDialog(d, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
@@ -815,20 +857,21 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
+func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) error {
 	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
-	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
-		switch action {
-		case dialog.DialogCloseActionId:
-			fileBrowser.Refresh(false)
-		}
-		return false
+
+	// Pass the refresh logic as the onUpdate callback.
+	// This will execute safely on the main thread after the dialog closes.
+	fileBrowser.showDialog(d, func() {
+		fileBrowser.Refresh(false)
 	})
+
+	return nil
 }
 
-func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEntry, snapshot *data.SnapshotBrowserEntry) {
+func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEntry, snapshot *data.SnapshotBrowserEntry) error {
 	if selection == nil || snapshot == nil {
-		return
+		return fmt.Errorf("cannot show diff: selection or snapshot is nil")
 	}
 
 	realFilePath := selection.RealFile.Path
@@ -849,34 +892,33 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 
 		if editorConf != nil {
 			runExternalDiffEditor(fileBrowser.application, *editorConf, realFilePath, snapshotFilePath)
-			return
+			return nil
 		}
 	}
 
 	// Internal diff display (or fallback from external if no editor path)
 	d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
-	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
-		switch action {
-		case dialog.DialogCloseActionId:
-			fileBrowser.Refresh(false)
-		}
-		return false
+	fileBrowser.showDialog(d, func() {
+		fileBrowser.Refresh(false)
 	})
+	return nil
 }
 
-func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
-	go func() {
-		path := entry.RealFile.Path
-		err := os.RemoveAll(path)
-		if err != nil {
-			fileBrowser.showError(err)
-		}
-	}()
+func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) error {
+	time.Sleep(3000 * time.Millisecond)
+	path := entry.RealFile.Path
+	err := os.RemoveAll(path)
+	if err != nil {
+		fileBrowser.showError(err)
+	}
+	return nil
 }
 
-func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
+func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) error {
 	snapshotName := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+	// TODO: return error from this event chain, and probably not use an event here at all
 	fileBrowser.emit(CreateSnapshotEvent{snapshotName})
+	return nil
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {

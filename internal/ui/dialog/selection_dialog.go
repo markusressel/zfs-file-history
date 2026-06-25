@@ -1,6 +1,8 @@
 package dialog
 
 import (
+	"fmt"
+	"time"
 	"unicode/utf8"
 
 	"github.com/rivo/tview"
@@ -14,6 +16,13 @@ type SelectionDialog struct {
 	options       []*DialogOption
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
+
+	optionTable *tview.Table
+	isRunning   bool
+
+	// Handlers for exclusive async execution
+	handler    func(DialogActionId) error
+	onComplete func(option *DialogOption, err error)
 }
 
 func NewSelectionDialog(
@@ -32,6 +41,16 @@ func NewSelectionDialog(
 		actionChannel: make(chan DialogActionId),
 	}
 	d.createLayout()
+	return d
+}
+
+// SetHandler configures the background execution logic and UI completion callback.
+func (d *SelectionDialog) SetHandler(
+	handler func(DialogActionId) error,
+	onComplete func(option *DialogOption, err error),
+) *SelectionDialog {
+	d.handler = handler
+	d.onComplete = onComplete
 	return d
 }
 
@@ -66,7 +85,7 @@ func (d *SelectionDialog) createLayout() {
 		Title:             d.title,
 		Description:       d.description,
 		ExtraContentWidth: maxOptWidth,
-		StaticHeight:      1 + actualTableRows, // 1 line for the spacer box
+		StaticHeight:      1 + actualTableRows,
 	})
 
 	textLineWidth := dialogWidth - 6
@@ -80,15 +99,15 @@ func (d *SelectionDialog) createLayout() {
 		SetWrap(true).
 		SetWordWrap(true)
 
-	optionTable := createOptionTable(d.application, d.options, d.selectAction)
+	d.optionTable = createOptionTable(d.application, d.options, d.selectAction)
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	dialogContent.AddItem(textDescriptionView, descHeight, 0, false)
-	dialogContent.AddItem(tview.NewBox(), 1, 0, false) // 1 line spacer/padding
-	dialogContent.AddItem(optionTable, actualTableRows, 0, true)
+	dialogContent.AddItem(tview.NewBox(), 1, 0, false)
+	dialogContent.AddItem(d.optionTable, actualTableRows, 0, true)
 
 	dialog := createModal(d.title, dialogContent, dialogWidth, dialogHeight)
-	dialog.SetInputCapture(createOptionDialogInputCapture(optionTable, d.options, d.selectAction, d.Close))
+	dialog.SetInputCapture(createOptionDialogInputCapture(d.optionTable, d.options, d.selectAction, d.Close))
 	d.layout = dialog
 }
 
@@ -109,5 +128,85 @@ func (d *SelectionDialog) Close() {
 }
 
 func (d *SelectionDialog) selectAction(option *DialogOption) {
-	emitDialogActions(d.actionChannel, DialogCloseActionId, option.Id)
+	if option.Id == DialogCloseActionId {
+		d.Close()
+		return
+	}
+
+	if d.handler != nil {
+		d.ShowLoading(option)
+
+		go func() {
+			err := d.handler(option.Id)
+
+			d.application.QueueUpdateDraw(func() {
+				d.StopLoading()
+				if d.onComplete != nil {
+					d.onComplete(option, err)
+				}
+			})
+		}()
+	}
+}
+
+func (d *SelectionDialog) ShowLoading(option *DialogOption) {
+	d.isRunning = true
+	d.optionTable.SetSelectable(false, false) // Lock input
+
+	var targetRow, targetCol int
+	var originalText string
+	found := false
+
+	// Safely find the specific table cell by matching the exact memory reference
+	for r := 0; r < d.optionTable.GetRowCount(); r++ {
+		cell := d.optionTable.GetCell(r, 1) // 1 is the name column
+		if cell != nil && cell.GetReference() == option {
+			targetRow = r
+			targetCol = 1
+			originalText = cell.Text
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return
+	}
+
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		frameIdx := 0
+
+		for {
+			<-ticker.C
+			if !d.isRunning {
+				// Restore original text when loading finishes
+				d.application.QueueUpdateDraw(func() {
+					cell := d.optionTable.GetCell(targetRow, targetCol)
+					if cell != nil {
+						cell.SetText(originalText)
+					}
+				})
+				break
+			}
+
+			// Update the cell with the spinning frame
+			d.application.QueueUpdateDraw(func() {
+				cell := d.optionTable.GetCell(targetRow, targetCol)
+				if cell != nil {
+					cell.SetText(fmt.Sprintf("%s %s", originalText, frames[frameIdx]))
+				}
+			})
+
+			frameIdx = (frameIdx + 1) % len(frames)
+		}
+	}()
+}
+
+func (d *SelectionDialog) StopLoading() {
+	d.isRunning = false
+	d.optionTable.SetSelectable(true, false) // Unlock input
 }

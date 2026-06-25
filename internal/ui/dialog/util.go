@@ -97,9 +97,7 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 	for _, option := range options {
 		var textColor tcell.Color
 		switch option.Severity {
-		case DialogSeverityNeutral:
-			textColor = tcell.ColorWhite
-		case DialogSeveritySafe:
+		case DialogSeverityNeutral, DialogSeveritySafe:
 			textColor = tcell.ColorWhite
 		case DialogSeverityWarning:
 			textColor = tcell.ColorYellow
@@ -192,7 +190,7 @@ func createOptionDialogInputCapture(
 						}
 					}
 				}
-				return nil // consume digits even if out of bounds
+				return nil
 			}
 		}
 		return event
@@ -207,11 +205,13 @@ func emitDialogActions(actionChannel chan DialogActionId, actionIds ...DialogAct
 	}()
 }
 
+// ShowDialogOnPages mounts and focuses a dialog to the provided pages component.
+// The dialog will be removed from the pages when it emits a close action.
+// onUpdate - Called when the dialog emits a close action.
 func ShowDialogOnPages(
 	application *tview.Application,
 	pages *tview.Pages,
 	d Dialog,
-	actionHandler func(action DialogActionId) bool,
 	onUpdate func(),
 ) {
 	layout := d.GetLayout()
@@ -219,12 +219,11 @@ func ShowDialogOnPages(
 	if !layout.HasFocus() {
 		previousFocus = application.GetFocus()
 	}
+
 	go func() {
 		for {
 			action := <-d.GetActionChannel()
-			if actionHandler(action) {
-				return
-			}
+			// The channel's only job now is signaling the lifecycle (close)
 			if action == DialogCloseActionId {
 				application.QueueUpdateDraw(func() {
 					pages.RemovePage(d.GetName())
@@ -235,11 +234,11 @@ func ShowDialogOnPages(
 						onUpdate()
 					}
 				})
+				return // Kill the listener goroutine when dialog unmounts
 			}
 		}
 	}()
-	// Opening dialogs is usually triggered from input handlers on the UI goroutine.
-	// Calling QueueUpdateDraw there can deadlock, so update directly.
+
 	pages.AddPage(d.GetName(), layout, true, true)
 	if !layout.HasFocus() {
 		application.SetFocus(layout)
@@ -288,7 +287,6 @@ func ShowDialogOnPages(
 	}
 }
 
-// DialogSizeConstraints holds the input parameters for calculating a dialog's size.
 type DialogSizeConstraints struct {
 	Title             string
 	Description       string
@@ -296,7 +294,6 @@ type DialogSizeConstraints struct {
 	StaticHeight      int
 }
 
-// CalculateDialogSize computes a sane width and height for a dialog based on terminal bounds and content needs.
 func CalculateDialogSize(constraints DialogSizeConstraints) (width int, height int) {
 	termWidth, termHeight, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil || termWidth <= 0 || termHeight <= 0 {
@@ -368,4 +365,18 @@ func calculateWrappedHeight(text string, maxLineWidth int) int {
 		height += (runes + maxLineWidth - 1) / maxLineWidth
 	}
 	return height
+}
+
+func ensureDialogCloseIsLast(options []*DialogOption) []*DialogOption {
+	closeIndex := slices.IndexFunc(options, func(option *DialogOption) bool {
+		return option != nil && option.Id == DialogCloseActionId
+	})
+	if closeIndex < 0 || closeIndex == len(options)-1 {
+		return options
+	}
+
+	closeOption := options[closeIndex]
+	result := slices.Delete(options, closeIndex, closeIndex+1)
+	result = append(result, closeOption)
+	return result
 }
