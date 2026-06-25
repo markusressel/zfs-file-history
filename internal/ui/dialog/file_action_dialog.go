@@ -21,7 +21,12 @@ const (
 	FileDialogCreateSnapshotDialogActionId
 )
 
-func NewFileActionDialog(application *tview.Application, file *data.FileBrowserEntry) *SelectionDialog {
+func NewFileActionDialog(
+	application *tview.Application,
+	file *data.FileBrowserEntry,
+	handler func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	dialogOptions := buildFileDialogOptions(file, DiffBinExists())
 
 	return NewSelectionDialog(
@@ -30,6 +35,8 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 		localization.LocalizationSelectActionDialogTitle,
 		fmt.Sprintf("What do you want to do with '%s'?", file.Name),
 		dialogOptions,
+		handler,
+		onComplete,
 	)
 }
 

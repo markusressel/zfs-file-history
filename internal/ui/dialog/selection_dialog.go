@@ -21,16 +21,20 @@ type SelectionDialog struct {
 	isRunning   bool
 
 	// Handlers for exclusive async execution
-	handler    func(DialogActionId) error
-	onComplete func(option *DialogOption, err error)
+	handler    func(d *SelectionDialog, action DialogActionId) error
+	onComplete func(d *SelectionDialog, option *DialogOption, err error)
 }
 
+// handler - The background execution logic to be executed when the user selects an option.
+// onComplete - The callback to be executed on the UI thread after the background execution completes.
 func NewSelectionDialog(
 	application *tview.Application,
 	name string,
 	title string,
 	description string,
 	options []*DialogOption,
+	handler func(dialog *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
 ) *SelectionDialog {
 	d := &SelectionDialog{
 		application:   application,
@@ -39,18 +43,10 @@ func NewSelectionDialog(
 		description:   description,
 		options:       options,
 		actionChannel: make(chan DialogActionId),
+		handler:       handler,
+		onComplete:    onComplete,
 	}
 	d.createLayout()
-	return d
-}
-
-// SetHandler configures the background execution logic and UI completion callback.
-func (d *SelectionDialog) SetHandler(
-	handler func(DialogActionId) error,
-	onComplete func(option *DialogOption, err error),
-) *SelectionDialog {
-	d.handler = handler
-	d.onComplete = onComplete
 	return d
 }
 
@@ -137,12 +133,12 @@ func (d *SelectionDialog) selectAction(option *DialogOption) {
 		d.ShowLoading(option)
 
 		go func() {
-			err := d.handler(option.Id)
+			err := d.handler(d, option.Id)
 
 			d.application.QueueUpdateDraw(func() {
 				d.StopLoading()
 				if d.onComplete != nil {
-					d.onComplete(option, err)
+					d.onComplete(d, option, err)
 				}
 			})
 		}()

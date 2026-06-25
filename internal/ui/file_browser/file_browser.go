@@ -431,10 +431,9 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	if selection == nil {
 		return
 	}
-	actionDialog := dialog.NewFileActionDialog(fileBrowser.application, selection)
 
 	// 1. Define the blocking work
-	asyncWork := func(action dialog.DialogActionId) error {
+	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
 		case dialog.FileDialogShowDiffActionId:
 			return fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
@@ -451,11 +450,10 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	}
 
 	// 2. Define the UI updates after the work finishes
-	onComplete := func(option *dialog.DialogOption, err error) {
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		fileBrowser.Refresh(false)
 
-		// Trigger the channel to unmount the current modal
-		actionDialog.Close()
+		d.Close()
 
 		// Automatically show the generic error dialog if something failed
 		if err != nil {
@@ -471,7 +469,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		}
 	}
 
-	actionDialog.SetHandler(asyncWork, onComplete)
+	actionDialog := dialog.NewFileActionDialog(fileBrowser.application, selection, asyncWork, onComplete)
 	fileBrowser.showDialog(actionDialog, nil)
 }
 
@@ -479,21 +477,18 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 	if selection == nil || !selection.HasReal() {
 		return
 	}
-	deleteDialog := dialog.NewDeleteFileDialog(fileBrowser.application, selection)
 
 	// 1. The blocking background work
-	asyncWork := func(action dialog.DialogActionId) error {
+	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		if action == dialog.DeleteFileDialogDeleteFileActionId {
-			// Note: If your delete() function doesn't return an error,
-			// just call it and return nil.
 			return fileBrowser.delete(selection)
 		}
 		return nil
 	}
 
 	// 2. The main-thread UI update
-	onComplete := func(option *dialog.DialogOption, err error) {
-		deleteDialog.Close() // Unmount the selection dialog
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		d.Close() // Unmount the selection dialog
 
 		if err != nil {
 			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Delete Failed", err)
@@ -504,28 +499,19 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 		}
 	}
 
-	deleteDialog.SetHandler(asyncWork, onComplete)
+	deleteDialog := dialog.NewDeleteFileDialog(fileBrowser.application, selection, asyncWork, onComplete)
 	fileBrowser.showDialog(deleteDialog, nil) // nil for the onUpdate callback
 }
 func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileBrowserEntry) {
 	if selection == nil || !selection.HasSnapshot() {
 		return
 	}
-	restoreDialog := dialog.NewRestoreFileDialog(fileBrowser.application, selection)
-
-	var chosenAction dialog.DialogActionId
-
-	// 1. Capture the intent (finishes instantly)
-	asyncWork := func(action dialog.DialogActionId) error {
-		chosenAction = action
-		return nil
-	}
 
 	// 2. Safely trigger the next UI state on the main thread
-	onComplete := func(option *dialog.DialogOption, err error) {
-		restoreDialog.Close() // Close the selection menu
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		d.Close() // Close the selection menu
 
-		switch chosenAction {
+		switch option.Id {
 		case dialog.RestoreFileDialogRestoreFileActionId:
 			fileBrowser.runRestoreFileAction(selection, false)
 		case dialog.RestoreFileDialogRestoreRecursiveActionId:
@@ -533,7 +519,7 @@ func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileB
 		}
 	}
 
-	restoreDialog.SetHandler(asyncWork, onComplete)
+	restoreDialog := dialog.NewRestoreFileDialog(fileBrowser.application, selection, nil, onComplete)
 	fileBrowser.showDialog(restoreDialog, nil)
 }
 

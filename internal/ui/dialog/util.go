@@ -223,18 +223,19 @@ func ShowDialogOnPages(
 	go func() {
 		for {
 			action := <-d.GetActionChannel()
-			// The channel's only job now is signaling the lifecycle (close)
 			if action == DialogCloseActionId {
 				application.QueueUpdateDraw(func() {
 					pages.RemovePage(d.GetName())
-					if previousFocus != nil {
+
+					if layout.HasFocus() && previousFocus != nil {
 						application.SetFocus(previousFocus)
 					}
+
 					if onUpdate != nil {
 						onUpdate()
 					}
 				})
-				return // Kill the listener goroutine when dialog unmounts
+				return
 			}
 		}
 	}()

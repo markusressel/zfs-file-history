@@ -19,6 +19,8 @@ func NewSuccessDialog(application *tview.Application, title string, message stri
 				Name: "OK",
 			},
 		},
+		nil,
+		nil,
 	)
 }
 
@@ -36,5 +38,7 @@ func NewErrorDialog(application *tview.Application, title string, err error) *Se
 				Severity: DialogSeverityDanger, // Assuming this makes it red based on your theme
 			},
 		},
+		nil,
+		nil,
 	)
 }

@@ -14,12 +14,19 @@ const (
 	DeleteSnapshotDialogDeleteSnapshotActionId DialogActionId = iota
 )
 
-func NewDeleteSnapshotDialog(application *tview.Application, snapshot *data.SnapshotBrowserEntry) *SelectionDialog {
+func NewDeleteSnapshotDialog(
+	application *tview.Application,
+	snapshot *data.SnapshotBrowserEntry,
+	asyncWork func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	return NewSelectionDialog(
 		application,
 		string(DeleteSnapshotDialogPage),
 		" 💥 Destroy Snapshot ",
 		fmt.Sprintf("Destroy '%s'?", snapshot.Snapshot.Name),
 		buildConfirmDialogOptions(DeleteSnapshotDialogDeleteSnapshotActionId, "Destroy", true, DialogSeverityDanger),
+		asyncWork,
+		onComplete,
 	)
 }
