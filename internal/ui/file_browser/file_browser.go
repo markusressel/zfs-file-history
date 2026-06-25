@@ -686,7 +686,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 //     now within the maxWidth. If it is, the process stops and the new path is
 //     returned.
 //  4. If the path is still too long after attempting to shorten all components,
-//     it falls back to simple truncation from the left, prepending "..." to
+//     it falls back to simple truncation from the left, prepending "…" to
 //     the end of the path that fits the maxWidth.
 //
 // This ensures that the most important part of the path (the end) is preserved
@@ -701,8 +701,8 @@ func (fileBrowser *FileBrowserComponent) truncatePath(path string, maxWidth int)
 
 	if len(parts) <= 1 {
 		runes := []rune(path)
-		if len(runes) > maxWidth && maxWidth > 3 {
-			return "..." + string(runes[len(runes)-maxWidth+3:])
+		if len(runes) > maxWidth && maxWidth > 1 {
+			return "…" + string(runes[len(runes)-maxWidth+1:])
 		}
 		return path
 	}
@@ -726,8 +726,8 @@ func (fileBrowser *FileBrowserComponent) truncatePath(path string, maxWidth int)
 	// If still too long, truncate the resulting path with ellipsis at the beginning
 	finalPath := strings.Join(parts, separator)
 	finalRunes := []rune(finalPath)
-	if len(finalRunes) > maxWidth && maxWidth > 3 {
-		return "..." + string(finalRunes[len(finalRunes)-maxWidth+3:])
+	if len(finalRunes) > maxWidth && maxWidth > 1 {
+		return "…" + string(finalRunes[len(finalRunes)-maxWidth+1:])
 	}
 
 	return finalPath
