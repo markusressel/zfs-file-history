@@ -459,13 +459,6 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		if err != nil {
 			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Action Failed", err)
 			fileBrowser.showDialog(errDialog, nil)
-		} else {
-			successDialog := dialog.NewSuccessDialog(
-				fileBrowser.application,
-				fmt.Sprintf("Action '%s' Completed", option.Name),
-				"The action completed successfully.",
-			)
-			fileBrowser.showDialog(successDialog, nil)
 		}
 	}
 
