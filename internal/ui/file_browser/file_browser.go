@@ -673,6 +673,24 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	}()
 }
 
+// truncatePath shortens a file path string to fit within a given maximum width,
+// using ellipses to indicate truncation. It uses a multi-stage strategy to
+// create a readable, shortened path.
+//
+// The process is as follows:
+//  1. If the path is already within the maxWidth, it is returned unmodified.
+//  2. It splits the path into its components (directories/file).
+//  3. It iteratively shortens each path component (except the last one) to its
+//     first character followed by an ellipsis (e.g., "directory" becomes "d…").
+//     After each component is shortened, it checks if the total path length is
+//     now within the maxWidth. If it is, the process stops and the new path is
+//     returned.
+//  4. If the path is still too long after attempting to shorten all components,
+//     it falls back to simple truncation from the left, prepending "..." to
+//     the end of the path that fits the maxWidth.
+//
+// This ensures that the most important part of the path (the end) is preserved
+// as much as possible, while providing context about the parent directories.
 func (fileBrowser *FileBrowserComponent) truncatePath(path string, maxWidth int) string {
 	if len([]rune(path)) <= maxWidth {
 		return path
