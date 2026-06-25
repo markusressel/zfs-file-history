@@ -21,7 +21,5 @@ func NewDeleteSnapshotDialog(application *tview.Application, snapshot *data.Snap
 		" 💥 Destroy Snapshot ",
 		fmt.Sprintf("Destroy '%s'?", snapshot.Snapshot.Name),
 		buildConfirmDialogOptions(DeleteSnapshotDialogDeleteSnapshotActionId, "Destroy", true, DialogSeverityDanger),
-		50,
-		6,
 	)
 }

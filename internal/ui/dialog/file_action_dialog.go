@@ -30,8 +30,6 @@ func NewFileActionDialog(application *tview.Application, file *data.FileBrowserE
 		localization.LocalizationSelectActionDialogTitle,
 		fmt.Sprintf("What do you want to do with '%s'?", file.Name),
 		dialogOptions,
-		50,
-		15,
 	)
 }
 

@@ -22,7 +22,5 @@ func NewDeleteFileDialog(application *tview.Application, file *data.FileBrowserE
 		" 🗑️ Delete File ",
 		fmt.Sprintf("Delete '%s'?", file.Name),
 		buildConfirmDialogOptions(DeleteFileDialogDeleteFileActionId, localization.LocalizationCommonDelete, file.HasReal(), DialogSeverityDanger),
-		50,
-		6,
 	)
 }
