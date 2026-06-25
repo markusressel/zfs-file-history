@@ -41,6 +41,8 @@ type SnapshotBrowserComponent struct {
 
 	isRestoringSelection bool
 
+	selectLatestOnNextLoad bool
+
 	diffLoader *uiutil.DebouncedLoader
 }
 
@@ -138,6 +140,11 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 			snapshotBrowser.hostDataset = result.dataset
 			snapshotBrowser.currentSnapshots = result.snapshots
 			snapshotBrowser.updateCurrentSnapshotEntries(true)
+
+			if snapshotBrowser.selectLatestOnNextLoad {
+				snapshotBrowser.SelectLatest()
+				snapshotBrowser.selectLatestOnNextLoad = false
+			}
 
 			// ALWAYS emit the event after a load to ensure all components (like FileBrowser)
 			// are synced with the latest selection, even if logically it's the same path.
@@ -585,7 +592,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		// Handle downstream states depending on what succeeded
 		switch option.Id {
 		case dialog.SnapshotDialogCreateSnapshotActionId:
-			snapshotBrowser.SelectLatest()
+			snapshotBrowser.selectLatestOnNextLoad = true
 			snapshotBrowser.emit(SnapshotCreated{
 				SnapshotName: createdName,
 			})
@@ -597,6 +604,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			successDialog := dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshot Destroyed", fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name))
 			snapshotBrowser.showDialog(successDialog, nil)
 		}
+
+		snapshotBrowser.Refresh(true)
 	}
 
 	actionDialog := dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection, asyncWork, onComplete)
@@ -707,18 +716,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.Snap
 	if err != nil {
 		return "", err
 	}
-	snapshotBrowser.Refresh(true)
 	return name, nil
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.SnapshotBrowserEntry, recursive bool, dependantClones bool) (err error) {
 	snapshot := entry.Snapshot
-	err = snapshot.Destroy(recursive, dependantClones)
-	if err != nil {
-		return err
-	}
-	snapshotBrowser.Refresh(true)
-	return nil
+	return snapshot.Destroy(recursive, dependantClones)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
