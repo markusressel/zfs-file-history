@@ -225,11 +225,11 @@ func ShowDialogOnPages(
 			action := <-d.GetActionChannel()
 			if action == DialogCloseActionId {
 				application.QueueUpdateDraw(func() {
-					pages.RemovePage(d.GetName())
-
 					if layout.HasFocus() && previousFocus != nil {
 						application.SetFocus(previousFocus)
 					}
+
+					pages.RemovePage(d.GetName())
 
 					if onClosed != nil {
 						onClosed()
