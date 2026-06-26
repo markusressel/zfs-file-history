@@ -54,6 +54,7 @@ type FileHistoryOverlay struct {
 	currentRawDiff       string
 	copyShortcutLabel    string
 	rightLayoutContainer *uiutil.LoadingContainer
+	loadingView          *uiutil.LoadingView
 }
 
 var (
@@ -124,9 +125,8 @@ func NewFileHistoryOverlay(
 		overlay.rightLayoutContainer.SetMessage("Calculating diff...")
 	})
 
-	// Show loading immediately
-	overlay.rightLayoutContainer.SetIsLoading(true)
-	overlay.rightLayoutContainer.SetMessage("Finding dataset snapshots...")
+	// Start initial loading animation
+	overlay.loadingView.Start()
 
 	// Load host dataset and scan snapshots in background
 	overlay.scanHistoryAsync()
@@ -275,8 +275,12 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 	overlayContent.AddItem(o.shortcutHelp.GetLayout(), 1, 0, false)
 	overlayContent.SetBorderPadding(0, 0, 1, 1)
 
+	o.loadingView = uiutil.NewLoadingView(o.application, "", "Finding dataset snapshots...")
+	o.loadingView.SetBorder(false)
+
 	o.pages = tview.NewPages().
-		AddPage("history-main", overlayContent, true, true)
+		AddPage("history-main", overlayContent, true, false).
+		AddPage("history-loading", o.loadingView, true, true)
 
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
@@ -423,6 +427,9 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 		if err != nil {
 			logging.Error("Failed to find host dataset for %s: %s", filePath, err.Error())
 			o.application.QueueUpdate(func() {
+				o.loadingView.Stop()
+				o.pages.HidePage("history-loading")
+				o.pages.ShowPage("history-main")
 				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync(fmt.Sprintf("Failed to load dataset: %s", err.Error()))
 			})
@@ -433,6 +440,9 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 		if err != nil {
 			logging.Error("Failed to get snapshots for dataset %s: %s", ds.Path, err.Error())
 			o.application.QueueUpdate(func() {
+				o.loadingView.Stop()
+				o.pages.HidePage("history-loading")
+				o.pages.ShowPage("history-main")
 				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync(fmt.Sprintf("Failed to load snapshots: %s", err.Error()))
 			})
@@ -440,7 +450,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 		}
 
 		o.application.QueueUpdate(func() {
-			o.rightLayoutContainer.SetMessage("Scanning snapshot history for changes...")
+			o.loadingView.SetMessage("Scanning snapshot history for changes...")
 		})
 
 		slices.SortFunc(snapshots, func(a, b *zfs.Snapshot) int {
@@ -474,8 +484,12 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 				o.currentSelection = history[0]
 				o.updateDiff()
 			} else {
+				o.loadingView.Stop()
+				o.pages.HidePage("history-loading")
+				o.pages.ShowPage("history-main")
 				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync("No snapshot changes found for this file.")
+				o.application.SetFocus(o.tableContainer.GetLayout())
 			}
 		})
 	}()
@@ -738,6 +752,14 @@ func (o *FileHistoryOverlay) updateDiff() {
 				o.diffView.ScrollToBeginning()
 			}
 			o.rightLayoutContainer.SetIsLoading(false)
+
+			frontPage, _ := o.pages.GetFrontPage()
+			if frontPage == "history-loading" {
+				o.loadingView.Stop()
+				o.pages.HidePage("history-loading")
+				o.pages.ShowPage("history-main")
+				o.application.SetFocus(o.tableContainer.GetLayout())
+			}
 		})
 	}()
 }
