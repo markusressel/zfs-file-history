@@ -26,13 +26,13 @@ func TestTruncatePath(t *testing.T) {
 			name:     "Long path, shorten components",
 			path:     "/home/markus/projects/zfs-file-history",
 			maxWidth: 25,
-			want:     "...m…/p…/zfs-file-history",
+			want:     "……/m…/p…/zfs-file-history",
 		},
 		{
 			name:     "Very long path, shorten components and ellipsis",
 			path:     "/home/markus/projects/zfs-file-history",
 			maxWidth: 15,
-			want:     "...file-history",
+			want:     "…s-file-history",
 		},
 		{
 			name:     "Long path, shortening fits exactly",
@@ -44,7 +44,7 @@ func TestTruncatePath(t *testing.T) {
 			name:     "Path with empty components (leading slash)",
 			path:     "/a/b/c/d/e/f/g/h",
 			maxWidth: 10,
-			want:     "...e/f/g/h",
+			want:     "…d/e/f/g/h",
 		},
 	}
 

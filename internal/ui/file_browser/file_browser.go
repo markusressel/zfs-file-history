@@ -426,71 +426,91 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 		fileBrowser.Refresh(false)
 	}
 }
-
 func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBrowserEntry) {
 	if selection == nil {
 		return
 	}
-	actionDialogLayout := dialog.NewFileActionDialog(fileBrowser.application, selection)
-	actionHandler := func(action dialog.DialogActionId) bool {
+
+	// 1. Define the blocking work
+	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
 		case dialog.FileDialogShowDiffActionId:
-			fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
-			return true
+			return fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
 		case dialog.FileDialogCreateSnapshotDialogActionId:
-			fileBrowser.createSnapshot(selection)
-			return true
+			return fileBrowser.createSnapshot(selection)
 		case dialog.FileDialogRestoreRecursiveDialogActionId:
-			fileBrowser.runRestoreFileAction(selection, true)
-			return true
+			return fileBrowser.runRestoreFileAction(selection, true)
 		case dialog.FileDialogRestoreFileActionId:
-			fileBrowser.runRestoreFileAction(selection, false)
-			return true
+			return fileBrowser.runRestoreFileAction(selection, false)
 		case dialog.FileDialogDeleteDialogActionId:
-			fileBrowser.delete(selection)
-			return true
-		default:
-			return false
+			return fileBrowser.delete(selection)
+		}
+		return nil
+	}
+
+	// 2. Define the UI updates after the work finishes
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		fileBrowser.Refresh(false)
+		d.Close()
+
+		if err != nil {
+			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Action Failed", err)
+			fileBrowser.showDialog(errDialog, nil)
 		}
 	}
-	fileBrowser.showDialog(actionDialogLayout, actionHandler)
+
+	actionDialog := dialog.NewFileActionDialog(fileBrowser.application, selection, asyncWork, onComplete)
+	fileBrowser.showDialog(actionDialog, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBrowserEntry) {
 	if selection == nil || !selection.HasReal() {
 		return
 	}
-	deleteDialogLayout := dialog.NewDeleteFileDialog(fileBrowser.application, selection)
-	deleteHandler := func(action dialog.DialogActionId) bool {
-		switch action {
-		case dialog.DeleteFileDialogDeleteFileActionId:
-			fileBrowser.delete(selection)
-			return true
-		default:
-			return false
+
+	// 1. The blocking background work
+	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
+		if action == dialog.DeleteFileDialogDeleteFileActionId {
+			return fileBrowser.delete(selection)
+		}
+		return nil
+	}
+
+	// 2. The main-thread UI update
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		d.Close() // Unmount the selection dialog
+
+		if err != nil {
+			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Delete Failed", err)
+			fileBrowser.showDialog(errDialog, nil)
+		} else {
+			// Refresh the UI once the file is deleted
+			fileBrowser.Refresh(false)
 		}
 	}
-	fileBrowser.showDialog(deleteDialogLayout, deleteHandler)
-}
 
+	deleteDialog := dialog.NewDeleteFileDialog(fileBrowser.application, selection, asyncWork, onComplete)
+	fileBrowser.showDialog(deleteDialog, nil) // nil for the onUpdate callback
+}
 func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileBrowserEntry) {
 	if selection == nil || !selection.HasSnapshot() {
 		return
 	}
-	restoreDialogLayout := dialog.NewRestoreFileDialog(fileBrowser.application, selection)
-	restoreHandler := func(action dialog.DialogActionId) bool {
-		switch action {
+
+	// 2. Safely trigger the next UI state on the main thread
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		d.Close() // Close the selection menu
+
+		switch option.Id {
 		case dialog.RestoreFileDialogRestoreFileActionId:
 			fileBrowser.runRestoreFileAction(selection, false)
-			return true
 		case dialog.RestoreFileDialogRestoreRecursiveActionId:
 			fileBrowser.runRestoreFileAction(selection, true)
-			return true
-		default:
-			return false
 		}
 	}
-	fileBrowser.showDialog(restoreDialogLayout, restoreHandler)
+
+	restoreDialog := dialog.NewRestoreFileDialog(fileBrowser.application, selection, nil, onComplete)
+	fileBrowser.showDialog(restoreDialog, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
@@ -650,6 +670,24 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	}()
 }
 
+// truncatePath shortens a file path string to fit within a given maximum width,
+// using ellipses to indicate truncation. It uses a multi-stage strategy to
+// create a readable, shortened path.
+//
+// The process is as follows:
+//  1. If the path is already within the maxWidth, it is returned unmodified.
+//  2. It splits the path into its components (directories/file).
+//  3. It iteratively shortens each path component (except the last one) to its
+//     first character followed by an ellipsis (e.g., "directory" becomes "d…").
+//     After each component is shortened, it checks if the total path length is
+//     now within the maxWidth. If it is, the process stops and the new path is
+//     returned.
+//  4. If the path is still too long after attempting to shorten all components,
+//     it falls back to simple truncation from the left, prepending "…" to
+//     the end of the path that fits the maxWidth.
+//
+// This ensures that the most important part of the path (the end) is preserved
+// as much as possible, while providing context about the parent directories.
 func (fileBrowser *FileBrowserComponent) truncatePath(path string, maxWidth int) string {
 	if len([]rune(path)) <= maxWidth {
 		return path
@@ -660,8 +698,8 @@ func (fileBrowser *FileBrowserComponent) truncatePath(path string, maxWidth int)
 
 	if len(parts) <= 1 {
 		runes := []rune(path)
-		if len(runes) > maxWidth && maxWidth > 3 {
-			return "..." + string(runes[len(runes)-maxWidth+3:])
+		if len(runes) > maxWidth && maxWidth > 1 {
+			return "…" + string(runes[len(runes)-maxWidth+1:])
 		}
 		return path
 	}
@@ -685,8 +723,8 @@ func (fileBrowser *FileBrowserComponent) truncatePath(path string, maxWidth int)
 	// If still too long, truncate the resulting path with ellipsis at the beginning
 	finalPath := strings.Join(parts, separator)
 	finalRunes := []rune(finalPath)
-	if len(finalRunes) > maxWidth && maxWidth > 3 {
-		return "..." + string(finalRunes[len(finalRunes)-maxWidth+3:])
+	if len(finalRunes) > maxWidth && maxWidth > 1 {
+		return "…" + string(finalRunes[len(finalRunes)-maxWidth+1:])
 	}
 
 	return finalPath
@@ -783,8 +821,8 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.layout.HasFocus()
 }
 
-func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, actionHandler func(action dialog.DialogActionId) bool) {
-	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, actionHandler, nil)
+func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
+	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, onClosed)
 }
 
 func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
@@ -799,9 +837,7 @@ func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
 			fileBrowser.tableContainer.SetActiveColumns(activeColumns)
 		},
 	)
-	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
-		return false
-	})
+	fileBrowser.showDialog(d, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
@@ -815,20 +851,20 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 	}
 }
 
-func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) {
+func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) error {
 	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
-	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
-		switch action {
-		case dialog.DialogCloseActionId:
-			fileBrowser.Refresh(false)
-		}
-		return false
-	})
-}
 
-func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEntry, snapshot *data.SnapshotBrowserEntry) {
+	// Pass the refresh logic as the onUpdate callback.
+	// This will execute safely on the main thread after the dialog closes.
+	fileBrowser.showDialog(d, func() {
+		fileBrowser.Refresh(false)
+	})
+
+	return nil
+}
+func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEntry, snapshot *data.SnapshotBrowserEntry) error {
 	if selection == nil || snapshot == nil {
-		return
+		return fmt.Errorf("cannot show diff: selection or snapshot is nil")
 	}
 
 	realFilePath := selection.RealFile.Path
@@ -849,34 +885,37 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 
 		if editorConf != nil {
 			runExternalDiffEditor(fileBrowser.application, *editorConf, realFilePath, snapshotFilePath)
-			return
+			return nil
 		}
 	}
 
-	// Internal diff display (or fallback from external if no editor path)
-	d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
-	fileBrowser.showDialog(d, func(action dialog.DialogActionId) bool {
-		switch action {
-		case dialog.DialogCloseActionId:
+	// INTERNAL DIFF FALLBACK
+	// Because showDiff was called from asyncWork, we must push this UI creation
+	// back onto the main event loop to avoid breaking tview.
+	fileBrowser.application.QueueUpdateDraw(func() {
+		d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
+		fileBrowser.showDialog(d, func() {
 			fileBrowser.Refresh(false)
-		}
-		return false
+		})
 	})
+
+	return nil
 }
 
-func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) {
-	go func() {
-		path := entry.RealFile.Path
-		err := os.RemoveAll(path)
-		if err != nil {
-			fileBrowser.showError(err)
-		}
-	}()
+func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) error {
+	path := entry.RealFile.Path
+	err := os.RemoveAll(path)
+	if err != nil {
+		fileBrowser.showError(err)
+	}
+	return nil
 }
 
-func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) {
+func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) error {
 	snapshotName := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
+	// TODO: return error from this event chain, and probably not use an event here at all
 	fileBrowser.emit(CreateSnapshotEvent{snapshotName})
+	return nil
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {

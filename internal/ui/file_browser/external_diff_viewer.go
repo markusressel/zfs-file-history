@@ -116,7 +116,13 @@ func findEditorOption(path string, options []ExternalDiffViewerConfig) *External
 	}
 	return nil
 }
-func runExternalDiffEditor(application *tview.Application, editorConf ExternalDiffViewerConfig, snapshotFilePath string, realFilePath string) {
+
+func runExternalDiffEditor(
+	application *tview.Application,
+	editorConf ExternalDiffViewerConfig,
+	snapshotFilePath string,
+	realFilePath string,
+) {
 	var args []string
 	args = append(args, editorConf.Args...)
 	args = append(args, snapshotFilePath)
@@ -136,13 +142,28 @@ func runExternalDiffEditor(application *tview.Application, editorConf ExternalDi
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	application.Suspend(func() {
-		runErr := cmd.Run()
-		if runErr != nil {
-			logging.Error("Error running external diff editor: %v", runErr)
+	// Create a channel to pause the background asyncWork goroutine
+	done := make(chan struct{})
+
+	// Queue the suspension directly on the main tview event thread
+	// This ensures the tview event loop is paused and not fighting for stdin
+	application.QueueUpdate(func() {
+		suspended := application.Suspend(func() {
+			runErr := cmd.Run()
+			if runErr != nil {
+				logging.Error("Error running external diff editor: %v", runErr)
+			}
+		})
+
+		if !suspended {
+			logging.Error("Failed to suspend tview application for external diff editor")
 		}
+
+		// Signal the background thread that the editor has closed
+		close(done)
 	})
-	// After suspend, ensure the tview application redraws itself
-	application.Sync()
-	application.Draw()
+
+	// Wait here until the user quits the external editor.
+	// Once unblocked, asyncWork finishes and naturally triggers onComplete!
+	<-done
 }

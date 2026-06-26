@@ -20,23 +20,19 @@ func TestShowDialogOnPages(t *testing.T) {
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "Cancel"},
 	}
-	d := NewSelectionDialog(app, "test-dialog", "Title", "Desc", options)
+	d := NewSelectionDialog(app, "test-dialog", "Title", "Desc", options, nil, nil)
 
-	actionHandled := false
-	handler := func(action DialogActionId) bool {
-		if action == DialogCloseActionId {
-			actionHandled = true
-			return true
-		}
-		return false
+	onClosedCalled := false
+	onClosed := func() {
+		onClosedCalled = true
 	}
 
-	ShowDialogOnPages(app, pages, d, handler, nil)
+	ShowDialogOnPages(app, pages, d, onClosed)
 
 	assert.True(t, pages.HasPage("test-dialog"))
 
 	d.Close()
 
 	time.Sleep(50 * time.Millisecond)
-	assert.True(t, actionHandled)
+	assert.True(t, onClosedCalled)
 }

@@ -17,7 +17,12 @@ const (
 	MultiSnapshotDialogDestroySnapshotRecursivelyActionId
 )
 
-func NewMultiSnapshotActionDialog(application *tview.Application, snapshots []*data.SnapshotBrowserEntry) *SelectionDialog {
+func NewMultiSnapshotActionDialog(
+	application *tview.Application,
+	snapshots []*data.SnapshotBrowserEntry,
+	asyncWork func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	snapshotNames := make([]string, 0)
 	for _, snapshot := range snapshots {
 		snapshotNames = append(snapshotNames, snapshot.Snapshot.Name)
@@ -50,5 +55,7 @@ func NewMultiSnapshotActionDialog(application *tview.Application, snapshots []*d
 		localization.LocalizationSelectActionDialogTitle,
 		fmt.Sprintf("What do you want to do with '%v'?", snapshotNames),
 		dialogOptions,
+		asyncWork,
+		onComplete,
 	)
 }

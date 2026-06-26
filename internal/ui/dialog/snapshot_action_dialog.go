@@ -17,7 +17,12 @@ const (
 	SnapshotDialogDestroySnapshotRecursivelyActionId
 )
 
-func NewSnapshotActionDialog(application *tview.Application, snapshot *data.SnapshotBrowserEntry) *SelectionDialog {
+func NewSnapshotActionDialog(
+	application *tview.Application,
+	snapshot *data.SnapshotBrowserEntry,
+	asyncWork func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	dialogOptions := []*DialogOption{
 		{
 			Id:   SnapshotDialogCreateSnapshotActionId,
@@ -45,5 +50,7 @@ func NewSnapshotActionDialog(application *tview.Application, snapshot *data.Snap
 		localization.LocalizationSelectActionDialogTitle,
 		fmt.Sprintf("What do you want to do with '%s'?", snapshot.Snapshot.Name),
 		dialogOptions,
+		asyncWork,
+		onComplete,
 	)
 }

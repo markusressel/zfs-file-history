@@ -15,12 +15,19 @@ const (
 	DeleteFileDialogDeleteFileActionId DialogActionId = iota
 )
 
-func NewDeleteFileDialog(application *tview.Application, file *data.FileBrowserEntry) *SelectionDialog {
+func NewDeleteFileDialog(
+	application *tview.Application,
+	file *data.FileBrowserEntry,
+	handler func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	return NewSelectionDialog(
 		application,
 		string(DeleteFileDialogPage),
 		" 🗑️ Delete File ",
 		fmt.Sprintf("Delete '%s'?", file.Name),
 		buildConfirmDialogOptions(DeleteFileDialogDeleteFileActionId, localization.LocalizationCommonDelete, file.HasReal(), DialogSeverityDanger),
+		handler,
+		onComplete,
 	)
 }

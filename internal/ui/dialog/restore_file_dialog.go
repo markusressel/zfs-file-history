@@ -17,13 +17,20 @@ const (
 	RestoreFileDialogRestoreRecursiveActionId
 )
 
-func NewRestoreFileDialog(application *tview.Application, file *data.FileBrowserEntry) *SelectionDialog {
+func NewRestoreFileDialog(
+	application *tview.Application,
+	file *data.FileBrowserEntry,
+	asyncWork func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	return NewSelectionDialog(
 		application,
 		string(RestoreFileDialogPage),
 		" ♻️ Restore File ",
 		fmt.Sprintf("Restore '%s'?", file.Name),
 		buildRestoreDialogOptions(file),
+		asyncWork,
+		onComplete,
 	)
 }
 
