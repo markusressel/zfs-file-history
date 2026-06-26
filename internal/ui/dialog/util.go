@@ -257,7 +257,7 @@ func ShowDialogOnPages(
 		currentFocus := application.GetFocus()
 		if currentFocus != nil && layout.HasFocus() {
 			switch currentFocus.(type) {
-			case *tview.Table, *tview.InputField:
+			case *tview.Table, *tview.InputField, *tview.TextView, *tview.TextArea:
 				lastValidFocus = currentFocus
 			}
 		}
@@ -270,7 +270,7 @@ func ShowDialogOnPages(
 					isLeaf := false
 					if newFocus != nil {
 						switch newFocus.(type) {
-						case *tview.Table, *tview.InputField:
+						case *tview.Table, *tview.InputField, *tview.TextView, *tview.TextArea:
 							isLeaf = true
 						}
 					}

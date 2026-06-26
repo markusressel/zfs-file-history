@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
@@ -47,9 +48,11 @@ type FileHistoryOverlay struct {
 	rightLayout    *tview.Flex
 	shortcutHelp   *shortcut_helper.ShortcutMapComponent
 
-	currentSelection *data.SnapshotBrowserEntry
-	currentDiffMode  diffMode
-	diffLoader       *uiutil.DebouncedLoader
+	currentSelection  *data.SnapshotBrowserEntry
+	currentDiffMode   diffMode
+	diffLoader        *uiutil.DebouncedLoader
+	currentRawDiff    string
+	copyShortcutLabel string
 }
 
 var (
@@ -308,6 +311,11 @@ func (o *FileHistoryOverlay) setupInputCaptures() {
 			return nil
 		}
 
+		if runeChar == 'c' || runeChar == 'C' {
+			o.copyDiffToClipboard()
+			return nil
+		}
+
 		if key == tcell.KeyEnter {
 			o.restoreSelectedVersion()
 			return nil
@@ -336,16 +344,27 @@ func (o *FileHistoryOverlay) setupInputCaptures() {
 			return nil
 		}
 
+		if runeChar == 'c' || runeChar == 'C' {
+			o.copyDiffToClipboard()
+			return nil
+		}
+
 		return event
 	})
 }
 
 func (o *FileHistoryOverlay) updateShortcuts() {
 	var entries []shortcut_helper.ShortcutEntry
+	copyLabel := o.copyShortcutLabel
+	if copyLabel == "" {
+		copyLabel = "Copy diff"
+	}
+
 	if o.tableContainer.HasFocus() {
 		entries = []shortcut_helper.ShortcutEntry{
 			{KeyCombo: []string{"⭾"}, Name: "Focus Diff"},
 			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
+			{KeyCombo: []string{"c"}, Name: copyLabel},
 			{KeyCombo: []string{"Enter"}, Name: "Restore version"},
 			{KeyCombo: []string{"Esc"}, Name: "Close history"},
 		}
@@ -353,6 +372,7 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 		entries = []shortcut_helper.ShortcutEntry{
 			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Focus List"},
 			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
+			{KeyCombo: []string{"c"}, Name: copyLabel},
 			{KeyCombo: []string{"Esc"}, Name: "Close history"},
 		}
 	}
@@ -382,6 +402,7 @@ func (o *FileHistoryOverlay) toggleDiffMode() {
 }
 
 func (o *FileHistoryOverlay) renderDiffTextSync(text string) {
+	o.currentRawDiff = text
 	o.diffView.Clear()
 	o.diffView.SetText(text)
 }
@@ -674,6 +695,8 @@ func (o *FileHistoryOverlay) updateDiff() {
 
 		metaText := o.getMetadataComparisonText(oldPath, newPath)
 
+		rawDiff := diffText
+
 		diffTextLines := strings.Split(diffText, "\n")
 		for i := 0; i < len(diffTextLines); i++ {
 			line := diffTextLines[i]
@@ -689,6 +712,7 @@ func (o *FileHistoryOverlay) updateDiff() {
 			if !o.diffLoader.IsCurrentSequence(seq) {
 				return
 			}
+			o.currentRawDiff = rawDiff
 			o.metadataView.Clear()
 			o.metadataView.SetText(metaText)
 
@@ -755,4 +779,24 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 
 	restoreDialog := NewRestoreFileDialog(o.application, restoreEntry, nil, onComplete)
 	ShowDialogOnPages(o.application, o.pages, restoreDialog, nil)
+}
+
+func (o *FileHistoryOverlay) copyDiffToClipboard() {
+	if o.currentRawDiff == "" {
+		return
+	}
+	err := uiutil.CopyToClipboard(o.currentRawDiff)
+	if err != nil {
+		errDialog := NewErrorDialog(o.application, "Copy Failed", err)
+		ShowDialogOnPages(o.application, o.pages, errDialog, nil)
+	} else {
+		o.copyShortcutLabel = "Copied!"
+		o.updateShortcuts()
+		time.AfterFunc(2*time.Second, func() {
+			o.application.QueueUpdate(func() {
+				o.copyShortcutLabel = ""
+				o.updateShortcuts()
+			})
+		})
+	}
 }
