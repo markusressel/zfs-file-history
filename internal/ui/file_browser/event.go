@@ -40,3 +40,9 @@ type SelectedTableEntryChangedEvent struct {
 }
 
 func (SelectedTableEntryChangedEvent) isFileBrowserEvent() {}
+
+type RequestFileHistoryEvent struct {
+	FileEntry *data.FileBrowserEntry
+}
+
+func (RequestFileHistoryEvent) isFileBrowserEvent() {}

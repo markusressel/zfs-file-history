@@ -179,6 +179,12 @@ func (fileBrowser *FileBrowserComponent) setupTable() {
 			case key == tcell.KeyDelete:
 				openDeleteDialogOnCurrentSelection(fileBrowser)
 				return nil
+			case event.Rune() == 'h' || event.Rune() == 'H':
+				selection := fileBrowser.GetSelection()
+				if selection != nil && selection.Type == data.File {
+					fileBrowser.emit(RequestFileHistoryEvent{FileEntry: selection})
+					return nil
+				}
 			}
 		}
 		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
@@ -456,6 +462,11 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		if err != nil {
 			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Action Failed", err)
 			fileBrowser.showDialog(errDialog, nil)
+			return
+		}
+
+		if option.Id == dialog.FileDialogShowHistoryActionId {
+			fileBrowser.emit(RequestFileHistoryEvent{FileEntry: selection})
 		}
 	}
 
@@ -969,6 +980,10 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 
 		if selection.HasReal() {
 			shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutDelete)
+		}
+
+		if selection.Type == data.File {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History"})
 		}
 
 		if selection.HasSnapshot() && selection.DiffState != diff_state.Equal {

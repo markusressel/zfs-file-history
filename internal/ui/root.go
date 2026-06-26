@@ -32,6 +32,8 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		AddPage(string(Main), mainPage.layout, true, true).
 		AddPage(string(HelpDialog), helpPage.GetLayout(), true, false)
 
+	mainPage.SetPages(pagesLayout)
+
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// ignore events, if some other page is open
 		name, _ := pagesLayout.GetFrontPage()

@@ -5,6 +5,7 @@ import (
 	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
@@ -35,6 +36,7 @@ const (
 
 type MainPage struct {
 	application     *tview.Application
+	pages           *tview.Pages
 	header          *ApplicationHeaderComponent
 	shortcutMap     *shortcut_helper.ShortcutMapComponent
 	fileBrowser     *file_browser.FileBrowserComponent
@@ -86,6 +88,11 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			if fileBrowser.HasFocus() {
 				mainPage.updateShortcutMap(fileBrowser)
 			}
+		case file_browser.RequestFileHistoryEvent:
+			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry)
+			dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
+				mainPage.fileBrowser.Refresh(false)
+			})
 		}
 	})
 
@@ -413,4 +420,8 @@ func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY,
 		mainPage.infoLayout.ResizeItem(mainPage.datasetInfo.GetLayout(), 0, newTopHeight)
 		mainPage.infoLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, newBottomHeight)
 	}
+}
+
+func (mainPage *MainPage) SetPages(pages *tview.Pages) {
+	mainPage.pages = pages
 }

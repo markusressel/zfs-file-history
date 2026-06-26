@@ -24,8 +24,9 @@ func TestBuildFileDialogOptions_FileWithSnapshotAndDiff(t *testing.T) {
 	assert.Equal(t,
 		[]DialogActionId{
 			FileDialogCreateSnapshotDialogActionId,
-			FileDialogShowDiffActionId,
+			FileDialogShowHistoryActionId,
 			FileDialogRestoreFileActionId,
+			FileDialogShowDiffActionId,
 			FileDialogDeleteDialogActionId,
 			DialogCloseActionId,
 		},
@@ -49,8 +50,9 @@ func TestBuildFileDialogOptions_FileWithoutDiffBinary(t *testing.T) {
 	assert.Equal(t,
 		[]DialogActionId{
 			FileDialogCreateSnapshotDialogActionId,
-			FileDialogDeleteDialogActionId,
+			FileDialogShowHistoryActionId,
 			FileDialogRestoreFileActionId,
+			FileDialogDeleteDialogActionId,
 			DialogCloseActionId,
 		},
 		optionIds(options),
@@ -115,6 +117,7 @@ func TestBuildFileDialogOptions_DeletedFile_AlwaysHasCloseLast(t *testing.T) {
 	assert.Equal(t,
 		[]DialogActionId{
 			FileDialogCreateSnapshotDialogActionId,
+			FileDialogShowHistoryActionId,
 			FileDialogRestoreFileActionId,
 			DialogCloseActionId,
 		},
