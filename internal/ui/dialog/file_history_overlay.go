@@ -82,6 +82,7 @@ func NewFileHistoryOverlay(
 	}
 
 	overlay.tableContainer = overlay.createHistoryTable()
+	overlay.tableContainer.SetTitle(" Snapshots ")
 	overlay.diffView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
@@ -315,25 +316,18 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 	if o.tableContainer.HasFocus() {
 		entries = []shortcut_helper.ShortcutEntry{
 			{KeyCombo: []string{"⭾"}, Name: "Focus Diff"},
-			{KeyCombo: []string{"d"}, Name: fmt.Sprintf("Diff mode: %s", o.getDiffModeName())},
+			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
 			{KeyCombo: []string{"Enter"}, Name: "Restore version"},
 			{KeyCombo: []string{"Esc"}, Name: "Close history"},
 		}
 	} else {
 		entries = []shortcut_helper.ShortcutEntry{
 			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Focus List"},
-			{KeyCombo: []string{"d"}, Name: fmt.Sprintf("Diff mode: %s", o.getDiffModeName())},
+			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
 			{KeyCombo: []string{"Esc"}, Name: "Close history"},
 		}
 	}
 	o.shortcutHelp.SetEntries(entries)
-}
-
-func (o *FileHistoryOverlay) getDiffModeName() string {
-	if o.currentDiffMode == diffModePredecessor {
-		return "vs Predecessor"
-	}
-	return "vs Working Copy"
 }
 
 func (o *FileHistoryOverlay) toggleDiffMode() {
@@ -416,6 +410,66 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 	}()
 }
 
+func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) string {
+	var sb strings.Builder
+
+	oldStat, oldErr := os.Lstat(oldPath)
+	if oldPath == "/dev/null" {
+		oldErr = os.ErrNotExist
+	}
+	newStat, newErr := os.Lstat(newPath)
+	if newPath == "/dev/null" {
+		newErr = os.ErrNotExist
+	}
+
+	sb.WriteString("[yellow]METADATA COMPARISON:[white]\n")
+	sb.WriteString(strings.Repeat("-", 50) + "\n")
+
+	formatExists := func(exists bool) string {
+		if exists {
+			return "[green]Exists[white]"
+		}
+		return "[red]Missing[white]"
+	}
+
+	formatSize := func(s os.FileInfo, err error) string {
+		if err != nil {
+			return "N/A"
+		}
+		if s.IsDir() {
+			return "Directory"
+		}
+		return fmt.Sprintf("%d B", s.Size())
+	}
+
+	formatMode := func(s os.FileInfo, err error) string {
+		if err != nil {
+			return "N/A"
+		}
+		return s.Mode().String()
+	}
+
+	formatTime := func(s os.FileInfo, err error) string {
+		if err != nil {
+			return "N/A"
+		}
+		return s.ModTime().Format("2006-01-02 15:04:05")
+	}
+
+	oldExists := oldErr == nil && oldPath != "/dev/null"
+	newExists := newErr == nil && newPath != "/dev/null"
+
+	sb.WriteString(fmt.Sprintf("Presence:    %-25s ->  %s\n", formatExists(oldExists), formatExists(newExists)))
+	if oldExists || newExists {
+		sb.WriteString(fmt.Sprintf("Size:        %-25s ->  %s\n", formatSize(oldStat, oldErr), formatSize(newStat, newErr)))
+		sb.WriteString(fmt.Sprintf("Mode:        %-25s ->  %s\n", formatMode(oldStat, oldErr), formatMode(newStat, newErr)))
+		sb.WriteString(fmt.Sprintf("Mod Time:    %-25s ->  %s\n", formatTime(oldStat, oldErr), formatTime(newStat, newErr)))
+	}
+
+	sb.WriteString(strings.Repeat("-", 50) + "\n\n")
+	return sb.String()
+}
+
 func (o *FileHistoryOverlay) updateDiff() {
 	entry := o.currentSelection
 	if entry == nil {
@@ -446,19 +500,24 @@ func (o *FileHistoryOverlay) updateDiff() {
 		}
 
 		var diffText string
-		if diffMode == diffModeWorkingCopy {
-			realFilePath := filePath
-			snapshotFilePath := entry.Snapshot.GetSnapshotPath(filePath)
+		var oldPath string
+		var newPath string
+		var title string
 
-			_, err := os.Lstat(realFilePath)
+		if diffMode == diffModeWorkingCopy {
+			oldPath = filePath
+			newPath = entry.Snapshot.GetSnapshotPath(filePath)
+			title = fmt.Sprintf(" Changes (Working Copy -> Selected: %s) ", entry.Snapshot.Name)
+
+			_, err := os.Lstat(oldPath)
 			if os.IsNotExist(err) {
 				diffText = "Working copy file does not exist (deleted)."
 			} else {
 				output, err := exec.Command(
 					DiffBinPath,
 					"-U", "3",
-					snapshotFilePath,
-					realFilePath,
+					oldPath,
+					newPath,
 				).Output()
 				diffText = string(output)
 				if err != nil && err.Error() != "exit status 1" {
@@ -466,25 +525,31 @@ func (o *FileHistoryOverlay) updateDiff() {
 				}
 			}
 		} else {
-			snapshotFilePath := entry.Snapshot.GetSnapshotPath(filePath)
-			var prevPath string
+			newPath = entry.Snapshot.GetSnapshotPath(filePath)
 			if prevSnapshot != nil {
-				prevPath = prevSnapshot.GetSnapshotPath(filePath)
+				oldPath = prevSnapshot.GetSnapshotPath(filePath)
 			} else {
-				prevPath = "/dev/null"
+				oldPath = "/dev/null"
 			}
+			prevName := "/dev/null"
+			if prevSnapshot != nil {
+				prevName = prevSnapshot.Name
+			}
+			title = fmt.Sprintf(" Changes (%s -> Selected: %s) ", prevName, entry.Snapshot.Name)
 
 			output, err := exec.Command(
 				DiffBinPath,
 				"-U", "3",
-				prevPath,
-				snapshotFilePath,
+				oldPath,
+				newPath,
 			).Output()
 			diffText = string(output)
 			if err != nil && err.Error() != "exit status 1" {
 				diffText = "Error calculating diff: " + err.Error()
 			}
 		}
+
+		metaText := o.getMetadataComparisonText(oldPath, newPath)
 
 		diffTextLines := strings.Split(diffText, "\n")
 		for i := 0; i < len(diffTextLines); i++ {
@@ -501,8 +566,9 @@ func (o *FileHistoryOverlay) updateDiff() {
 			if !o.diffLoader.IsCurrentSequence(seq) {
 				return
 			}
+			o.diffView.SetTitle(title)
 			o.diffView.Clear()
-			o.diffView.SetText(diffText)
+			o.diffView.SetText(metaText + diffText)
 			o.diffView.ScrollToBeginning()
 		})
 	}()
