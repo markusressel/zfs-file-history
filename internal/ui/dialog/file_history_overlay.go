@@ -48,11 +48,12 @@ type FileHistoryOverlay struct {
 	rightLayout    *tview.Flex
 	shortcutHelp   *shortcut_helper.ShortcutMapComponent
 
-	currentSelection  *data.SnapshotBrowserEntry
-	currentDiffMode   diffMode
-	diffLoader        *uiutil.DebouncedLoader
-	currentRawDiff    string
-	copyShortcutLabel string
+	currentSelection     *data.SnapshotBrowserEntry
+	currentDiffMode      diffMode
+	diffLoader           *uiutil.DebouncedLoader
+	currentRawDiff       string
+	copyShortcutLabel    string
+	rightLayoutContainer *uiutil.LoadingContainer
 }
 
 var (
@@ -112,15 +113,20 @@ func NewFileHistoryOverlay(
 	overlay.diffView.SetBorder(true)
 	uiutil.SetupWindow(overlay.diffView, " Content ")
 
-	overlay.diffLoader = uiutil.NewDebouncedLoader(application, func() {
-		overlay.renderDiffTextSync("Calculating diff...")
-	})
-
 	overlay.shortcutHelp = shortcut_helper.NewShortcutMap(application)
 	overlay.updateShortcuts()
 
 	overlay.layout = overlay.createLayout()
 	overlay.setupInputCaptures()
+
+	overlay.diffLoader = uiutil.NewDebouncedLoader(application, func() {
+		overlay.rightLayoutContainer.SetIsLoading(true)
+		overlay.rightLayoutContainer.SetMessage("Calculating diff...")
+	})
+
+	// Show loading immediately
+	overlay.rightLayoutContainer.SetIsLoading(true)
+	overlay.rightLayoutContainer.SetMessage("Finding dataset snapshots...")
 
 	// Load host dataset and scan snapshots in background
 	overlay.scanHistoryAsync()
@@ -258,9 +264,11 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 	rightLayout.AddItem(o.diffView, 0, 1, false)
 	o.rightLayout = rightLayout
 
+	o.rightLayoutContainer = uiutil.NewLoadingContainer(o.application, rightLayout, " Changes ", "Loading...")
+
 	splitLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	splitLayout.AddItem(leftLayout, 0, 1, true)
-	splitLayout.AddItem(rightLayout, 0, 2, false)
+	splitLayout.AddItem(o.rightLayoutContainer, 0, 2, false)
 
 	overlayContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	overlayContent.AddItem(splitLayout, 0, 1, true)
@@ -408,8 +416,6 @@ func (o *FileHistoryOverlay) renderDiffTextSync(text string) {
 }
 
 func (o *FileHistoryOverlay) scanHistoryAsync() {
-	o.renderDiffTextSync("Finding dataset snapshots...")
-
 	filePath := o.file.RealFile.Path
 
 	go func() {
@@ -417,6 +423,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 		if err != nil {
 			logging.Error("Failed to find host dataset for %s: %s", filePath, err.Error())
 			o.application.QueueUpdate(func() {
+				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync(fmt.Sprintf("Failed to load dataset: %s", err.Error()))
 			})
 			return
@@ -426,13 +433,14 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 		if err != nil {
 			logging.Error("Failed to get snapshots for dataset %s: %s", ds.Path, err.Error())
 			o.application.QueueUpdate(func() {
+				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync(fmt.Sprintf("Failed to load snapshots: %s", err.Error()))
 			})
 			return
 		}
 
 		o.application.QueueUpdate(func() {
-			o.renderDiffTextSync("Scanning snapshot history for changes...")
+			o.rightLayoutContainer.SetMessage("Scanning snapshot history for changes...")
 		})
 
 		slices.SortFunc(snapshots, func(a, b *zfs.Snapshot) int {
@@ -466,6 +474,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 				o.currentSelection = history[0]
 				o.updateDiff()
 			} else {
+				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync("No snapshot changes found for this file.")
 			}
 		})
@@ -596,8 +605,6 @@ func (o *FileHistoryOverlay) updateDiff() {
 			prevSnapshot = o.historyEntries[index+1].Snapshot
 		}
 	}
-
-	o.renderDiffTextSync("Loading diff...")
 
 	go func() {
 		defer o.diffLoader.Stop(seq)
@@ -730,6 +737,7 @@ func (o *FileHistoryOverlay) updateDiff() {
 				o.diffView.SetText(diffText)
 				o.diffView.ScrollToBeginning()
 			}
+			o.rightLayoutContainer.SetIsLoading(false)
 		})
 	}()
 }
