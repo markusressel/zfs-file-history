@@ -177,6 +177,17 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	// Set mouse capture on the top-level layout to capture drags anywhere on the screen
 	mainPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if mainPage.pages != nil {
+			frontPage, _ := mainPage.pages.GetFrontPage()
+			if frontPage != string(Main) {
+				// Reset any active hover/drag states
+				mainPage.isDragging = false
+				mainPage.dragType = dragNone
+				mainPage.hoveredBoundary = boundaryNone
+				return tview.MouseConsumed, nil
+			}
+		}
+
 		mouseX, mouseY := event.Position()
 		buttons := event.Buttons()
 
@@ -270,6 +281,13 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	// Configure drawing of highlighted adjacent borders after the screen draws
 	mainPage.application.SetAfterDrawFunc(func(screen tcell.Screen) {
+		if mainPage.pages != nil {
+			frontPage, _ := mainPage.pages.GetFrontPage()
+			if frontPage != string(Main) {
+				return
+			}
+		}
+
 		// Highlight vertical boundary adjacent line segment
 		if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
 			_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
