@@ -426,7 +426,6 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 		fileBrowser.Refresh(false)
 	}
 }
-
 func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBrowserEntry) {
 	if selection == nil {
 		return
@@ -452,10 +451,8 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	// 2. Define the UI updates after the work finishes
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		fileBrowser.Refresh(false)
-
 		d.Close()
 
-		// Automatically show the generic error dialog if something failed
 		if err != nil {
 			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Action Failed", err)
 			fileBrowser.showDialog(errDialog, nil)
@@ -865,7 +862,6 @@ func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBr
 
 	return nil
 }
-
 func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEntry, snapshot *data.SnapshotBrowserEntry) error {
 	if selection == nil || snapshot == nil {
 		return fmt.Errorf("cannot show diff: selection or snapshot is nil")
@@ -893,11 +889,16 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 		}
 	}
 
-	// Internal diff display (or fallback from external if no editor path)
-	d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
-	fileBrowser.showDialog(d, func() {
-		fileBrowser.Refresh(false)
+	// INTERNAL DIFF FALLBACK
+	// Because showDiff was called from asyncWork, we must push this UI creation
+	// back onto the main event loop to avoid breaking tview.
+	fileBrowser.application.QueueUpdateDraw(func() {
+		d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
+		fileBrowser.showDialog(d, func() {
+			fileBrowser.Refresh(false)
+		})
 	})
+
 	return nil
 }
 
