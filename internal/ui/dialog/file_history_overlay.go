@@ -13,6 +13,7 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
@@ -40,6 +41,8 @@ type FileHistoryOverlay struct {
 	// UI widgets
 	pages          *tview.Pages
 	tableContainer *table.RowSelectionTable[data.SnapshotBrowserEntry]
+	modeView       *tview.TextView
+	metadataView   *tview.TextView
 	diffView       *tview.TextView
 	shortcutHelp   *shortcut_helper.ShortcutMapComponent
 
@@ -83,13 +86,26 @@ func NewFileHistoryOverlay(
 
 	overlay.tableContainer = overlay.createHistoryTable()
 	overlay.tableContainer.SetTitle(" Snapshots ")
+
+	overlay.modeView = tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(false)
+	overlay.updateModeView()
+
+	overlay.metadataView = tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(false).
+		SetScrollable(true)
+	overlay.metadataView.SetBorder(true)
+	uiutil.SetupWindow(overlay.metadataView.Box, " Metadata Comparison ")
+
 	overlay.diffView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetRegions(true).
 		SetChangedFunc(func() {
 			application.Draw()
 		})
-	overlay.diffView.SetBorder(true).SetTitle(" Changes ")
+	uiutil.SetupWindow(overlay.diffView.Box, " Changes ")
 
 	overlay.diffLoader = uiutil.NewDebouncedLoader(application, func() {
 		overlay.renderDiffTextSync("Calculating diff...")
@@ -226,9 +242,17 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 
 	title := fmt.Sprintf(" 📜 History of '%s' ", o.file.Name)
 
+	leftLayout := tview.NewFlex().SetDirection(tview.FlexRow)
+	leftLayout.AddItem(o.modeView, 1, 0, false)
+	leftLayout.AddItem(o.tableContainer.GetLayout(), 0, 1, true)
+
+	rightLayout := tview.NewFlex().SetDirection(tview.FlexRow)
+	rightLayout.AddItem(o.metadataView, 6, 0, false)
+	rightLayout.AddItem(o.diffView, 0, 1, false)
+
 	splitLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
-	splitLayout.AddItem(o.tableContainer.GetLayout(), 0, 1, true)
-	splitLayout.AddItem(o.diffView, 0, 2, false)
+	splitLayout.AddItem(leftLayout, 0, 1, true)
+	splitLayout.AddItem(rightLayout, 0, 2, false)
 
 	overlayContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	overlayContent.AddItem(splitLayout, 0, 1, true)
@@ -330,12 +354,24 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 	o.shortcutHelp.SetEntries(entries)
 }
 
+func (o *FileHistoryOverlay) updateModeView() {
+	var modeStr string
+	if o.currentDiffMode == diffModePredecessor {
+		modeStr = "vs Predecessor"
+	} else {
+		modeStr = "vs Working Copy"
+	}
+	o.modeView.Clear()
+	fmt.Fprintf(o.modeView, " [yellow]Diff Mode:[white] %s", modeStr)
+}
+
 func (o *FileHistoryOverlay) toggleDiffMode() {
 	if o.currentDiffMode == diffModePredecessor {
 		o.currentDiffMode = diffModeWorkingCopy
 	} else {
 		o.currentDiffMode = diffModePredecessor
 	}
+	o.updateModeView()
 	o.updateShortcuts()
 	o.updateDiff()
 }
@@ -410,6 +446,29 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 	}()
 }
 
+func presenceStr(exists bool) string {
+	if exists {
+		return "Exists"
+	}
+	return "Missing"
+}
+
+func formatCompareField(oldVal, newVal string, changed bool, isPresence bool) string {
+	if !changed {
+		return fmt.Sprintf("[gray]%s  ->  %s[white]", oldVal, newVal)
+	}
+	if isPresence {
+		formatEx := func(val string) string {
+			if val == "Exists" {
+				return "[green]Exists[white]"
+			}
+			return "[red]Missing[white]"
+		}
+		return fmt.Sprintf("%s  ->  %s", formatEx(oldVal), formatEx(newVal))
+	}
+	return fmt.Sprintf("[yellow]%s[white]  ->  [yellow]%s[white]", oldVal, newVal)
+}
+
 func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) string {
 	var sb strings.Builder
 
@@ -420,16 +479,6 @@ func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) 
 	newStat, newErr := os.Lstat(newPath)
 	if newPath == "/dev/null" {
 		newErr = os.ErrNotExist
-	}
-
-	sb.WriteString("[yellow]METADATA COMPARISON:[white]\n")
-	sb.WriteString(strings.Repeat("-", 50) + "\n")
-
-	formatExists := func(exists bool) string {
-		if exists {
-			return "[green]Exists[white]"
-		}
-		return "[red]Missing[white]"
 	}
 
 	formatSize := func(s os.FileInfo, err error) string {
@@ -459,14 +508,26 @@ func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) 
 	oldExists := oldErr == nil && oldPath != "/dev/null"
 	newExists := newErr == nil && newPath != "/dev/null"
 
-	sb.WriteString(fmt.Sprintf("Presence:    %-25s ->  %s\n", formatExists(oldExists), formatExists(newExists)))
-	if oldExists || newExists {
-		sb.WriteString(fmt.Sprintf("Size:        %-25s ->  %s\n", formatSize(oldStat, oldErr), formatSize(newStat, newErr)))
-		sb.WriteString(fmt.Sprintf("Mode:        %-25s ->  %s\n", formatMode(oldStat, oldErr), formatMode(newStat, newErr)))
-		sb.WriteString(fmt.Sprintf("Mod Time:    %-25s ->  %s\n", formatTime(oldStat, oldErr), formatTime(newStat, newErr)))
+	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Header)
+	maxKeyLen := 10
+
+	writeMetaRow := func(name string, oldVal, newVal string, changed bool, isPresence bool) {
+		valStr := formatCompareField(oldVal, newVal, changed, isPresence)
+		sb.WriteString(fmt.Sprintf(" %s%*s:[-]  %s\n",
+			keyColorTag,
+			maxKeyLen,
+			name,
+			valStr,
+		))
 	}
 
-	sb.WriteString(strings.Repeat("-", 50) + "\n\n")
+	writeMetaRow("Presence", presenceStr(oldExists), presenceStr(newExists), oldExists != newExists, true)
+	if oldExists || newExists {
+		writeMetaRow("Size", formatSize(oldStat, oldErr), formatSize(newStat, newErr), formatSize(oldStat, oldErr) != formatSize(newStat, newErr), false)
+		writeMetaRow("Mode", formatMode(oldStat, oldErr), formatMode(newStat, newErr), formatMode(oldStat, oldErr) != formatMode(newStat, newErr), false)
+		writeMetaRow("Mod Time", formatTime(oldStat, oldErr), formatTime(newStat, newErr), formatTime(oldStat, oldErr) != formatTime(newStat, newErr), false)
+	}
+
 	return sb.String()
 }
 
@@ -566,9 +627,12 @@ func (o *FileHistoryOverlay) updateDiff() {
 			if !o.diffLoader.IsCurrentSequence(seq) {
 				return
 			}
+			o.metadataView.Clear()
+			o.metadataView.SetText(metaText)
+
 			o.diffView.SetTitle(title)
 			o.diffView.Clear()
-			o.diffView.SetText(metaText + diffText)
+			o.diffView.SetText(diffText)
 			o.diffView.ScrollToBeginning()
 		})
 	}()
