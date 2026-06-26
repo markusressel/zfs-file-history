@@ -44,6 +44,7 @@ type FileHistoryOverlay struct {
 	modeView       *tview.TextView
 	metadataView   *tview.TextView
 	diffView       *tview.TextView
+	rightLayout    *tview.Flex
 	shortcutHelp   *shortcut_helper.ShortcutMapComponent
 
 	currentSelection *data.SnapshotBrowserEntry
@@ -106,7 +107,7 @@ func NewFileHistoryOverlay(
 			application.Draw()
 		})
 	overlay.diffView.SetBorder(true)
-	uiutil.SetupWindow(overlay.diffView, " Changes ")
+	uiutil.SetupWindow(overlay.diffView, " Content ")
 
 	overlay.diffLoader = uiutil.NewDebouncedLoader(application, func() {
 		overlay.renderDiffTextSync("Calculating diff...")
@@ -248,8 +249,11 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 	leftLayout.AddItem(o.tableContainer.GetLayout(), 0, 1, true)
 
 	rightLayout := tview.NewFlex().SetDirection(tview.FlexRow)
+	rightLayout.SetBorder(true)
+	uiutil.SetupWindow(rightLayout, " Changes ")
 	rightLayout.AddItem(o.metadataView, 6, 0, false)
 	rightLayout.AddItem(o.diffView, 0, 1, false)
+	o.rightLayout = rightLayout
 
 	splitLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	splitLayout.AddItem(leftLayout, 0, 1, true)
@@ -454,6 +458,26 @@ func presenceStr(exists bool) string {
 	return "Missing"
 }
 
+func isBinaryFile(path string) bool {
+	if path == "/dev/null" {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	for i := 0; i < n; i++ {
+		if buf[i] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func formatCompareField(oldVal, newVal string, changed bool, isPresence bool) string {
 	if !changed {
 		return fmt.Sprintf("[gray]%s  ->  %s[white]", oldVal, newVal)
@@ -570,22 +594,6 @@ func (o *FileHistoryOverlay) updateDiff() {
 			oldPath = filePath
 			newPath = entry.Snapshot.GetSnapshotPath(filePath)
 			title = fmt.Sprintf(" Changes (Working Copy -> Selected: %s) ", entry.Snapshot.Name)
-
-			_, err := os.Lstat(oldPath)
-			if os.IsNotExist(err) {
-				diffText = "Working copy file does not exist (deleted)."
-			} else {
-				output, err := exec.Command(
-					DiffBinPath,
-					"-U", "3",
-					oldPath,
-					newPath,
-				).Output()
-				diffText = string(output)
-				if err != nil && err.Error() != "exit status 1" {
-					diffText = "Error calculating diff: " + err.Error()
-				}
-			}
 		} else {
 			newPath = entry.Snapshot.GetSnapshotPath(filePath)
 			if prevSnapshot != nil {
@@ -598,16 +606,69 @@ func (o *FileHistoryOverlay) updateDiff() {
 				prevName = prevSnapshot.Name
 			}
 			title = fmt.Sprintf(" Changes (%s -> Selected: %s) ", prevName, entry.Snapshot.Name)
+		}
 
-			output, err := exec.Command(
-				DiffBinPath,
-				"-U", "3",
-				oldPath,
-				newPath,
-			).Output()
-			diffText = string(output)
-			if err != nil && err.Error() != "exit status 1" {
-				diffText = "Error calculating diff: " + err.Error()
+		// Detect if the file is binary
+		isBinary := false
+		if newPath != "/dev/null" && isBinaryFile(newPath) {
+			isBinary = true
+		}
+		if oldPath != "/dev/null" && isBinaryFile(oldPath) {
+			isBinary = true
+		}
+
+		if isBinary {
+			diffText = "Binary files differ, content preview not available."
+		} else {
+			if diffMode == diffModeWorkingCopy {
+				_, err := os.Lstat(oldPath)
+				if os.IsNotExist(err) {
+					diffText = "Working copy file does not exist (deleted)."
+				} else {
+					// Inverted: diff realFilePath snapshotFilePath
+					output, err := exec.Command(
+						DiffBinPath,
+						"-U", "3",
+						oldPath,
+						newPath,
+					).Output()
+					diffText = string(output)
+					if err != nil && err.Error() != "exit status 1" {
+						diffText = "Error calculating diff: " + err.Error()
+					}
+				}
+			} else {
+				if prevSnapshot == nil {
+					stat, err := os.Lstat(newPath)
+					if err != nil {
+						diffText = "Snapshot file does not exist."
+					} else if stat.IsDir() {
+						diffText = "Directory content comparison not available."
+					} else {
+						data, err := os.ReadFile(newPath)
+						if err != nil {
+							diffText = "Error reading file content: " + err.Error()
+						} else {
+							content := string(data)
+							lines := strings.Split(content, "\n")
+							for i, line := range lines {
+								lines[i] = "+" + line
+							}
+							diffText = strings.Join(lines, "\n")
+						}
+					}
+				} else {
+					output, err := exec.Command(
+						DiffBinPath,
+						"-U", "3",
+						oldPath,
+						newPath,
+					).Output()
+					diffText = string(output)
+					if err != nil && err.Error() != "exit status 1" {
+						diffText = "Error calculating diff: " + err.Error()
+					}
+				}
 			}
 		}
 
@@ -631,10 +692,20 @@ func (o *FileHistoryOverlay) updateDiff() {
 			o.metadataView.Clear()
 			o.metadataView.SetText(metaText)
 
-			o.diffView.SetTitle(title)
-			o.diffView.Clear()
-			o.diffView.SetText(diffText)
-			o.diffView.ScrollToBeginning()
+			o.rightLayout.SetTitle(theme.CreateTitleText(title))
+
+			if isBinary {
+				o.rightLayout.ResizeItem(o.metadataView, 0, 1)
+				o.rightLayout.ResizeItem(o.diffView, 0, 0)
+				o.diffView.Clear()
+			} else {
+				o.rightLayout.ResizeItem(o.metadataView, 6, 0)
+				o.rightLayout.ResizeItem(o.diffView, 0, 1)
+
+				o.diffView.Clear()
+				o.diffView.SetText(diffText)
+				o.diffView.ScrollToBeginning()
+			}
 		})
 	}()
 }
