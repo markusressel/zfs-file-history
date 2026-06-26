@@ -97,7 +97,7 @@ func NewFileHistoryOverlay(
 		SetWrap(false).
 		SetScrollable(true)
 	overlay.metadataView.SetBorder(true)
-	uiutil.SetupWindow(overlay.metadataView.Box, " Metadata Comparison ")
+	uiutil.SetupWindow(overlay.metadataView, " Metadata Comparison ")
 
 	overlay.diffView = tview.NewTextView().
 		SetDynamicColors(true).
@@ -105,7 +105,8 @@ func NewFileHistoryOverlay(
 		SetChangedFunc(func() {
 			application.Draw()
 		})
-	uiutil.SetupWindow(overlay.diffView.Box, " Changes ")
+	overlay.diffView.SetBorder(true)
+	uiutil.SetupWindow(overlay.diffView, " Changes ")
 
 	overlay.diffLoader = uiutil.NewDebouncedLoader(application, func() {
 		overlay.renderDiffTextSync("Calculating diff...")
@@ -464,9 +465,9 @@ func formatCompareField(oldVal, newVal string, changed bool, isPresence bool) st
 			}
 			return "[red]Missing[white]"
 		}
-		return fmt.Sprintf("%s  ->  %s", formatEx(oldVal), formatEx(newVal))
+		return fmt.Sprintf("%s  ->  %s", oldVal, formatEx(newVal))
 	}
-	return fmt.Sprintf("[yellow]%s[white]  ->  [yellow]%s[white]", oldVal, newVal)
+	return fmt.Sprintf("%s  ->  [yellow]%s[white]", oldVal, newVal)
 }
 
 func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) string {
