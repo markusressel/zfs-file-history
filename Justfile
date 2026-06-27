@@ -4,7 +4,7 @@ OUTPUT_BIN := "bin/" + NAME
 PACKAGE := "github.com/markusressel/" + NAME
 GIT_REV := `git rev-parse --short HEAD`
 DATE := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-VERSION := "0.9.0"
+VERSION := "1.0.0"
 
 # Run all tests
 test:
