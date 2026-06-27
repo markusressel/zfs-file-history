@@ -117,10 +117,33 @@ func createModal(title string, content tview.Primitive, constraints DialogSizeCo
 		AddItem(nil, 0, 1, false)
 
 	dialogContentColumnWrapper.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		screenWidth, screenHeight := screen.Size()
 		w, h := CalculateDialogSize(constraints)
+
+		// Center the modal on top of the view it is associated with (defined by x, y, width, height)
+		dx := x + (width-w)/2
+		dy := y + (height-h)/2
+
+		// Ensure the dialog stays completely within available terminal screen bounds
+		if dx < 0 {
+			dx = 0
+		}
+		if dx+w > screenWidth {
+			dx = screenWidth - w
+		}
+		if dy < 0 {
+			dy = 0
+		}
+		if dy+h > screenHeight {
+			dy = screenHeight - h
+		}
+
 		dialogContentColumnWrapper.ResizeItem(dialogContentRowWrapper, w, 1)
 		dialogContentRowWrapper.ResizeItem(dialogFrame, h, 1)
-		return x, y, width, height
+
+		dialogContentColumnWrapper.SetRect(dx, dy, w, h)
+
+		return dx, dy, w, h
 	})
 
 	return dialogContentColumnWrapper
