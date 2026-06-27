@@ -685,11 +685,30 @@ func computeHistoryDiffText(oldPath, newPath string, diffMode diffMode, prevSnap
 		return "Binary files differ, content preview not available."
 	}
 
-	if diffMode == diffModeWorkingCopy {
-		_, err := os.Lstat(oldPath)
+	// Resolve missing/deleted files to DevNull for comparison
+	if oldPath != DevNull {
+		stat, err := os.Lstat(oldPath)
 		if os.IsNotExist(err) {
-			return "Working copy file does not exist (deleted)."
+			oldPath = DevNull
+		} else if err == nil && stat.IsDir() {
+			return "Directory content comparison not available."
 		}
+	}
+	if newPath != DevNull {
+		stat, err := os.Lstat(newPath)
+		if os.IsNotExist(err) {
+			newPath = DevNull
+		} else if err == nil && stat.IsDir() {
+			return "Directory content comparison not available."
+		}
+	}
+
+	// If both are missing, there's no diff content to show
+	if oldPath == DevNull && newPath == DevNull {
+		return ""
+	}
+
+	if diffMode == diffModeWorkingCopy {
 		output, err := RunDiff(oldPath, newPath)
 		if err != nil {
 			return "Error calculating diff: " + err.Error()
@@ -699,12 +718,10 @@ func computeHistoryDiffText(oldPath, newPath string, diffMode diffMode, prevSnap
 
 	// diffModePredecessor
 	if prevSnapshot == nil {
-		stat, err := os.Lstat(newPath)
-		if err != nil {
-			return "Snapshot file does not exist."
-		}
-		if stat.IsDir() {
-			return "Directory content comparison not available."
+		// Since prevSnapshot is nil, oldPath is DevNull.
+		// If newPath is also DevNull (e.g. not found), return empty
+		if newPath == DevNull {
+			return ""
 		}
 		data, err := os.ReadFile(newPath)
 		if err != nil {

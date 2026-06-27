@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data/diff_state"
@@ -243,4 +244,35 @@ func TestHistoryScanner_DetermineDiffStateAgainstWorkingCopy(t *testing.T) {
 	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
 	assert.NoError(t, err)
 	assert.Equal(t, diff_state.Equal, state)
+}
+
+func TestComputeHistoryDiffText(t *testing.T) {
+	tempDir := t.TempDir()
+	fileA := filepath.Join(tempDir, "fileA.txt")
+	err := os.WriteFile(fileA, []byte("Hello\nWorld\n"), 0644)
+	assert.NoError(t, err)
+
+	// Case 1: Binary
+	res := computeHistoryDiffText(fileA, fileA, diffModeWorkingCopy, nil, true)
+	assert.Equal(t, "Binary files differ, content preview not available.", res)
+
+	// Case 2: Directory comparison
+	res = computeHistoryDiffText(tempDir, fileA, diffModeWorkingCopy, nil, false)
+	assert.Equal(t, "Directory content comparison not available.", res)
+
+	// Case 3: Both missing
+	res = computeHistoryDiffText(filepath.Join(tempDir, "nonexistent1"), filepath.Join(tempDir, "nonexistent2"), diffModeWorkingCopy, nil, false)
+	assert.Equal(t, "", res)
+
+	// Case 4: Working copy exists, snapshot missing (vs working copy)
+	missingSnapPath := filepath.Join(tempDir, "missing_snap.txt")
+	res = computeHistoryDiffText(fileA, missingSnapPath, diffModeWorkingCopy, nil, false)
+	assert.Contains(t, res, "-Hello")
+	assert.Contains(t, res, "-World")
+
+	// Case 5: Working copy missing, snapshot exists (vs working copy)
+	missingWcPath := filepath.Join(tempDir, "missing_wc.txt")
+	res = computeHistoryDiffText(missingWcPath, fileA, diffModeWorkingCopy, nil, false)
+	assert.Contains(t, res, "+Hello")
+	assert.Contains(t, res, "+World")
 }
