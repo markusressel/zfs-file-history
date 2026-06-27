@@ -23,7 +23,12 @@ import (
 	"golang.org/x/term"
 )
 
-const FileHistoryOverlayPage uiutil.Page = "FileHistoryOverlay"
+const (
+	FileHistoryOverlayPage uiutil.Page = "FileHistoryOverlay"
+	HistoryMainPage        uiutil.Page = "history-main"
+	HistoryLoadingPage     uiutil.Page = "history-loading"
+	DevNull                            = "/dev/null"
+)
 
 type diffMode int
 
@@ -35,6 +40,7 @@ const (
 type FileHistoryOverlay struct {
 	application    *tview.Application
 	file           *data.FileBrowserEntry
+	cachedEntries  []*data.SnapshotBrowserEntry
 	historyEntries []*data.SnapshotBrowserEntry
 	layout         *tview.Flex
 	actionChannel  chan DialogActionId
@@ -81,10 +87,12 @@ var (
 func NewFileHistoryOverlay(
 	application *tview.Application,
 	file *data.FileBrowserEntry,
+	cachedEntries []*data.SnapshotBrowserEntry,
 ) *FileHistoryOverlay {
 	overlay := &FileHistoryOverlay{
 		application:     application,
 		file:            file,
+		cachedEntries:   cachedEntries,
 		actionChannel:   make(chan DialogActionId, 1),
 		currentDiffMode: diffModeWorkingCopy,
 		historyEntries:  []*data.SnapshotBrowserEntry{},
@@ -279,8 +287,8 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 	o.loadingView.SetBorder(false)
 
 	o.pages = tview.NewPages().
-		AddPage("history-main", overlayContent, true, false).
-		AddPage("history-loading", o.loadingView, true, true)
+		AddPage(string(HistoryMainPage), overlayContent, true, false).
+		AddPage(string(HistoryLoadingPage), o.loadingView, true, true)
 
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
@@ -428,25 +436,38 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 			logging.Error("Failed to find host dataset for %s: %s", filePath, err.Error())
 			o.application.QueueUpdate(func() {
 				o.loadingView.Stop()
-				o.pages.HidePage("history-loading")
-				o.pages.ShowPage("history-main")
+				o.pages.HidePage(string(HistoryLoadingPage))
+				o.pages.ShowPage(string(HistoryMainPage))
 				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync(fmt.Sprintf("Failed to load dataset: %s", err.Error()))
 			})
 			return
 		}
 
-		snapshots, err := ds.GetSnapshots()
-		if err != nil {
-			logging.Error("Failed to get snapshots for dataset %s: %s", ds.Path, err.Error())
-			o.application.QueueUpdate(func() {
-				o.loadingView.Stop()
-				o.pages.HidePage("history-loading")
-				o.pages.ShowPage("history-main")
-				o.rightLayoutContainer.SetIsLoading(false)
-				o.renderDiffTextSync(fmt.Sprintf("Failed to load snapshots: %s", err.Error()))
-			})
-			return
+		var snapshots []*zfs.Snapshot
+		preComputedDiffStates := make(map[string]diff_state.DiffState)
+
+		if len(o.cachedEntries) > 0 && o.cachedEntries[0].Snapshot != nil && o.cachedEntries[0].Snapshot.ParentDataset != nil && o.cachedEntries[0].Snapshot.ParentDataset.Path == ds.Path {
+			for _, entry := range o.cachedEntries {
+				if entry != nil && entry.Snapshot != nil {
+					snapshots = append(snapshots, entry.Snapshot)
+					preComputedDiffStates[entry.Snapshot.Name] = entry.DiffState
+				}
+			}
+		} else {
+			var err error
+			snapshots, err = ds.GetSnapshots()
+			if err != nil {
+				logging.Error("Failed to get snapshots for dataset %s: %s", ds.Path, err.Error())
+				o.application.QueueUpdate(func() {
+					o.loadingView.Stop()
+					o.pages.HidePage(string(HistoryLoadingPage))
+					o.pages.ShowPage(string(HistoryMainPage))
+					o.rightLayoutContainer.SetIsLoading(false)
+					o.renderDiffTextSync(fmt.Sprintf("Failed to load snapshots: %s", err.Error()))
+				})
+				return
+			}
 		}
 
 		o.application.QueueUpdate(func() {
@@ -457,11 +478,107 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 			return a.GetCreationDate().Compare(b.GetCreationDate())
 		})
 
+		type fileMeta struct {
+			exists  bool
+			isDir   bool
+			size    int64
+			mode    os.FileMode
+			modTime time.Time
+		}
+
+		metaCache := make(map[string]fileMeta)
+		workingCopyStat, workingCopyErr := os.Lstat(filePath)
+		workingCopyExists := workingCopyErr == nil
+
+		getSnapshotMeta := func(snap *zfs.Snapshot) (fileMeta, error) {
+			snapPath := snap.GetSnapshotPath(filePath)
+			if meta, cached := metaCache[snapPath]; cached {
+				return meta, nil
+			}
+
+			if state, ok := preComputedDiffStates[snap.Name]; ok && state != diff_state.Unknown {
+				if state == diff_state.Equal && workingCopyExists {
+					meta := fileMeta{
+						exists:  true,
+						isDir:   workingCopyStat.IsDir(),
+						size:    workingCopyStat.Size(),
+						mode:    workingCopyStat.Mode(),
+						modTime: workingCopyStat.ModTime(),
+					}
+					metaCache[snapPath] = meta
+					return meta, nil
+				}
+				if state == diff_state.Deleted {
+					meta := fileMeta{exists: false}
+					metaCache[snapPath] = meta
+					return meta, nil
+				}
+			}
+
+			stat, err := os.Lstat(snapPath)
+			if os.IsNotExist(err) {
+				meta := fileMeta{exists: false}
+				metaCache[snapPath] = meta
+				return meta, nil
+			} else if err != nil {
+				return fileMeta{}, err
+			}
+
+			meta := fileMeta{
+				exists:  true,
+				isDir:   stat.IsDir(),
+				size:    stat.Size(),
+				mode:    stat.Mode(),
+				modTime: stat.ModTime(),
+			}
+			metaCache[snapPath] = meta
+			return meta, nil
+		}
+
+		determineDiffStateBetween := func(snap, prev *zfs.Snapshot) (diff_state.DiffState, error) {
+			sMeta, err := getSnapshotMeta(snap)
+			if err != nil {
+				return diff_state.Unknown, err
+			}
+
+			if prev == nil {
+				if sMeta.exists {
+					return diff_state.Added, nil
+				}
+				return diff_state.Equal, nil
+			}
+
+			prevMeta, err := getSnapshotMeta(prev)
+			if err != nil {
+				return diff_state.Unknown, err
+			}
+
+			if sMeta.exists && prevMeta.exists {
+				if sMeta.isDir != prevMeta.isDir ||
+					sMeta.size != prevMeta.size ||
+					sMeta.mode != prevMeta.mode ||
+					sMeta.modTime != prevMeta.modTime {
+					return diff_state.Modified, nil
+				}
+				return diff_state.Equal, nil
+			} else if sMeta.exists {
+				return diff_state.Added, nil
+			} else if prevMeta.exists {
+				return diff_state.Deleted, nil
+			}
+
+			return diff_state.Equal, nil
+		}
+
 		var history []*data.SnapshotBrowserEntry
 		var prev *zfs.Snapshot = nil
 
 		for _, snap := range snapshots {
-			state := snap.DetermineDiffStateBetween(filePath, prev)
+			state, err := determineDiffStateBetween(snap, prev)
+			if err != nil {
+				logging.Error("Failed to determine diff state between snapshots: %s", err.Error())
+				state = diff_state.Unknown
+			}
 			if state != diff_state.Equal && state != diff_state.Unknown {
 				history = append(history, &data.SnapshotBrowserEntry{
 					Snapshot:  snap,
@@ -485,8 +602,8 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 				o.updateDiff()
 			} else {
 				o.loadingView.Stop()
-				o.pages.HidePage("history-loading")
-				o.pages.ShowPage("history-main")
+				o.pages.HidePage(string(HistoryLoadingPage))
+				o.pages.ShowPage(string(HistoryMainPage))
 				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync("No snapshot changes found for this file.")
 				o.application.SetFocus(o.tableContainer.GetLayout())
@@ -503,7 +620,7 @@ func presenceStr(exists bool) string {
 }
 
 func isBinaryFile(path string) bool {
-	if path == "/dev/null" {
+	if path == DevNull {
 		return false
 	}
 	f, err := os.Open(path)
@@ -542,11 +659,11 @@ func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) 
 	var sb strings.Builder
 
 	oldStat, oldErr := os.Lstat(oldPath)
-	if oldPath == "/dev/null" {
+	if oldPath == DevNull {
 		oldErr = os.ErrNotExist
 	}
 	newStat, newErr := os.Lstat(newPath)
-	if newPath == "/dev/null" {
+	if newPath == DevNull {
 		newErr = os.ErrNotExist
 	}
 
@@ -574,8 +691,8 @@ func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) 
 		return s.ModTime().Format("2006-01-02 15:04:05")
 	}
 
-	oldExists := oldErr == nil && oldPath != "/dev/null"
-	newExists := newErr == nil && newPath != "/dev/null"
+	oldExists := oldErr == nil && oldPath != DevNull
+	newExists := newErr == nil && newPath != DevNull
 
 	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Header)
 	maxKeyLen := 10
@@ -641,9 +758,9 @@ func (o *FileHistoryOverlay) updateDiff() {
 			if prevSnapshot != nil {
 				oldPath = prevSnapshot.GetSnapshotPath(filePath)
 			} else {
-				oldPath = "/dev/null"
+				oldPath = DevNull
 			}
-			prevName := "/dev/null"
+			prevName := DevNull
 			if prevSnapshot != nil {
 				prevName = prevSnapshot.Name
 			}
@@ -652,10 +769,10 @@ func (o *FileHistoryOverlay) updateDiff() {
 
 		// Detect if the file is binary
 		isBinary := false
-		if newPath != "/dev/null" && isBinaryFile(newPath) {
+		if newPath != DevNull && isBinaryFile(newPath) {
 			isBinary = true
 		}
-		if oldPath != "/dev/null" && isBinaryFile(oldPath) {
+		if oldPath != DevNull && isBinaryFile(oldPath) {
 			isBinary = true
 		}
 
@@ -764,10 +881,10 @@ func (o *FileHistoryOverlay) updateDiff() {
 			o.rightLayoutContainer.SetIsLoading(false)
 
 			frontPage, _ := o.pages.GetFrontPage()
-			if frontPage == "history-loading" {
+			if frontPage == string(HistoryLoadingPage) {
 				o.loadingView.Stop()
-				o.pages.HidePage("history-loading")
-				o.pages.ShowPage("history-main")
+				o.pages.HidePage(string(HistoryLoadingPage))
+				o.pages.ShowPage(string(HistoryMainPage))
 				o.application.SetFocus(o.tableContainer.GetLayout())
 			}
 		})

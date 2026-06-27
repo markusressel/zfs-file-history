@@ -89,7 +89,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				mainPage.updateShortcutMap(fileBrowser)
 			}
 		case file_browser.RequestFileHistoryEvent:
-			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry)
+			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetEntries())
 			dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
 				mainPage.fileBrowser.Refresh(false)
 			})
