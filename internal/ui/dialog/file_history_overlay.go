@@ -804,29 +804,23 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 		DiffState:     entry.DiffState,
 	}
 
-	// 1. Dummy handler to trigger the async sequence
-	asyncWork := func(d *SelectionDialog, action DialogActionId) error {
-		return nil
-	}
-
 	onComplete := func(d *SelectionDialog, option *DialogOption, err error) {
-		d.Close()
-
+		// Only trigger chain logic if we are doing a restore
 		if option.Id == RestoreFileDialogRestoreFileActionId || option.Id == RestoreFileDialogRestoreRecursiveActionId {
 
-			// FIX: Forcefully drop the focus back to the persistent table layout *before* // mounting the next dialog. This guarantees the Progress Dialog will record
-			// the table as its fallback focus instead of the dying Selection Dialog.
-			o.application.SetFocus(o.tableContainer.GetLayout())
-
-			// Mount directly (We are already safely inside the main UI thread)
-			progressDialog := NewRestoreFileProgressDialog(o.application, restoreEntry, false)
-			ShowDialogOnPages(o.application, o.pages, progressDialog, func() {
-				o.updateDiff()
+			// Use Chain() instead of Close() + QueueUpdateDraw()
+			d.Chain(func() {
+				progressDialog := NewRestoreFileProgressDialog(o.application, restoreEntry, false)
+				ShowDialogOnPages(o.application, o.pages, progressDialog, func() {
+					o.updateDiff()
+				})
 			})
+		} else {
+			d.Close()
 		}
 	}
 
-	restoreDialog := NewRestoreFileDialog(o.application, restoreEntry, asyncWork, onComplete)
+	restoreDialog := NewRestoreFileDialog(o.application, restoreEntry, nil, onComplete)
 	ShowDialogOnPages(o.application, o.pages, restoreDialog, nil)
 }
 
