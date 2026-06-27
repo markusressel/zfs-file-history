@@ -195,19 +195,41 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 			text = entry.Snapshot.Name
 		case historyColumnDiff:
 			align = tview.AlignCenter
-			switch entry.DiffState {
-			case diff_state.Added:
-				text = "Added"
-				color = theme.Colors.SnapshotBrowser.Table.State.LocalOnly
-			case diff_state.Deleted:
-				text = "Deleted"
-				color = theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
-			case diff_state.Modified:
-				text = "Modified"
-				color = theme.Colors.SnapshotBrowser.Table.State.Modified
-			default:
-				text = "Unknown"
-				color = tcell.ColorGray
+			if o.currentDiffMode == diffModeWorkingCopy {
+				switch entry.WorkingCopyDiffState {
+				case diff_state.Deleted:
+					text = "Present"
+					color = theme.Colors.FileBrowser.Table.State.Added
+				case diff_state.Added:
+					text = "Absent"
+					color = theme.Colors.FileBrowser.Table.State.Deleted
+				case diff_state.Modified:
+					text = "Modified"
+					color = theme.Colors.FileBrowser.Table.State.Modified
+				default:
+					text = "Identical"
+					color = theme.Colors.FileBrowser.Table.State.Equal
+				}
+			} else {
+				isOldest := len(o.historyEntries) > 0 && o.historyEntries[len(o.historyEntries)-1] == entry
+				switch entry.DiffState {
+				case diff_state.Added:
+					if isOldest {
+						text = "Initial"
+					} else {
+						text = "Added"
+					}
+					color = theme.Colors.FileBrowser.Table.State.Added
+				case diff_state.Deleted:
+					text = "Deleted"
+					color = theme.Colors.FileBrowser.Table.State.Deleted
+				case diff_state.Modified:
+					text = "Modified"
+					color = theme.Colors.FileBrowser.Table.State.Modified
+				default:
+					text = "Equal"
+					color = theme.Colors.FileBrowser.Table.State.Equal
+				}
 			}
 		case historyColumnDate:
 			text = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
@@ -229,17 +251,28 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 }
 
 func (o *FileHistoryOverlay) determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
-	switch entry.DiffState {
-	case diff_state.Equal:
-		return theme.Colors.SnapshotBrowser.Table.State.Equal
-	case diff_state.Deleted:
-		return theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
-	case diff_state.Added:
-		return theme.Colors.SnapshotBrowser.Table.State.LocalOnly
-	case diff_state.Modified:
-		return theme.Colors.SnapshotBrowser.Table.State.Modified
-	default:
-		return theme.Colors.SnapshotBrowser.Table.State.Unknown
+	if o.currentDiffMode == diffModeWorkingCopy {
+		switch entry.WorkingCopyDiffState {
+		case diff_state.Deleted:
+			return theme.Colors.FileBrowser.Table.State.Added
+		case diff_state.Added:
+			return theme.Colors.FileBrowser.Table.State.Deleted
+		case diff_state.Modified:
+			return theme.Colors.FileBrowser.Table.State.Modified
+		default:
+			return theme.Colors.FileBrowser.Table.State.Equal
+		}
+	} else {
+		switch entry.DiffState {
+		case diff_state.Added:
+			return theme.Colors.FileBrowser.Table.State.Added
+		case diff_state.Deleted:
+			return theme.Colors.FileBrowser.Table.State.Deleted
+		case diff_state.Modified:
+			return theme.Colors.FileBrowser.Table.State.Modified
+		default:
+			return theme.Colors.FileBrowser.Table.State.Equal
+		}
 	}
 }
 
@@ -305,6 +338,8 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 	dialogContentColumnWrapper.
 		AddItem(dialogContentRowWrapper, width, 1, true).
 		AddItem(nil, 0, 1, false)
+
+	MakeFlexResizing(dialogContentColumnWrapper, dialogContentRowWrapper, dialogFrame, 99999, 80, 99999, 15)
 
 	return dialogContentColumnWrapper
 }
@@ -418,6 +453,7 @@ func (o *FileHistoryOverlay) toggleDiffMode() {
 	o.updateModeView()
 	o.updateShortcuts()
 	o.updateDiff()
+	o.tableContainer.SetData(o.historyEntries)
 }
 
 func (o *FileHistoryOverlay) renderDiffTextSync(text string) {
@@ -649,11 +685,30 @@ func computeHistoryDiffText(oldPath, newPath string, diffMode diffMode, prevSnap
 		return "Binary files differ, content preview not available."
 	}
 
-	if diffMode == diffModeWorkingCopy {
-		_, err := os.Lstat(oldPath)
+	// Resolve missing/deleted files to DevNull for comparison
+	if oldPath != DevNull {
+		stat, err := os.Lstat(oldPath)
 		if os.IsNotExist(err) {
-			return "Working copy file does not exist (deleted)."
+			oldPath = DevNull
+		} else if err == nil && stat.IsDir() {
+			return "Directory content comparison not available."
 		}
+	}
+	if newPath != DevNull {
+		stat, err := os.Lstat(newPath)
+		if os.IsNotExist(err) {
+			newPath = DevNull
+		} else if err == nil && stat.IsDir() {
+			return "Directory content comparison not available."
+		}
+	}
+
+	// If both are missing, there's no diff content to show
+	if oldPath == DevNull && newPath == DevNull {
+		return ""
+	}
+
+	if diffMode == diffModeWorkingCopy {
 		output, err := RunDiff(oldPath, newPath)
 		if err != nil {
 			return "Error calculating diff: " + err.Error()
@@ -663,12 +718,10 @@ func computeHistoryDiffText(oldPath, newPath string, diffMode diffMode, prevSnap
 
 	// diffModePredecessor
 	if prevSnapshot == nil {
-		stat, err := os.Lstat(newPath)
-		if err != nil {
-			return "Snapshot file does not exist."
-		}
-		if stat.IsDir() {
-			return "Directory content comparison not available."
+		// Since prevSnapshot is nil, oldPath is DevNull.
+		// If newPath is also DevNull (e.g. not found), return empty
+		if newPath == DevNull {
+			return ""
 		}
 		data, err := os.ReadFile(newPath)
 		if err != nil {
@@ -707,13 +760,23 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 		return
 	}
 
-	snapshotPath := entry.Snapshot.GetSnapshotPath(o.file.GetRealPath())
-	stat, err := os.Lstat(snapshotPath)
-	if err != nil {
-		logging.Error("Could not stat snapshot file %s: %s", snapshotPath, err.Error())
-		errDialog := NewErrorDialog(o.application, "Restore Failed", err)
-		ShowDialogOnPages(o.application, o.pages, errDialog, nil)
-		return
+	var stat os.FileInfo
+	var snapshotPath string
+
+	if entry.DiffState == diff_state.Deleted {
+		// File is deleted/absent in the selected snapshot.
+		snapshotPath = ""
+		stat = nil
+	} else {
+		snapshotPath = entry.Snapshot.GetSnapshotPath(o.file.GetRealPath())
+		var err error
+		stat, err = os.Lstat(snapshotPath)
+		if err != nil {
+			logging.Error("Could not stat snapshot file %s: %s", snapshotPath, err.Error())
+			errDialog := NewErrorDialog(o.application, "Restore Failed", err)
+			ShowDialogOnPages(o.application, o.pages, errDialog, nil)
+			return
+		}
 	}
 
 	snapFile := &data.SnapshotFile{

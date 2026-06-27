@@ -64,8 +64,41 @@ func buildConfirmDialogOptions(
 	return options
 }
 
+// MakeFlexResizing registers a SetDrawFunc resize handler on columnWrapper
+// to dynamically resize rowWrapper and dialogFrame based on terminal size and constraints.
+func MakeFlexResizing(
+	columnWrapper *tview.Flex,
+	rowWrapper *tview.Flex,
+	dialogFrame *tview.Flex,
+	targetWidth, minWidth int,
+	targetHeight, minHeight int,
+) {
+	columnWrapper.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		screenWidth, screenHeight := screen.Size()
+		w := targetWidth
+		if w > screenWidth-4 {
+			w = screenWidth - 4
+		}
+		if w < minWidth {
+			w = minWidth
+		}
+		h := targetHeight
+		if h > screenHeight-2 {
+			h = screenHeight - 2
+		}
+		if h < minHeight {
+			h = minHeight
+		}
+
+		columnWrapper.ResizeItem(rowWrapper, w, 1)
+		rowWrapper.ResizeItem(dialogFrame, h, 1)
+
+		return x, y, width, height
+	})
+}
+
 // createModal creates a [tview.Flex] layout for a modal dialog with the given title and content.
-func createModal(title string, content tview.Primitive, width int, height int) *tview.Flex {
+func createModal(title string, content tview.Primitive, constraints DialogSizeConstraints) *tview.Flex {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
 	uiutil.SetupDialogWindow(dialogFrame, title)
@@ -76,12 +109,42 @@ func createModal(title string, content tview.Primitive, width int, height int) *
 
 	dialogContentRowWrapper := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
-		AddItem(dialogFrame, height, 1, true).
+		AddItem(dialogFrame, 0, 1, true).
 		AddItem(nil, 0, 1, false)
 
 	dialogContentColumnWrapper.
-		AddItem(dialogContentRowWrapper, width, 1, true).
+		AddItem(dialogContentRowWrapper, 0, 1, true).
 		AddItem(nil, 0, 1, false)
+
+	dialogContentColumnWrapper.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		screenWidth, screenHeight := screen.Size()
+		w, h := CalculateDialogSize(constraints)
+
+		// Center the modal on top of the view it is associated with (defined by x, y, width, height)
+		dx := x + (width-w)/2
+		dy := y + (height-h)/2
+
+		// Ensure the dialog stays completely within available terminal screen bounds
+		if dx < 0 {
+			dx = 0
+		}
+		if dx+w > screenWidth {
+			dx = screenWidth - w
+		}
+		if dy < 0 {
+			dy = 0
+		}
+		if dy+h > screenHeight {
+			dy = screenHeight - h
+		}
+
+		dialogContentColumnWrapper.ResizeItem(dialogContentRowWrapper, w, 1)
+		dialogContentRowWrapper.ResizeItem(dialogFrame, h, 1)
+
+		dialogContentColumnWrapper.SetRect(dx, dy, w, h)
+
+		return dx, dy, w, h
+	})
 
 	return dialogContentColumnWrapper
 }

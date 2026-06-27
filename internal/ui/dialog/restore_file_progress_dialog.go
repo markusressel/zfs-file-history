@@ -3,6 +3,7 @@ package dialog
 import (
 	"fmt"
 	"math"
+	"os"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
@@ -111,13 +112,11 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		AddItem(actionPages, 1, 0, false)
 	progressLayout.SetBorderPadding(0, 0, 1, 1)
 
-	width, height := CalculateDialogSize(DialogSizeConstraints{
+	dialog := createModal(dialogTitle, progressLayout, DialogSizeConstraints{
 		Title:        dialogTitle,
 		Description:  text,
 		StaticHeight: 4, // 3 for progress bar, 1 for actionPages
 	})
-
-	dialog := createModal(dialogTitle, progressLayout, width, height)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			d.Close()
@@ -157,8 +156,17 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 
 		snapshotFile := d.fileSelection.SnapshotFiles[0]
 		srcFilePath := snapshotFile.Path
+		dstFilePath := snapshotFile.OriginalPath
 
-		if recursive {
+		if srcFilePath == "" {
+			// The file is absent in the snapshot.
+			// Restoring it means deleting the working copy!
+			err := os.RemoveAll(dstFilePath)
+			d.handleError(err)
+			if err != nil {
+				return
+			}
+		} else if recursive {
 			// TODO: this loops two times currently to ensure folder modtime properties are correct.
 			//  See implementation for what we need to do to fix this
 			for i := 0; i < 2; i++ {

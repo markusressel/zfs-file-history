@@ -70,13 +70,11 @@ func (p *HelpPage) createLayout() {
 	maxHelpWidth := maxKeyWidth + 1 + maxValueWidth
 
 	title := " ℹ️ Help "
-	width, height := CalculateDialogSize(DialogSizeConstraints{
+	p.layout = createModal(title, helpTable, DialogSizeConstraints{
 		Title:             title,
 		ExtraContentWidth: maxHelpWidth,
 		StaticHeight:      len(helpTableEntries),
 	})
-
-	p.layout = createModal(title, helpTable, width, height)
 }
 
 func setHelpTableRow(helpTable *tview.Table, row int, entry *TableEntry) {

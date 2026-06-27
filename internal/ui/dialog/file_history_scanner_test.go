@@ -1,6 +1,8 @@
 package dialog
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data/diff_state"
@@ -157,4 +159,120 @@ func TestHistoryScanner_DetermineDiffStateBetween_PrevNil(t *testing.T) {
 	state, err = s.determineDiffStateBetween(snap, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, diff_state.Equal, state)
+}
+
+type mockFileInfo struct {
+	isDir   bool
+	size    int64
+	mode    os.FileMode
+	modTime time.Time
+}
+
+func (m mockFileInfo) Name() string       { return "file.txt" }
+func (m mockFileInfo) Size() int64        { return m.size }
+func (m mockFileInfo) Mode() os.FileMode  { return m.mode }
+func (m mockFileInfo) ModTime() time.Time { return m.modTime }
+func (m mockFileInfo) IsDir() bool        { return m.isDir }
+func (m mockFileInfo) Sys() any           { return nil }
+
+func TestHistoryScanner_DetermineDiffStateAgainstWorkingCopy(t *testing.T) {
+	filePath := "/pool/ds1/file.txt"
+	snap := &zfs.Snapshot{
+		Name: "snap-1",
+		ParentDataset: &zfs.Dataset{
+			Path:          "/pool/ds1",
+			HiddenZfsPath: "/pool/ds1/.zfs",
+		},
+	}
+	snapPath := snap.GetSnapshotPath(filePath)
+
+	now := time.Now()
+
+	s := &historyScanner{
+		filePath:          filePath,
+		metaCache:         make(map[string]fileMeta),
+		workingCopyExists: true,
+		workingCopyStat: mockFileInfo{
+			isDir:   false,
+			size:    100,
+			mode:    0644,
+			modTime: now,
+		},
+	}
+
+	// Case 1: Snapshot exists and is equal to working copy
+	s.metaCache[snapPath] = fileMeta{
+		exists:  true,
+		isDir:   false,
+		size:    100,
+		mode:    0644,
+		modTime: now,
+	}
+	state, err := s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Equal, state)
+
+	// Case 2: Snapshot exists but differs from working copy
+	s.metaCache[snapPath] = fileMeta{
+		exists:  true,
+		isDir:   false,
+		size:    200, // differs
+		mode:    0644,
+		modTime: now,
+	}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Modified, state)
+
+	// Case 3: Snapshot exists, working copy does not exist
+	s.workingCopyExists = false
+	s.metaCache[snapPath] = fileMeta{exists: true}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Deleted, state) // File only exists in snapshot, deleted in working copy
+
+	// Case 4: Snapshot does not exist, working copy exists
+	s.workingCopyExists = true
+	s.metaCache[snapPath] = fileMeta{exists: false}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Added, state) // File only exists in working copy, added in working copy
+
+	// Case 5: Neither exists
+	s.workingCopyExists = false
+	s.metaCache[snapPath] = fileMeta{exists: false}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Equal, state)
+}
+
+func TestComputeHistoryDiffText(t *testing.T) {
+	tempDir := t.TempDir()
+	fileA := filepath.Join(tempDir, "fileA.txt")
+	err := os.WriteFile(fileA, []byte("Hello\nWorld\n"), 0644)
+	assert.NoError(t, err)
+
+	// Case 1: Binary
+	res := computeHistoryDiffText(fileA, fileA, diffModeWorkingCopy, nil, true)
+	assert.Equal(t, "Binary files differ, content preview not available.", res)
+
+	// Case 2: Directory comparison
+	res = computeHistoryDiffText(tempDir, fileA, diffModeWorkingCopy, nil, false)
+	assert.Equal(t, "Directory content comparison not available.", res)
+
+	// Case 3: Both missing
+	res = computeHistoryDiffText(filepath.Join(tempDir, "nonexistent1"), filepath.Join(tempDir, "nonexistent2"), diffModeWorkingCopy, nil, false)
+	assert.Equal(t, "", res)
+
+	// Case 4: Working copy exists, snapshot missing (vs working copy)
+	missingSnapPath := filepath.Join(tempDir, "missing_snap.txt")
+	res = computeHistoryDiffText(fileA, missingSnapPath, diffModeWorkingCopy, nil, false)
+	assert.Contains(t, res, "-Hello")
+	assert.Contains(t, res, "-World")
+
+	// Case 5: Working copy missing, snapshot exists (vs working copy)
+	missingWcPath := filepath.Join(tempDir, "missing_wc.txt")
+	res = computeHistoryDiffText(missingWcPath, fileA, diffModeWorkingCopy, nil, false)
+	assert.Contains(t, res, "+Hello")
+	assert.Contains(t, res, "+World")
 }

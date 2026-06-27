@@ -508,7 +508,11 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 	fileBrowser.showDialog(deleteDialog, nil) // nil for the onUpdate callback
 }
 func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileBrowserEntry) {
-	if selection == nil || !selection.HasSnapshot() {
+	if selection == nil {
+		return
+	}
+	canRestore := selection.HasSnapshot() || (selection.DiffState != diff_state.Equal && selection.DiffState != diff_state.Unknown)
+	if !canRestore {
 		return
 	}
 
@@ -867,6 +871,17 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 }
 
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) error {
+	// If the file is absent in the snapshot, create a dummy SnapshotFile referencing the current snapshot.
+	if len(entry.SnapshotFiles) == 0 && fileBrowser.currentSnapshot != nil {
+		entry.SnapshotFiles = []*data.SnapshotFile{
+			{
+				Path:         "", // empty path indicates absent in snapshot
+				OriginalPath: entry.GetRealPath(),
+				Snapshot:     fileBrowser.currentSnapshot.Snapshot,
+			},
+		}
+	}
+
 	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
 
 	// Pass the refresh logic as the onUpdate callback.

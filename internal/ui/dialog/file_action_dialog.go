@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
 
@@ -54,7 +55,8 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 		})
 	}
 
-	if file.HasSnapshot() {
+	canRestore := file.HasSnapshot() || (file.DiffState != diff_state.Equal && file.DiffState != diff_state.Unknown)
+	if canRestore {
 		if file.Type == data.Directory {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 				Id:       FileDialogRestoreFileActionId,

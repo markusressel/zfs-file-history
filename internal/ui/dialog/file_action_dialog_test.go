@@ -85,9 +85,10 @@ func TestBuildFileDialogOptions_DirectoryWithSnapshot(t *testing.T) {
 
 func TestBuildFileDialogOptions_OnlyRealFile(t *testing.T) {
 	entry := &data.FileBrowserEntry{
-		Name:     "real-only.txt",
-		RealFile: &data.RealFile{Name: "real-only.txt"},
-		Type:     data.File,
+		Name:      "real-only.txt",
+		RealFile:  &data.RealFile{Name: "real-only.txt"},
+		Type:      data.File,
+		DiffState: diff_state.Unknown,
 	}
 
 	options := buildFileDialogOptions(entry, true)

@@ -24,7 +24,6 @@ func AddActor(g *run.Group, ctx context.Context, path string) {
 			pterm.Warning.Printfln("Error stopping UI: %s", err.Error())
 		} else {
 			logging.Debug("UI stopped.")
-			pterm.Debug.Printfln("Received SIGTERM signal, exiting...")
 		}
 	})
 }

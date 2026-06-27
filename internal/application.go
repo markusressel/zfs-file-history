@@ -11,7 +11,6 @@ import (
 	"zfs-file-history/internal/ui"
 
 	"github.com/oklog/run"
-	"github.com/pterm/pterm"
 )
 
 func RunApplication(path string) {
@@ -29,7 +28,6 @@ func RunApplication(path string) {
 		os.Exit(1)
 	} else {
 		logging.Info("Done.")
-		pterm.Info.Printfln("Done.")
 		os.Exit(0)
 	}
 }
@@ -41,7 +39,6 @@ func addSignalHandlerActor(g *run.Group, cancel context.CancelFunc) {
 	g.Add(func() error {
 		<-sig
 		logging.Info("Received SIGTERM signal, exiting...")
-		pterm.Info.Printfln("Received SIGTERM signal, exiting...")
 
 		return nil
 	}, func(err error) {

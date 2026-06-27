@@ -26,20 +26,18 @@ type prefetchResult struct {
 }
 
 type historyScanner struct {
-	filePath              string
-	cachedEntries         []*data.SnapshotBrowserEntry
-	preComputedDiffStates map[string]diff_state.DiffState
-	metaCache             map[string]fileMeta
-	workingCopyExists     bool
-	workingCopyStat       os.FileInfo
+	filePath          string
+	cachedEntries     []*data.SnapshotBrowserEntry
+	metaCache         map[string]fileMeta
+	workingCopyExists bool
+	workingCopyStat   os.FileInfo
 }
 
 func newHistoryScanner(filePath string, cachedEntries []*data.SnapshotBrowserEntry) *historyScanner {
 	return &historyScanner{
-		filePath:              filePath,
-		cachedEntries:         cachedEntries,
-		preComputedDiffStates: make(map[string]diff_state.DiffState),
-		metaCache:             make(map[string]fileMeta),
+		filePath:      filePath,
+		cachedEntries: cachedEntries,
+		metaCache:     make(map[string]fileMeta),
 	}
 }
 
@@ -54,7 +52,6 @@ func (s *historyScanner) scan(loadingMsgFunc func(string)) ([]*data.SnapshotBrow
 		for _, entry := range s.cachedEntries {
 			if entry != nil && entry.Snapshot != nil {
 				snapshots = append(snapshots, entry.Snapshot)
-				s.preComputedDiffStates[entry.Snapshot.Name] = entry.DiffState
 			}
 		}
 	} else {
@@ -88,11 +85,19 @@ func (s *historyScanner) scan(loadingMsgFunc func(string)) ([]*data.SnapshotBrow
 			logging.Error("Failed to determine diff state between snapshots: %s", err.Error())
 			state = diff_state.Unknown
 		}
+
+		workingCopyState, err := s.determineDiffStateAgainstWorkingCopy(snap)
+		if err != nil {
+			logging.Error("Failed to determine diff state against working copy: %s", err.Error())
+			workingCopyState = diff_state.Unknown
+		}
+
 		if state != diff_state.Equal && state != diff_state.Unknown {
 			history = append(history, &data.SnapshotBrowserEntry{
-				Snapshot:  snap,
-				DiffState: state,
-				IsLoading: false,
+				Snapshot:             snap,
+				DiffState:            state,
+				WorkingCopyDiffState: workingCopyState,
+				IsLoading:            false,
 			})
 			prev = snap
 		} else if state == diff_state.Equal {
@@ -108,13 +113,6 @@ func (s *historyScanner) prefetchStats(snapshots []*zfs.Snapshot) {
 	var pathsToStat []string
 	for _, snap := range snapshots {
 		snapPath := snap.GetSnapshotPath(s.filePath)
-		state, ok := s.preComputedDiffStates[snap.Name]
-		if ok && state == diff_state.Equal && s.workingCopyExists {
-			continue
-		}
-		if ok && state == diff_state.Deleted {
-			continue
-		}
 		pathsToStat = append(pathsToStat, snapPath)
 	}
 
@@ -175,25 +173,6 @@ func (s *historyScanner) getSnapshotMeta(snap *zfs.Snapshot) (fileMeta, error) {
 		return meta, nil
 	}
 
-	if state, ok := s.preComputedDiffStates[snap.Name]; ok && state != diff_state.Unknown {
-		if state == diff_state.Equal && s.workingCopyExists {
-			meta := fileMeta{
-				exists:  true,
-				isDir:   s.workingCopyStat.IsDir(),
-				size:    s.workingCopyStat.Size(),
-				mode:    s.workingCopyStat.Mode(),
-				modTime: s.workingCopyStat.ModTime(),
-			}
-			s.metaCache[snapPath] = meta
-			return meta, nil
-		}
-		if state == diff_state.Deleted {
-			meta := fileMeta{exists: false}
-			s.metaCache[snapPath] = meta
-			return meta, nil
-		}
-	}
-
 	stat, err := os.Lstat(snapPath)
 	if os.IsNotExist(err) {
 		meta := fileMeta{exists: false}
@@ -244,6 +223,31 @@ func (s *historyScanner) determineDiffStateBetween(snap, prev *zfs.Snapshot) (di
 		return diff_state.Added, nil
 	} else if prevMeta.exists {
 		return diff_state.Deleted, nil
+	}
+
+	return diff_state.Equal, nil
+}
+
+func (s *historyScanner) determineDiffStateAgainstWorkingCopy(snap *zfs.Snapshot) (diff_state.DiffState, error) {
+	sMeta, err := s.getSnapshotMeta(snap)
+	if err != nil {
+		return diff_state.Unknown, err
+	}
+
+	if sMeta.exists && s.workingCopyExists {
+		if sMeta.isDir != s.workingCopyStat.IsDir() ||
+			sMeta.size != s.workingCopyStat.Size() ||
+			sMeta.mode != s.workingCopyStat.Mode() ||
+			sMeta.modTime != s.workingCopyStat.ModTime() {
+			return diff_state.Modified, nil
+		}
+		return diff_state.Equal, nil
+	} else if sMeta.exists {
+		// File exists in snapshot, but not in working copy -> Deleted in working copy!
+		return diff_state.Deleted, nil
+	} else if s.workingCopyExists {
+		// File does not exist in snapshot, but exists in working copy -> Added in working copy!
+		return diff_state.Added, nil
 	}
 
 	return diff_state.Equal, nil
