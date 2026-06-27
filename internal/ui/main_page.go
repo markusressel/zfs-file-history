@@ -115,6 +115,10 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	uiutil.SubscribeUI(zfs.DatasetsLoaded, application, func(_ struct{}) {
 		if !mainPage.wasInitialized {
 			mainPage.Init(path)
+		} else {
+			currentPath := fileBrowser.GetPath()
+			mainPage.datasetInfo.SetPath(currentPath)
+			mainPage.snapshotBrowser.SetPath(currentPath, true)
 		}
 	})
 

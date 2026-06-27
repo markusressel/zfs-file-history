@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -489,6 +490,73 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 		metaCache := make(map[string]fileMeta)
 		workingCopyStat, workingCopyErr := os.Lstat(filePath)
 		workingCopyExists := workingCopyErr == nil
+
+		// Prefetch snapshot stats in parallel to avoid slow sequential disk stats
+		type prefetchResult struct {
+			snapPath string
+			meta     fileMeta
+		}
+
+		var pathsToStat []string
+		for _, snap := range snapshots {
+			snapPath := snap.GetSnapshotPath(filePath)
+			state, ok := preComputedDiffStates[snap.Name]
+			if ok && state == diff_state.Equal && workingCopyExists {
+				continue
+			}
+			if ok && state == diff_state.Deleted {
+				continue
+			}
+			pathsToStat = append(pathsToStat, snapPath)
+		}
+
+		if len(pathsToStat) > 0 {
+			resultsChan := make(chan prefetchResult, len(pathsToStat))
+			pathsChan := make(chan string, len(pathsToStat))
+			for _, p := range pathsToStat {
+				pathsChan <- p
+			}
+			close(pathsChan)
+
+			numWorkers := 64
+			if len(pathsToStat) < numWorkers {
+				numWorkers = len(pathsToStat)
+			}
+
+			var wg sync.WaitGroup
+			for i := 0; i < numWorkers; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for path := range pathsChan {
+						stat, err := os.Lstat(path)
+						if os.IsNotExist(err) {
+							resultsChan <- prefetchResult{snapPath: path, meta: fileMeta{exists: false}}
+						} else if err == nil {
+							resultsChan <- prefetchResult{
+								snapPath: path,
+								meta: fileMeta{
+									exists:  true,
+									isDir:   stat.IsDir(),
+									size:    stat.Size(),
+									mode:    stat.Mode(),
+									modTime: stat.ModTime(),
+								},
+							}
+						} else {
+							resultsChan <- prefetchResult{snapPath: path, meta: fileMeta{exists: false}}
+						}
+					}
+				}()
+			}
+
+			wg.Wait()
+			close(resultsChan)
+
+			for res := range resultsChan {
+				metaCache[res.snapPath] = res.meta
+			}
+		}
 
 		getSnapshotMeta := func(snap *zfs.Snapshot) (fileMeta, error) {
 			snapPath := snap.GetSnapshotPath(filePath)

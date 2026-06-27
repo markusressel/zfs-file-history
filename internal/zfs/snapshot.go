@@ -68,18 +68,16 @@ func (s *Snapshot) Equal(e Snapshot) bool {
 func NewSnapshot(name string, path string, parentDataset *Dataset, s *golibzfs.Dataset) *Snapshot {
 	fullName := fmt.Sprintf("%s@%s", parentDataset.GetName(), name)
 	snapshot := &Snapshot{
-		Name:          name,
-		FullName:      fullName,
-		Path:          path,
-		ParentDataset: parentDataset,
-
+		Name:            name,
+		FullName:        fullName,
+		Path:            path,
+		ParentDataset:   parentDataset,
 		rawGolibzfsData: s,
 	}
 
 	if s != nil {
-		// If we have libzfs data, we can sometimes avoid the slow gozfs call
-		// but we still need some properties that FetchDetails provides.
-		// For now, let's just make it safe.
+		snapshot.FetchDetails()
+		return snapshot
 	}
 
 	rawGoufsData, err := gozfs.Snapshots(fullName)
@@ -379,6 +377,16 @@ func (s *Snapshot) Destroy(recursive bool, dependantClones bool) error {
 }
 
 func (s *Snapshot) GetCreationDate() time.Time {
+	if s.rawGolibzfsData != nil {
+		prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
+		if err == nil {
+			timestamp, err := strconv.ParseInt(prop.Value, 10, 64)
+			if err == nil {
+				return time.Unix(timestamp, 0)
+			}
+		}
+	}
+
 	if s.rawGozfsData == nil {
 		return time.Time{}
 	}

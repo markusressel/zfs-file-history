@@ -132,6 +132,10 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	return fileBrowser
 }
 
+func (fileBrowser *FileBrowserComponent) GetPath() string {
+	return fileBrowser.path
+}
+
 func (fileBrowser *FileBrowserComponent) createLayout() {
 	fileBrowser.layout = tview.NewPages().
 		AddPage("file-browser", fileBrowser.tableContainer.GetLayout(), true, true)
