@@ -707,13 +707,23 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 		return
 	}
 
-	snapshotPath := entry.Snapshot.GetSnapshotPath(o.file.GetRealPath())
-	stat, err := os.Lstat(snapshotPath)
-	if err != nil {
-		logging.Error("Could not stat snapshot file %s: %s", snapshotPath, err.Error())
-		errDialog := NewErrorDialog(o.application, "Restore Failed", err)
-		ShowDialogOnPages(o.application, o.pages, errDialog, nil)
-		return
+	var stat os.FileInfo
+	var snapshotPath string
+
+	if entry.DiffState == diff_state.Deleted {
+		// File is deleted/absent in the selected snapshot.
+		snapshotPath = ""
+		stat = nil
+	} else {
+		snapshotPath = entry.Snapshot.GetSnapshotPath(o.file.GetRealPath())
+		var err error
+		stat, err = os.Lstat(snapshotPath)
+		if err != nil {
+			logging.Error("Could not stat snapshot file %s: %s", snapshotPath, err.Error())
+			errDialog := NewErrorDialog(o.application, "Restore Failed", err)
+			ShowDialogOnPages(o.application, o.pages, errDialog, nil)
+			return
+		}
 	}
 
 	snapFile := &data.SnapshotFile{

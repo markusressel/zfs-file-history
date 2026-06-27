@@ -1,6 +1,8 @@
 package dialog
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
@@ -38,4 +40,38 @@ func TestRestoreFileProgressDialog(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	d.Close()
+}
+
+func TestRestoreFileProgressDialog_AbsentFile(t *testing.T) {
+	app := tview.NewApplication()
+	tempFile := filepath.Join(t.TempDir(), "to_delete.txt")
+	err := os.WriteFile(tempFile, []byte("hello"), 0644)
+	assert.NoError(t, err)
+
+	file := &data.FileBrowserEntry{
+		Name: "to_delete.txt",
+		SnapshotFiles: []*data.SnapshotFile{
+			{
+				Path:         "", // empty path means absent in snapshot
+				OriginalPath: tempFile,
+				Snapshot: &zfs.Snapshot{
+					Name: "snap1",
+					ParentDataset: &zfs.Dataset{
+						Path:          "/pool/ds1",
+						HiddenZfsPath: "/pool/ds1/.zfs",
+					},
+				},
+			},
+		},
+	}
+
+	d := NewRestoreFileProgressDialog(app, file, false)
+	assert.Equal(t, string(RestoreFileProgress), d.GetName())
+
+	time.Sleep(100 * time.Millisecond)
+
+	d.Close()
+
+	// Assert the working copy was deleted
+	assert.NoFileExists(t, tempFile)
 }
