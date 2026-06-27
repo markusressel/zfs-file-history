@@ -211,9 +211,14 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 					color = theme.Colors.FileBrowser.Table.State.Equal
 				}
 			} else {
+				isOldest := len(o.historyEntries) > 0 && o.historyEntries[len(o.historyEntries)-1] == entry
 				switch entry.DiffState {
 				case diff_state.Added:
-					text = "Added"
+					if isOldest {
+						text = "Initial"
+					} else {
+						text = "Added"
+					}
 					color = theme.Colors.FileBrowser.Table.State.Added
 				case diff_state.Deleted:
 					text = "Deleted"
