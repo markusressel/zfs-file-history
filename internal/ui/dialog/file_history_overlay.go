@@ -195,19 +195,36 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 			text = entry.Snapshot.Name
 		case historyColumnDiff:
 			align = tview.AlignCenter
-			switch entry.DiffState {
-			case diff_state.Added:
-				text = "Added"
-				color = theme.Colors.SnapshotBrowser.Table.State.LocalOnly
-			case diff_state.Deleted:
-				text = "Deleted"
-				color = theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
-			case diff_state.Modified:
-				text = "Modified"
-				color = theme.Colors.SnapshotBrowser.Table.State.Modified
-			default:
-				text = "Unknown"
-				color = tcell.ColorGray
+			if o.currentDiffMode == diffModeWorkingCopy {
+				switch entry.DiffState {
+				case diff_state.Deleted:
+					text = "Present"
+					color = theme.Colors.FileBrowser.Table.State.Added
+				case diff_state.Added:
+					text = "Absent"
+					color = theme.Colors.FileBrowser.Table.State.Deleted
+				case diff_state.Modified:
+					text = "Modified"
+					color = theme.Colors.FileBrowser.Table.State.Modified
+				default:
+					text = "Identical"
+					color = theme.Colors.FileBrowser.Table.State.Equal
+				}
+			} else {
+				switch entry.DiffState {
+				case diff_state.Added:
+					text = "Added"
+					color = theme.Colors.FileBrowser.Table.State.Added
+				case diff_state.Deleted:
+					text = "Deleted"
+					color = theme.Colors.FileBrowser.Table.State.Deleted
+				case diff_state.Modified:
+					text = "Modified"
+					color = theme.Colors.FileBrowser.Table.State.Modified
+				default:
+					text = "Equal"
+					color = theme.Colors.FileBrowser.Table.State.Equal
+				}
 			}
 		case historyColumnDate:
 			text = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
@@ -229,17 +246,28 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 }
 
 func (o *FileHistoryOverlay) determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
-	switch entry.DiffState {
-	case diff_state.Equal:
-		return theme.Colors.SnapshotBrowser.Table.State.Equal
-	case diff_state.Deleted:
-		return theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
-	case diff_state.Added:
-		return theme.Colors.SnapshotBrowser.Table.State.LocalOnly
-	case diff_state.Modified:
-		return theme.Colors.SnapshotBrowser.Table.State.Modified
-	default:
-		return theme.Colors.SnapshotBrowser.Table.State.Unknown
+	if o.currentDiffMode == diffModeWorkingCopy {
+		switch entry.DiffState {
+		case diff_state.Deleted:
+			return theme.Colors.FileBrowser.Table.State.Added
+		case diff_state.Added:
+			return theme.Colors.FileBrowser.Table.State.Deleted
+		case diff_state.Modified:
+			return theme.Colors.FileBrowser.Table.State.Modified
+		default:
+			return theme.Colors.FileBrowser.Table.State.Equal
+		}
+	} else {
+		switch entry.DiffState {
+		case diff_state.Added:
+			return theme.Colors.FileBrowser.Table.State.Added
+		case diff_state.Deleted:
+			return theme.Colors.FileBrowser.Table.State.Deleted
+		case diff_state.Modified:
+			return theme.Colors.FileBrowser.Table.State.Modified
+		default:
+			return theme.Colors.FileBrowser.Table.State.Equal
+		}
 	}
 }
 
@@ -418,6 +446,7 @@ func (o *FileHistoryOverlay) toggleDiffMode() {
 	o.updateModeView()
 	o.updateShortcuts()
 	o.updateDiff()
+	o.tableContainer.SetData(o.historyEntries)
 }
 
 func (o *FileHistoryOverlay) renderDiffTextSync(text string) {
