@@ -74,4 +74,28 @@ func TestLoadingView_EdgeCases(t *testing.T) {
 	loadingViewNilApp.Start()
 	time.Sleep(150 * time.Millisecond)
 	loadingViewNilApp.Stop()
+
+	// Test SetMessage
+	loadingView.SetMessage("New message")
+	assert.Equal(t, "New message", loadingView.message)
+}
+
+func TestLoadingContainer_SetBorderColorAndMessage(t *testing.T) {
+	app := tview.NewApplication()
+
+	// Content is a Box
+	boxContent := tview.NewBox()
+	containerBox := NewLoadingContainer(app, boxContent, "Title", "Msg")
+	containerBox.SetBorderColor(tcell.ColorBlue)
+	assert.Equal(t, tcell.ColorBlue, boxContent.GetBorderColor())
+
+	// Content is a Flex
+	flexContent := tview.NewFlex()
+	containerFlex := NewLoadingContainer(app, flexContent, "Title", "Msg")
+	containerFlex.SetBorderColor(tcell.ColorRed)
+	assert.Equal(t, tcell.ColorRed, flexContent.GetBorderColor())
+
+	// Test SetMessage
+	containerBox.SetMessage("Another message")
+	assert.Equal(t, "Another message", containerBox.loadingView.message)
 }
