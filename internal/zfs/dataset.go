@@ -65,16 +65,22 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 		HiddenZfsPath: hiddenZfsPath,
 	}
 
-	// Try to find the dataset metadata in the golibzfs cache
-	ds := findDataset(allDatasets, path)
-	if ds != nil {
+	// Try to find the dataset metadata in the local cache
+	cacheMtx.RLock()
+	ds, cached := datasetCache[path]
+	cacheMtx.RUnlock()
+
+	if cached {
 		dataset.rawGolibzfsData = ds
 	} else {
-		// If the global cache is not loaded yet, try to open the dataset directly by looking up its mountpoint
+		// If not cached, resolve it directly by looking up its mountpoint
 		datasetName, err := findDatasetNameByMountpoint(path)
 		if err == nil {
 			libds, err := golibzfs.DatasetOpen(datasetName)
 			if err == nil {
+				cacheMtx.Lock()
+				datasetCache[path] = &libds
+				cacheMtx.Unlock()
 				dataset.rawGolibzfsData = &libds
 			}
 		}

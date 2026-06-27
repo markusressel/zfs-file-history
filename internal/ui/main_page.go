@@ -130,8 +130,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		case tcell.KeyBacktab:
 			mainPage.CycleFocus(true)
 		case tcell.KeyF5:
-			datasetInfo.Refresh()
-			snapshotBrowser.Refresh(true)
+			zfs.RefreshZfsData()
 			fileBrowser.Refresh(false)
 		default:
 		}
