@@ -88,11 +88,19 @@ func (s *historyScanner) scan(loadingMsgFunc func(string)) ([]*data.SnapshotBrow
 			logging.Error("Failed to determine diff state between snapshots: %s", err.Error())
 			state = diff_state.Unknown
 		}
+
+		workingCopyState, err := s.determineDiffStateAgainstWorkingCopy(snap)
+		if err != nil {
+			logging.Error("Failed to determine diff state against working copy: %s", err.Error())
+			workingCopyState = diff_state.Unknown
+		}
+
 		if state != diff_state.Equal && state != diff_state.Unknown {
 			history = append(history, &data.SnapshotBrowserEntry{
-				Snapshot:  snap,
-				DiffState: state,
-				IsLoading: false,
+				Snapshot:             snap,
+				DiffState:            state,
+				WorkingCopyDiffState: workingCopyState,
+				IsLoading:            false,
 			})
 			prev = snap
 		} else if state == diff_state.Equal {
@@ -244,6 +252,31 @@ func (s *historyScanner) determineDiffStateBetween(snap, prev *zfs.Snapshot) (di
 		return diff_state.Added, nil
 	} else if prevMeta.exists {
 		return diff_state.Deleted, nil
+	}
+
+	return diff_state.Equal, nil
+}
+
+func (s *historyScanner) determineDiffStateAgainstWorkingCopy(snap *zfs.Snapshot) (diff_state.DiffState, error) {
+	sMeta, err := s.getSnapshotMeta(snap)
+	if err != nil {
+		return diff_state.Unknown, err
+	}
+
+	if sMeta.exists && s.workingCopyExists {
+		if sMeta.isDir != s.workingCopyStat.IsDir() ||
+			sMeta.size != s.workingCopyStat.Size() ||
+			sMeta.mode != s.workingCopyStat.Mode() ||
+			sMeta.modTime != s.workingCopyStat.ModTime() {
+			return diff_state.Modified, nil
+		}
+		return diff_state.Equal, nil
+	} else if sMeta.exists {
+		// File exists in snapshot, but not in working copy -> Deleted in working copy!
+		return diff_state.Deleted, nil
+	} else if s.workingCopyExists {
+		// File does not exist in snapshot, but exists in working copy -> Added in working copy!
+		return diff_state.Added, nil
 	}
 
 	return diff_state.Equal, nil

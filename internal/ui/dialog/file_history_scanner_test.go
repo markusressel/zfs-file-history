@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"os"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data/diff_state"
@@ -155,6 +156,91 @@ func TestHistoryScanner_DetermineDiffStateBetween_PrevNil(t *testing.T) {
 	// Case 2: prev is nil, snap does not exist -> Equal
 	s.metaCache[snapPath] = fileMeta{exists: false}
 	state, err = s.determineDiffStateBetween(snap, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Equal, state)
+}
+
+type mockFileInfo struct {
+	isDir   bool
+	size    int64
+	mode    os.FileMode
+	modTime time.Time
+}
+
+func (m mockFileInfo) Name() string       { return "file.txt" }
+func (m mockFileInfo) Size() int64        { return m.size }
+func (m mockFileInfo) Mode() os.FileMode  { return m.mode }
+func (m mockFileInfo) ModTime() time.Time { return m.modTime }
+func (m mockFileInfo) IsDir() bool        { return m.isDir }
+func (m mockFileInfo) Sys() any           { return nil }
+
+func TestHistoryScanner_DetermineDiffStateAgainstWorkingCopy(t *testing.T) {
+	filePath := "/pool/ds1/file.txt"
+	snap := &zfs.Snapshot{
+		Name: "snap-1",
+		ParentDataset: &zfs.Dataset{
+			Path:          "/pool/ds1",
+			HiddenZfsPath: "/pool/ds1/.zfs",
+		},
+	}
+	snapPath := snap.GetSnapshotPath(filePath)
+
+	now := time.Now()
+
+	s := &historyScanner{
+		filePath:          filePath,
+		metaCache:         make(map[string]fileMeta),
+		workingCopyExists: true,
+		workingCopyStat: mockFileInfo{
+			isDir:   false,
+			size:    100,
+			mode:    0644,
+			modTime: now,
+		},
+	}
+
+	// Case 1: Snapshot exists and is equal to working copy
+	s.metaCache[snapPath] = fileMeta{
+		exists:  true,
+		isDir:   false,
+		size:    100,
+		mode:    0644,
+		modTime: now,
+	}
+	state, err := s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Equal, state)
+
+	// Case 2: Snapshot exists but differs from working copy
+	s.metaCache[snapPath] = fileMeta{
+		exists:  true,
+		isDir:   false,
+		size:    200, // differs
+		mode:    0644,
+		modTime: now,
+	}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Modified, state)
+
+	// Case 3: Snapshot exists, working copy does not exist
+	s.workingCopyExists = false
+	s.metaCache[snapPath] = fileMeta{exists: true}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Deleted, state) // File only exists in snapshot, deleted in working copy
+
+	// Case 4: Snapshot does not exist, working copy exists
+	s.workingCopyExists = true
+	s.metaCache[snapPath] = fileMeta{exists: false}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
+	assert.NoError(t, err)
+	assert.Equal(t, diff_state.Added, state) // File only exists in working copy, added in working copy
+
+	// Case 5: Neither exists
+	s.workingCopyExists = false
+	s.metaCache[snapPath] = fileMeta{exists: false}
+	state, err = s.determineDiffStateAgainstWorkingCopy(snap)
 	assert.NoError(t, err)
 	assert.Equal(t, diff_state.Equal, state)
 }
