@@ -15,10 +15,20 @@
 
 * 📁 **File browser:** Navigate datasets and snapshot contents in a terminal-based file explorer.
 * ⌨️ **Keyboard-first navigation:** Use arrow keys and optional Vim key bindings for efficient traversal.
-* 🔍 **Diff-style change view:** Inspect file changes between snapshots with a Git-like visual diff representation.
+* 🔍 **Dual Diff Comparison Modes:** Inspect file changes inside the history overlay using two modes:
+  * **vs Predecessor:** Chronological comparison showing how the file evolved over snapshot versions (Additions in
+    Green, Deletions in Red, baseline labeled as `Initial`).
+  * **vs Working Copy:** Direct comparison showing each snapshot version relative to your current local file, with
+    context-aware statuses (`Present` to restore, `Absent` to remove, `Modified`, or `Identical`).
+* 🩹 **Graceful Diff Fallbacks:** Diff views automatically fall back to `/dev/null` when files are missing on either
+  side (e.g. deleted locally or missing in a snapshot), showing clean addition/deletion diffs instead of CLI execution
+  errors.
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
-* ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot.
+* ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
+  files that are absent in a snapshot by deleting the current working copy copy.
+* 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
+  dynamically clamping to screen bounds to prevent clipping.
 * 🗂️ **Snapshot lifecycle actions:** Create and destroy snapshots from within the UI.
 
 # How to use
