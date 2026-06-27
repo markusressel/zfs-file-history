@@ -86,7 +86,7 @@ func NewFileHistoryOverlay(
 		application:     application,
 		file:            file,
 		actionChannel:   make(chan DialogActionId, 1),
-		currentDiffMode: diffModePredecessor,
+		currentDiffMode: diffModeWorkingCopy,
 		historyEntries:  []*data.SnapshotBrowserEntry{},
 	}
 
