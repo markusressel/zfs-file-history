@@ -1,8 +1,6 @@
 package dialog
 
 import (
-	"os/exec"
-	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/util"
 
@@ -11,8 +9,6 @@ import (
 )
 
 const (
-	DiffBinPath = "/usr/bin/diff"
-
 	FileDiffDialogPage util.Page = "FileDiffDialog"
 )
 
@@ -43,28 +39,19 @@ func (d *FileDiffDialog) createLayout() {
 	realFilePath := d.file.RealFile.Path
 	snapshotFilePath := d.snapshot.Snapshot.GetSnapshotPath(d.file.RealFile.Path)
 
-	output, err := exec.Command(
-		DiffBinPath,
-		"-U", "3",
-		snapshotFilePath,
-		realFilePath,
-	).Output()
-	diffText := string(output)
-	if err != nil && err.Error() != "exit status 1" {
-		diffText = "error calculating diff: " + err.Error()
-	}
-
-	diffTextLines := strings.Split(diffText, "\n")
-	for i := 0; i < len(diffTextLines); i++ {
-		line := diffTextLines[i]
-		if strings.HasPrefix(line, "+") {
-			diffTextLines[i] = `[green]` + line + `[white]`
-		}
-		if strings.HasPrefix(line, "-") {
-			diffTextLines[i] = `[red]` + line + `[white]`
+	var diffText string
+	isBinary := IsBinaryFile(snapshotFilePath) || IsBinaryFile(realFilePath)
+	if isBinary {
+		diffText = "Binary files differ, content preview not available."
+	} else {
+		var err error
+		diffText, err = RunDiff(snapshotFilePath, realFilePath)
+		if err != nil {
+			diffText = "error calculating diff: " + err.Error()
+		} else {
+			diffText = FormatDiffText(diffText, false)
 		}
 	}
-	diffText = strings.Join(diffTextLines, "\n")
 
 	textDescriptionView := tview.NewTextView().
 		SetDynamicColors(true).
