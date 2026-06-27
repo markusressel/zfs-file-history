@@ -69,13 +69,11 @@ func (d *FileDiffDialog) createLayout() {
 	dialogContent.AddItem(closeTextView, 1, 0, false)
 	dialogContent.SetBorderPadding(0, 0, 1, 1)
 
-	width, height := CalculateDialogSize(DialogSizeConstraints{
+	dialog := createModal(dialogTitle, dialogContent, DialogSizeConstraints{
 		Title:             dialogTitle,
 		ExtraContentWidth: 74,
 		StaticHeight:      18, // Sane content height for scrollable diff text
 	})
-
-	dialog := createModal(dialogTitle, dialogContent, width, height)
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			d.Close()

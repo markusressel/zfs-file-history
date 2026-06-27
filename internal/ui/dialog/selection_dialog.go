@@ -78,12 +78,14 @@ func (d *SelectionDialog) createLayout() {
 		}
 	}
 
-	dialogWidth, dialogHeight := CalculateDialogSize(DialogSizeConstraints{
+	constraints := DialogSizeConstraints{
 		Title:             d.title,
 		Description:       d.description,
 		ExtraContentWidth: maxOptWidth,
 		StaticHeight:      1 + actualTableRows,
-	})
+	}
+
+	dialogWidth, _ := CalculateDialogSize(constraints)
 
 	textLineWidth := dialogWidth - 6
 	if textLineWidth < 5 {
@@ -103,7 +105,7 @@ func (d *SelectionDialog) createLayout() {
 	dialogContent.AddItem(tview.NewBox(), 1, 0, false)
 	dialogContent.AddItem(d.optionTable, actualTableRows, 0, true)
 
-	dialog := createModal(d.title, dialogContent, dialogWidth, dialogHeight)
+	dialog := createModal(d.title, dialogContent, constraints)
 	dialog.SetInputCapture(createOptionDialogInputCapture(d.optionTable, d.options, d.selectAction, d.Close))
 	d.layout = dialog
 }

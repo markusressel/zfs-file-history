@@ -339,22 +339,7 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 		AddItem(dialogContentRowWrapper, width, 1, true).
 		AddItem(nil, 0, 1, false)
 
-	dialogContentColumnWrapper.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		screenWidth, screenHeight := screen.Size()
-		newWidth := screenWidth - 4
-		if newWidth < 80 {
-			newWidth = 80
-		}
-		newHeight := screenHeight - 2
-		if newHeight < 15 {
-			newHeight = 15
-		}
-
-		dialogContentColumnWrapper.ResizeItem(dialogContentRowWrapper, newWidth, 1)
-		dialogContentRowWrapper.ResizeItem(dialogFrame, newHeight, 1)
-
-		return x, y, width, height
-	})
+	MakeFlexResizing(dialogContentColumnWrapper, dialogContentRowWrapper, dialogFrame, 99999, 80, 99999, 15)
 
 	return dialogContentColumnWrapper
 }

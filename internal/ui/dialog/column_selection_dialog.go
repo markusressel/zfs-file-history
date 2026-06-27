@@ -110,13 +110,11 @@ func (d *ColumnSelectionDialog) createLayout() {
 	extraWidth := 2 * (maxColWidth + 4)
 	staticHeight := 1 + len(d.allColumns) + 2
 
-	width, height := CalculateDialogSize(DialogSizeConstraints{
+	d.layout = createModal(d.title, content, DialogSizeConstraints{
 		Title:             d.title,
 		ExtraContentWidth: extraWidth,
 		StaticHeight:      staticHeight,
 	})
-
-	d.layout = createModal(d.title, content, width, height)
 	d.layout.SetInputCapture(d.captureInput)
 }
 

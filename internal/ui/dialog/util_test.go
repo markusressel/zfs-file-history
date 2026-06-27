@@ -10,7 +10,10 @@ import (
 
 func TestCreateModal(t *testing.T) {
 	content := tview.NewBox()
-	dialog := createModal("Test Modal", content, 50, 15)
+	dialog := createModal("Test Modal", content, DialogSizeConstraints{
+		Title:        "Test Modal",
+		StaticHeight: 15,
+	})
 	assert.NotNil(t, dialog)
 }
 
