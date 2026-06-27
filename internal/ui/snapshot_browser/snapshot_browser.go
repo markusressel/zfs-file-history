@@ -550,6 +550,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*data.SnapshotBr
 	return snapshotBrowser.tableContainer.GetEntries()
 }
 
+func (snapshotBrowser *SnapshotBrowserComponent) GetCurrentSnapshots() []*zfs.Snapshot {
+	return snapshotBrowser.currentSnapshots
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) selectHeader() {
 	snapshotBrowser.tableContainer.SelectHeader()
 }

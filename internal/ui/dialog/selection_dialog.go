@@ -129,20 +129,25 @@ func (d *SelectionDialog) selectAction(option *DialogOption) {
 		return
 	}
 
-	if d.handler != nil {
-		d.ShowLoading(option)
+	// 1. Always show loading, even if the work is instantaneous
+	d.ShowLoading(option)
 
-		go func() {
-			err := d.handler(d, option.Id)
+	go func() {
+		var err error
 
-			d.application.QueueUpdateDraw(func() {
-				d.StopLoading()
-				if d.onComplete != nil {
-					d.onComplete(d, option, err)
-				}
-			})
-		}()
-	}
+		// 2. Only execute the handler if one was actually provided
+		if d.handler != nil {
+			err = d.handler(d, option.Id)
+		}
+
+		// 3. Always queue the completion logic back onto the main UI thread
+		d.application.QueueUpdateDraw(func() {
+			d.StopLoading()
+			if d.onComplete != nil {
+				d.onComplete(d, option, err)
+			}
+		})
+	}()
 }
 
 func (d *SelectionDialog) ShowLoading(option *DialogOption) {
