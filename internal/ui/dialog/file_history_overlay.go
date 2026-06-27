@@ -196,7 +196,7 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 		case historyColumnDiff:
 			align = tview.AlignCenter
 			if o.currentDiffMode == diffModeWorkingCopy {
-				switch entry.DiffState {
+				switch entry.WorkingCopyDiffState {
 				case diff_state.Deleted:
 					text = "Present"
 					color = theme.Colors.FileBrowser.Table.State.Added
@@ -247,7 +247,7 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 
 func (o *FileHistoryOverlay) determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
 	if o.currentDiffMode == diffModeWorkingCopy {
-		switch entry.DiffState {
+		switch entry.WorkingCopyDiffState {
 		case diff_state.Deleted:
 			return theme.Colors.FileBrowser.Table.State.Added
 		case diff_state.Added:
