@@ -429,7 +429,7 @@ func (o *FileHistoryOverlay) renderDiffTextSync(text string) {
 }
 
 func (o *FileHistoryOverlay) scanHistoryAsync() {
-	filePath := o.file.RealFile.Path
+	filePath := o.file.GetRealPath()
 
 	go func() {
 		ds, err := zfs.FindHostDataset(filePath)
@@ -794,7 +794,7 @@ func (o *FileHistoryOverlay) updateDiff() {
 
 	ctx, seq := o.diffLoader.Start()
 
-	filePath := o.file.RealFile.Path
+	filePath := o.file.GetRealPath()
 	diffMode := o.currentDiffMode
 
 	var prevSnapshot *zfs.Snapshot = nil
@@ -965,7 +965,7 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 		return
 	}
 
-	snapshotPath := entry.Snapshot.GetSnapshotPath(o.file.RealFile.Path)
+	snapshotPath := entry.Snapshot.GetSnapshotPath(o.file.GetRealPath())
 	stat, err := os.Lstat(snapshotPath)
 	if err != nil {
 		logging.Error("Could not stat snapshot file %s: %s", snapshotPath, err.Error())
@@ -976,7 +976,7 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 
 	snapFile := &data.SnapshotFile{
 		Path:         snapshotPath,
-		OriginalPath: o.file.RealFile.Path,
+		OriginalPath: o.file.GetRealPath(),
 		Stat:         stat,
 		Snapshot:     entry.Snapshot,
 	}
