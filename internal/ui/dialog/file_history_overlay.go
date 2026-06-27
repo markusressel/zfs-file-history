@@ -716,9 +716,19 @@ func (o *FileHistoryOverlay) updateDiff() {
 
 		metaText := o.getMetadataComparisonText(oldPath, newPath)
 
+		diffTextLines := strings.Split(diffText, "\n")
+		var filteredLines []string
+		for _, line := range diffTextLines {
+			if len(line) >= 4 && (strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++")) && (line[3] == ' ' || line[3] == '\t') {
+				continue
+			}
+			filteredLines = append(filteredLines, line)
+		}
+		diffTextLines = filteredLines
+		diffText = strings.Join(diffTextLines, "\n")
+
 		rawDiff := diffText
 
-		diffTextLines := strings.Split(diffText, "\n")
 		for i := 0; i < len(diffTextLines); i++ {
 			line := diffTextLines[i]
 			if strings.HasPrefix(line, "+") {
