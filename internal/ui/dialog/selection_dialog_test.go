@@ -4,7 +4,6 @@ import (
 	"testing"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
-	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -174,6 +173,17 @@ func TestNewRestoreFileDialog(t *testing.T) {
 	assert.Equal(t, "RestoreFileDialog", d.GetName())
 
 	opts := buildRestoreDialogOptions(file)
-	assert.NotEmpty(t, opts)
-	assert.Equal(t, localization.LocalizationCommonClose, opts[len(opts)-1].Name)
+	assert.Len(t, opts, 2)
+	assert.Equal(t, RestoreFileDialogRestoreFileActionId, opts[0].Id)
+	assert.Equal(t, DialogCloseActionId, opts[1].Id)
+
+	dir := &data.FileBrowserEntry{
+		Name: "test-dir",
+		Type: data.Directory,
+	}
+	optsDir := buildRestoreDialogOptions(dir)
+	assert.Len(t, optsDir, 3)
+	assert.Equal(t, RestoreFileDialogRestoreRecursiveActionId, optsDir[0].Id)
+	assert.Equal(t, RestoreFileDialogRestoreFileActionId, optsDir[1].Id)
+	assert.Equal(t, DialogCloseActionId, optsDir[2].Id)
 }

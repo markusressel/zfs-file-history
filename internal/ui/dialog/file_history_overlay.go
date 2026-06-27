@@ -3,11 +3,9 @@ package dialog
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
@@ -432,234 +430,24 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 	filePath := o.file.GetRealPath()
 
 	go func() {
-		ds, err := zfs.FindHostDataset(filePath)
+		scanner := newHistoryScanner(filePath, o.cachedEntries)
+		history, err := scanner.scan(func(msg string) {
+			o.application.QueueUpdate(func() {
+				o.loadingView.SetMessage(msg)
+			})
+		})
+
 		if err != nil {
-			logging.Error("Failed to find host dataset for %s: %s", filePath, err.Error())
+			logging.Error("Failed to scan history: %s", err.Error())
 			o.application.QueueUpdate(func() {
 				o.loadingView.Stop()
 				o.pages.HidePage(string(HistoryLoadingPage))
 				o.pages.ShowPage(string(HistoryMainPage))
 				o.rightLayoutContainer.SetIsLoading(false)
-				o.renderDiffTextSync(fmt.Sprintf("Failed to load dataset: %s", err.Error()))
+				o.renderDiffTextSync(err.Error())
 			})
 			return
 		}
-
-		var snapshots []*zfs.Snapshot
-		preComputedDiffStates := make(map[string]diff_state.DiffState)
-
-		if len(o.cachedEntries) > 0 && o.cachedEntries[0].Snapshot != nil && o.cachedEntries[0].Snapshot.ParentDataset != nil && o.cachedEntries[0].Snapshot.ParentDataset.Path == ds.Path {
-			for _, entry := range o.cachedEntries {
-				if entry != nil && entry.Snapshot != nil {
-					snapshots = append(snapshots, entry.Snapshot)
-					preComputedDiffStates[entry.Snapshot.Name] = entry.DiffState
-				}
-			}
-		} else {
-			var err error
-			snapshots, err = ds.GetSnapshots()
-			if err != nil {
-				logging.Error("Failed to get snapshots for dataset %s: %s", ds.Path, err.Error())
-				o.application.QueueUpdate(func() {
-					o.loadingView.Stop()
-					o.pages.HidePage(string(HistoryLoadingPage))
-					o.pages.ShowPage(string(HistoryMainPage))
-					o.rightLayoutContainer.SetIsLoading(false)
-					o.renderDiffTextSync(fmt.Sprintf("Failed to load snapshots: %s", err.Error()))
-				})
-				return
-			}
-		}
-
-		o.application.QueueUpdate(func() {
-			o.loadingView.SetMessage("Scanning snapshot history for changes...")
-		})
-
-		slices.SortFunc(snapshots, func(a, b *zfs.Snapshot) int {
-			return a.GetCreationDate().Compare(b.GetCreationDate())
-		})
-
-		type fileMeta struct {
-			exists  bool
-			isDir   bool
-			size    int64
-			mode    os.FileMode
-			modTime time.Time
-		}
-
-		metaCache := make(map[string]fileMeta)
-		workingCopyStat, workingCopyErr := os.Lstat(filePath)
-		workingCopyExists := workingCopyErr == nil
-
-		// Prefetch snapshot stats in parallel to avoid slow sequential disk stats
-		type prefetchResult struct {
-			snapPath string
-			meta     fileMeta
-		}
-
-		var pathsToStat []string
-		for _, snap := range snapshots {
-			snapPath := snap.GetSnapshotPath(filePath)
-			state, ok := preComputedDiffStates[snap.Name]
-			if ok && state == diff_state.Equal && workingCopyExists {
-				continue
-			}
-			if ok && state == diff_state.Deleted {
-				continue
-			}
-			pathsToStat = append(pathsToStat, snapPath)
-		}
-
-		if len(pathsToStat) > 0 {
-			resultsChan := make(chan prefetchResult, len(pathsToStat))
-			pathsChan := make(chan string, len(pathsToStat))
-			for _, p := range pathsToStat {
-				pathsChan <- p
-			}
-			close(pathsChan)
-
-			numWorkers := 64
-			if len(pathsToStat) < numWorkers {
-				numWorkers = len(pathsToStat)
-			}
-
-			var wg sync.WaitGroup
-			for i := 0; i < numWorkers; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					for path := range pathsChan {
-						stat, err := os.Lstat(path)
-						if os.IsNotExist(err) {
-							resultsChan <- prefetchResult{snapPath: path, meta: fileMeta{exists: false}}
-						} else if err == nil {
-							resultsChan <- prefetchResult{
-								snapPath: path,
-								meta: fileMeta{
-									exists:  true,
-									isDir:   stat.IsDir(),
-									size:    stat.Size(),
-									mode:    stat.Mode(),
-									modTime: stat.ModTime(),
-								},
-							}
-						} else {
-							resultsChan <- prefetchResult{snapPath: path, meta: fileMeta{exists: false}}
-						}
-					}
-				}()
-			}
-
-			wg.Wait()
-			close(resultsChan)
-
-			for res := range resultsChan {
-				metaCache[res.snapPath] = res.meta
-			}
-		}
-
-		getSnapshotMeta := func(snap *zfs.Snapshot) (fileMeta, error) {
-			snapPath := snap.GetSnapshotPath(filePath)
-			if meta, cached := metaCache[snapPath]; cached {
-				return meta, nil
-			}
-
-			if state, ok := preComputedDiffStates[snap.Name]; ok && state != diff_state.Unknown {
-				if state == diff_state.Equal && workingCopyExists {
-					meta := fileMeta{
-						exists:  true,
-						isDir:   workingCopyStat.IsDir(),
-						size:    workingCopyStat.Size(),
-						mode:    workingCopyStat.Mode(),
-						modTime: workingCopyStat.ModTime(),
-					}
-					metaCache[snapPath] = meta
-					return meta, nil
-				}
-				if state == diff_state.Deleted {
-					meta := fileMeta{exists: false}
-					metaCache[snapPath] = meta
-					return meta, nil
-				}
-			}
-
-			stat, err := os.Lstat(snapPath)
-			if os.IsNotExist(err) {
-				meta := fileMeta{exists: false}
-				metaCache[snapPath] = meta
-				return meta, nil
-			} else if err != nil {
-				return fileMeta{}, err
-			}
-
-			meta := fileMeta{
-				exists:  true,
-				isDir:   stat.IsDir(),
-				size:    stat.Size(),
-				mode:    stat.Mode(),
-				modTime: stat.ModTime(),
-			}
-			metaCache[snapPath] = meta
-			return meta, nil
-		}
-
-		determineDiffStateBetween := func(snap, prev *zfs.Snapshot) (diff_state.DiffState, error) {
-			sMeta, err := getSnapshotMeta(snap)
-			if err != nil {
-				return diff_state.Unknown, err
-			}
-
-			if prev == nil {
-				if sMeta.exists {
-					return diff_state.Added, nil
-				}
-				return diff_state.Equal, nil
-			}
-
-			prevMeta, err := getSnapshotMeta(prev)
-			if err != nil {
-				return diff_state.Unknown, err
-			}
-
-			if sMeta.exists && prevMeta.exists {
-				if sMeta.isDir != prevMeta.isDir ||
-					sMeta.size != prevMeta.size ||
-					sMeta.mode != prevMeta.mode ||
-					sMeta.modTime != prevMeta.modTime {
-					return diff_state.Modified, nil
-				}
-				return diff_state.Equal, nil
-			} else if sMeta.exists {
-				return diff_state.Added, nil
-			} else if prevMeta.exists {
-				return diff_state.Deleted, nil
-			}
-
-			return diff_state.Equal, nil
-		}
-
-		var history []*data.SnapshotBrowserEntry
-		var prev *zfs.Snapshot = nil
-
-		for _, snap := range snapshots {
-			state, err := determineDiffStateBetween(snap, prev)
-			if err != nil {
-				logging.Error("Failed to determine diff state between snapshots: %s", err.Error())
-				state = diff_state.Unknown
-			}
-			if state != diff_state.Equal && state != diff_state.Unknown {
-				history = append(history, &data.SnapshotBrowserEntry{
-					Snapshot:  snap,
-					DiffState: state,
-					IsLoading: false,
-				})
-				prev = snap
-			} else if state == diff_state.Equal {
-				prev = snap
-			}
-		}
-
-		slices.Reverse(history)
 
 		o.application.QueueUpdate(func() {
 			o.historyEntries = history
@@ -685,26 +473,6 @@ func presenceStr(exists bool) string {
 		return "Exists"
 	}
 	return "Missing"
-}
-
-func isBinaryFile(path string) bool {
-	if path == DevNull {
-		return false
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	buf := make([]byte, 512)
-	n, _ := f.Read(buf)
-	for i := 0; i < n; i++ {
-		if buf[i] == 0 {
-			return true
-		}
-	}
-	return false
 }
 
 func formatCompareField(oldVal, newVal string, changed bool, isPresence bool) string {
@@ -812,7 +580,6 @@ func (o *FileHistoryOverlay) updateDiff() {
 			return
 		}
 
-		var diffText string
 		var oldPath string
 		var newPath string
 		var title string
@@ -835,94 +602,12 @@ func (o *FileHistoryOverlay) updateDiff() {
 			title = fmt.Sprintf(" Changes (%s -> Selected: %s) ", prevName, entry.Snapshot.Name)
 		}
 
-		// Detect if the file is binary
-		isBinary := false
-		if newPath != DevNull && isBinaryFile(newPath) {
-			isBinary = true
-		}
-		if oldPath != DevNull && isBinaryFile(oldPath) {
-			isBinary = true
-		}
-
-		if isBinary {
-			diffText = "Binary files differ, content preview not available."
-		} else {
-			if diffMode == diffModeWorkingCopy {
-				_, err := os.Lstat(oldPath)
-				if os.IsNotExist(err) {
-					diffText = "Working copy file does not exist (deleted)."
-				} else {
-					// Inverted: diff realFilePath snapshotFilePath
-					output, err := exec.Command(
-						DiffBinPath,
-						"-U", "3",
-						oldPath,
-						newPath,
-					).Output()
-					diffText = string(output)
-					if err != nil && err.Error() != "exit status 1" {
-						diffText = "Error calculating diff: " + err.Error()
-					}
-				}
-			} else {
-				if prevSnapshot == nil {
-					stat, err := os.Lstat(newPath)
-					if err != nil {
-						diffText = "Snapshot file does not exist."
-					} else if stat.IsDir() {
-						diffText = "Directory content comparison not available."
-					} else {
-						data, err := os.ReadFile(newPath)
-						if err != nil {
-							diffText = "Error reading file content: " + err.Error()
-						} else {
-							content := string(data)
-							lines := strings.Split(content, "\n")
-							for i, line := range lines {
-								lines[i] = "+" + line
-							}
-							diffText = strings.Join(lines, "\n")
-						}
-					}
-				} else {
-					output, err := exec.Command(
-						DiffBinPath,
-						"-U", "3",
-						oldPath,
-						newPath,
-					).Output()
-					diffText = string(output)
-					if err != nil && err.Error() != "exit status 1" {
-						diffText = "Error calculating diff: " + err.Error()
-					}
-				}
-			}
-		}
-
+		isBinary := (newPath != DevNull && IsBinaryFile(newPath)) || (oldPath != DevNull && IsBinaryFile(oldPath))
+		diffText := computeHistoryDiffText(oldPath, newPath, diffMode, prevSnapshot, isBinary)
 		metaText := o.getMetadataComparisonText(oldPath, newPath)
 
-		diffTextLines := strings.Split(diffText, "\n")
-		var filteredLines []string
-		for _, line := range diffTextLines {
-			if len(line) >= 4 && (strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++")) && (line[3] == ' ' || line[3] == '\t') {
-				continue
-			}
-			filteredLines = append(filteredLines, line)
-		}
-		diffTextLines = filteredLines
-		diffText = strings.Join(diffTextLines, "\n")
-
-		rawDiff := diffText
-
-		for i := 0; i < len(diffTextLines); i++ {
-			line := diffTextLines[i]
-			if strings.HasPrefix(line, "+") {
-				diffTextLines[i] = `[green]` + line + `[white]`
-			} else if strings.HasPrefix(line, "-") {
-				diffTextLines[i] = `[red]` + line + `[white]`
-			}
-		}
-		diffText = strings.Join(diffTextLines, "\n")
+		rawDiff := filterDiffHeaders(diffText)
+		coloredDiff := FormatDiffText(rawDiff, false)
 
 		o.application.QueueUpdate(func() {
 			if !o.diffLoader.IsCurrentSequence(seq) {
@@ -943,7 +628,7 @@ func (o *FileHistoryOverlay) updateDiff() {
 				o.rightLayout.ResizeItem(o.diffView, 0, 1)
 
 				o.diffView.Clear()
-				o.diffView.SetText(diffText)
+				o.diffView.SetText(coloredDiff)
 				o.diffView.ScrollToBeginning()
 			}
 			o.rightLayoutContainer.SetIsLoading(false)
@@ -957,6 +642,63 @@ func (o *FileHistoryOverlay) updateDiff() {
 			}
 		})
 	}()
+}
+
+func computeHistoryDiffText(oldPath, newPath string, diffMode diffMode, prevSnapshot *zfs.Snapshot, isBinary bool) string {
+	if isBinary {
+		return "Binary files differ, content preview not available."
+	}
+
+	if diffMode == diffModeWorkingCopy {
+		_, err := os.Lstat(oldPath)
+		if os.IsNotExist(err) {
+			return "Working copy file does not exist (deleted)."
+		}
+		output, err := RunDiff(oldPath, newPath)
+		if err != nil {
+			return "Error calculating diff: " + err.Error()
+		}
+		return output
+	}
+
+	// diffModePredecessor
+	if prevSnapshot == nil {
+		stat, err := os.Lstat(newPath)
+		if err != nil {
+			return "Snapshot file does not exist."
+		}
+		if stat.IsDir() {
+			return "Directory content comparison not available."
+		}
+		data, err := os.ReadFile(newPath)
+		if err != nil {
+			return "Error reading file content: " + err.Error()
+		}
+		content := string(data)
+		lines := strings.Split(content, "\n")
+		for i, line := range lines {
+			lines[i] = "+" + line
+		}
+		return strings.Join(lines, "\n")
+	}
+
+	output, err := RunDiff(oldPath, newPath)
+	if err != nil {
+		return "Error calculating diff: " + err.Error()
+	}
+	return output
+}
+
+func filterDiffHeaders(diffText string) string {
+	diffTextLines := strings.Split(diffText, "\n")
+	var filteredLines []string
+	for _, line := range diffTextLines {
+		if len(line) >= 4 && (strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++")) && (line[3] == ' ' || line[3] == '\t') {
+			continue
+		}
+		filteredLines = append(filteredLines, line)
+	}
+	return strings.Join(filteredLines, "\n")
 }
 
 func (o *FileHistoryOverlay) restoreSelectedVersion() {

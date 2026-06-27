@@ -60,6 +60,7 @@ func (d *RestoreFileProgressDialog) createLayout() {
 	spinner := tvxwidgets.NewSpinner().SetStyle(tvxwidgets.SpinnerCircleQuarters)
 	updateSpinner := func() {
 		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
 		for {
 			<-tick.C
 			if !d.isRunning {
@@ -183,6 +184,7 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 
 	progressUpdate := func() {
 		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
 		for {
 			<-tick.C
 			if !d.isRunning {

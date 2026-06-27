@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"fmt"
-	"os/exec"
 	"slices"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/localization"
@@ -94,12 +93,4 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 	})
 
 	return ensureDialogCloseIsLast(dialogOptions)
-}
-
-func DiffBinExists() bool {
-	_, err := exec.LookPath(DiffBinPath)
-	if err != nil {
-		return false
-	}
-	return true
 }
