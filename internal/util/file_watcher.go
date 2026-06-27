@@ -52,6 +52,7 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 	t := time.NewTicker(1 * time.Second)
 
 	go func() {
+		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
