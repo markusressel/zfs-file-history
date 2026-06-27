@@ -60,3 +60,9 @@ func (c *LoadingContainer) SetBorderColor(color tcell.Color) {
 		}
 	}
 }
+
+func (c *LoadingContainer) SetMessage(message string) {
+	if c.loadingView != nil {
+		c.loadingView.SetMessage(message)
+	}
+}

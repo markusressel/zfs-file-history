@@ -6,6 +6,7 @@ import (
 	"os"
 	gopath "path"
 	"strconv"
+	"strings"
 	"time"
 	"zfs-file-history/internal/util"
 
@@ -40,6 +41,23 @@ type Dataset struct {
 	rawGolibzfsData *golibzfs.Dataset
 }
 
+func findDatasetNameByMountpoint(mountpoint string) (string, error) {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[2] == "zfs" {
+			if gopath.Clean(fields[1]) == gopath.Clean(mountpoint) {
+				return fields[0], nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no zfs mount found for mountpoint: %s", mountpoint)
+}
+
 func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	path = gopath.Clean(path)
 	dataset := &Dataset{
@@ -47,35 +65,58 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 		HiddenZfsPath: hiddenZfsPath,
 	}
 
-	// Try to find the dataset metadata in the golibzfs cache
-	ds := findDataset(allDatasets, path)
-	if ds != nil {
+	// Try to find the dataset metadata in the local cache
+	cacheMtx.RLock()
+	ds, cached := datasetCache[path]
+	cacheMtx.RUnlock()
+
+	if cached {
 		dataset.rawGolibzfsData = ds
-
-		// Use the name found in golibzfs to fetch full metadata from gozfs
-		nameProp, err := ds.GetProperty(golibzfs.DatasetPropName)
+	} else {
+		// If not cached, resolve it directly by looking up its mountpoint
+		datasetName, err := findDatasetNameByMountpoint(path)
 		if err == nil {
-			gozfsDs, err := gozfs.GetDataset(nameProp.Value)
+			libds, err := golibzfs.DatasetOpen(datasetName)
 			if err == nil {
-				dataset.rawGozfsData = gozfsDs
-			}
-		}
-	}
-
-	// Fallback: if we haven't found metadata yet, try mistify/go-zfs directly.
-	if dataset.rawGozfsData == nil {
-		gozfsList, err := gozfs.Filesystems("")
-		if err == nil {
-			for _, fs := range gozfsList {
-				if gopath.Clean(fs.Mountpoint) == path {
-					dataset.rawGozfsData = fs
-					break
-				}
+				cacheMtx.Lock()
+				datasetCache[path] = &libds
+				cacheMtx.Unlock()
+				dataset.rawGolibzfsData = &libds
 			}
 		}
 	}
 
 	return dataset, nil
+}
+
+func (dataset *Dataset) lazyLoadGozfsData() error {
+	if dataset.rawGozfsData != nil {
+		return nil
+	}
+
+	if dataset.rawGolibzfsData != nil {
+		nameProp, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropName)
+		if err == nil {
+			gozfsDs, err := gozfs.GetDataset(nameProp.Value)
+			if err == nil {
+				dataset.rawGozfsData = gozfsDs
+				return nil
+			}
+		}
+	}
+
+	// Fallback: if we haven't found metadata yet, try mistify/go-zfs directly.
+	gozfsList, err := gozfs.Filesystems("")
+	if err == nil {
+		for _, fs := range gozfsList {
+			if gopath.Clean(fs.Mountpoint) == dataset.Path {
+				dataset.rawGozfsData = fs
+				return nil
+			}
+		}
+	}
+
+	return errors.New("could not load gozfs metadata")
 }
 
 // FindHostDataset returns the root path of the dataset containing this path
@@ -112,6 +153,7 @@ func (dataset *Dataset) getPropertyString(libProp golibzfs.Prop, goProp string) 
 			return prop.Value
 		}
 	}
+	_ = dataset.lazyLoadGozfsData()
 	if dataset.rawGozfsData != nil {
 		val, err := dataset.rawGozfsData.GetProperty(goProp)
 		if err == nil {
@@ -229,6 +271,7 @@ func (dataset *Dataset) GetSnapshotCount() int {
 }
 
 func (dataset *Dataset) CreateSnapshot(name string) error {
+	_ = dataset.lazyLoadGozfsData()
 	if dataset.rawGozfsData != nil {
 		_, err := dataset.rawGozfsData.Snapshot(name, false)
 		return err
@@ -237,6 +280,7 @@ func (dataset *Dataset) CreateSnapshot(name string) error {
 }
 
 func (dataset *Dataset) DestroySnapshot(name string, recursive bool, dependantClones bool) error {
+	_ = dataset.lazyLoadGozfsData()
 	if dataset.rawGozfsData != nil {
 		fullName := fmt.Sprintf("%s@%s", dataset.rawGozfsData.Name, name)
 		snapshots, err := gozfs.Snapshots(fullName)

@@ -19,6 +19,7 @@ const (
 	FileDialogRestoreRecursiveDialogActionId
 	FileDialogDeleteDialogActionId
 	FileDialogCreateSnapshotDialogActionId
+	FileDialogShowHistoryActionId
 )
 
 func NewFileActionDialog(
@@ -75,6 +76,10 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 					Name: "🔍 Show diff",
 				})
 			}
+			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+				Id:   FileDialogShowHistoryActionId,
+				Name: "📜 Browse history / versions",
+			})
 			dialogOptions = slices.Insert(dialogOptions, 1, &DialogOption{
 				Id:       FileDialogRestoreFileActionId,
 				Name:     "♻️ Restore file",

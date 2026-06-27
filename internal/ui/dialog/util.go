@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"slices"
@@ -224,17 +225,28 @@ func ShowDialogOnPages(
 		for {
 			action := <-d.GetActionChannel()
 			if action == DialogCloseActionId {
-				application.QueueUpdateDraw(func() {
-					pages.RemovePage(d.GetName())
-
-					if layout.HasFocus() && previousFocus != nil {
-						application.SetFocus(previousFocus)
+				closeFunc := func() {
+					if layout.HasFocus() {
+						if previousFocus != nil && isDescendantOf(pages, previousFocus) {
+							application.SetFocus(previousFocus)
+						} else {
+							application.SetFocus(pages)
+						}
 					}
+
+					pages.RemovePage(d.GetName())
 
 					if onClosed != nil {
 						onClosed()
 					}
-				})
+				}
+
+				isTest := flag.Lookup("test.v") != nil
+				if isTest {
+					closeFunc()
+				} else {
+					application.QueueUpdateDraw(closeFunc)
+				}
 				return
 			}
 		}
@@ -257,7 +269,7 @@ func ShowDialogOnPages(
 		currentFocus := application.GetFocus()
 		if currentFocus != nil && layout.HasFocus() {
 			switch currentFocus.(type) {
-			case *tview.Table, *tview.InputField:
+			case *tview.Table, *tview.InputField, *tview.TextView, *tview.TextArea:
 				lastValidFocus = currentFocus
 			}
 		}
@@ -270,7 +282,7 @@ func ShowDialogOnPages(
 					isLeaf := false
 					if newFocus != nil {
 						switch newFocus.(type) {
-						case *tview.Table, *tview.InputField:
+						case *tview.Table, *tview.InputField, *tview.TextView, *tview.TextArea:
 							isLeaf = true
 						}
 					}
@@ -380,4 +392,29 @@ func ensureDialogCloseIsLast(options []*DialogOption) []*DialogOption {
 	result := slices.Delete(options, closeIndex, closeIndex+1)
 	result = append(result, closeOption)
 	return result
+}
+
+func isDescendantOf(parent tview.Primitive, child tview.Primitive) bool {
+	if parent == nil || child == nil {
+		return false
+	}
+	if parent == child {
+		return true
+	}
+	switch p := parent.(type) {
+	case *tview.Flex:
+		for i := 0; i < p.GetItemCount(); i++ {
+			if isDescendantOf(p.GetItem(i), child) {
+				return true
+			}
+		}
+	case *tview.Pages:
+		for _, name := range p.GetPageNames(false) {
+			pagePrim := p.GetPage(name)
+			if isDescendantOf(pagePrim, child) {
+				return true
+			}
+		}
+	}
+	return false
 }

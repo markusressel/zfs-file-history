@@ -68,18 +68,16 @@ func (s *Snapshot) Equal(e Snapshot) bool {
 func NewSnapshot(name string, path string, parentDataset *Dataset, s *golibzfs.Dataset) *Snapshot {
 	fullName := fmt.Sprintf("%s@%s", parentDataset.GetName(), name)
 	snapshot := &Snapshot{
-		Name:          name,
-		FullName:      fullName,
-		Path:          path,
-		ParentDataset: parentDataset,
-
+		Name:            name,
+		FullName:        fullName,
+		Path:            path,
+		ParentDataset:   parentDataset,
 		rawGolibzfsData: s,
 	}
 
 	if s != nil {
-		// If we have libzfs data, we can sometimes avoid the slow gozfs call
-		// but we still need some properties that FetchDetails provides.
-		// For now, let's just make it safe.
+		snapshot.FetchDetails()
+		return snapshot
 	}
 
 	rawGoufsData, err := gozfs.Snapshots(fullName)
@@ -323,12 +321,72 @@ func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
 	return diff_state.Equal
 }
 
+// DetermineDiffStateBetween Determine the diff state between this snapshot and another snapshot of a file
+func (s *Snapshot) DetermineDiffStateBetween(path string, prev *Snapshot) diff_state.DiffState {
+	sContains, err := s.ContainsFile(path)
+	if err != nil {
+		logging.Error("Could not determine if snapshot %s contains file %s: %s", s.Name, path, err.Error())
+		return diff_state.Unknown
+	}
+
+	if prev == nil {
+		if sContains {
+			return diff_state.Added
+		}
+		return diff_state.Equal
+	}
+
+	prevContains, err := prev.ContainsFile(path)
+	if err != nil {
+		logging.Error("Could not determine if snapshot %s contains file %s: %s", prev.Name, path, err.Error())
+		return diff_state.Unknown
+	}
+
+	if sContains && prevContains {
+		sPath := s.GetSnapshotPath(path)
+		prevPath := prev.GetSnapshotPath(path)
+
+		sStat, err := os.Lstat(sPath)
+		if err != nil {
+			return diff_state.Unknown
+		}
+		prevStat, err := os.Lstat(prevPath)
+		if err != nil {
+			return diff_state.Unknown
+		}
+
+		if sStat.IsDir() != prevStat.IsDir() ||
+			sStat.Mode() != prevStat.Mode() ||
+			sStat.ModTime() != prevStat.ModTime() ||
+			sStat.Size() != prevStat.Size() {
+			return diff_state.Modified
+		}
+		return diff_state.Equal
+	} else if sContains {
+		return diff_state.Added
+	} else if prevContains {
+		return diff_state.Deleted
+	}
+
+	return diff_state.Equal
+}
+
 func (s *Snapshot) Destroy(recursive bool, dependantClones bool) error {
 	ds := s.ParentDataset
 	return ds.DestroySnapshot(s.Name, recursive, dependantClones)
 }
 
 func (s *Snapshot) GetCreationDate() time.Time {
+	if s.rawGolibzfsData != nil {
+		prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
+		if err == nil {
+			timestamp, err := strconv.ParseInt(prop.Value, 10, 64)
+			if err == nil {
+				return time.Unix(timestamp, 0)
+			}
+		}
+	}
+
 	if s.rawGozfsData == nil {
 		return time.Time{}
 	}

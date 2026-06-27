@@ -5,6 +5,7 @@ import (
 	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
@@ -35,6 +36,7 @@ const (
 
 type MainPage struct {
 	application     *tview.Application
+	pages           *tview.Pages
 	header          *ApplicationHeaderComponent
 	shortcutMap     *shortcut_helper.ShortcutMapComponent
 	fileBrowser     *file_browser.FileBrowserComponent
@@ -86,6 +88,11 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			if fileBrowser.HasFocus() {
 				mainPage.updateShortcutMap(fileBrowser)
 			}
+		case file_browser.RequestFileHistoryEvent:
+			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetEntries())
+			dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
+				mainPage.fileBrowser.Refresh(false)
+			})
 		}
 	})
 
@@ -108,6 +115,10 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	uiutil.SubscribeUI(zfs.DatasetsLoaded, application, func(_ struct{}) {
 		if !mainPage.wasInitialized {
 			mainPage.Init(path)
+		} else {
+			currentPath := fileBrowser.GetPath()
+			mainPage.datasetInfo.SetPath(currentPath)
+			mainPage.snapshotBrowser.SetPath(currentPath, true)
 		}
 	})
 
@@ -119,7 +130,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		case tcell.KeyBacktab:
 			mainPage.CycleFocus(true)
 		case tcell.KeyF5:
-			snapshotBrowser.Refresh(true)
+			zfs.RefreshZfsData()
 			fileBrowser.Refresh(false)
 		default:
 		}
@@ -170,6 +181,17 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	// Set mouse capture on the top-level layout to capture drags anywhere on the screen
 	mainPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if mainPage.pages != nil {
+			frontPage, _ := mainPage.pages.GetFrontPage()
+			if frontPage != string(Main) {
+				// Reset any active hover/drag states
+				mainPage.isDragging = false
+				mainPage.dragType = dragNone
+				mainPage.hoveredBoundary = boundaryNone
+				return tview.MouseConsumed, nil
+			}
+		}
+
 		mouseX, mouseY := event.Position()
 		buttons := event.Buttons()
 
@@ -263,6 +285,13 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	// Configure drawing of highlighted adjacent borders after the screen draws
 	mainPage.application.SetAfterDrawFunc(func(screen tcell.Screen) {
+		if mainPage.pages != nil {
+			frontPage, _ := mainPage.pages.GetFrontPage()
+			if frontPage != string(Main) {
+				return
+			}
+		}
+
 		// Highlight vertical boundary adjacent line segment
 		if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
 			_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
@@ -413,4 +442,8 @@ func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY,
 		mainPage.infoLayout.ResizeItem(mainPage.datasetInfo.GetLayout(), 0, newTopHeight)
 		mainPage.infoLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, newBottomHeight)
 	}
+}
+
+func (mainPage *MainPage) SetPages(pages *tview.Pages) {
+	mainPage.pages = pages
 }

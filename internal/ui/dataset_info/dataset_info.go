@@ -15,6 +15,7 @@ import (
 )
 
 type DatasetInfoComponent struct {
+	path        string
 	application *tview.Application
 	dataset     *zfs.Dataset
 	textView    *tview.TextView
@@ -56,6 +57,7 @@ func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 }
 
 func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
+	datasetInfo.path = path
 	if datasetInfo.dataset != nil && datasetInfo.dataset.Path == path {
 		return
 	}
@@ -69,6 +71,13 @@ func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 	} else {
 		datasetInfo.loader.Load(loadFunc)
 	}
+}
+
+func (datasetInfo *DatasetInfoComponent) Refresh() {
+	loadFunc := func(ctx context.Context) (*zfs.Dataset, error) {
+		return zfs.FindHostDataset(datasetInfo.path)
+	}
+	datasetInfo.loader.Load(loadFunc)
 }
 
 func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {

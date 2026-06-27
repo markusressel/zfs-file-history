@@ -25,6 +25,7 @@ type SelectionDialog struct {
 	onComplete func(d *SelectionDialog, option *DialogOption, err error)
 }
 
+// NewSelectionDialog
 // handler - The background execution logic to be executed when the user selects an option.
 // onComplete - The callback to be executed on the UI thread after the background execution completes.
 func NewSelectionDialog(
@@ -120,7 +121,25 @@ func (d *SelectionDialog) GetActionChannel() <-chan DialogActionId {
 }
 
 func (d *SelectionDialog) Close() {
-	emitDialogActions(d.actionChannel, DialogCloseActionId)
+	// Bypass emitDialogActions' goroutine to guarantee the close signal
+	// is processed synchronously if the listener is ready.
+	select {
+	case d.actionChannel <- DialogCloseActionId:
+	default:
+		go func() { d.actionChannel <- DialogCloseActionId }()
+	}
+}
+
+// Chain safely orchestrates closing the current dialog and opening a new one.
+// It prevents the "Dead Focus Pointer" bug by guaranteeing the current dialog
+// fully unmounts and restores its focus before the next dialog captures its fallback.
+func (d *SelectionDialog) Chain(mountNext func()) {
+	d.Close()
+	go func() {
+		// A microscopic pause gives the background listener time to process the close event
+		time.Sleep(10 * time.Millisecond)
+		d.application.QueueUpdateDraw(mountNext)
+	}()
 }
 
 func (d *SelectionDialog) selectAction(option *DialogOption) {
@@ -129,20 +148,25 @@ func (d *SelectionDialog) selectAction(option *DialogOption) {
 		return
 	}
 
-	if d.handler != nil {
-		d.ShowLoading(option)
+	// 1. Always trigger the loading state and background routine
+	d.ShowLoading(option)
 
-		go func() {
-			err := d.handler(d, option.Id)
+	go func() {
+		var err error
 
-			d.application.QueueUpdateDraw(func() {
-				d.StopLoading()
-				if d.onComplete != nil {
-					d.onComplete(d, option, err)
-				}
-			})
-		}()
-	}
+		// 2. Safely execute the handler only if it was provided
+		if d.handler != nil {
+			err = d.handler(d, option.Id)
+		}
+
+		// 3. Queue the completion logic back to the main UI thread
+		d.application.QueueUpdateDraw(func() {
+			d.StopLoading()
+			if d.onComplete != nil {
+				d.onComplete(d, option, err)
+			}
+		})
+	}()
 }
 
 func (d *SelectionDialog) ShowLoading(option *DialogOption) {

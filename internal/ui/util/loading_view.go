@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rivo/tview"
@@ -13,6 +14,7 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 type LoadingView struct {
 	*tview.TextView
 	app     *tview.Application
+	mu      sync.RWMutex
 	message string
 	cancel  context.CancelFunc
 }
@@ -31,6 +33,12 @@ func NewLoadingView(app *tview.Application, title string, message string) *Loadi
 		message:  message,
 	}
 	return v
+}
+
+func (v *LoadingView) SetMessage(message string) {
+	v.mu.Lock()
+	v.message = message
+	v.mu.Unlock()
 }
 
 func (v *LoadingView) Start() {
@@ -52,8 +60,11 @@ func (v *LoadingView) Start() {
 				if v.app == nil {
 					return
 				}
+				v.mu.RLock()
+				msg := v.message
+				v.mu.RUnlock()
 				v.app.QueueUpdateDraw(func() {
-					v.TextView.SetText(fmt.Sprintf("\n\n\n[yellow]%s[-] %s", spinnerFrames[frame], v.message))
+					v.TextView.SetText(fmt.Sprintf("\n\n\n[yellow]%s[-] %s", spinnerFrames[frame], msg))
 				})
 				frame = (frame + 1) % len(spinnerFrames)
 			}
