@@ -9,6 +9,7 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/profiling"
 	"zfs-file-history/internal/ui"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/oklog/run"
 )
@@ -18,9 +19,10 @@ func RunApplication(path string) {
 	defer cancel()
 
 	var g run.Group
+	addSignalHandlerActor(&g, cancel)
 	profiling.AddActor(&g, ctx)
 	ui.AddActor(&g, ctx, path)
-	addSignalHandlerActor(&g, cancel)
+	zfs.AddZpoolEventWatcherActor(&g, ctx)
 
 	if err := g.Run(); err != nil {
 		logging.Error("%v", err)

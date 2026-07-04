@@ -1,0 +1,237 @@
+Jul  5 2026 00:55:17.359478925 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-130000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x2120d
+        history_txg = 0x141ef68
+        history_time = 0x6a498f55
+        time = 0x6a498f55 0x156d368d
+        eid = 0x191c
+
+Jul  5 2026 00:55:17.641483878 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-140000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x215ad
+        history_txg = 0x141ef69
+        history_time = 0x6a498f55
+        time = 0x6a498f55 0x263c4466
+        eid = 0x191d
+
+Jul  5 2026 00:55:17.857487671 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-150000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x21896
+        history_txg = 0x141ef6a
+        history_time = 0x6a498f55
+        time = 0x6a498f55 0x331c3937
+        eid = 0x191e
+
+Jul  5 2026 00:55:18.117492237 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-160000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x21b3f
+        history_txg = 0x141ef6b
+        history_time = 0x6a498f56
+        time = 0x6a498f56 0x700ca0d
+        eid = 0x191f
+
+Jul  5 2026 00:55:18.377496802 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-170000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x21e5e
+        history_txg = 0x141ef6c
+        history_time = 0x6a498f56
+        time = 0x6a498f56 0x168024e2
+        eid = 0x1920
+
+Jul  5 2026 00:55:18.674502018 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-180000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x21eef
+        history_txg = 0x141ef6d
+        history_time = 0x6a498f56
+        time = 0x6a498f56 0x28341582
+        eid = 0x1921
+
+Jul  5 2026 00:55:18.890505811 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-190000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x223e5
+        history_txg = 0x141ef6e
+        history_time = 0x6a498f56
+        time = 0x6a498f56 0x35140a53
+        eid = 0x1922
+
+Jul  5 2026 00:55:19.136510131 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-200000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x224c3
+        history_txg = 0x141ef6f
+        history_time = 0x6a498f57
+        time = 0x6a498f57 0x822fab3
+        eid = 0x1923
+
+Jul  5 2026 00:55:19.513516752 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-210000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x22bbb
+        history_txg = 0x141ef70
+        history_time = 0x6a498f57
+        time = 0x6a498f57 0x1e9ba4d0
+        eid = 0x1924
+
+Jul  5 2026 00:55:19.789521599 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-220000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x22f1a
+        history_txg = 0x141ef71
+        history_time = 0x6a498f57
+        time = 0x6a498f57 0x2f0f24bf
+        eid = 0x1925
+
+Jul  5 2026 00:55:20.034525901 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-03-230000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x22fb0
+        history_txg = 0x141ef72
+        history_time = 0x6a498f58
+        time = 0x6a498f58 0x20ed2cd
+        eid = 0x1926
+
+Jul  5 2026 00:55:20.387532100 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-04-000000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x235ac
+        history_txg = 0x141ef73
+        history_time = 0x6a498f58
+        time = 0x6a498f58 0x17194544
+        eid = 0x1927
+
+Jul  5 2026 01:00:00.505451220 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-05-010000"
+        history_internal_str = " "
+        history_internal_name = "snapshot"
+        history_dsid = 0x9eb
+        history_txg = 0x141efac
+        history_time = 0x6a499070
+        time = 0x6a499070 0x1e2092d4
+        eid = 0x1928
+
+Jul  5 2026 01:00:26.674910780 sysevent.fs.zfs.history_event
+        version = 0x0
+        class = "sysevent.fs.zfs.history_event"
+        pool = "rpool"
+        pool_guid = 0xa1ae5fdd42bb9b0c
+        pool_state = 0x0
+        pool_context = 0x0
+        history_hostname = "Silver"
+        history_dsname = "rpool/arch/DATA/default/home@2026-07-04-010000"
+        history_internal_str = " "
+        history_internal_name = "destroy"
+        history_dsid = 0x238ba
+        history_txg = 0x141efb2
+        history_time = 0x6a49908a
+        time = 0x6a49908a 0x283a523c
+        eid = 0x1929
