@@ -56,7 +56,6 @@ func WatchZpoolEvents(ctx context.Context) error {
 	parseZpoolEvents(stdout, startTime, debouncedUpdate)
 
 	if err := cmd.Wait(); err != nil {
-		logging.Error("zpool events listener exited: %s", err.Error())
 		return err
 	}
 
@@ -132,7 +131,20 @@ func parseZpoolEvents(reader io.Reader, startTime time.Time, onUpdate func()) {
 func AddZpoolEventWatcherActor(g *run.Group, ctx context.Context) {
 	g.Add(func() error {
 		logging.Info("Starting ZFS event watcher...")
-		return WatchZpoolEvents(ctx)
+
+		err := WatchZpoolEvents(ctx)
+
+		// If it crashed but the application ISN'T shutting down (ctx is not canceled)
+		if err != nil && ctx.Err() == nil {
+			logging.Warning("⚠️ Real-time updates disabled. Missing permissions to watch ZFS events.")
+			logging.Warning("Run 'sudo zfs-file-history setup' to enable real-time UI refreshes.")
+		}
+
+		// CRITICAL: Block until the application shuts down!
+		// If we return here, oklog/run will forcefully kill the UI and exit the app.
+		<-ctx.Done()
+
+		return nil
 	}, func(err error) {
 		logging.Debug("Stopping ZFS event watcher...")
 	})
