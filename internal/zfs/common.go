@@ -1,7 +1,6 @@
 package zfs
 
 import (
-	"context"
 	"strings"
 	"sync"
 	"zfs-file-history/internal/util"
@@ -29,10 +28,6 @@ func RefreshZfsData() {
 
 func IsDatasetsLoaded() bool {
 	return true
-}
-
-func WaitForDatasets(ctx context.Context) error {
-	return nil
 }
 
 func findSnapshot(snapshots []golibzfs.Dataset, name string) *golibzfs.Dataset {

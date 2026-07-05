@@ -407,7 +407,6 @@ func (s *Snapshot) GetCreationDate() time.Time {
 
 func (s *Snapshot) GetUsed() uint64 {
 	if s.rawGolibzfsData == nil {
-		logging.Error("No rawGolibzfsData available")
 		return 0
 	}
 	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUsed)
@@ -425,7 +424,6 @@ func (s *Snapshot) GetUsed() uint64 {
 
 func (s *Snapshot) GetReferenced() uint64 {
 	if s.rawGolibzfsData == nil {
-		logging.Error("No rawGolibzfsData available")
 		return 0
 	}
 	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropReferenced)
@@ -443,7 +441,6 @@ func (s *Snapshot) GetReferenced() uint64 {
 
 func (s *Snapshot) GetRatio() float64 {
 	if s.rawGolibzfsData == nil {
-		logging.Error("No rawGolibzfsData available")
 		return 0
 	}
 	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropRefratio)

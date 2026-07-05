@@ -58,6 +58,17 @@ cd zfs-file-history
 make deploy
 ```
 
+## One Time Setup
+
+zfs-file-history can listen to zpool events to automatically update the UI when things change in the background.
+Unfortunately, due to the current design of ZFS, this requires root privileges.
+To avoid having to run zfs-file-history as root, a one-time setup command can be run as root, which creates
+a suders rule that lets your user run `zpool events` as root without requiring interactive permission approval.
+
+```shell
+sudo zfs-file-history setup
+```
+
 ## Configuration
 
 > **Note:**
