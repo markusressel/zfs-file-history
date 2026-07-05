@@ -69,17 +69,19 @@ func parseZpoolEvents(reader io.Reader, startTime time.Time, onUpdate func()) {
 	isTargetAction := false
 	var eventTime time.Time
 
+	// Closure to handle the trigger logic cleanly (used for both empty lines and EOF)
+	triggerIfValid := func() {
+		if inHistoryEvent && isTargetAction && eventTime.After(startTime) {
+			onUpdate()
+		}
+	}
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
 		// Empty line marks the end of an event block
 		if line == "" {
-			if inHistoryEvent && isTargetAction {
-				// Only trigger if the event happened AFTER the watcher started
-				if eventTime.After(startTime) {
-					onUpdate()
-				}
-			}
+			triggerIfValid()
 
 			// Reset block state for the next event
 			inHistoryEvent = false
@@ -94,38 +96,52 @@ func parseZpoolEvents(reader io.Reader, startTime time.Time, onUpdate func()) {
 		}
 
 		if inHistoryEvent {
-			// 1. Check if the action is relevant
-			if strings.HasPrefix(line, "history_str =") || strings.HasPrefix(line, "history_internal_name =") {
-				if strings.Contains(line, "\"snapshot\"") || strings.Contains(line, "\"destroy\"") ||
-					strings.Contains(line, "\"zfs snapshot ") || strings.Contains(line, "\"zfs destroy ") {
-					isTargetAction = true
-				}
+			if isTargetZfsAction(line) {
+				isTargetAction = true
+			} else if parsedTime, ok := parseEventTime(line); ok {
+				eventTime = parsedTime
 			}
-
-			// 2. Extract and parse the event timestamp
-			if strings.HasPrefix(line, "time = ") {
-				parts := strings.Fields(line)
-				if len(parts) >= 3 {
-					secHex := strings.TrimPrefix(parts[2], "0x")
-					sec, err := strconv.ParseInt(secHex, 16, 64)
-					if err == nil {
-						nsec := int64(0)
-						if len(parts) >= 4 {
-							nsecHex := strings.TrimPrefix(parts[3], "0x")
-							nsec, _ = strconv.ParseInt(nsecHex, 16, 64)
-						}
-						eventTime = time.Unix(sec, nsec)
-					}
-				}
-			}
-		}
-	} // End of scanner loop
-
-	if inHistoryEvent && isTargetAction {
-		if eventTime.After(startTime) {
-			onUpdate()
 		}
 	}
+
+	// Catch the final event if the file didn't end with an empty line
+	triggerIfValid()
+}
+
+// isTargetZfsAction checks if the line indicates a snapshot creation or destruction
+func isTargetZfsAction(line string) bool {
+	if !strings.HasPrefix(line, "history_str =") && !strings.HasPrefix(line, "history_internal_name =") {
+		return false
+	}
+
+	return strings.Contains(line, "\"snapshot\"") || strings.Contains(line, "\"destroy\"") ||
+		strings.Contains(line, "\"zfs snapshot ") || strings.Contains(line, "\"zfs destroy ")
+}
+
+// parseEventTime extracts and parses the hex timestamp from a ZFS event time line
+func parseEventTime(line string) (time.Time, bool) {
+	if !strings.HasPrefix(line, "time = ") {
+		return time.Time{}, false
+	}
+
+	parts := strings.Fields(line)
+	if len(parts) < 3 {
+		return time.Time{}, false
+	}
+
+	secHex := strings.TrimPrefix(parts[2], "0x")
+	sec, err := strconv.ParseInt(secHex, 16, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	nsec := int64(0)
+	if len(parts) >= 4 {
+		nsecHex := strings.TrimPrefix(parts[3], "0x")
+		nsec, _ = strconv.ParseInt(nsecHex, 16, 64)
+	}
+
+	return time.Unix(sec, nsec), true
 }
 
 func AddZpoolEventWatcherActor(g *run.Group, ctx context.Context) {
