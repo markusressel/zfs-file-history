@@ -40,7 +40,7 @@ You MUST run this command with sudo:
 		}
 
 		logging.Info("Successfully installed sudoers rule for user %s at %s", targetUser, filePath)
-		pterm.Print("Successfully installed sudoers rule for user %s at %s\n", targetUser, filePath)
+		pterm.Printf("Successfully installed sudoers rule for user %s at %s\n", targetUser, filePath)
 	},
 }
 
