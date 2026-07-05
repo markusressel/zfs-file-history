@@ -41,10 +41,6 @@ build:
         -X {{PACKAGE}}/cmd/global.Date={{DATE}}" \
         -a -tags netgo -o {{OUTPUT_BIN}} main.go
 
-# Builds the CLI for cross-compilation (ensures CGO is enabled)
-build-cross:
-    CGO_ENABLED=1 just build
-
 # Build and run the CLI
 run: build
     ./{{OUTPUT_BIN}}

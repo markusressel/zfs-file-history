@@ -54,7 +54,7 @@ jobs:
           - goarch: ppc64le
             runner: ubuntu-24.04
             native: false
-            just_target: build-cross
+            just_target: build
             cc: powerpc64le-linux-gnu-gcc
             dpkg_arch: ppc64el
             cross_pkg: crossbuild-essential-ppc64el
@@ -63,7 +63,7 @@ jobs:
           - goarch: s390x
             runner: ubuntu-24.04
             native: false
-            just_target: build-cross
+            just_target: build
             cc: s390x-linux-gnu-gcc
             dpkg_arch: s390x
             cross_pkg: crossbuild-essential-s390x
@@ -72,7 +72,7 @@ jobs:
           - goarch: riscv64
             runner: ubuntu-24.04
             native: false
-            just_target: build-cross
+            just_target: build
             cc: riscv64-linux-gnu-gcc
             dpkg_arch: riscv64
             cross_pkg: crossbuild-essential-riscv64
