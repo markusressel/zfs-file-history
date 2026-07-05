@@ -4,18 +4,19 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseZpoolEvents(t *testing.T) {
 	// GIVEN
 	file, err := os.Open("testdata/zpool-events-test-data.txt")
 	if err != nil {
-		// Fallback in case it's in the same directory instead of testdata/
 		file, err = os.Open("zpool-events-test-data.txt")
 	}
-	assert.NoError(t, err, "Failed to open test data file")
+	require.NoError(t, err, "Failed to open test data file")
 	defer file.Close()
 
 	eventCount := 0
@@ -23,13 +24,38 @@ func TestParseZpoolEvents(t *testing.T) {
 		eventCount++
 	}
 
+	// Set a startTime far in the past so all events in the 2026 test file are processed
+	startTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+
 	// WHEN
-	parseZpoolEvents(file, onEvent)
+	parseZpoolEvents(file, startTime, onEvent)
 
 	// THEN
-	// The provided text file contains 14 sysevent.fs.zfs.history_event blocks
-	// (13 destroys and 1 snapshot)
 	assert.Equal(t, 14, eventCount, "Expected exactly 14 snapshot/destroy events to be parsed")
+}
+
+func TestParseZpoolEvents_FiltersOldEvents(t *testing.T) {
+	// GIVEN
+	file, err := os.Open("testdata/zpool-events-test-data.txt")
+	if err != nil {
+		file, err = os.Open("zpool-events-test-data.txt")
+	}
+	require.NoError(t, err, "Failed to open test data file")
+	defer file.Close()
+
+	eventCount := 0
+	onEvent := func() {
+		eventCount++
+	}
+
+	// Set a startTime in the future so ALL events in the test file are ignored
+	startTime := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// WHEN
+	parseZpoolEvents(file, startTime, onEvent)
+
+	// THEN
+	assert.Equal(t, 0, eventCount, "Expected all historical events to be completely filtered out")
 }
 
 func TestParseZpoolEvents_IgnoresOtherEvents(t *testing.T) {
@@ -49,16 +75,19 @@ Jul  5 2026 00:55:17.857487671 sysevent.fs.zfs.history_event
         version = 0x0
         class = "sysevent.fs.zfs.history_event"
         history_internal_name = "snapshot"
+        time = 0x6a498f55 0x156d368d
 `
 	reader := strings.NewReader(dummyData)
 	eventCount := 0
 
+	// Start time must be before the dummy event timestamp
+	startTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+
 	// WHEN
-	parseZpoolEvents(reader, func() {
+	parseZpoolEvents(reader, startTime, func() {
 		eventCount++
 	})
 
 	// THEN
-	// It should ignore vdev_read and scrub history, but catch the snapshot
 	assert.Equal(t, 1, eventCount)
 }
