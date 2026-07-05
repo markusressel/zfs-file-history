@@ -113,13 +113,17 @@ jobs:
       - uses: extractions/setup-just@v4
 
       - name: Generate build files (${{ matrix.goarch }})
-        env:
-          CC: ${{ matrix.cc }}
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
         run: |
           OUTPUT_BIN="dist/zfs-file-history-linux-${{ matrix.goarch }}"
-          just OUTPUT_BIN="${OUTPUT_BIN}" ${{ matrix.just_target }}
+
+          # Pass cross-compilation variables explicitly as arguments to just
+          just \
+            GOOS="linux" \
+            GOARCH="${{ matrix.goarch }}" \
+            CC="${{ matrix.cc }}" \
+            OUTPUT_BIN="${OUTPUT_BIN}" \
+            ${{ matrix.just_target }}
+
           file "${OUTPUT_BIN}"
 
       - name: Upload artifacts

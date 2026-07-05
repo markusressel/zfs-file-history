@@ -1,3 +1,9 @@
+# Explicitly define variables so they accept command-line/matrix overrides
+GOOS := "linux"
+GOARCH := "amd64"
+CC := "gcc"
+CGO_ENABLED := "1"
+
 GO_FLAGS := ""
 NAME := "zfs-file-history"
 OUTPUT_BIN := "bin/" + NAME
@@ -21,9 +27,11 @@ coverage-html:
     go test -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out
 
-# Builds the CLI
+# Builds the CLI with explicit architecture/compiler environment variables
 build:
-    @go build {{GO_FLAGS}} \
+    @mkdir -p $(dirname {{OUTPUT_BIN}})
+    CGO_ENABLED={{CGO_ENABLED}} GOOS={{GOOS}} GOARCH={{GOARCH}} CC={{CC}} \
+    go build {{GO_FLAGS}} \
         -ldflags "-w -s \
         -X {{NAME}}/cmd/global.Version={{VERSION}} \
         -X {{PACKAGE}}/cmd/global.Version={{VERSION}} \
@@ -43,6 +51,7 @@ run: build
 
 # Deploy to custom bin directory
 deploy-custom: clean build
+    mkdir -p ~/.custom/bin/
     cp ./{{OUTPUT_BIN}} ~/.custom/bin/
 
 # Deploy to /usr/local/bin
