@@ -60,6 +60,8 @@ make deploy
 
 ## One Time Setup
 
+### Background Event Listening
+
 zfs-file-history can listen to zpool events to automatically update the UI when things change in the background.
 Unfortunately, due to the current design of ZFS, this requires root privileges.
 To avoid having to run zfs-file-history as root, a one-time setup command can be run as root, which creates
@@ -68,6 +70,16 @@ a suders rule that lets your user run `zpool events` as root without requiring i
 ```shell
 sudo zfs-file-history setup
 ```
+
+### Permissions
+
+To create or destroy ZFS snapshots, the user running zfs-file-history needs to have the appropriate permissions, f.ex.:
+
+```shell
+sudo zfs allow markus mount,snapshot,destroy rpool/HOME/default/markus
+```
+
+otherwise zfs-file-history will show a permission error.
 
 ## Configuration
 
@@ -89,16 +101,6 @@ nano ~/.config/zfs-file-history/zfs-file-history.yaml
 
 An example configuration file including more detailed documentation can be found
 in [zfs-file-history.yaml](/zfs-file-history.yaml).
-
-## Permissions
-
-To create or destroy ZFS snapshots, the user running zfs-file-history needs to have the appropriate permissions, f.ex.:
-
-```shell
-sudo zfs allow markus mount,snapshot,destroy rpool/HOME/default/markus
-```
-
-otherwise zfs-file-history will show a permission error.
 
 # Dependencies
 
