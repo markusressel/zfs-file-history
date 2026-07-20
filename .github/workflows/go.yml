@@ -24,7 +24,7 @@ jobs:
           git config --global --add safe.directory '*'
           git config --global --add safe.directory '/__w/zfs-file-history/zfs-file-history'
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '^1.23'
 
@@ -106,7 +106,7 @@ jobs:
       - name: Checkout the repository
         uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '^1.23'
 
