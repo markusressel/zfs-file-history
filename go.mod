@@ -3,7 +3,7 @@ module zfs-file-history
 go 1.26.0
 
 require (
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/kraudcloud/go-libzfs v0.0.0-20231123113403-200c58c27e62
