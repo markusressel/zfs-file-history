@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -59,7 +60,7 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	entries      []*T
 	entriesMutex sync.Mutex
 
-	// title is the title set with SetTitle, which is displayed together with the filter text
+	// title is the title set with SetTitle
 	title string
 
 	// filterMatches enables filtering, see SetFilterFunc
@@ -258,6 +259,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.layout.SetBorderPadding(0, 0, 1, 1)
 	uiutil.SetupWindow(c.layout, "")
 	c.footer = uiutil.NewBorderFooter(c.layout.Box)
+	c.footer.SetLeftFunc(c.renderFilterFooter)
 }
 
 func (c *RowSelectionTable[T]) syncScrollbar() {
@@ -302,30 +304,35 @@ func (c *RowSelectionTable[T]) GetLayout() tview.Primitive {
 	return c.layout
 }
 
-// SetTitle sets the title of the table window. An active filter is shown after it.
+// SetTitle sets the title of the table window.
 func (c *RowSelectionTable[T]) SetTitle(title string) {
 	c.title = title
 	c.updateTitle()
 }
 
 func (c *RowSelectionTable[T]) updateTitle() {
-	var editor *lineEditor
-	if c.isEditingFilter {
-		editor = &c.filterEditor
-	}
-	uiutil.SetupWindow(c.layout, formatTitle(c.title, c.filterText, editor))
+	uiutil.SetupWindow(c.layout, c.title)
 }
 
-// formatTitle returns e.g. "Snapshots: daily". While the filter is being typed (editor is not nil),
-// it is shown with its cursor.
-func formatTitle(title string, filterText string, editor *lineEditor) string {
-	if editor != nil {
-		return fmt.Sprintf("%s: %s", title, editor.Render())
+const filterFooterLabel = "Filter: "
+
+// renderFilterFooter returns the active filter for the left side of the footer, e.g. "Filter: *.txt",
+// within maxWidth. While it is being typed, it shows the cursor and scrolls to keep the cursor visible.
+// Called when the footer is drawn (on the UI thread).
+func (c *RowSelectionTable[T]) renderFilterFooter(maxWidth int) string {
+	if !c.isEditingFilter && c.filterText == "" {
+		return ""
 	}
-	if filterText == "" {
-		return title
+
+	termWidth := maxWidth - len(filterFooterLabel)
+	var term string
+	if c.isEditingFilter {
+		term = c.filterEditor.RenderWindow(termWidth)
+	} else {
+		// cut off with an ellipsis by the footer, if too long
+		term = tview.Escape(c.filterText)
 	}
-	return fmt.Sprintf("%s: %s", title, tview.Escape(filterText))
+	return filterFooterLabel + txwidgets.ColorTag(theme.Colors.ShortcutMap.KeyCombo) + term + "[-]"
 }
 
 // SetFooter shows the given text right-aligned in the bottom border of the table window,

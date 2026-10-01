@@ -129,3 +129,59 @@ func TestBorderFooter_StyleTagsAndEmptyText(t *testing.T) {
 	foreground, _, _ := style.Decompose()
 	assert.Equal(t, tcell.NewHexColor(0xff0000), foreground)
 }
+
+func TestBorderFooter_LeftAndRight(t *testing.T) {
+	window, _ := newFooterTestWindow()
+	footer := NewBorderFooter(window.Box)
+	footer.SetText("2 of 4")
+	footer.SetLeftText("Filter: x")
+
+	screen := drawToScreen(t, window, 30, 4)
+	assert.Equal(t, "└ Filter: x "+strings.Repeat("─", 30-2-11-8)+" 2 of 4 ┘", screenLine(screen, 3))
+}
+
+func TestBorderFooter_LeftGetsTheRemainingWidth(t *testing.T) {
+	window, _ := newFooterTestWindow()
+	footer := NewBorderFooter(window.Box)
+	footer.SetText("2 of 4")
+
+	var requestedWidths []int
+	footer.SetLeftFunc(func(maxWidth int) string {
+		requestedWidths = append(requestedWidths, maxWidth)
+		return strings.Repeat("x", 40)
+	})
+
+	screen := drawToScreen(t, window, 30, 4)
+
+	// the right part keeps its width, the left part is cut off before it, with a border character in between:
+	// 28 between the corners - 8 for " 2 of 4 " - 1 border character = 19 for " xxx…"
+	assert.Equal(t, "└ "+strings.Repeat("x", 17)+"…─ 2 of 4 ┘", screenLine(screen, 3))
+	// the func is asked for the actual width it gets (without padding)
+	assert.Equal(t, 30-2-8-1-2, requestedWidths[len(requestedWidths)-1])
+}
+
+func TestBorderFooter_RightIsHiddenIfTooNarrow(t *testing.T) {
+	window, _ := newFooterTestWindow()
+	footer := NewBorderFooter(window.Box)
+	footer.SetText("100 of 170 entries")
+	footer.SetLeftText("Filter: *.txt")
+
+	// 26 between the corners: the counts (20) would leave less than the minimum for the filter
+	screen := drawToScreen(t, window, 28, 4)
+	assert.Equal(t, "└ Filter: *.txt ───────────┘", screenLine(screen, 3))
+}
+
+func TestBorderFooter_EmptyLeftTextKeepsTheRightOnlyLayout(t *testing.T) {
+	window, _ := newFooterTestWindow()
+	footer := NewBorderFooter(window.Box)
+	footer.SetText("2 of 4")
+	footer.SetLeftText("Filter: x")
+	footer.SetLeftText("")
+
+	screen := drawToScreen(t, window, 20, 4)
+	assert.Equal(t, bottomBorder(20, " 2 of 4 "), screenLine(screen, 3))
+
+	footer.SetLeftFunc(func(int) string { return "" })
+	screen = drawToScreen(t, window, 20, 4)
+	assert.Equal(t, bottomBorder(20, " 2 of 4 "), screenLine(screen, 3))
+}

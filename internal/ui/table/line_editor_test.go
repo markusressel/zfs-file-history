@@ -154,3 +154,65 @@ func TestLineEditor_Render(t *testing.T) {
 		})
 	}
 }
+
+// renderWindowToScreen prints RenderWindow(maxWidth) and returns the visible text and the cursor column.
+func renderWindowToScreen(t *testing.T, e *lineEditor, maxWidth int) (string, int) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(40, 1)
+	rendered := e.RenderWindow(maxWidth)
+	tview.Print(screen, rendered, 0, 0, 40, tview.AlignLeft, tcell.ColorWhite)
+	assert.LessOrEqual(t, tview.TaggedStringWidth(rendered), maxWidth)
+
+	var text strings.Builder
+	cursor := -1
+	for x := 0; x < maxWidth; x++ {
+		primary, _, style, _ := screen.GetContent(x, 0)
+		text.WriteRune(primary)
+		_, _, attributes := style.Decompose()
+		if attributes&tcell.AttrReverse != 0 {
+			cursor = x
+		}
+	}
+	return text.String(), cursor
+}
+
+func TestLineEditor_RenderWindow(t *testing.T) {
+	e := &lineEditor{}
+
+	// fits: like Render
+	e.Reset("daily")
+	text, cursor := renderWindowToScreen(t, e, 10)
+	assert.Equal(t, "daily     ", text)
+	assert.Equal(t, 5, cursor)
+
+	// cursor at the end of a long text: the beginning is cut off
+	e.Reset("zfs-auto-snap_daily")
+	text, cursor = renderWindowToScreen(t, e, 8)
+	assert.Equal(t, "…_daily ", text)
+	assert.Equal(t, 7, cursor)
+
+	// cursor at the start: the end is cut off
+	e.HandleKey(key(tcell.KeyHome))
+	text, cursor = renderWindowToScreen(t, e, 8)
+	assert.Equal(t, "zfs-aut…", text)
+	assert.Equal(t, 0, cursor)
+
+	// cursor in the middle, window scrolled to it: both sides cut off
+	e.Reset("zfs-auto-snap_daily")
+	for i := 0; i < 8; i++ {
+		e.HandleKey(key(tcell.KeyLeft))
+	}
+	text, cursor = renderWindowToScreen(t, e, 6)
+	assert.Equal(t, 5, cursor)
+	assert.True(t, strings.HasPrefix(text, "…"))
+	assert.Equal(t, "…o-sna", text)
+	assert.Equal(t, "a", string([]rune(text)[5]), "the character at the cursor is shown")
+
+	// brackets are not parsed as style tags
+	e.Reset("daily-[0-9][a-z]")
+	text, cursor = renderWindowToScreen(t, e, 8)
+	assert.Equal(t, "…][a-z]", strings.TrimRight(text, " "))
+	assert.Equal(t, 7, cursor)
+}

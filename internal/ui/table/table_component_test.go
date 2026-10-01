@@ -9,6 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockEntry struct {
@@ -425,13 +426,15 @@ func TestFilter_Typing(t *testing.T) {
 	assert.Nil(t, pressKey(table, tcell.KeyCtrlF, 0))
 	assert.True(t, table.IsEditingFilter())
 	assert.True(t, uiutil.IsTextInputActive(table.table))
-	assert.Equal(t, " Things: [::r] [::-] ", table.layout.GetTitle())
+	assert.Equal(t, filterFooter{text: "Filter:", cursor: 10}, drawFilterFooter(t, table))
+	// the title is not affected
+	assert.Equal(t, " Things ", table.layout.GetTitle())
 
 	// typed keys filter, and never reach the owner (e.g. 'd' could be a delete shortcut)
 	typeText(table, "dai")
 	assert.Equal(t, "dai", table.GetFilterText())
 	assert.Equal(t, []string{"daily-1", "daily-2"}, entryNames(table.GetEntries()))
-	assert.Equal(t, " Things: dai[::r] [::-] ", table.layout.GetTitle())
+	assert.Equal(t, filterFooter{text: "Filter: dai", cursor: 13}, drawFilterFooter(t, table))
 
 	// backspace removes the last character
 	pressKey(table, tcell.KeyBackspace2, 0)
@@ -442,7 +445,7 @@ func TestFilter_Typing(t *testing.T) {
 	pressKey(table, tcell.KeyRune, 'x')
 	assert.Equal(t, "xda", table.GetFilterText())
 	assert.Empty(t, table.GetEntries())
-	assert.Equal(t, " Things: x[::r]d[::-]a ", table.layout.GetTitle())
+	assert.Equal(t, filterFooter{text: "Filter: xda", cursor: 11}, drawFilterFooter(t, table))
 	pressKey(table, tcell.KeyLeft, 0)
 	pressKey(table, tcell.KeyDelete, 0)
 	assert.Equal(t, "da", table.GetFilterText())
@@ -459,7 +462,7 @@ func TestFilter_Typing(t *testing.T) {
 	assert.False(t, table.IsEditingFilter())
 	assert.False(t, uiutil.IsTextInputActive(table.table))
 	assert.Equal(t, "da", table.GetFilterText())
-	assert.Equal(t, " Things: da ", table.layout.GetTitle())
+	assert.Equal(t, filterFooter{text: "Filter: da", cursor: -1}, drawFilterFooter(t, table))
 
 	// now keys reach the owner again
 	pressKey(table, tcell.KeyRune, 'd')
@@ -468,7 +471,7 @@ func TestFilter_Typing(t *testing.T) {
 	// esc clears an active filter, even when not typing
 	assert.Nil(t, pressKey(table, tcell.KeyEscape, 0))
 	assert.False(t, table.IsFilterActive())
-	assert.Equal(t, " Things ", table.layout.GetTitle())
+	assert.Equal(t, filterFooter{text: "", cursor: -1}, drawFilterFooter(t, table))
 	assert.Len(t, table.GetEntries(), 4)
 }
 
@@ -528,13 +531,52 @@ func TestFilter_SlashIsAnOrdinaryCharacter(t *testing.T) {
 	assert.Equal(t, "a/b", table.GetFilterText())
 }
 
-func TestFormatTitle(t *testing.T) {
-	assert.Equal(t, "Things", formatTitle("Things", "", nil))
-	assert.Equal(t, "Things: daily", formatTitle("Things", "daily", nil))
-	// style tags are escaped
-	assert.Equal(t, "Things: "+tview.Escape("[red]"), formatTitle("Things", "[red]", nil))
-	// while typing, the cursor is shown
-	editor := &lineEditor{}
-	editor.Reset("daily")
-	assert.Equal(t, "Things: "+editor.Render(), formatTitle("Things", "daily", editor))
+type filterFooter struct {
+	// text is the visible text in the bottom border, without the border characters
+	text string
+	// cursor is the screen column of the cell in reverse video, -1 if none
+	cursor int
+}
+
+// drawFilterFooter draws the table window and returns the left part of its bottom border.
+func drawFilterFooter(t *testing.T, table *RowSelectionTable[namedEntry]) filterFooter {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(40, 8)
+	table.layout.SetRect(0, 0, 40, 8)
+	table.layout.Draw(screen)
+
+	result := filterFooter{cursor: -1}
+	var line strings.Builder
+	for x := 0; x < 40; x++ {
+		primary, _, style, _ := screen.GetContent(x, 7)
+		line.WriteRune(primary)
+		_, _, attributes := style.Decompose()
+		if attributes&tcell.AttrReverse != 0 {
+			result.cursor = x
+		}
+	}
+	result.text = strings.TrimSpace(strings.Trim(line.String(), "└┘─╚╝═"))
+	return result
+}
+
+func TestFilter_FooterAndCountsDoNotOverlap(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	table.SetFooter("2 of 4 things")
+	table.SetFilterText("daily")
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(40, 8)
+	table.layout.SetRect(0, 0, 40, 8)
+	table.layout.Draw(screen)
+
+	var line strings.Builder
+	for x := 0; x < 40; x++ {
+		primary, _, _, _ := screen.GetContent(x, 7)
+		line.WriteRune(primary)
+	}
+	assert.Equal(t, "└ Filter: daily ──────── 2 of 4 things ┘", line.String())
 }

@@ -112,3 +112,40 @@ func (e *lineEditor) Render() string {
 	after := tview.Escape(string(e.text[e.cursor+1:]))
 	return before + "[::r]" + atCursor + "[::-]" + after
 }
+
+// RenderWindow renders like Render, within maxWidth cells. If the text (plus the cursor at its end) does not fit,
+// only a part around the cursor is shown, like a terminal input line scrolls. Cut off sides show an ellipsis,
+// unless the cursor is there.
+func (e *lineEditor) RenderWindow(maxWidth int) string {
+	cellCount := len(e.text) + 1 // the cursor can be after the last character
+	if cellCount <= maxWidth {
+		return e.Render()
+	}
+	if maxWidth <= 0 {
+		return ""
+	}
+
+	start := 0
+	if e.cursor >= maxWidth {
+		start = e.cursor - maxWidth + 1
+	}
+	end := start + maxWidth
+
+	cells := make([]rune, 0, maxWidth)
+	for i := start; i < end; i++ {
+		if i < len(e.text) {
+			cells = append(cells, e.text[i])
+		} else {
+			cells = append(cells, ' ')
+		}
+	}
+	cursor := e.cursor - start
+	if start > 0 && cursor != 0 {
+		cells[0] = tview.SemigraphicsHorizontalEllipsis
+	}
+	if end < cellCount && cursor != len(cells)-1 {
+		cells[len(cells)-1] = tview.SemigraphicsHorizontalEllipsis
+	}
+
+	return tview.Escape(string(cells[:cursor])) + "[::r]" + tview.Escape(string(cells[cursor])) + "[::-]" + tview.Escape(string(cells[cursor+1:]))
+}

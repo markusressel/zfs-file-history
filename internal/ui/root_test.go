@@ -155,16 +155,16 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 		return focused
 	})
 	press(tcell.KeyCtrlF, 0)
-	waitFor("typing a filter", screenContains("Snapshots:"))
+	waitFor("typing a filter", screenContains("Filter:"))
 
-	// the '?' is typed into the filter (shown in the title) instead of opening the help
+	// the '?' is typed into the filter (shown in the footer) instead of opening the help
 	press(tcell.KeyRune, '?')
-	waitFor("'?' typed into the filter", screenContains("Snapshots: ?"))
+	waitFor("'?' typed into the filter", screenContains("Filter: ?"))
 	assert.Equal(t, string(Main), frontPage(), "'?' must not open the help while typing a filter")
 
 	// after clearing the filter, '?' opens the help again
 	press(tcell.KeyEscape, 0)
-	waitFor("filter cleared", func() bool { return !screenContains("Snapshots:")() })
+	waitFor("filter cleared", func() bool { return !screenContains("Filter:")() })
 	press(tcell.KeyRune, '?')
 	waitFor("help opened", func() bool { return frontPage() == string(HelpDialog) })
 }

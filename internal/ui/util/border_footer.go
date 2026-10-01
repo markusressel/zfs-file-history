@@ -7,14 +7,23 @@ import (
 	"github.com/rivo/tview"
 )
 
-// BorderFooter draws a text into the bottom border of a box, right-aligned, similar to the title in the top border.
-// tview has no native support for this. It does not take up any space of the box content.
+// minLeftFooterWidth is the minimum width (including padding) of the left part of a footer next to the right part.
+// If less space is left, the right part is hidden.
+const minLeftFooterWidth = 12
+
+// BorderFooter draws texts into the bottom border of a box: one right-aligned (e.g. counts) and one left-aligned
+// (e.g. the filter of a table). tview has no native support for this. It does not take up any space of the box content.
 //
-// The text may contain tview style tags. Text without tags uses the footer color.
+// The parts never overlap: the right part keeps its width and the left part gets the remaining space. If that leaves
+// less than minLeftFooterWidth for the left part, the right part is hidden. Parts that do not fit are cut off with an
+// ellipsis.
+//
+// The texts may contain tview style tags. Text without tags uses the footer color.
 // All methods must be called on the UI thread, which is where the footer is drawn.
 type BorderFooter struct {
-	text  string
-	color tcell.Color
+	text     string
+	leftFunc func(maxWidth int) string
+	color    tcell.Color
 }
 
 // NewBorderFooter installs a footer on the given box, which must have a border.
@@ -41,14 +50,31 @@ func NewBorderFooter(box *tview.Box) *BorderFooter {
 	return footer
 }
 
-// SetText sets the footer text. An empty text hides the footer.
+// SetText sets the right-aligned footer text. An empty text hides it.
 func (f *BorderFooter) SetText(text string) {
 	f.text = text
 }
 
-// GetText returns the footer text, including style tags.
+// GetText returns the right-aligned footer text, including style tags.
 func (f *BorderFooter) GetText() string {
 	return f.text
+}
+
+// SetLeftText sets the left-aligned footer text. An empty text hides it.
+func (f *BorderFooter) SetLeftText(text string) {
+	if text == "" {
+		f.leftFunc = nil
+		return
+	}
+	f.leftFunc = func(int) string { return text }
+}
+
+// SetLeftFunc sets a function that returns the left-aligned footer text when the footer is drawn,
+// for content that depends on the available width (e.g. an input line that scrolls to its cursor).
+// maxWidth is the width available for the text (without padding). Longer texts are cut off.
+// An empty text hides the left part. A nil func removes it.
+func (f *BorderFooter) SetLeftFunc(leftFunc func(maxWidth int) string) {
+	f.leftFunc = leftFunc
 }
 
 // SetColor sets the color of footer text without style tags.
@@ -57,21 +83,52 @@ func (f *BorderFooter) SetColor(color tcell.Color) {
 }
 
 // draw prints the footer into the bottom border, leaving the corners intact.
-// If it does not fit, the beginning is shown, followed by an ellipsis.
 func (f *BorderFooter) draw(screen tcell.Screen, x, y, width, height int) {
-	if f.text == "" || width < 4 || height < 2 {
+	if width < 4 || height < 2 {
 		return
 	}
-
-	text := theme.CreateTitleText(f.text)
 	bottomY := y + height - 1
-	maxWidth := width - 2 // between the corners
+	availableWidth := width - 2 // between the corners
 
-	if tview.TaggedStringWidth(text) <= maxWidth {
-		tview.Print(screen, text, x+1, bottomY, maxWidth, tview.AlignRight, f.color)
+	right := ""
+	if f.text != "" {
+		right = theme.CreateTitleText(f.text)
+	}
+	rightWidth := tview.TaggedStringWidth(right)
+
+	left := ""
+	if f.leftFunc != nil {
+		left = f.leftFunc(availableWidth - 2)
+	}
+	if left == "" {
+		f.drawPart(screen, right, x+1, bottomY, availableWidth, tview.AlignRight)
 		return
 	}
 
-	tview.Print(screen, text, x+1, bottomY, maxWidth-1, tview.AlignLeft, f.color)
-	tview.Print(screen, string(tview.SemigraphicsHorizontalEllipsis), x+1+maxWidth-1, bottomY, 1, tview.AlignLeft, f.color)
+	leftWidth := availableWidth
+	if right != "" {
+		// keep at least one border character between the parts
+		remainingWidth := availableWidth - rightWidth - 1
+		if remainingWidth >= minLeftFooterWidth {
+			leftWidth = remainingWidth
+			f.drawPart(screen, right, x+1, bottomY, availableWidth, tview.AlignRight)
+		}
+		// otherwise the right part is hidden
+	}
+
+	left = f.leftFunc(leftWidth - 2)
+	f.drawPart(screen, theme.CreateTitleText(left), x+1, bottomY, leftWidth, tview.AlignLeft)
+}
+
+// drawPart prints text within maxWidth. If it does not fit, the beginning is shown, followed by an ellipsis.
+func (f *BorderFooter) drawPart(screen tcell.Screen, text string, x, y, maxWidth int, align int) {
+	if text == "" || maxWidth <= 0 {
+		return
+	}
+	if tview.TaggedStringWidth(text) <= maxWidth {
+		tview.Print(screen, text, x, y, maxWidth, align, f.color)
+		return
+	}
+	tview.Print(screen, text, x, y, maxWidth-1, tview.AlignLeft, f.color)
+	tview.Print(screen, string(tview.SemigraphicsHorizontalEllipsis), x+maxWidth-1, y, 1, tview.AlignLeft, f.color)
 }
