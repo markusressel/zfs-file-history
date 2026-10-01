@@ -398,7 +398,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 
 	// Table Header
 	for column, tableColumn := range c.columnSpec {
-		cellColor := tcell.ColorWhite
+		cellColor := theme.Colors.Layout.Table.HeaderForeground
 		cellAlignment := tableColumn.Alignment
 		cellExpansion := 0
 
@@ -413,6 +413,8 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 
 		cell := tview.NewTableCell(cellText).
 			SetTextColor(cellColor).
+			SetBackgroundColor(theme.Colors.Layout.Table.HeaderBackground).
+			SetAttributes(tcell.AttrBold).
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
 		if tableColumn == c.sortByColumn {

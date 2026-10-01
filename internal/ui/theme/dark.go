@@ -64,7 +64,13 @@ var (
 			Title:  Accent,
 			Border: Secondary,
 			Table: LayoutTableColors{
-				Header: Accent,
+				Accent: Accent,
+
+				HeaderForeground: tcell.ColorWhite,
+				// Secondary at 60% brightness: a dark slate that matches the window borders, without drawing attention.
+				// Keep it distinct from the "unchanged" text color (tcell.ColorGray)
+				// and from the multi-selection background (Secondary).
+				HeaderBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x2B3137,
 
 				SelectedForeground: tcell.ColorBlack,
 				SelectedBackground: tcell.ColorWhite,

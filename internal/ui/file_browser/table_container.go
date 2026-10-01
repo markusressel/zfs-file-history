@@ -136,7 +136,7 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 func determineTypeCellColor(entry *data.FileBrowserEntry) tcell.Color {
 	switch entry.Type {
 	case data.Directory:
-		return theme.Colors.Layout.Table.Header
+		return theme.Colors.Layout.Table.Accent
 	case data.Link:
 		return tcell.ColorYellow
 	case data.File:

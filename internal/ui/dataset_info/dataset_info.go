@@ -234,7 +234,7 @@ func formatProperties(properties []*DatasetInfoTableEntry) string {
 		}
 	}
 
-	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Header)
+	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Accent)
 	var out strings.Builder
 	for _, prop := range properties {
 		valueColor := resolveValueColor(prop.Name, prop.Value)

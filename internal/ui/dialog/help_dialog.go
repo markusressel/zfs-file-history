@@ -83,7 +83,7 @@ func setHelpTableRow(helpTable *tview.Table, row int, entry *TableEntry) {
 	keyColor := tcell.ColorWhite
 	if entry != emptyEntry {
 		keyText = fmt.Sprintf("%s:", entry.Key)
-		keyColor = theme.Colors.Layout.Table.Header
+		keyColor = theme.Colors.Layout.Table.Accent
 	}
 
 	helpTable.SetCell(row, 0, tview.NewTableCell(keyText).

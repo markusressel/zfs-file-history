@@ -98,7 +98,11 @@ type LayoutColors struct {
 }
 
 type LayoutTableColors struct {
-	Header tcell.Color
+	// Accent highlights important values, e.g. directory names and the keys of key-value listings
+	Accent tcell.Color
+
+	HeaderForeground tcell.Color
+	HeaderBackground tcell.Color
 
 	SelectedForeground tcell.Color
 	SelectedBackground tcell.Color

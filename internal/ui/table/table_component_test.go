@@ -220,3 +220,82 @@ func TestSortColumnHeaderHighlightRendering(t *testing.T) {
 	x, y, _ = findText(screen, "Col1")
 	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
 }
+
+func isBoldAt(screen tcell.SimulationScreen, x, y int) bool {
+	_, _, style, _ := screen.GetContent(x, y)
+	_, _, attributes := style.Decompose()
+	return attributes&tcell.AttrBold != 0
+}
+
+func TestHeaderIsBold(t *testing.T) {
+	table, _ := newSortHighlightTestTable()
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	assert.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(60, 8)
+
+	draw := func() {
+		screen.Clear()
+		table.layout.SetRect(0, 0, 60, 8)
+		table.layout.Draw(screen)
+	}
+
+	// data row selected
+	table.Select(table.GetEntries()[0])
+	draw()
+	for _, title := range []string{"Col0", "Col1", "Col2"} {
+		x, y, found := findText(screen, title)
+		assert.True(t, found)
+		assert.True(t, isBoldAt(screen, x, y), title)
+	}
+	x, y, found := findText(screen, "cell")
+	assert.True(t, found)
+	assert.False(t, isBoldAt(screen, x, y), "data cells are not bold")
+
+	// header row selected: the selection styles keep the header bold
+	table.SelectHeader()
+	draw()
+	for _, title := range []string{"Col0", "Col1", "Col2"} {
+		x, y, _ := findText(screen, title)
+		assert.True(t, isBoldAt(screen, x, y), title)
+	}
+}
+
+func TestHeaderBackground(t *testing.T) {
+	table, _ := newSortHighlightTestTable()
+	headerBackground := theme.Colors.Layout.Table.HeaderBackground
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	assert.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(60, 8)
+
+	draw := func() {
+		screen.Clear()
+		table.layout.SetRect(0, 0, 60, 8)
+		table.layout.Draw(screen)
+	}
+
+	table.Select(table.GetEntries()[0])
+	draw()
+
+	col0X, headerY, _ := findText(screen, "Col0")
+	col2X, _, _ := findText(screen, "Col2")
+	// the whole header from the first to the last title is one band, including the gaps between columns
+	for x := col0X; x <= col2X; x++ {
+		assert.Equal(t, headerBackground, backgroundAt(screen, x, headerY), "x=%d", x)
+	}
+
+	// data rows keep the default background
+	cellX, cellY, _ := findText(screen, "cell")
+	assert.NotEqual(t, headerBackground, backgroundAt(screen, cellX, cellY))
+
+	// while selected, the selection colors replace the header background
+	table.SelectHeader()
+	draw()
+	x, y, _ := findText(screen, "Col0")
+	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
+	x, y, _ = findText(screen, "Col1")
+	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+}
