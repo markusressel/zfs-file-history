@@ -79,20 +79,10 @@ func TestNewDeleteFileDialog(t *testing.T) {
 	assert.Equal(t, "DeleteFileDialog", d.GetName())
 }
 
-func TestNewDeleteSnapshotDialog(t *testing.T) {
+func TestNewDestroySnapshotsDialog(t *testing.T) {
 	app := tview.NewApplication()
-	snapshot := &data.SnapshotBrowserEntry{
-		Snapshot: &zfs.Snapshot{
-			Name: "snapshot-1",
-			ParentDataset: &zfs.Dataset{
-				Path:          "/pool/ds1",
-				HiddenZfsPath: "/pool/ds1/.zfs",
-			},
-		},
-	}
-
-	d := NewDeleteSnapshotDialog(app, snapshot, nil, nil)
-	assert.Equal(t, "DeleteSnapshotDialog", d.GetName())
+	d := NewDestroySnapshotsDialog(app, "This frees 1 GiB and cannot be undone.", nil, nil)
+	assert.Equal(t, "DestroySnapshotsDialog", d.GetName())
 }
 
 func TestNewFileActionDialog(t *testing.T) {

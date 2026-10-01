@@ -182,7 +182,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
 				}
 				return nil
-			} else if event.Rune() == 'd' {
+			} else if event.Rune() == 'd' || key == tcell.KeyDelete {
 				currentSelection := snapshotBrowser.GetSelection()
 				if currentSelection != nil {
 					snapshotBrowser.openDeleteDialog(currentSelection)
@@ -596,6 +596,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	}
 
 	var createdName string
+	// destroying asks for confirmation first, with the result of a dry run
+	var destroy *destroyRequest
+	var destroyPreviewResult *zfs.DestroyPreview
 
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
@@ -604,9 +607,15 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			createdName = name
 			return err
 		case dialog.SnapshotDialogDestroySnapshotActionId:
-			return snapshotBrowser.destroySnapshot(selection, false, false)
+			destroy = &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}}
+			preview, err := destroy.preview()
+			destroyPreviewResult = preview
+			return err
 		case dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
-			return snapshotBrowser.destroySnapshot(selection, true, true)
+			destroy = &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}, recursive: true, dependantClones: true}
+			preview, err := destroy.preview()
+			destroyPreviewResult = preview
+			return err
 		}
 		return nil
 	}
@@ -634,8 +643,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			snapshotBrowser.showDialog(successDialog, nil)
 
 		case dialog.SnapshotDialogDestroySnapshotActionId, dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
-			successDialog := dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshot Destroyed", fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name))
-			snapshotBrowser.showDialog(successDialog, nil)
+			// nothing was destroyed yet, the confirmation does that
+			snapshotBrowser.showDestroyConfirmation(destroy, destroyPreviewResult)
+			return
 		}
 
 		snapshotBrowser.Refresh(true)
@@ -693,43 +703,39 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 		return
 	}
 
+	// destroying asks for confirmation first, with the result of a dry run
+	var destroy *destroyRequest
+	var destroyPreviewResult *zfs.DestroyPreview
+
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
 		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
-			for _, entry := range entries {
-				if err := snapshotBrowser.destroySnapshot(entry, false, false); err != nil {
-					logging.Error("Failed to destroy snapshot: %s", err.Error())
-					return err // Break early on failure
-				}
-			}
+			destroy = &destroyRequest{entries: entries}
 		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
-			for _, entry := range entries {
-				if err := snapshotBrowser.destroySnapshot(entry, true, true); err != nil {
-					logging.Error("Failed to destroy snapshot: %s", err.Error())
-					return err // Break early on failure
-				}
-			}
+			destroy = &destroyRequest{entries: entries, recursive: true, dependantClones: true}
+		default:
+			return nil
 		}
-		return nil
+		preview, err := destroy.preview()
+		destroyPreviewResult = preview
+		return err
 	}
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
 
-		// Always clear selection states after an action choice completes
-		if option.Id == dialog.MultiSnapshotDialogClearSelectionActionId || option.Id == dialog.MultiSnapshotDialogDestroySnapshotActionId || option.Id == dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId {
-			snapshotBrowser.ClearMultiSelection()
-		}
-
 		if err != nil {
-			errDialog := dialog.NewErrorDialog(snapshotBrowser.application, "Batch Destroy Failed", err)
-			snapshotBrowser.showDialog(errDialog, nil)
+			logging.Error("Cannot destroy snapshots: %s", err.Error())
+			snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Cannot Destroy", err), nil)
 			return
 		}
 
-		if option.Id == dialog.MultiSnapshotDialogDestroySnapshotActionId || option.Id == dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId {
-			successDialog := dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshots Destroyed", fmt.Sprintf("Successfully destroyed %d snapshots.", len(entries)))
-			snapshotBrowser.showDialog(successDialog, nil)
+		switch option.Id {
+		case dialog.MultiSnapshotDialogClearSelectionActionId:
+			snapshotBrowser.ClearMultiSelection()
+		case dialog.MultiSnapshotDialogDestroySnapshotActionId, dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
+			// nothing was destroyed yet, the confirmation does that
+			snapshotBrowser.showDestroyConfirmation(destroy, destroyPreviewResult)
 		}
 	}
 
@@ -737,34 +743,111 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 	snapshotBrowser.showDialog(actionDialog, nil)
 }
 
+// openDeleteDialog asks for confirmation to destroy the given snapshot, with the result of a dry run.
+// Must be called on the UI thread.
 func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *data.SnapshotBrowserEntry) {
 	if selection == nil {
 		return
 	}
 
-	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
-		if action == dialog.DeleteSnapshotDialogDeleteSnapshotActionId {
-			return snapshotBrowser.destroySnapshot(selection, false, false)
+	request := &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}}
+	go func() {
+		preview, err := request.preview()
+		snapshotBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Cannot destroy snapshot: %s", err.Error())
+				snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Cannot Destroy", err), nil)
+				return
+			}
+			snapshotBrowser.showDestroyConfirmation(request, preview)
+		})
+	}()
+}
+
+// destroyRequest describes which snapshots to destroy and how, captured on the UI thread.
+type destroyRequest struct {
+	entries         []*data.SnapshotBrowserEntry
+	recursive       bool
+	dependantClones bool
+}
+
+func (r *destroyRequest) snapshots() []*zfs.Snapshot {
+	result := make([]*zfs.Snapshot, 0, len(r.entries))
+	for _, entry := range r.entries {
+		result = append(result, entry.Snapshot)
+	}
+	return result
+}
+
+// preview does a dry run of the destroy. Runs in the background.
+func (r *destroyRequest) preview() (*zfs.DestroyPreview, error) {
+	return previewDestroySnapshots(r.snapshots(), r.recursive, r.dependantClones)
+}
+
+// previewDestroySnapshots and destroySnapshots are replaceable in tests, so tests never destroy anything.
+var (
+	previewDestroySnapshots = zfs.PreviewDestroySnapshots
+	destroySnapshots        = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) error {
+		for _, snapshot := range snapshots {
+			if err := snapshot.Destroy(recursive, dependantClones); err != nil {
+				return err
+			}
 		}
 		return nil
+	}
+)
+
+// maxListedDestroyed is the maximum number of destroyed snapshots / datasets listed in the confirmation.
+const maxListedDestroyed = 10
+
+// formatDestroyDescription describes what a destroy would do, based on its dry run.
+func formatDestroyDescription(preview *zfs.DestroyPreview) string {
+	var description strings.Builder
+	fmt.Fprintf(&description, "This frees %s and cannot be undone.\n\n", uiutil.HumanizedBytes(preview.Reclaim))
+	fmt.Fprintf(&description, "Will be destroyed (%d):", len(preview.Destroyed))
+	for i, name := range preview.Destroyed {
+		if i == maxListedDestroyed {
+			fmt.Fprintf(&description, "\n  … and %d more", len(preview.Destroyed)-maxListedDestroyed)
+			break
+		}
+		fmt.Fprintf(&description, "\n  %s", name)
+	}
+	return description.String()
+}
+
+// showDestroyConfirmation shows what would be destroyed and destroys it on confirmation, exactly as previewed.
+// Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) showDestroyConfirmation(request *destroyRequest, preview *zfs.DestroyPreview) {
+	snapshots := request.snapshots()
+
+	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
+		if action != dialog.DestroySnapshotsDialogDestroyActionId {
+			return nil
+		}
+		return destroySnapshots(snapshots, request.recursive, request.dependantClones)
 	}
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
 
 		if err != nil {
-			logging.Error("Failed to destroy snapshot: %s", err.Error())
-			errDialog := dialog.NewErrorDialog(snapshotBrowser.application, "Delete Failed", err)
-			snapshotBrowser.showDialog(errDialog, nil)
+			logging.Error("Failed to destroy snapshots: %s", err.Error())
+			snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Destroy Failed", err), nil)
+			// some snapshots may have been destroyed already
+			snapshotBrowser.ClearMultiSelection()
+			snapshotBrowser.Refresh(true)
 			return
 		}
 
-		// Reload on success thread
-		snapshotBrowser.reloadSnapshotEntries(true)
+		message := fmt.Sprintf("Destroyed %d %s, freed %s.",
+			len(preview.Destroyed), uiutil.Plural(len(preview.Destroyed), "snapshot", "snapshots"), uiutil.HumanizedBytes(preview.Reclaim))
+		snapshotBrowser.showDialog(dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshots Destroyed", message), nil)
+		snapshotBrowser.ClearMultiSelection()
+		snapshotBrowser.Refresh(true)
 	}
 
-	deleteDialog := dialog.NewDeleteSnapshotDialog(snapshotBrowser.application, selection, asyncWork, onComplete)
-	snapshotBrowser.showDialog(deleteDialog, nil)
+	confirmation := dialog.NewDestroySnapshotsDialog(snapshotBrowser.application, formatDestroyDescription(preview), asyncWork, onComplete)
+	snapshotBrowser.showDialog(confirmation, nil)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
@@ -793,11 +876,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.Snap
 		return "", err
 	}
 	return name, nil
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.SnapshotBrowserEntry, recursive bool, dependantClones bool) (err error) {
-	snapshot := entry.Snapshot
-	return snapshot.Destroy(recursive, dependantClones)
 }
 
 // SelectLatestOnNextLoad selects the latest snapshot after the next (re)load, e.g. after creating a snapshot.

@@ -18,3 +18,8 @@ func StableLengthHumanizedBytes(u uint64) string {
 	}
 	return text
 }
+
+// HumanizedBytes formats a size for text, e.g. "1.2 GiB" (unlike StableLengthHumanizedBytes, without padding).
+func HumanizedBytes(u uint64) string {
+	return humanize.IBytes(u)
+}
