@@ -11,6 +11,14 @@ type treeRow struct {
 	prefix string
 	// name is the name relative to the parent in the tree, or the full name for roots
 	name string
+	// parent is the parent in the tree, nil for roots
+	parent *zfs.DatasetListEntry
+	// children are the children in the tree (also if collapsed)
+	children []*zfs.DatasetListEntry
+	// collapsed is true if the dataset has children, which are hidden
+	collapsed bool
+	// hiddenCount is the number of datasets hidden in a collapsed dataset (all descendants)
+	hiddenCount int
 }
 
 const (
@@ -23,8 +31,9 @@ const (
 // buildDatasetTree arranges the given (sorted) datasets as a tree: each dataset follows its parent, siblings keep
 // their order. The parent of a dataset is its nearest ancestor among the given datasets, so the tree stays correct
 // if datasets are hidden (e.g. unmounted ones or by a filter). Datasets without such an ancestor are roots.
-// It returns the datasets in tree order, and how to display each of them.
-func buildDatasetTree(sorted []*zfs.DatasetListEntry) ([]*zfs.DatasetListEntry, map[*zfs.DatasetListEntry]treeRow) {
+// The descendants of datasets whose name is in collapsed are left out.
+// It returns the datasets to display in tree order, and how to display each of them.
+func buildDatasetTree(sorted []*zfs.DatasetListEntry, collapsed map[string]bool) ([]*zfs.DatasetListEntry, map[*zfs.DatasetListEntry]treeRow) {
 	byName := make(map[string]*zfs.DatasetListEntry, len(sorted))
 	for _, entry := range sorted {
 		byName[entry.Name] = entry
@@ -46,9 +55,24 @@ func buildDatasetTree(sorted []*zfs.DatasetListEntry) ([]*zfs.DatasetListEntry, 
 	result := make([]*zfs.DatasetListEntry, 0, len(sorted))
 	rows := make(map[*zfs.DatasetListEntry]treeRow, len(sorted))
 
+	var countDescendants func(entry *zfs.DatasetListEntry) int
+	countDescendants = func(entry *zfs.DatasetListEntry) int {
+		count := 0
+		for _, child := range children[entry] {
+			count += 1 + countDescendants(child)
+		}
+		return count
+	}
+
 	var visit func(entry *zfs.DatasetListEntry, indent string, isLast bool, isRoot bool)
 	visit = func(entry *zfs.DatasetListEntry, indent string, isLast bool, isRoot bool) {
-		row := treeRow{name: entry.Name}
+		entryChildren := children[entry]
+		row := treeRow{
+			name:      entry.Name,
+			parent:    parents[entry],
+			children:  entryChildren,
+			collapsed: collapsed[entry.Name] && len(entryChildren) > 0,
+		}
 		childIndent := ""
 		if !isRoot {
 			row.name = strings.TrimPrefix(entry.Name, parents[entry].Name+"/")
@@ -60,10 +84,15 @@ func buildDatasetTree(sorted []*zfs.DatasetListEntry) ([]*zfs.DatasetListEntry, 
 				childIndent = indent + treeLine
 			}
 		}
+		if row.collapsed {
+			row.hiddenCount = countDescendants(entry)
+		}
 		rows[entry] = row
 		result = append(result, entry)
 
-		entryChildren := children[entry]
+		if row.collapsed {
+			return
+		}
 		for i, child := range entryChildren {
 			visit(child, childIndent, i == len(entryChildren)-1, false)
 		}

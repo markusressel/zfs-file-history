@@ -89,6 +89,12 @@ type DatasetBrowserComponent struct {
 	// treeRows is how each displayed dataset is shown in the tree view, rebuilt whenever the entries are sorted.
 	// Only accessed on the UI thread.
 	treeRows map[*zfs.DatasetListEntry]treeRow
+	// collapsed contains the names of the datasets whose children are hidden in the tree view.
+	// Only accessed on the UI thread.
+	collapsed map[string]bool
+	// matchedCount is the number of datasets matching the filters (hidden unmounted datasets, filter text),
+	// including the ones within collapsed datasets. Only accessed on the UI thread.
+	matchedCount int
 }
 
 func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent {
@@ -97,6 +103,7 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 		application:   application,
 		hideUnmounted: true,
 		treeView:      true,
+		collapsed:     map[string]bool{},
 	}
 
 	datasetBrowser.tableContainer = datasetBrowser.createTable(application)
@@ -139,7 +146,10 @@ func (datasetBrowser *DatasetBrowserComponent) toTableCells(row int, columns []*
 		case columnName:
 			text = tview.Escape(entry.Name)
 			if row, ok := datasetBrowser.treeRows[entry]; ok && datasetBrowser.treeView {
-				text = txwidgets.Span(theme.Colors.Layout.Border, "%s", row.prefix) + tview.Escape(row.name)
+				text = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "%s", row.prefix) + tview.Escape(row.name)
+				if row.collapsed {
+					text += txwidgets.Span(theme.Colors.Layout.Table.TreeCollapsedIndicator, " ▸ +%d", row.hiddenCount)
+				}
 			}
 		case columnUsed:
 			text = uiutil.StableLengthHumanizedBytes(entry.Used)
@@ -170,12 +180,13 @@ func displayedMountpoint(entry *zfs.DatasetListEntry) string {
 // sortTableEntries sorts the displayed entries. In the tree view, the sort order applies among siblings.
 // Called by the table on the UI thread, before the entries are displayed.
 func (datasetBrowser *DatasetBrowserComponent) sortTableEntries(entries []*zfs.DatasetListEntry, column *table.Column, inverted bool) []*zfs.DatasetListEntry {
+	datasetBrowser.matchedCount = len(entries)
 	sorted := sortDatasetEntries(entries, column, inverted)
 	if !datasetBrowser.treeView {
 		datasetBrowser.treeRows = nil
 		return sorted
 	}
-	ordered, rows := buildDatasetTree(sorted)
+	ordered, rows := buildDatasetTree(sorted, datasetBrowser.collapsed)
 	datasetBrowser.treeRows = rows
 	return ordered
 }
@@ -248,6 +259,9 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 		}
 
 		// on the header row, these keys are handled by the table to change the sort order
+		if datasetBrowser.treeView && datasetBrowser.handleTreeKey(key) {
+			return nil
+		}
 		if datasetBrowser.tableContainer.GetSelectedEntry() != nil {
 			if key == tcell.KeyRight || key == tcell.KeyEnter {
 				// no actions on data rows (yet), but don't let tview handle them either
@@ -305,6 +319,46 @@ func (datasetBrowser *DatasetBrowserComponent) ToggleHideUnmounted() {
 	}
 }
 
+// handleTreeKey collapses and expands datasets in the tree view, like tree widgets usually do:
+// ← collapses an expanded dataset, or else selects its parent. → expands a collapsed dataset, or else selects its
+// first child. Returns false if the key was not handled (e.g. on the header row). Runs on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) handleTreeKey(key tcell.Key) bool {
+	if key != tcell.KeyLeft && key != tcell.KeyRight {
+		return false
+	}
+	entry := datasetBrowser.tableContainer.GetSelectedEntry()
+	row, ok := datasetBrowser.treeRows[entry]
+	if entry == nil || !ok {
+		return false
+	}
+
+	switch key {
+	case tcell.KeyLeft:
+		if len(row.children) > 0 && !row.collapsed {
+			datasetBrowser.setCollapsed(entry.Name, true)
+		} else if row.parent != nil {
+			datasetBrowser.tableContainer.Select(row.parent)
+		}
+	case tcell.KeyRight:
+		if row.collapsed {
+			datasetBrowser.setCollapsed(entry.Name, false)
+		} else if len(row.children) > 0 {
+			datasetBrowser.tableContainer.Select(row.children[0])
+		}
+	}
+	return true
+}
+
+// setCollapsed collapses or expands the dataset with the given name. The selection is kept.
+func (datasetBrowser *DatasetBrowserComponent) setCollapsed(name string, collapsed bool) {
+	if collapsed {
+		datasetBrowser.collapsed[name] = true
+	} else {
+		delete(datasetBrowser.collapsed, name)
+	}
+	datasetBrowser.updateEntries()
+}
+
 // ToggleTreeView switches between the flat list and the tree view. The selection is kept.
 // Must be called on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) ToggleTreeView() {
@@ -345,7 +399,8 @@ func filterEntries(entries []*zfs.DatasetListEntry, hideUnmounted bool) []*zfs.D
 func (datasetBrowser *DatasetBrowserComponent) updateStatus() {
 	datasetBrowser.tableContainer.SetFooter(formatStatus(
 		datasetBrowser.allEntries,
-		len(datasetBrowser.tableContainer.GetEntries()),
+		// not the displayed entries: collapsing does not change the count
+		datasetBrowser.matchedCount,
 		datasetBrowser.hideUnmounted,
 		datasetBrowser.tableContainer.IsFilterActive(),
 	))
@@ -461,9 +516,13 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 	if datasetBrowser.treeView {
 		toggleTreeViewName = "Flat list"
 	}
-	return []shortcut_helper.ShortcutEntry{
+	shortcuts := []shortcut_helper.ShortcutEntry{
 		uiutil.TableComponentShortcutFilter,
 		{KeyCombo: []string{"u"}, Name: toggleUnmountedName},
 		{KeyCombo: []string{"t"}, Name: toggleTreeViewName},
 	}
+	if datasetBrowser.treeView && datasetBrowser.tableContainer.GetSelectedEntry() != nil {
+		shortcuts = append(shortcuts, shortcut_helper.ShortcutEntry{KeyCombo: []string{"←", "→"}, Name: "Collapse/expand"})
+	}
+	return shortcuts
 }

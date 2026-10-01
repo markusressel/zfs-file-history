@@ -113,6 +113,11 @@ type LayoutTableColors struct {
 
 	MultiSelectionBackground tcell.Color
 	MultiSelectionForeground tcell.Color
+
+	// TreeLines are the lines of tree views (e.g. "├─ ")
+	TreeLines tcell.Color
+	// TreeCollapsedIndicator is the "▸ +N" behind collapsed entries of tree views
+	TreeCollapsedIndicator tcell.Color
 }
 
 type ShortcutMapColors struct {

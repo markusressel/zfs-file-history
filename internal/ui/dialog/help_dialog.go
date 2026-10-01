@@ -43,6 +43,7 @@ func (p *HelpPage) createLayout() {
 		{Key: "ctrl+f", Value: "Filters the list, e.g. daily or *-22???? (enter: keep, esc: clear)"},
 		{Key: "u", Value: "Shows/hides unmounted datasets"},
 		{Key: "t", Value: "Switches datasets between list and tree view"},
+		{Key: "←, →", Value: "Collapses/expands datasets in the tree view"},
 		{Key: "ctrl+n, ctrl+p", Value: "Cycles window focus"},
 		{Key: "⭾, shift+⭾", Value: "Switches page"},
 		emptyEntry,

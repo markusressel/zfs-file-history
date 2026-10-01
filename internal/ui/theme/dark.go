@@ -80,6 +80,10 @@ var (
 
 				MultiSelectionBackground: Secondary,
 				MultiSelectionForeground: OnSecondary,
+
+				// a lighter variant of Secondary, readable on the dark background
+				TreeLines:              tcell.ColorIsRGB | tcell.ColorValid | 0x7D8A96,
+				TreeCollapsedIndicator: Primary,
 			},
 		},
 		ShortcutMap: ShortcutMapColors{

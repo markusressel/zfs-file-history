@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -22,7 +23,7 @@ func datasets(names ...string) []*zfs.DatasetListEntry {
 
 // renderTree returns the tree as text lines, like the name column shows it.
 func renderTree(sorted []*zfs.DatasetListEntry) []string {
-	ordered, rows := buildDatasetTree(sorted)
+	ordered, rows := buildDatasetTree(sorted, nil)
 	var lines []string
 	for _, entry := range ordered {
 		lines = append(lines, rows[entry].prefix+rows[entry].name)
@@ -209,4 +210,138 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 	_, _, tree, _ = state()
 	assert.True(t, tree)
+}
+
+func TestBuildDatasetTree_Collapsed(t *testing.T) {
+	sorted := datasets("rpool", "rpool/arch", "rpool/arch/DATA", "rpool/arch/DATA/home", "rpool/arch/ROOT", "rpool/data")
+
+	ordered, rows := buildDatasetTree(sorted, map[string]bool{"rpool/arch": true, "rpool/data": true})
+
+	// the descendants of collapsed datasets are left out
+	assert.Equal(t, []string{"rpool", "rpool/arch", "rpool/data"}, names(ordered))
+	arch := sorted[1]
+	assert.True(t, rows[arch].collapsed)
+	assert.Equal(t, 3, rows[arch].hiddenCount, "all descendants are counted")
+	assert.Len(t, rows[arch].children, 2, "children are known, also if collapsed")
+	assert.Equal(t, "└─ data", rows[sorted[5]].prefix+rows[sorted[5]].name)
+	// a dataset without children cannot be collapsed
+	assert.False(t, rows[sorted[5]].collapsed)
+	// parents
+	assert.Nil(t, rows[sorted[0]].parent)
+	assert.Same(t, sorted[0], rows[arch].parent)
+}
+
+func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return datasets("rpool", "rpool/home", "rpool/var", "rpool/var/lib", "rpool/var/log"), nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	pressKey := func(key tcell.Key) {
+		screen.InjectKey(key, 0, tcell.ModNone)
+	}
+	state := func() (visible []string, selected string, footer string) {
+		onUiThread(t, app, func() {
+			visible = names(browser.tableContainer.GetEntries())
+			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
+				selected = entry.Name
+			}
+			footer = browser.tableContainer.GetFooter()
+		})
+		return
+	}
+	waitFor := func(message string, condition func(visible []string, selected string) bool) {
+		require.Eventually(t, func() bool {
+			visible, selected, _ := state()
+			return condition(visible, selected)
+		}, 2*time.Second, 10*time.Millisecond, message)
+	}
+	selectedIs := func(name string) func([]string, string) bool {
+		return func(_ []string, selected string) bool { return selected == name }
+	}
+	screenContains := func(text string) bool {
+		var screenText strings.Builder
+		onUiThread(t, app, func() {
+			cells, width, height := screen.GetContents()
+			for y := 0; y < height; y++ {
+				for x := 0; x < width; x++ {
+					if runes := cells[y*width+x].Runes; len(runes) > 0 {
+						screenText.WriteRune(runes[0])
+					}
+				}
+				screenText.WriteRune('\n')
+			}
+		})
+		return strings.Contains(screenText.String(), text)
+	}
+
+	onUiThread(t, app, func() {
+		browser.SetPath("/rpool/var", false)
+		browser.Refresh(false)
+	})
+	waitFor("loaded", func(visible []string, selected string) bool { return len(visible) == 5 && selected == "rpool/var" })
+	_, _, footer := state()
+
+	// ← collapses an expanded dataset: its children are hidden, the count is shown, the footer stays the same
+	pressKey(tcell.KeyLeft)
+	waitFor("collapsed", func(visible []string, selected string) bool {
+		return assert.ObjectsAreEqual([]string{"rpool", "rpool/home", "rpool/var"}, visible) && selected == "rpool/var"
+	})
+	require.Eventually(t, func() bool { return screenContains("var ▸ +2") }, 2*time.Second, 10*time.Millisecond)
+	_, _, collapsedFooter := state()
+	assert.Equal(t, footer, collapsedFooter)
+
+	// ← on a collapsed dataset selects its parent
+	pressKey(tcell.KeyLeft)
+	waitFor("parent selected", selectedIs("rpool"))
+
+	// on rows that are not selected, the indicator is drawn in its own (readable) color,
+	// not in the dark color of the tree lines (selected rows use the selection colors)
+	require.Eventually(t, func() bool {
+		var foreground tcell.Color
+		onUiThread(t, app, func() {
+			cells, width, height := screen.GetContents()
+			for i := 0; i < width*height; i++ {
+				if runes := cells[i].Runes; len(runes) > 0 && runes[0] == '▸' {
+					foreground, _, _ = cells[i].Style.Decompose()
+				}
+			}
+		})
+		return foreground == theme.Colors.Layout.Table.TreeCollapsedIndicator
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// → on an expanded dataset selects its first child
+	pressKey(tcell.KeyRight)
+	waitFor("first child selected", selectedIs("rpool/home"))
+
+	// → on a leaf does nothing
+	pressKey(tcell.KeyRight)
+	time.Sleep(50 * time.Millisecond)
+	_, selected, _ := state()
+	assert.Equal(t, "rpool/home", selected)
+
+	// the collapsed state is kept when switching to the flat list and back, and on reload
+	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	waitFor("flat list shows everything", func(visible []string, _ string) bool { return len(visible) == 5 })
+	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	waitFor("tree is collapsed again", func(visible []string, _ string) bool { return len(visible) == 3 })
+	onUiThread(t, app, func() { browser.Refresh(false) })
+	time.Sleep(100 * time.Millisecond)
+	waitFor("still collapsed after reload", func(visible []string, _ string) bool { return len(visible) == 3 })
+
+	// → on a collapsed dataset expands it, then → selects its first child, ← on a leaf selects the parent
+	pressKey(tcell.KeyDown)
+	waitFor("var selected", selectedIs("rpool/var"))
+	pressKey(tcell.KeyRight)
+	waitFor("expanded", func(visible []string, selected string) bool { return len(visible) == 5 && selected == "rpool/var" })
+	pressKey(tcell.KeyRight)
+	waitFor("first child selected", selectedIs("rpool/var/lib"))
+	pressKey(tcell.KeyLeft)
+	waitFor("parent selected", selectedIs("rpool/var"))
+	assert.False(t, screenContains("▸"))
+
+	// on the header row, ← and → still change the sort column
+	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
+	pressKey(tcell.KeyRight)
+	require.Eventually(t, func() bool { return screenContains("Used ↑") }, 2*time.Second, 10*time.Millisecond)
 }
