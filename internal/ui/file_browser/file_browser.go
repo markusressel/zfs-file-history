@@ -142,6 +142,8 @@ func (fileBrowser *FileBrowserComponent) createLayout() {
 }
 
 func (fileBrowser *FileBrowserComponent) setupTable() {
+	fileBrowser.tableContainer.SetFilterFunc(fileMatchesFilter)
+	fileBrowser.tableContainer.SetFilterChangedCallback(fileBrowser.updateFooter)
 	fileBrowser.tableContainer.SetColumnSpec(tableColumns, columnType, true)
 	fileBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
 	fileBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -421,6 +423,12 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 	}
 
 	if fileBrowser.path != newPath {
+		// Depending on the configuration, an active filter (e.g. "*.txt") is cleared when changing directories.
+		// This happens before changing the path, so the resulting selection is remembered for the old path.
+		if !configuration.CurrentConfig.FileBrowser.KeepsFilterOnDirectoryChange() {
+			fileBrowser.tableContainer.SetFilterText("")
+		}
+
 		fileBrowser.path = newPath
 
 		// Optimization: only clear the current snapshot if the new path is no longer within its dataset.
@@ -553,7 +561,8 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 	}
 
 	snapshotEntry := fileBrowser.currentSnapshot
-	entriesToProcess := slices.Clone(fileBrowser.tableContainer.GetEntries())
+	// also calculate the diffs of entries hidden by the filter, so they are correct once the filter changes
+	entriesToProcess := slices.Clone(fileBrowser.tableContainer.GetAllEntries())
 
 	if len(entriesToProcess) == 0 {
 		return
@@ -652,7 +661,8 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	fileBrowser.tableContainer.SetTitle(title)
 
 	previousDiffs := make(map[string]diff_state.DiffState)
-	for _, entry := range fileBrowser.tableContainer.GetEntries() {
+	// all entries, including the ones hidden by the filter
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
 		if entry != nil {
 			previousDiffs[entry.GetRealPath()] = entry.DiffState
 		}
@@ -680,6 +690,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 				fileBrowser.showError(err)
 			} else {
 				fileBrowser.tableContainer.SetData(entries)
+				fileBrowser.updateFooter()
 				fileBrowser.restoreSelectionForPath()
 				fileBrowser.updateFileWatcher()
 
@@ -975,6 +986,32 @@ func (fileBrowser *FileBrowserComponent) SelectFirstEntryIfExists() {
 	fileBrowser.tableContainer.SelectFirstIfExists()
 }
 
+// updateFooter shows the number of (matching) entries in the bottom border. Runs on the UI thread.
+func (fileBrowser *FileBrowserComponent) updateFooter() {
+	fileBrowser.tableContainer.SetFooter(formatFooter(
+		len(fileBrowser.tableContainer.GetEntries()),
+		len(fileBrowser.tableContainer.GetAllEntries()),
+		fileBrowser.tableContainer.IsFilterActive(),
+	))
+}
+
+// formatFooter returns e.g. "42 entries", or "5 of 42 entries" while a filter is active.
+func formatFooter(matchingCount int, totalCount int, filterActive bool) string {
+	noun := uiutil.Plural(totalCount, "entry", "entries")
+	if filterActive {
+		return fmt.Sprintf("%d of %d %s", matchingCount, totalCount, noun)
+	}
+	if totalCount == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d %s", totalCount, noun)
+}
+
+// fileMatchesFilter matches the file name against the filter as a glob, see table.MatchesGlob.
+func fileMatchesFilter(entry *data.FileBrowserEntry, filterText string) bool {
+	return table.MatchesGlob(entry.Name, filterText)
+}
+
 func (fileBrowser *FileBrowserComponent) GetEntries() []*data.FileBrowserEntry {
 	return fileBrowser.tableContainer.GetEntries()
 }
@@ -990,6 +1027,7 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		uiutil.TableComponentShortcutPageUp,
 		uiutil.TableComponentShortcutPageDown,
 		uiutil.TableComponentShortcutColumns,
+		uiutil.TableComponentShortcutFilter,
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {

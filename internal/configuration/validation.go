@@ -41,9 +41,16 @@ func validateFileBrowser(fileBrowser FileBrowserConfig) error {
 
 	switch fileBrowser.Owner {
 	case FileBrowserOwnerFormatName, FileBrowserOwnerFormatID, FileBrowserOwnerFormatBoth:
-		return nil
 	default:
 		return fmt.Errorf("fileBrowser.owner must be one of: %s, %s, %s", FileBrowserOwnerFormatName, FileBrowserOwnerFormatID, FileBrowserOwnerFormatBoth)
+	}
+
+	switch fileBrowser.FilterOnDirectoryChange {
+	// empty means the default (keep)
+	case "", FileBrowserFilterOnDirectoryChangeKeep, FileBrowserFilterOnDirectoryChangeClear:
+		return nil
+	default:
+		return fmt.Errorf("fileBrowser.filterOnDirectoryChange must be one of: %s, %s", FileBrowserFilterOnDirectoryChangeKeep, FileBrowserFilterOnDirectoryChangeClear)
 	}
 }
 

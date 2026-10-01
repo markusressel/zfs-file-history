@@ -469,13 +469,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateTitleAndFooter() {
 
 // formatFooter returns e.g. "48 snapshots", or "3 of 48 snapshots" while a filter is active.
 func formatFooter(matchingCount int, totalCount int, filterActive bool) string {
+	noun := uiutil.Plural(totalCount, "snapshot", "snapshots")
 	if filterActive {
-		return fmt.Sprintf("%d of %d snapshots", matchingCount, totalCount)
+		return fmt.Sprintf("%d of %d %s", matchingCount, totalCount, noun)
 	}
 	if totalCount == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d snapshots", totalCount)
+	return fmt.Sprintf("%d %s", totalCount, noun)
 }
 
 // snapshotMatchesFilter matches the snapshot name against the filter as a glob, see table.MatchesGlob.

@@ -56,11 +56,13 @@ func setDefaultValues() {
 	//viper.SetDefault("Diff.External.WrapInPager", false)
 
 	viper.SetDefault("FileBrowser", FileBrowserConfig{
-		Permissions: FileBrowserPermissionsFormatSymbolic,
-		Owner:       FileBrowserOwnerFormatName,
+		Permissions:             FileBrowserPermissionsFormatSymbolic,
+		Owner:                   FileBrowserOwnerFormatName,
+		FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeKeep,
 	})
 	viper.SetDefault("FileBrowser.Permissions", FileBrowserPermissionsFormatSymbolic)
 	viper.SetDefault("FileBrowser.Owner", FileBrowserOwnerFormatName)
+	viper.SetDefault("FileBrowser.FilterOnDirectoryChange", FileBrowserFilterOnDirectoryChangeKeep)
 
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,

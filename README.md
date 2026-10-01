@@ -84,7 +84,8 @@ otherwise zfs-file-history will show a permission error.
 ## Configuration
 
 > **Note:**
-> The configuration is optional and currently only contains debugging settings.
+> The configuration is optional. It contains display and behavior settings of the file browser,
+> as well as debugging settings.
 
 Then configure zfs-file-history by creating a YAML configuration file in **one** of the following locations:
 

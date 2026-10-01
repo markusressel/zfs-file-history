@@ -370,6 +370,7 @@ func TestFormatStatus(t *testing.T) {
 	assert.Equal(t, "0 datasets · 0 unmounted hidden", plain(formatStatus([]*zfs.DatasetListEntry{}, 0, true, false)))
 	// with an active filter, always "x of y", even if all datasets match
 	assert.Equal(t, "3 of 3 datasets", plain(formatStatus(entries, 3, false, true)))
+	assert.Equal(t, "1 dataset", plain(formatStatus(entries[1:2], 1, false, false)))
 	assert.Equal(t, "1 of 3 datasets · 2 unmounted hidden", plain(formatStatus(entries, 1, true, true)))
 }
 

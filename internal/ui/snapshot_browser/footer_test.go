@@ -13,6 +13,7 @@ func TestFormatFooter(t *testing.T) {
 	assert.Equal(t, "", formatFooter(0, 0, false))
 	assert.Equal(t, "3 of 48 snapshots", formatFooter(3, 48, true))
 	assert.Equal(t, "0 of 48 snapshots", formatFooter(0, 48, true))
+	assert.Equal(t, "1 snapshot", formatFooter(1, 1, false))
 }
 
 func TestSnapshotMatchesFilter(t *testing.T) {

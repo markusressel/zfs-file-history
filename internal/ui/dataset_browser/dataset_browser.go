@@ -324,11 +324,12 @@ func formatStatus(allEntries []*zfs.DatasetListEntry, visibleCount int, hideUnmo
 		return txwidgets.Span(theme.Colors.ShortcutMap.Name, "Loading datasets...")
 	}
 
+	noun := uiutil.Plural(len(allEntries), "dataset", "datasets")
 	var parts []string
 	if visibleCount == len(allEntries) && !filterActive {
-		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d datasets", len(allEntries)))
+		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d %s", len(allEntries), noun))
 	} else {
-		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d of %d datasets", visibleCount, len(allEntries)))
+		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d of %d %s", visibleCount, len(allEntries), noun))
 	}
 
 	if hideUnmounted {
