@@ -54,3 +54,8 @@ func TestDatasetListEntry_TableRowId(t *testing.T) {
 	assert.NotEqual(t, a.TableRowId(), b.TableRowId())
 	assert.Equal(t, "pool/a", a.TableRowId())
 }
+
+func TestOpenDatasetByName_EmptyName(t *testing.T) {
+	_, err := OpenDatasetByName("", "")
+	assert.Error(t, err)
+}

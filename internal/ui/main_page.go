@@ -283,51 +283,6 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 		return action, event
 	})
 
-	// Configure drawing of highlighted adjacent borders after the screen draws
-	mainPage.application.SetAfterDrawFunc(func(screen tcell.Screen) {
-		if mainPage.pages != nil {
-			frontPage, _ := mainPage.pages.GetFrontPage()
-			if frontPage != string(Main) {
-				return
-			}
-		}
-
-		// Highlight vertical boundary adjacent line segment
-		if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
-			_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
-			diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
-			_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-
-			if diW > 0 && sbH > 0 {
-				highlightColor := theme.Primary
-				for y := diY; y < sbY+sbH; y++ {
-					for _, x := range []int{diX - 1, diX} {
-						primary, combining, style, _ := screen.GetContent(x, y)
-						newStyle := style.Foreground(highlightColor)
-						screen.SetContent(x, y, primary, combining, newStyle)
-					}
-				}
-			}
-		}
-
-		// Highlight horizontal boundary adjacent line segment
-		if mainPage.hoveredBoundary == boundaryHorizontal || (mainPage.isDragging && mainPage.dragType == dragHorizontal) {
-			diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
-			_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-
-			if diW > 0 && sbH > 0 {
-				highlightColor := theme.Primary
-				for x := diX; x < diX+diW; x++ {
-					for _, y := range []int{sbY - 1, sbY} {
-						primary, combining, style, _ := screen.GetContent(x, y)
-						newStyle := style.Foreground(highlightColor)
-						screen.SetContent(x, y, primary, combining, newStyle)
-					}
-				}
-			}
-		}
-	})
-
 	mainPage.header = header
 
 	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application)
@@ -409,7 +364,7 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 }
 
 func (mainPage *MainPage) updateBorderHighlights() {
-	// Redraw logic is handled by SetAfterDrawFunc based on the hoveredBoundary/isDragging states.
+	// Redraw logic is handled by drawBoundaryHighlights based on the hoveredBoundary/isDragging states.
 }
 
 func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH int) {
@@ -447,4 +402,43 @@ func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY,
 
 func (mainPage *MainPage) SetPages(pages *tview.Pages) {
 	mainPage.pages = pages
+}
+
+// drawBoundaryHighlights highlights the pane boundary that is hovered or dragged.
+// Called after each draw while this page is in front (see CreateUi).
+func (mainPage *MainPage) drawBoundaryHighlights(screen tcell.Screen) {
+	// Highlight vertical boundary adjacent line segment
+	if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
+		_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
+		diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
+		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+
+		if diW > 0 && sbH > 0 {
+			highlightColor := theme.Primary
+			for y := diY; y < sbY+sbH; y++ {
+				for _, x := range []int{diX - 1, diX} {
+					primary, combining, style, _ := screen.GetContent(x, y)
+					newStyle := style.Foreground(highlightColor)
+					screen.SetContent(x, y, primary, combining, newStyle)
+				}
+			}
+		}
+	}
+
+	// Highlight horizontal boundary adjacent line segment
+	if mainPage.hoveredBoundary == boundaryHorizontal || (mainPage.isDragging && mainPage.dragType == dragHorizontal) {
+		diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
+		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+
+		if diW > 0 && sbH > 0 {
+			highlightColor := theme.Primary
+			for x := diX; x < diX+diW; x++ {
+				for _, y := range []int{sbY - 1, sbY} {
+					primary, combining, style, _ := screen.GetContent(x, y)
+					newStyle := style.Foreground(highlightColor)
+					screen.SetContent(x, y, primary, combining, newStyle)
+				}
+			}
+		}
+	}
 }

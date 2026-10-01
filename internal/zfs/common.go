@@ -15,12 +15,15 @@ const (
 var (
 	DatasetsLoaded = util.NewEmitter[struct{}]()
 	datasetCache   = make(map[string]*golibzfs.Dataset)
-	cacheMtx       sync.RWMutex
+	// datasetByNameCache holds the libzfs handles opened by OpenDatasetByName, keyed by dataset name
+	datasetByNameCache = make(map[string]*golibzfs.Dataset)
+	cacheMtx           sync.RWMutex
 )
 
 func RefreshZfsData() {
 	cacheMtx.Lock()
 	datasetCache = make(map[string]*golibzfs.Dataset)
+	datasetByNameCache = make(map[string]*golibzfs.Dataset)
 	cacheMtx.Unlock()
 
 	DatasetsLoaded.Emit(struct{}{})

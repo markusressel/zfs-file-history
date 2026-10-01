@@ -20,6 +20,7 @@ const (
 	propType            = "type"
 	propMountpoint      = "mountpoint"
 	propMounted         = "mounted"
+	propCanmount        = "canmount"
 	propReadonly        = "readonly"
 	propVolsize         = "volsize"
 	propAvailable       = "available"
@@ -121,6 +122,48 @@ func (dataset *Dataset) lazyLoadGozfsData() error {
 	return errors.New("could not load gozfs metadata")
 }
 
+// OpenDatasetByName opens the dataset with the given name, which does not need to be mounted.
+// mountPath is the path the dataset is currently mounted at, or "" if it is not mounted.
+// This calls into libzfs, so it must not be called on the UI thread.
+func OpenDatasetByName(name string, mountPath string) (*Dataset, error) {
+	if name == "" {
+		return nil, errors.New("cannot open dataset with empty name")
+	}
+
+	cacheMtx.RLock()
+	handle, cached := datasetByNameCache[name]
+	cacheMtx.RUnlock()
+
+	if !cached {
+		// only opens this dataset, unlike golibzfs.DatasetOpen, which recursively opens all children
+		opened, err := golibzfs.DatasetOpenSingle(name)
+		if err != nil {
+			return nil, err
+		}
+
+		cacheMtx.Lock()
+		if existing, exists := datasetByNameCache[name]; exists {
+			// opened concurrently by someone else, our handle was never shared
+			opened.Close()
+			handle = existing
+		} else {
+			datasetByNameCache[name] = &opened
+			handle = &opened
+		}
+		cacheMtx.Unlock()
+	}
+
+	dataset := &Dataset{
+		Path:            mountPath,
+		rawGolibzfsData: handle,
+	}
+	if mountPath != "" {
+		dataset.Path = gopath.Clean(mountPath)
+		dataset.HiddenZfsPath = gopath.Join(dataset.Path, ".zfs")
+	}
+	return dataset, nil
+}
+
 // FindHostDataset returns the root path of the dataset containing this path
 func FindHostDataset(path string) (*Dataset, error) {
 	if path == "" {
@@ -212,6 +255,10 @@ func (dataset *Dataset) GetMountPoint() string {
 
 func (dataset *Dataset) GetMounted() string {
 	return dataset.getPropertyString(golibzfs.DatasetPropMounted, propMounted)
+}
+
+func (dataset *Dataset) GetCanMount() string {
+	return dataset.getPropertyString(golibzfs.DatasetPropCanmount, propCanmount)
 }
 
 func (dataset *Dataset) GetReadonly() string {

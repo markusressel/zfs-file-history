@@ -63,11 +63,14 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 	datasetBrowser.Events.Subscribe(func(event dataset_browser.Event) {
 		switch e := event.(type) {
 		case dataset_browser.PathChangedEvent:
-			datasetInfo.SetPath(e.NewPath)
 			snapshotBrowser.SetPath(e.NewPath, false)
 		case dataset_browser.DatasetBrowserStatusEvent:
 			datasetPage.showStatusMessage(e.Message)
 		case dataset_browser.SelectedDatasetChangedEvent:
+			if e.Dataset != nil {
+				// by name, so unmounted datasets can be shown as well
+				datasetInfo.SetDatasetName(e.Dataset.Name, e.Dataset.MountPath)
+			}
 			snapshotBrowser.SetFileEntry(nil) // No file selected in dataset view
 			if datasetBrowser.HasFocus() {
 				datasetPage.updateShortcutMap(datasetBrowser)
@@ -101,7 +104,7 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 			datasetPage.Init(path)
 		} else {
 			currentPath := datasetBrowser.GetPath()
-			datasetPage.datasetInfo.SetPath(currentPath)
+			datasetPage.datasetInfo.Refresh()
 			datasetPage.snapshotBrowser.SetPath(currentPath, true)
 			datasetBrowser.Refresh(false)
 		}
@@ -168,7 +171,7 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 	datasetPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if datasetPage.pages != nil {
 			frontPage, _ := datasetPage.pages.GetFrontPage()
-			if frontPage != string(Main) {
+			if frontPage != string(Dataset) {
 				// Reset any active hover/drag states
 				datasetPage.isDragging = false
 				datasetPage.dragType = dragNone
@@ -268,51 +271,6 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 		return action, event
 	})
 
-	// Configure drawing of highlighted adjacent borders after the screen draws
-	datasetPage.application.SetAfterDrawFunc(func(screen tcell.Screen) {
-		if datasetPage.pages != nil {
-			frontPage, _ := datasetPage.pages.GetFrontPage()
-			if frontPage != string(Main) {
-				return
-			}
-		}
-
-		// Highlight vertical boundary adjacent line segment
-		if datasetPage.hoveredBoundary == boundaryVertical || (datasetPage.isDragging && datasetPage.dragType == dragVertical) {
-			_, diY, _, _ := datasetPage.datasetInfo.GetLayout().GetRect()
-			diX, _, diW, _ := datasetPage.datasetInfo.GetLayout().GetRect()
-			_, sbY, _, sbH := datasetPage.snapshotBrowser.GetLayout().GetRect()
-
-			if diW > 0 && sbH > 0 {
-				highlightColor := theme.Primary
-				for y := diY; y < sbY+sbH; y++ {
-					for _, x := range []int{diX - 1, diX} {
-						primary, combining, style, _ := screen.GetContent(x, y)
-						newStyle := style.Foreground(highlightColor)
-						screen.SetContent(x, y, primary, combining, newStyle)
-					}
-				}
-			}
-		}
-
-		// Highlight horizontal boundary adjacent line segment
-		if datasetPage.hoveredBoundary == boundaryHorizontal || (datasetPage.isDragging && datasetPage.dragType == dragHorizontal) {
-			diX, _, diW, _ := datasetPage.datasetInfo.GetLayout().GetRect()
-			_, sbY, _, sbH := datasetPage.snapshotBrowser.GetLayout().GetRect()
-
-			if diW > 0 && sbH > 0 {
-				highlightColor := theme.Primary
-				for x := diX; x < diX+diW; x++ {
-					for _, y := range []int{sbY - 1, sbY} {
-						primary, combining, style, _ := screen.GetContent(x, y)
-						newStyle := style.Foreground(highlightColor)
-						screen.SetContent(x, y, primary, combining, newStyle)
-					}
-				}
-			}
-		}
-	})
-
 	datasetPage.header = header
 
 	shortcutMap := shortcut_helper.NewShortcutMap(datasetPage.application)
@@ -394,7 +352,7 @@ func (datasetPage *DatasetPage) updateShortcutMap(component FocusableUiComponent
 }
 
 func (datasetPage *DatasetPage) updateBorderHighlights() {
-	// Redraw logic is handled by SetAfterDrawFunc based on the hoveredBoundary/isDragging states.
+	// Redraw logic is handled by drawBoundaryHighlights based on the hoveredBoundary/isDragging states.
 }
 
 func (datasetPage *DatasetPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH int) {
@@ -432,4 +390,43 @@ func (datasetPage *DatasetPage) applyResize(mouseX, mouseY, winX, winW, diY, diH
 
 func (datasetPage *DatasetPage) SetPages(pages *tview.Pages) {
 	datasetPage.pages = pages
+}
+
+// drawBoundaryHighlights highlights the pane boundary that is hovered or dragged.
+// Called after each draw while this page is in front (see CreateUi).
+func (datasetPage *DatasetPage) drawBoundaryHighlights(screen tcell.Screen) {
+	// Highlight vertical boundary adjacent line segment
+	if datasetPage.hoveredBoundary == boundaryVertical || (datasetPage.isDragging && datasetPage.dragType == dragVertical) {
+		_, diY, _, _ := datasetPage.datasetInfo.GetLayout().GetRect()
+		diX, _, diW, _ := datasetPage.datasetInfo.GetLayout().GetRect()
+		_, sbY, _, sbH := datasetPage.snapshotBrowser.GetLayout().GetRect()
+
+		if diW > 0 && sbH > 0 {
+			highlightColor := theme.Primary
+			for y := diY; y < sbY+sbH; y++ {
+				for _, x := range []int{diX - 1, diX} {
+					primary, combining, style, _ := screen.GetContent(x, y)
+					newStyle := style.Foreground(highlightColor)
+					screen.SetContent(x, y, primary, combining, newStyle)
+				}
+			}
+		}
+	}
+
+	// Highlight horizontal boundary adjacent line segment
+	if datasetPage.hoveredBoundary == boundaryHorizontal || (datasetPage.isDragging && datasetPage.dragType == dragHorizontal) {
+		diX, _, diW, _ := datasetPage.datasetInfo.GetLayout().GetRect()
+		_, sbY, _, sbH := datasetPage.snapshotBrowser.GetLayout().GetRect()
+
+		if diW > 0 && sbH > 0 {
+			highlightColor := theme.Primary
+			for x := diX; x < diX+diW; x++ {
+				for _, y := range []int{sbY - 1, sbY} {
+					primary, combining, style, _ := screen.GetContent(x, y)
+					newStyle := style.Foreground(highlightColor)
+					screen.SetContent(x, y, primary, combining, newStyle)
+				}
+			}
+		}
+	}
 }

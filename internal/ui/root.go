@@ -87,6 +87,17 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		return event
 	})
 
+	// The application only supports a single after draw func, so dispatch to the page in front.
+	application.SetAfterDrawFunc(func(screen tcell.Screen) {
+		name, _ := pagesLayout.GetFrontPage()
+		switch name {
+		case string(Main):
+			mainPage.drawBoundaryHighlights(screen)
+		case string(Dataset):
+			datasetPage.drawBoundaryHighlights(screen)
+		}
+	})
+
 	mainPage.Init(path)
 	datasetPage.Init(path)
 
