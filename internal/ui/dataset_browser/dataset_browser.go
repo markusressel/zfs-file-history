@@ -84,6 +84,11 @@ type DatasetBrowserComponent struct {
 	allEntries []*zfs.DatasetListEntry
 	// hideUnmounted hides datasets that are not mounted. Only accessed on the UI thread.
 	hideUnmounted bool
+	// treeView shows the datasets as a tree instead of a flat list. Only accessed on the UI thread.
+	treeView bool
+	// treeRows is how each displayed dataset is shown in the tree view, rebuilt whenever the entries are sorted.
+	// Only accessed on the UI thread.
+	treeRows map[*zfs.DatasetListEntry]treeRow
 }
 
 func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent {
@@ -91,6 +96,7 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 		Events:        util.NewEmitter[Event](),
 		application:   application,
 		hideUnmounted: true,
+		treeView:      true,
 	}
 
 	datasetBrowser.tableContainer = datasetBrowser.createTable(application)
@@ -132,6 +138,9 @@ func (datasetBrowser *DatasetBrowserComponent) toTableCells(row int, columns []*
 		switch column {
 		case columnName:
 			text = tview.Escape(entry.Name)
+			if row, ok := datasetBrowser.treeRows[entry]; ok && datasetBrowser.treeView {
+				text = txwidgets.Span(theme.Colors.Layout.Border, "%s", row.prefix) + tview.Escape(row.name)
+			}
 		case columnUsed:
 			text = uiutil.StableLengthHumanizedBytes(entry.Used)
 			alignment = tview.AlignRight
@@ -158,8 +167,31 @@ func displayedMountpoint(entry *zfs.DatasetListEntry) string {
 	return entry.Mountpoint
 }
 
+// sortTableEntries sorts the displayed entries. In the tree view, the sort order applies among siblings.
+// Called by the table on the UI thread, before the entries are displayed.
 func (datasetBrowser *DatasetBrowserComponent) sortTableEntries(entries []*zfs.DatasetListEntry, column *table.Column, inverted bool) []*zfs.DatasetListEntry {
-	return sortDatasetEntries(entries, column, inverted)
+	sorted := sortDatasetEntries(entries, column, inverted)
+	if !datasetBrowser.treeView {
+		datasetBrowser.treeRows = nil
+		return sorted
+	}
+	ordered, rows := buildDatasetTree(sorted)
+	datasetBrowser.treeRows = rows
+	return ordered
+}
+
+// compareDatasetPaths compares dataset names (or mount paths) one '/'-separated component at a time, case-insensitive.
+// Unlike a plain string comparison, a parent always comes directly before its children:
+// "rpool" < "rpool/test" < "rpool-x" (a plain comparison would put "rpool-x" first, as '-' < '/').
+func compareDatasetPaths(a string, b string) int {
+	aParts := strings.Split(strings.ToLower(a), "/")
+	bParts := strings.Split(strings.ToLower(b), "/")
+	for i := 0; i < len(aParts) && i < len(bParts); i++ {
+		if result := strings.Compare(aParts[i], bParts[i]); result != 0 {
+			return result
+		}
+	}
+	return cmp.Compare(len(aParts), len(bParts))
 }
 
 func sortDatasetEntries(entries []*zfs.DatasetListEntry, column *table.Column, inverted bool) []*zfs.DatasetListEntry {
@@ -174,10 +206,10 @@ func sortDatasetEntries(entries []*zfs.DatasetListEntry, column *table.Column, i
 		case columnAvail:
 			result = cmp.Compare(a.Available, b.Available)
 		case columnMountpoint:
-			result = strings.Compare(displayedMountpoint(a), displayedMountpoint(b))
+			result = compareDatasetPaths(displayedMountpoint(a), displayedMountpoint(b))
 		}
 		if result == 0 {
-			result = strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+			result = compareDatasetPaths(a.Name, b.Name)
 		}
 		if inverted {
 			result *= -1
@@ -192,7 +224,8 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	datasetBrowser.tableContainer.SetFilterFunc(datasetMatchesFilter)
 	datasetBrowser.tableContainer.SetFilterChangedCallback(datasetBrowser.updateStatus)
 	datasetBrowser.updateStatus()
-	datasetBrowser.tableContainer.SetColumnSpec(tableColumns, columnName, true)
+	// sorted by name, ascending: parents before their children
+	datasetBrowser.tableContainer.SetColumnSpec(tableColumns, columnName, false)
 	datasetBrowser.tableContainer.SetActiveColumns(tableColumns)
 
 	datasetBrowser.tableContainer.SetSelectionChangedCallback(func(selectedEntry *zfs.DatasetListEntry) {
@@ -207,6 +240,10 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 
 		if event.Rune() == 'u' {
 			datasetBrowser.ToggleHideUnmounted()
+			return nil
+		}
+		if event.Rune() == 't' {
+			datasetBrowser.ToggleTreeView()
 			return nil
 		}
 
@@ -266,6 +303,24 @@ func (datasetBrowser *DatasetBrowserComponent) ToggleHideUnmounted() {
 	if headerSelected {
 		datasetBrowser.tableContainer.SelectHeader()
 	}
+}
+
+// ToggleTreeView switches between the flat list and the tree view. The selection is kept.
+// Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) ToggleTreeView() {
+	headerSelected := datasetBrowser.tableContainer.GetSelectedEntry() == nil && !datasetBrowser.tableContainer.IsEmpty()
+
+	datasetBrowser.treeView = !datasetBrowser.treeView
+	datasetBrowser.updateEntries()
+
+	if headerSelected {
+		datasetBrowser.tableContainer.SelectHeader()
+	}
+}
+
+// IsTreeView returns whether the datasets are shown as a tree.
+func (datasetBrowser *DatasetBrowserComponent) IsTreeView() bool {
+	return datasetBrowser.treeView
 }
 
 // IsHidingUnmounted returns whether datasets that are not mounted are hidden.
@@ -402,8 +457,13 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 	if datasetBrowser.hideUnmounted {
 		toggleUnmountedName = "Show unmounted"
 	}
+	toggleTreeViewName := "Tree view"
+	if datasetBrowser.treeView {
+		toggleTreeViewName = "Flat list"
+	}
 	return []shortcut_helper.ShortcutEntry{
 		uiutil.TableComponentShortcutFilter,
 		{KeyCombo: []string{"u"}, Name: toggleUnmountedName},
+		{KeyCombo: []string{"t"}, Name: toggleTreeViewName},
 	}
 }

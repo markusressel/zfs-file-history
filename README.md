@@ -25,11 +25,14 @@
   errors.
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
+* 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
+* 🌳 **Dataset overview:** Browse all datasets as a flat list or as a tree (`t`), unmounted datasets are hidden by
+  default (`u`).
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
-* 🗂️ **Snapshot lifecycle actions:** Create and destroy snapshots from within the UI.
+* 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
 
 # How to use
 

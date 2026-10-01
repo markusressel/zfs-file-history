@@ -303,9 +303,9 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 		onUiThread(t, app, func() { result = names(browser.tableContainer.GetEntries()) })
 		return result
 	}
-	// default: sorted by name, descending
+	// default: sorted by name, ascending
 	assert.Eventually(t, func() bool {
-		return assert.ObjectsAreEqual([]string{"rpool/c", "rpool/b", "rpool/a"}, entryNames())
+		return assert.ObjectsAreEqual([]string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
 	}, 2*time.Second, 10*time.Millisecond)
 
 	pressKey := func(key tcell.Key) {
@@ -319,21 +319,21 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 	onUiThread(t, app, func() { browser.tableContainer.SelectFirstIfExists() })
 	pressKey(tcell.KeyRight)
 	pressKey(tcell.KeyEnter)
-	assert.Equal(t, []string{"rpool/c", "rpool/b", "rpool/a"}, entryNames())
+	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
 
 	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 
-	// right: next column (used), keeping the direction (descending)
+	// right: next column (used), keeping the direction (ascending)
 	pressKey(tcell.KeyRight)
-	assert.Equal(t, []string{"rpool/a", "rpool/c", "rpool/b"}, entryNames())
-
-	// enter: toggle direction (ascending)
-	pressKey(tcell.KeyEnter)
 	assert.Equal(t, []string{"rpool/b", "rpool/c", "rpool/a"}, entryNames())
 
-	// left: previous column (name), ascending
+	// enter: toggle direction (descending)
+	pressKey(tcell.KeyEnter)
+	assert.Equal(t, []string{"rpool/a", "rpool/c", "rpool/b"}, entryNames())
+
+	// left: previous column (name), descending
 	pressKey(tcell.KeyLeft)
-	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
+	assert.Equal(t, []string{"rpool/c", "rpool/b", "rpool/a"}, entryNames())
 }
 
 func TestFilterEntries(t *testing.T) {
