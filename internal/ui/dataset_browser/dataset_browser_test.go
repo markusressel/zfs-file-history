@@ -115,7 +115,7 @@ func onUiThread(t *testing.T, app *tview.Application, f func()) {
 
 // newBrowserApp creates a browser as the root of a running application.
 // The root is set before the event loop starts, like in CreateUi, to avoid racing with the first draw.
-func newBrowserApp(t *testing.T) (*tview.Application, *DatasetBrowserComponent) {
+func newBrowserApp(t *testing.T) (*tview.Application, *DatasetBrowserComponent, tcell.SimulationScreen) {
 	app := tview.NewApplication()
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
@@ -123,7 +123,7 @@ func newBrowserApp(t *testing.T) (*tview.Application, *DatasetBrowserComponent) 
 	app.SetRoot(browser.GetLayout(), true)
 	go func() { _ = app.Run() }()
 	t.Cleanup(app.Stop)
-	return app, browser
+	return app, browser, screen
 }
 
 func findByName(entries []*zfs.DatasetListEntry, name string) *zfs.DatasetListEntry {
@@ -148,7 +148,7 @@ func TestDatasetBrowser_RefreshLoadsAndSelects(t *testing.T) {
 		return datasets, nil
 	})
 
-	app, browser := newBrowserApp(t)
+	app, browser, _ := newBrowserApp(t)
 
 	events := &recordedEvents{}
 	browser.Events.Subscribe(func(event Event) {
@@ -208,7 +208,7 @@ func TestDatasetBrowser_RefreshErrorKeepsEntries(t *testing.T) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/home", MountPath: "/home"}}, nil
 	})
 
-	app, browser := newBrowserApp(t)
+	app, browser, _ := newBrowserApp(t)
 
 	statusEvents := make(chan DatasetBrowserStatusEvent, 10)
 	browser.Events.Subscribe(func(event Event) {
@@ -258,7 +258,7 @@ func TestDatasetBrowser_StaleLoadIsDiscarded(t *testing.T) {
 		return []*zfs.DatasetListEntry{{Name: "fresh"}}, nil
 	})
 
-	app, browser := newBrowserApp(t)
+	app, browser, _ := newBrowserApp(t)
 
 	onUiThread(t, app, func() { browser.Refresh(false) })
 	select {
@@ -282,4 +282,54 @@ func TestDatasetBrowser_StaleLoadIsDiscarded(t *testing.T) {
 	onUiThread(t, app, func() {
 		assert.Equal(t, "fresh", browser.tableContainer.GetEntries()[0].Name)
 	})
+}
+
+func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{
+			{Name: "rpool/a", Used: 30},
+			{Name: "rpool/b", Used: 10},
+			{Name: "rpool/c", Used: 20},
+		}, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+
+	onUiThread(t, app, func() { browser.Refresh(false) })
+	entryNames := func() []string {
+		var result []string
+		onUiThread(t, app, func() { result = names(browser.tableContainer.GetEntries()) })
+		return result
+	}
+	// default: sorted by name, descending
+	assert.Eventually(t, func() bool {
+		return assert.ObjectsAreEqual([]string{"rpool/c", "rpool/b", "rpool/a"}, entryNames())
+	}, 2*time.Second, 10*time.Millisecond)
+
+	pressKey := func(key tcell.Key) {
+		screen.InjectKey(key, 0, tcell.ModNone)
+		// wait until the event loop processed the key
+		onUiThread(t, app, func() {})
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// on a data row, right and enter are consumed by the browser and don't change the sort order
+	onUiThread(t, app, func() { browser.tableContainer.SelectFirstIfExists() })
+	pressKey(tcell.KeyRight)
+	pressKey(tcell.KeyEnter)
+	assert.Equal(t, []string{"rpool/c", "rpool/b", "rpool/a"}, entryNames())
+
+	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
+
+	// right: next column (used), keeping the direction (descending)
+	pressKey(tcell.KeyRight)
+	assert.Equal(t, []string{"rpool/a", "rpool/c", "rpool/b"}, entryNames())
+
+	// enter: toggle direction (ascending)
+	pressKey(tcell.KeyEnter)
+	assert.Equal(t, []string{"rpool/b", "rpool/c", "rpool/a"}, entryNames())
+
+	// left: previous column (name), ascending
+	pressKey(tcell.KeyLeft)
+	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
 }

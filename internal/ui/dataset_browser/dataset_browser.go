@@ -206,9 +206,12 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	datasetBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 
-		if key == tcell.KeyRight || key == tcell.KeyEnter {
-			// might open an action menu for dataset later
-			return nil
+		// on the header row, these keys are handled by the table to change the sort order
+		if datasetBrowser.tableContainer.GetSelectedEntry() != nil {
+			if key == tcell.KeyRight || key == tcell.KeyEnter {
+				// might open an action menu for dataset later
+				return nil
+			}
 		}
 		return event
 	})
