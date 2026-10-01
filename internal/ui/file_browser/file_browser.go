@@ -90,6 +90,8 @@ type FileBrowserComponent struct {
 	Events *util.Emitter[Event]
 
 	path string
+	// entriesPath is the path the displayed entries belong to. It differs from path while a new path is loading.
+	entriesPath string
 
 	currentSnapshot *data.SnapshotBrowserEntry
 
@@ -227,9 +229,14 @@ func (fileBrowser *FileBrowserComponent) Focus() {
 	fileBrowser.application.SetFocus(fileBrowser.layout)
 }
 
-func (fileBrowser *FileBrowserComponent) computeTableEntries(ctx context.Context, previousDiffs map[string]diff_state.DiffState) ([]*data.FileBrowserEntry, error) {
-	path := fileBrowser.path
-	snapshotEntry := fileBrowser.currentSnapshot
+// computeTableEntries lists the entries of the given path. It runs in the background, so path and snapshotEntry
+// must be captured on the UI thread.
+func (fileBrowser *FileBrowserComponent) computeTableEntries(
+	ctx context.Context,
+	path string,
+	snapshotEntry *data.SnapshotBrowserEntry,
+	previousDiffs map[string]diff_state.DiffState,
+) ([]*data.FileBrowserEntry, error) {
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -668,6 +675,10 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 		}
 	}
 
+	// captured on the UI thread for the background computation
+	path := fileBrowser.path
+	snapshotEntry := fileBrowser.currentSnapshot
+
 	ctx, seq := fileBrowser.refreshLoader.Start()
 
 	go func() {
@@ -680,7 +691,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 			}
 		}
 
-		entries, err := fileBrowser.computeTableEntries(ctx, previousDiffs)
+		entries, err := fileBrowser.computeTableEntries(ctx, path, snapshotEntry, previousDiffs)
 
 		fileBrowser.application.QueueUpdateDraw(func() {
 			if !fileBrowser.refreshLoader.IsCurrentSequence(seq) {
@@ -690,6 +701,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 				fileBrowser.showError(err)
 			} else {
 				fileBrowser.tableContainer.SetData(entries)
+				fileBrowser.entriesPath = path
 				fileBrowser.updateFooter()
 				fileBrowser.restoreSelectionForPath()
 				fileBrowser.updateFileWatcher()
@@ -775,6 +787,11 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 }
 
 func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
+	if !fileBrowser.entriesAreCurrent() {
+		// the remembered selection must not be applied to the entries of another path
+		return false
+	}
+
 	var entryToSelect *data.FileBrowserEntry
 	if fileBrowser.isEmpty() {
 		entryToSelect = nil
@@ -808,6 +825,11 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
 }
 
 func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
+	if !fileBrowser.entriesAreCurrent() {
+		// a selection within the entries of the previous path must not overwrite the memory of the current path
+		return
+	}
+
 	selectedEntry := fileBrowser.tableContainer.GetSelectedEntry()
 	if selectedEntry == nil {
 		fileBrowser.selectionMemory.Remember(fileBrowser.path, -1, nil)
@@ -872,15 +894,20 @@ func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
 	fileBrowser.showDialog(d, nil)
 }
 
+// enterFileEntry opens the given directory. The remembered selection of that directory is restored
+// once its entries are loaded (see Refresh).
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
 	if !selection.HasReal() && selection.HasSnapshot() {
 		fileBrowser.SetPath(selection.GetRealPath(), false)
 	} else if selection.HasReal() {
 		fileBrowser.SetPath(selection.GetRealPath(), true)
 	}
-	if !fileBrowser.restoreSelectionForPath() {
-		fileBrowser.SelectFirstEntryIfExists()
-	}
+}
+
+// entriesAreCurrent returns whether the displayed entries belong to the current path.
+// After changing the path, the table shows the entries of the previous path until they are loaded.
+func (fileBrowser *FileBrowserComponent) entriesAreCurrent() bool {
+	return fileBrowser.entriesPath == fileBrowser.path
 }
 
 // runRestoreFileAction shows the restore progress dialog, which runs the restore in the background.
