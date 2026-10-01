@@ -448,10 +448,6 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 			return fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
 		case dialog.FileDialogCreateSnapshotDialogActionId:
 			return fileBrowser.createSnapshot(selection)
-		case dialog.FileDialogRestoreRecursiveDialogActionId:
-			return fileBrowser.runRestoreFileAction(selection, true)
-		case dialog.FileDialogRestoreFileActionId:
-			return fileBrowser.runRestoreFileAction(selection, false)
 		case dialog.FileDialogDeleteDialogActionId:
 			return fileBrowser.delete(selection)
 		}
@@ -469,8 +465,14 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 			return
 		}
 
-		if option.Id == dialog.FileDialogShowHistoryActionId {
+		switch option.Id {
+		case dialog.FileDialogShowHistoryActionId:
 			fileBrowser.emit(RequestFileHistoryEvent{FileEntry: selection})
+		// restores mount the progress dialog, so they must be started on the UI thread, not in asyncWork
+		case dialog.FileDialogRestoreRecursiveDialogActionId:
+			fileBrowser.runRestoreFileAction(selection, true)
+		case dialog.FileDialogRestoreFileActionId:
+			fileBrowser.runRestoreFileAction(selection, false)
 		}
 	}
 
@@ -870,6 +872,8 @@ func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrow
 	}
 }
 
+// runRestoreFileAction shows the restore progress dialog, which runs the restore in the background.
+// Must be called on the UI thread.
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) error {
 	// If the file is absent in the snapshot, create a dummy SnapshotFile referencing the current snapshot.
 	if len(entry.SnapshotFiles) == 0 && fileBrowser.currentSnapshot != nil {

@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"context"
 	"fmt"
 	"time"
 	"unicode/utf8"
@@ -18,7 +19,9 @@ type SelectionDialog struct {
 	actionChannel chan DialogActionId
 
 	optionTable *tview.Table
-	isRunning   bool
+	// stopLoading stops the loading spinner of the running action, nil if no action is running.
+	// Only accessed on the UI thread.
+	stopLoading func()
 
 	// Handlers for exclusive async execution
 	handler    func(d *SelectionDialog, action DialogActionId) error
@@ -171,8 +174,10 @@ func (d *SelectionDialog) selectAction(option *DialogOption) {
 	}()
 }
 
+// ShowLoading locks the options and shows a spinner next to the given option.
+// Must be called on the UI thread.
 func (d *SelectionDialog) ShowLoading(option *DialogOption) {
-	d.isRunning = true
+	d.StopLoading()                           // stop the spinner of a previous action, if any
 	d.optionTable.SetSelectable(false, false) // Lock input
 
 	var targetRow, targetCol int
@@ -191,6 +196,19 @@ func (d *SelectionDialog) ShowLoading(option *DialogOption) {
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	d.stopLoading = func() {
+		cancel()
+		if !found {
+			return
+		}
+		// Restore the original text (on the UI thread, like the spinner updates)
+		cell := d.optionTable.GetCell(targetRow, targetCol)
+		if cell != nil {
+			cell.SetText(originalText)
+		}
+	}
+
 	if !found {
 		return
 	}
@@ -203,23 +221,21 @@ func (d *SelectionDialog) ShowLoading(option *DialogOption) {
 		frameIdx := 0
 
 		for {
-			<-ticker.C
-			if !d.isRunning {
-				// Restore original text when loading finishes
-				d.application.QueueUpdateDraw(func() {
-					cell := d.optionTable.GetCell(targetRow, targetCol)
-					if cell != nil {
-						cell.SetText(originalText)
-					}
-				})
-				break
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
 			}
 
-			// Update the cell with the spinning frame
+			frame := frames[frameIdx]
 			d.application.QueueUpdateDraw(func() {
+				// checked on the UI thread, so a frame never overwrites the text restored by StopLoading
+				if ctx.Err() != nil {
+					return
+				}
 				cell := d.optionTable.GetCell(targetRow, targetCol)
 				if cell != nil {
-					cell.SetText(fmt.Sprintf("%s %s", originalText, frames[frameIdx]))
+					cell.SetText(fmt.Sprintf("%s %s", originalText, frame))
 				}
 			})
 
@@ -228,7 +244,12 @@ func (d *SelectionDialog) ShowLoading(option *DialogOption) {
 	}()
 }
 
+// StopLoading stops the spinner, restores the option text and unlocks the options.
+// Must be called on the UI thread.
 func (d *SelectionDialog) StopLoading() {
-	d.isRunning = false
+	if d.stopLoading != nil {
+		d.stopLoading()
+		d.stopLoading = nil
+	}
 	d.optionTable.SetSelectable(true, false) // Unlock input
 }

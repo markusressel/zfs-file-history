@@ -1,7 +1,6 @@
 package dialog
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"slices"
@@ -304,12 +303,7 @@ func ShowDialogOnPages(
 					}
 				}
 
-				isTest := flag.Lookup("test.v") != nil
-				if isTest {
-					closeFunc()
-				} else {
-					application.QueueUpdateDraw(closeFunc)
-				}
+				application.QueueUpdateDraw(closeFunc)
 				return
 			}
 		}

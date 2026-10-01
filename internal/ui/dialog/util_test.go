@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,25 +48,58 @@ func TestCreateModal_Clamping(t *testing.T) {
 	assert.Equal(t, 66, w)
 }
 
+// onUiThread runs f on the UI thread and waits for it, failing the test instead of hanging on a deadlock.
+func onUiThread(t *testing.T, app *tview.Application, f func()) {
+	done := make(chan struct{})
+	go func() {
+		app.QueueUpdate(f)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the UI thread (deadlock?)")
+	}
+}
+
 func TestShowDialogOnPages(t *testing.T) {
 	app := tview.NewApplication()
-	pages := tview.NewPages()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
+	// set the root before the event loop starts, like CreateUi does
+	app.SetRoot(pages, true)
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "Cancel"},
 	}
 	d := NewSelectionDialog(app, "test-dialog", "Title", "Desc", options, nil, nil)
 
-	onClosedCalled := false
+	var onClosedCalls atomic.Int32
 	onClosed := func() {
-		onClosedCalled = true
+		onClosedCalls.Add(1)
 	}
 
-	ShowDialogOnPages(app, pages, d, onClosed)
-
-	assert.True(t, pages.HasPage("test-dialog"))
+	onUiThread(t, app, func() {
+		ShowDialogOnPages(app, pages, d, onClosed)
+		assert.True(t, pages.HasPage("test-dialog"))
+		assert.True(t, d.GetLayout().HasFocus())
+	})
+	// ShowDialogOnPages currently also calls onClosed when mounting the dialog
+	callsAfterOpen := onClosedCalls.Load()
 
 	d.Close()
 
-	time.Sleep(50 * time.Millisecond)
-	assert.True(t, onClosedCalled)
+	// closing removes the dialog on the UI thread and calls onClosed
+	assert.Eventually(t, func() bool {
+		removed := false
+		onUiThread(t, app, func() { removed = !pages.HasPage("test-dialog") })
+		return removed
+	}, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, callsAfterOpen+1, onClosedCalls.Load())
+	onUiThread(t, app, func() {
+		assert.False(t, d.GetLayout().HasFocus())
+	})
 }

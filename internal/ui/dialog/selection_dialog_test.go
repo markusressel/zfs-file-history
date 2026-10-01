@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"testing"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/zfs"
@@ -186,4 +187,44 @@ func TestNewRestoreFileDialog(t *testing.T) {
 	assert.Equal(t, RestoreFileDialogRestoreRecursiveActionId, optsDir[0].Id)
 	assert.Equal(t, RestoreFileDialogRestoreFileActionId, optsDir[1].Id)
 	assert.Equal(t, DialogCloseActionId, optsDir[2].Id)
+}
+
+func TestSelectionDialog_StopLoadingRestoresOptionText(t *testing.T) {
+	app, stop := setupTestApp()
+	defer stop()
+
+	option := &DialogOption{Id: 1, Name: "Run"}
+	d := NewSelectionDialog(app, "TestDialog", "Title", "Description",
+		[]*DialogOption{option, {Id: DialogCloseActionId, Name: "Close"}}, nil, nil)
+
+	optionCellText := func() string {
+		text := ""
+		onUiThread(t, app, func() {
+			for row := 0; row < d.optionTable.GetRowCount(); row++ {
+				if cell := d.optionTable.GetCell(row, 1); cell != nil && cell.GetReference() == option {
+					text = cell.Text
+				}
+			}
+		})
+		return text
+	}
+	originalText := optionCellText()
+	assert.NotEmpty(t, originalText)
+
+	onUiThread(t, app, func() { d.ShowLoading(option) })
+	// the spinner appends a frame to the option text
+	assert.Eventually(t, func() bool { return optionCellText() != originalText }, 2*time.Second, 10*time.Millisecond)
+
+	onUiThread(t, app, func() { d.StopLoading() })
+	assert.Equal(t, originalText, optionCellText())
+
+	// no late spinner frame overwrites the restored text
+	time.Sleep(300 * time.Millisecond)
+	assert.Equal(t, originalText, optionCellText())
+
+	// loading can be started again, e.g. for another action
+	onUiThread(t, app, func() { d.ShowLoading(option) })
+	assert.Eventually(t, func() bool { return optionCellText() != originalText }, 2*time.Second, 10*time.Millisecond)
+	onUiThread(t, app, func() { d.StopLoading() })
+	assert.Equal(t, originalText, optionCellText())
 }

@@ -33,14 +33,22 @@ type RestoreFileProgressDialog struct {
 	progress      *tvxwidgets.PercentageModeGauge
 	progressValue int
 
+	// isRunning is true while the restore is running. Only accessed on the UI thread.
 	isRunning bool
+	// done is closed when the background restore has finished (successfully or not),
+	// to stop the background tickers without sharing isRunning with them.
+	done chan struct{}
 }
 
+// NewRestoreFileProgressDialog creates the dialog and immediately starts the restore in the background.
+// Must be called on the UI thread.
 func NewRestoreFileProgressDialog(application *tview.Application, fileSelection *data.FileBrowserEntry, recursive bool) *RestoreFileProgressDialog {
 	dialog := &RestoreFileProgressDialog{
 		application:   application,
 		fileSelection: fileSelection,
 		actionChannel: make(chan DialogActionId),
+		isRunning:     true,
+		done:          make(chan struct{}),
 	}
 
 	dialog.createLayout()
@@ -63,9 +71,10 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		tick := time.NewTicker(100 * time.Millisecond)
 		defer tick.Stop()
 		for {
-			<-tick.C
-			if !d.isRunning {
-				break
+			select {
+			case <-d.done:
+				return
+			case <-tick.C:
 			}
 			d.application.QueueUpdateDraw(func() {
 				if !d.isRunning {
@@ -151,7 +160,7 @@ func (d *RestoreFileProgressDialog) Close() {
 
 func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 	go func() {
-		d.isRunning = true
+		defer close(d.done)
 		snapshot := d.fileSelection.SnapshotFiles[0].Snapshot
 
 		snapshotFile := d.fileSelection.SnapshotFiles[0]
@@ -194,9 +203,10 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 		tick := time.NewTicker(100 * time.Millisecond)
 		defer tick.Stop()
 		for {
-			<-tick.C
-			if !d.isRunning {
-				break
+			select {
+			case <-d.done:
+				return
+			case <-tick.C:
 			}
 			d.application.QueueUpdateDraw(func() {
 				if !d.isRunning {
@@ -210,11 +220,12 @@ func (d *RestoreFileProgressDialog) runAction(recursive bool) {
 	go progressUpdate()
 }
 
+// handleError shows the error, if any. Called from the background restore.
 func (d *RestoreFileProgressDialog) handleError(err error) {
 	if err != nil {
 		logging.Error("Error during restore: %s", err.Error())
-		d.isRunning = false
 		d.application.QueueUpdateDraw(func() {
+			d.isRunning = false
 			d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
 			d.progress.SetTitle(theme.CreateTitleText("Failed!"))
 			d.progress.SetTitleColor(tcell.ColorRed)
@@ -224,9 +235,10 @@ func (d *RestoreFileProgressDialog) handleError(err error) {
 	}
 }
 
+// handleDone shows the successful completion. Called from the background restore.
 func (d *RestoreFileProgressDialog) handleDone() {
-	d.isRunning = false
 	d.application.QueueUpdateDraw(func() {
+		d.isRunning = false
 		finishedValue := d.progress.GetMaxValue()
 		d.progress.SetValue(finishedValue)
 		d.progress.SetTitle(theme.CreateTitleText("Done!"))
