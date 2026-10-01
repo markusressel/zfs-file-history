@@ -17,11 +17,12 @@ type PathChangedEvent struct {
 
 func (pathChangedEvent PathChangedEvent) isFileBrowserEvent() {}
 
-type CreateSnapshotEvent struct {
+// SnapshotCreatedEvent is emitted (on the UI thread) after a snapshot was created via the file browser.
+type SnapshotCreatedEvent struct {
 	SnapshotName string
 }
 
-func (CreateSnapshotEvent) isFileBrowserEvent() {}
+func (SnapshotCreatedEvent) isFileBrowserEvent() {}
 
 type RequestFocusEvent struct {
 	Layout tview.Primitive

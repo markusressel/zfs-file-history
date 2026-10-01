@@ -9,6 +9,7 @@ import (
 	gopath "path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"zfs-file-history/internal/util"
 
@@ -40,7 +41,11 @@ type Dataset struct {
 	Path          string
 	HiddenZfsPath string
 
+	// rawGozfsData is loaded lazily and may be accessed from different goroutines (e.g. a snapshot action in the
+	// background while the UI uses the same dataset), so it must only be accessed with gozfsMutex held,
+	// see gozfsData and loadedGozfsData.
 	rawGozfsData    *gozfs.Dataset
+	gozfsMutex      sync.Mutex
 	rawGolibzfsData *golibzfs.Dataset
 }
 
@@ -92,6 +97,24 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	return dataset, nil
 }
 
+// gozfsData returns the go-zfs data of this dataset, loading it first if necessary (which may spawn zfs processes).
+// It returns nil if it cannot be loaded. Safe for concurrent use.
+func (dataset *Dataset) gozfsData() *gozfs.Dataset {
+	dataset.gozfsMutex.Lock()
+	defer dataset.gozfsMutex.Unlock()
+	_ = dataset.lazyLoadGozfsData()
+	return dataset.rawGozfsData
+}
+
+// loadedGozfsData returns the go-zfs data of this dataset if it was loaded already, without loading it.
+// Safe for concurrent use.
+func (dataset *Dataset) loadedGozfsData() *gozfs.Dataset {
+	dataset.gozfsMutex.Lock()
+	defer dataset.gozfsMutex.Unlock()
+	return dataset.rawGozfsData
+}
+
+// lazyLoadGozfsData loads the go-zfs data, if not loaded already. The caller must hold gozfsMutex.
 func (dataset *Dataset) lazyLoadGozfsData() error {
 	if dataset.rawGozfsData != nil {
 		return nil
@@ -198,9 +221,8 @@ func (dataset *Dataset) getPropertyString(libProp golibzfs.Prop, goProp string) 
 			return prop.Value
 		}
 	}
-	_ = dataset.lazyLoadGozfsData()
-	if dataset.rawGozfsData != nil {
-		val, err := dataset.rawGozfsData.GetProperty(goProp)
+	if gozfsDataset := dataset.gozfsData(); gozfsDataset != nil {
+		val, err := gozfsDataset.GetProperty(goProp)
 		if err == nil {
 			return val
 		}
@@ -320,18 +342,16 @@ func (dataset *Dataset) GetSnapshotCount() int {
 }
 
 func (dataset *Dataset) CreateSnapshot(name string) error {
-	_ = dataset.lazyLoadGozfsData()
-	if dataset.rawGozfsData != nil {
-		_, err := dataset.rawGozfsData.Snapshot(name, false)
+	if gozfsDataset := dataset.gozfsData(); gozfsDataset != nil {
+		_, err := gozfsDataset.Snapshot(name, false)
 		return err
 	}
 	return errors.New("cannot create snapshot: no dataset metadata available")
 }
 
 func (dataset *Dataset) DestroySnapshot(name string, recursive bool, dependantClones bool) error {
-	_ = dataset.lazyLoadGozfsData()
-	if dataset.rawGozfsData != nil {
-		fullName := fmt.Sprintf("%s@%s", dataset.rawGozfsData.Name, name)
+	if gozfsDataset := dataset.gozfsData(); gozfsDataset != nil {
+		fullName := fmt.Sprintf("%s@%s", gozfsDataset.Name, name)
 		snapshots, err := gozfs.Snapshots(fullName)
 		if err != nil {
 			return err
@@ -387,8 +407,8 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 }
 
 func (dataset *Dataset) GetName() string {
-	if dataset.rawGozfsData != nil {
-		return dataset.rawGozfsData.Name
+	if gozfsDataset := dataset.loadedGozfsData(); gozfsDataset != nil {
+		return gozfsDataset.Name
 	}
 	if dataset.rawGolibzfsData != nil {
 		nameProperty, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropName)

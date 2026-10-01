@@ -753,6 +753,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.Sna
 	return snapshot.Destroy(recursive, dependantClones)
 }
 
+// SelectLatestOnNextLoad selects the latest snapshot after the next (re)load, e.g. after creating a snapshot.
+// Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) SelectLatestOnNextLoad() {
+	snapshotBrowser.selectLatestOnNextLoad = true
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 	entries := snapshotBrowser.GetEntries()
 

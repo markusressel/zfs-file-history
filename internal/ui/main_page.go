@@ -141,17 +141,11 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		switch e := event.(type) {
 		case file_browser.RequestFocusEvent:
 			application.SetFocus(e.Layout)
-		case file_browser.CreateSnapshotEvent:
-			name := e.SnapshotName
-			err := datasetInfo.CreateSnapshot(name)
-			if err != nil {
-				logging.Error("Failed to create snapshot: %s", err)
-				mainPage.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
-			} else {
-				snapshotBrowser.Refresh(true)
-				snapshotBrowser.SelectLatest()
-				mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", name)))
-			}
+		case file_browser.SnapshotCreatedEvent:
+			// emitted on the UI thread, after the snapshot was created in the background
+			snapshotBrowser.SelectLatestOnNextLoad()
+			snapshotBrowser.Refresh(true)
+			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", e.SnapshotName)))
 		}
 	})
 
