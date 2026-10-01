@@ -69,6 +69,9 @@ var (
 				SelectedForeground: tcell.ColorBlack,
 				SelectedBackground: tcell.ColorWhite,
 
+				SortColumnSelectedForeground: OnPrimary,
+				SortColumnSelectedBackground: Primary,
+
 				MultiSelectionBackground: Secondary,
 				MultiSelectionForeground: OnSecondary,
 			},

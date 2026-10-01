@@ -1,8 +1,11 @@
 package table
 
 import (
+	"strings"
 	"testing"
+	"zfs-file-history/internal/ui/theme"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
@@ -94,4 +97,126 @@ func TestCreateMultiSelectionEntryId(t *testing.T) {
 
 	e1 := &mockEntry{id: "test-id"}
 	assert.Equal(t, "test-id", table.createMultiSelectionEntryId(e1))
+}
+
+func newSortHighlightTestTable() (*RowSelectionTable[mockEntry], []*Column) {
+	app := tview.NewApplication()
+	cols := []*Column{
+		{Id: 0, Title: "Col0"},
+		{Id: 1, Title: "Col1"},
+		{Id: 2, Title: "Col2"},
+	}
+	table := NewTableContainer[mockEntry](
+		app,
+		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
+			var cells []*tview.TableCell
+			for range columns {
+				cells = append(cells, tview.NewTableCell("cell"))
+			}
+			return cells
+		},
+		func(entries []*mockEntry, column *Column, inverted bool) []*mockEntry {
+			return entries
+		},
+	)
+	table.SetColumnSpec(cols, cols[1], false)
+	table.SetData([]*mockEntry{{id: "1"}, {id: "2"}})
+	return table, cols
+}
+
+func TestSortColumnHeaderHasSelectedStyle(t *testing.T) {
+	table, cols := newSortHighlightTestTable()
+
+	sortColumnStyle := tcell.StyleDefault.
+		Foreground(theme.Colors.Layout.Table.SortColumnSelectedForeground).
+		Background(theme.Colors.Layout.Table.SortColumnSelectedBackground)
+
+	assertHighlighted := func(sortColumnIndex int) {
+		for column := range cols {
+			cell := table.table.GetCell(0, column)
+			if column == sortColumnIndex {
+				assert.Equal(t, sortColumnStyle, cell.SelectedStyle, "column %d", column)
+			} else {
+				assert.Equal(t, tcell.StyleDefault, cell.SelectedStyle, "column %d", column)
+			}
+		}
+		// data rows are not affected
+		for column := range cols {
+			assert.Equal(t, tcell.StyleDefault, table.table.GetCell(1, column).SelectedStyle)
+		}
+	}
+
+	assertHighlighted(1)
+	table.nextSortOrder()
+	assertHighlighted(2)
+	table.nextSortOrder()
+	assertHighlighted(0)
+	table.previousSortOrder()
+	assertHighlighted(2)
+	table.toggleSortDirection()
+	assertHighlighted(2)
+	table.SetData([]*mockEntry{{id: "3"}})
+	assertHighlighted(2)
+}
+
+// findText returns the position of the first occurrence of text on the screen.
+func findText(screen tcell.SimulationScreen, text string) (int, int, bool) {
+	width, height := screen.Size()
+	for y := 0; y < height; y++ {
+		var line []rune
+		for x := 0; x < width; x++ {
+			primary, _, _, _ := screen.GetContent(x, y)
+			line = append(line, primary)
+		}
+		if index := strings.Index(string(line), text); index >= 0 {
+			return len([]rune(string(line)[:index])), y, true
+		}
+	}
+	return 0, 0, false
+}
+
+func backgroundAt(screen tcell.SimulationScreen, x, y int) tcell.Color {
+	_, _, style, _ := screen.GetContent(x, y)
+	_, background, _ := style.Decompose()
+	return background
+}
+
+func TestSortColumnHeaderHighlightRendering(t *testing.T) {
+	table, _ := newSortHighlightTestTable()
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	assert.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(60, 8)
+
+	draw := func() {
+		screen.Clear()
+		table.layout.SetRect(0, 0, 60, 8)
+		table.layout.Draw(screen)
+	}
+
+	// data row selected: no highlight in the header
+	table.Select(table.GetEntries()[0])
+	draw()
+	x, y, found := findText(screen, "Col1")
+	assert.True(t, found)
+	assert.NotEqual(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+
+	// header row selected: the sort column is highlighted, other columns use the regular selection color
+	table.SelectHeader()
+	draw()
+	x, y, found = findText(screen, "Col1")
+	assert.True(t, found)
+	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+	x, y, found = findText(screen, "Col0")
+	assert.True(t, found)
+	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
+
+	// the highlight follows the sort column
+	table.nextSortOrder()
+	draw()
+	x, y, _ = findText(screen, "Col2")
+	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+	x, y, _ = findText(screen, "Col1")
+	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
 }

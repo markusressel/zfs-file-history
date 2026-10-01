@@ -415,6 +415,15 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 			SetTextColor(cellColor).
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
+		if tableColumn == c.sortByColumn {
+			// a cell's selected style is only applied while its row is selected,
+			// so this highlights the sort column only while the header row is selected
+			cell.SetSelectedStyle(
+				tcell.StyleDefault.
+					Foreground(theme.Colors.Layout.Table.SortColumnSelectedForeground).
+					Background(theme.Colors.Layout.Table.SortColumnSelectedBackground),
+			)
+		}
 		table.SetCell(0, column, cell)
 	}
 

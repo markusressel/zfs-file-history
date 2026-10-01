@@ -103,6 +103,10 @@ type LayoutTableColors struct {
 	SelectedForeground tcell.Color
 	SelectedBackground tcell.Color
 
+	// SortColumnSelected* highlight the header cell of the sort column while the header row is selected
+	SortColumnSelectedForeground tcell.Color
+	SortColumnSelectedBackground tcell.Color
+
 	MultiSelectionBackground tcell.Color
 	MultiSelectionForeground tcell.Color
 }
