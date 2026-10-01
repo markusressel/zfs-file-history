@@ -125,9 +125,9 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		switch key {
-		case tcell.KeyTab:
+		case tcell.KeyCtrlN:
 			mainPage.CycleFocus(false)
-		case tcell.KeyBacktab:
+		case tcell.KeyCtrlP:
 			mainPage.CycleFocus(true)
 		case tcell.KeyF5:
 			zfs.RefreshZfsData()
@@ -395,7 +395,8 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 		shortcutMap := c.GetShortcutMap()
 
 		globalShortcutMapEntries := []shortcut_helper.ShortcutEntry{
-			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Cycle focus"},
+			{KeyCombo: []string{"ctrl+n", "ctrl+p"}, Name: "Cycle focus"},
+			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Switch page"},
 			{KeyCombo: []string{"F5"}, Name: "Refresh"},
 			{KeyCombo: []string{"ctrl+q"}, Name: "Quit"},
 		}

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/util"
 
@@ -11,7 +12,24 @@ import (
 const (
 	Main       util.Page = "main"
 	HelpDialog util.Page = "help"
+	Dataset    util.Page = "dataset"
 )
+
+// switchablePages are the pages cycled through with tab / shift+tab, in order.
+var switchablePages = []util.Page{Main, Dataset}
+
+// adjacentPage returns the page after (or before, if reversed) current, wrapping around.
+func adjacentPage(pages []util.Page, current util.Page, reversed bool) util.Page {
+	index := slices.Index(pages, current)
+	if index < 0 {
+		return pages[0]
+	}
+	offset := 1
+	if reversed {
+		offset = len(pages) - 1
+	}
+	return pages[(index+offset)%len(pages)]
+}
 
 type FocusableUiComponent interface {
 	Focus()
@@ -27,18 +45,21 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 
 	mainPage := NewMainPage(application, path)
 	helpPage := dialog.NewHelpPage()
+	datasetPage := NewDatasetPage(application, path)
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
+		AddPage(string(Dataset), datasetPage.layout, true, false).
 		AddPage(string(HelpDialog), helpPage.GetLayout(), true, false)
 
 	mainPage.SetPages(pagesLayout)
+	datasetPage.SetPages(pagesLayout)
 
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// ignore events, if some other page is open
 		name, _ := pagesLayout.GetFrontPage()
 
-		if name != string(Main) {
+		if name != string(Main) && name != string(Dataset) {
 			return event
 		}
 
@@ -47,6 +68,12 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 			return nil
 		} else if event.Rune() == '?' || event.Key() == tcell.KeyF1 {
 			pagesLayout.ShowPage(string(HelpDialog))
+			return nil
+		} else if event.Key() == tcell.KeyTab {
+			pagesLayout.SwitchToPage(string(adjacentPage(switchablePages, util.Page(name), false)))
+			return nil
+		} else if event.Key() == tcell.KeyBacktab {
+			pagesLayout.SwitchToPage(string(adjacentPage(switchablePages, util.Page(name), true)))
 			return nil
 		}
 		return event
@@ -61,6 +88,7 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 	})
 
 	mainPage.Init(path)
+	datasetPage.Init(path)
 
 	application.SetRoot(pagesLayout, fullscreen).
 		SetFocus(mainPage.fileBrowser.GetLayout())

@@ -1,10 +1,8 @@
 package zfs
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	gopath "path"
 	"strconv"
@@ -350,86 +348,21 @@ func (dataset *Dataset) GetName() string {
 	return ""
 }
 
-// DatasetListEntry is a snapshot of the listing properties of a filesystem dataset.
-// All values are fetched up front, so reading them never spawns a zfs process.
-type DatasetListEntry struct {
-	Name      string
-	Used      uint64
-	Available uint64
-	// Mountpoint is the value of the "mountpoint" property (e.g. "/data", "legacy" or "none").
-	Mountpoint string
-	// MountPath is the path the dataset is currently mounted at, or "" if it is not mounted.
-	MountPath string
-}
-
-func (entry DatasetListEntry) TableRowId() string {
-	return entry.Name
-}
-
-// ListAllDatasets returns the listing properties of all filesystem datasets on the system.
-// This executes "zfs list" and reads /proc/mounts, so it must not be called on the UI thread.
-func ListAllDatasets() ([]*DatasetListEntry, error) {
+// GetAllDatasets returns a list of all datasets on the system.
+func GetAllDatasets() ([]*Dataset, error) {
 	fsList, err := gozfs.Filesystems("")
 	if err != nil {
 		return nil, err
 	}
 
-	mountPaths := map[string]string{}
-	mounts, err := os.Open("/proc/mounts")
-	if err == nil {
-		mountPaths = parseZfsMountPaths(mounts)
-		_ = mounts.Close()
-	}
-
-	entries := make([]*DatasetListEntry, 0, len(fsList))
+	var datasets []*Dataset
 	for _, fs := range fsList {
-		entries = append(entries, &DatasetListEntry{
-			Name:       fs.Name,
-			Used:       fs.Used,
-			Available:  fs.Avail,
-			Mountpoint: fs.Mountpoint,
-			MountPath:  mountPaths[fs.Name],
-		})
+		dataset := &Dataset{
+			Path:         fs.Mountpoint,
+			rawGozfsData: fs,
+		}
+		datasets = append(datasets, dataset)
 	}
 
-	return entries, nil
-}
-
-// parseZfsMountPaths maps the names of mounted zfs datasets to their mount path,
-// given content in the format of /proc/mounts. If a dataset is mounted multiple times,
-// the first mount wins.
-func parseZfsMountPaths(reader io.Reader) map[string]string {
-	result := map[string]string{}
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) < 3 || fields[2] != "zfs" {
-			continue
-		}
-		name := unescapeMountField(fields[0])
-		if _, exists := result[name]; exists {
-			continue
-		}
-		result[name] = gopath.Clean(unescapeMountField(fields[1]))
-	}
-	return result
-}
-
-// unescapeMountField decodes the octal escapes (e.g. "\040" for a space) used in /proc/mounts.
-func unescapeMountField(field string) string {
-	if !strings.Contains(field, `\`) {
-		return field
-	}
-	var builder strings.Builder
-	for i := 0; i < len(field); i++ {
-		if field[i] == '\\' && i+4 <= len(field) {
-			if value, err := strconv.ParseUint(field[i+1:i+4], 8, 8); err == nil {
-				builder.WriteByte(byte(value))
-				i += 3
-				continue
-			}
-		}
-		builder.WriteByte(field[i])
-	}
-	return builder.String()
+	return datasets, nil
 }
