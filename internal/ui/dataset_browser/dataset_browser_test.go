@@ -158,6 +158,8 @@ func TestDatasetBrowser_RefreshLoadsAndSelects(t *testing.T) {
 	})
 
 	onUiThread(t, app, func() {
+		// this test selects unmounted datasets, which are hidden by default
+		browser.ToggleHideUnmounted()
 		browser.SetPath("/home/user/documents", false)
 		browser.Refresh(false)
 	})
@@ -253,9 +255,9 @@ func TestDatasetBrowser_StaleLoadIsDiscarded(t *testing.T) {
 		if call == 1 {
 			close(firstStarted)
 			<-release // the first (stale) load finishes last
-			return []*zfs.DatasetListEntry{{Name: "stale"}}, nil
+			return []*zfs.DatasetListEntry{{Name: "stale", MountPath: "/stale"}}, nil
 		}
-		return []*zfs.DatasetListEntry{{Name: "fresh"}}, nil
+		return []*zfs.DatasetListEntry{{Name: "fresh", MountPath: "/fresh"}}, nil
 	})
 
 	app, browser, _ := newBrowserApp(t)
@@ -287,9 +289,9 @@ func TestDatasetBrowser_StaleLoadIsDiscarded(t *testing.T) {
 func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{
-			{Name: "rpool/a", Used: 30},
-			{Name: "rpool/b", Used: 10},
-			{Name: "rpool/c", Used: 20},
+			{Name: "rpool/a", Used: 30, MountPath: "/a"},
+			{Name: "rpool/b", Used: 10, MountPath: "/b"},
+			{Name: "rpool/c", Used: 20, MountPath: "/c"},
 		}, nil
 	})
 
@@ -332,4 +334,228 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 	// left: previous column (name), ascending
 	pressKey(tcell.KeyLeft)
 	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
+}
+
+func TestFilterEntries(t *testing.T) {
+	mounted := &zfs.DatasetListEntry{Name: "rpool/home", MountPath: "/home"}
+	unmounted := &zfs.DatasetListEntry{Name: "rpool/legacy", Mountpoint: "legacy"}
+	entries := []*zfs.DatasetListEntry{unmounted, mounted}
+
+	assert.Equal(t, entries, filterEntries(entries, false))
+	assert.Equal(t, []*zfs.DatasetListEntry{mounted}, filterEntries(entries, true))
+	assert.Empty(t, filterEntries(nil, true))
+
+	// a new slice is returned, so sorting the result never reorders the input
+	result := filterEntries(entries, false)
+	result[0], result[1] = result[1], result[0]
+	assert.Same(t, unmounted, entries[0])
+}
+
+func TestFormatStatus(t *testing.T) {
+	entries := []*zfs.DatasetListEntry{
+		{Name: "rpool", Mountpoint: "/"},
+		{Name: "rpool/home", MountPath: "/home"},
+		{Name: "rpool/legacy", Mountpoint: "legacy"},
+	}
+
+	// strips the color tags
+	plain := func(text string) string {
+		textView := tview.NewTextView().SetDynamicColors(true).SetText(text)
+		return textView.GetText(true)
+	}
+
+	assert.Equal(t, "Loading datasets...", plain(formatStatus(nil, 0, true, false)))
+	assert.Equal(t, "3 datasets", plain(formatStatus(entries, 3, false, false)))
+	assert.Equal(t, "1 of 3 datasets · 2 unmounted hidden", plain(formatStatus(entries, 1, true, false)))
+	assert.Equal(t, "0 datasets · 0 unmounted hidden", plain(formatStatus([]*zfs.DatasetListEntry{}, 0, true, false)))
+	// with an active filter, always "x of y", even if all datasets match
+	assert.Equal(t, "3 of 3 datasets", plain(formatStatus(entries, 3, false, true)))
+	assert.Equal(t, "1 of 3 datasets · 2 unmounted hidden", plain(formatStatus(entries, 1, true, true)))
+}
+
+func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
+	var mu sync.Mutex
+	datasets := []*zfs.DatasetListEntry{
+		{Name: "rpool", Mountpoint: "/"},
+		{Name: "rpool/ROOT", Mountpoint: "/", MountPath: "/"},
+		{Name: "rpool/home", Mountpoint: "/home", MountPath: "/home"},
+		{Name: "rpool/legacy", Mountpoint: "legacy"},
+	}
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return datasets, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	pressKey := func(r rune) {
+		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+		// wait until the event loop processed the key
+		onUiThread(t, app, func() {})
+		time.Sleep(20 * time.Millisecond)
+	}
+	state := func() (visible []string, selected string, status string, hiding bool, shortcut string) {
+		onUiThread(t, app, func() {
+			visible = names(browser.tableContainer.GetEntries())
+			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
+				selected = entry.Name
+			}
+			status = tview.NewTextView().SetDynamicColors(true).SetText(browser.tableContainer.GetFooter()).GetText(true)
+			hiding = browser.IsHidingUnmounted()
+			for _, entry := range browser.GetShortcutMap() {
+				if len(entry.KeyCombo) == 1 && entry.KeyCombo[0] == "u" {
+					shortcut = entry.Name
+				}
+			}
+		})
+		return
+	}
+
+	_, _, status, hiding, _ := state()
+	assert.True(t, hiding, "unmounted datasets are hidden by default")
+	assert.Equal(t, "Loading datasets...", status)
+
+	onUiThread(t, app, func() {
+		browser.SetPath("/home/user", false)
+		browser.Refresh(false)
+	})
+	assert.Eventually(t, func() bool {
+		visible, _, _, _, _ := state()
+		return len(visible) == 2
+	}, 2*time.Second, 10*time.Millisecond)
+
+	visible, selected, status, hiding, shortcut := state()
+	assert.ElementsMatch(t, []string{"rpool/ROOT", "rpool/home"}, visible)
+	assert.Equal(t, "rpool/home", selected)
+	assert.Equal(t, "2 of 4 datasets · 2 unmounted hidden", status)
+	assert.Equal(t, "Show unmounted", shortcut)
+
+	// show: the selected dataset stays selected
+	pressKey('u')
+	visible, selected, status, hiding, shortcut = state()
+	assert.False(t, hiding)
+	assert.Len(t, visible, 4)
+	assert.Equal(t, "rpool/home", selected)
+	assert.Equal(t, "4 datasets", status)
+	assert.Equal(t, "Hide unmounted", shortcut)
+
+	// select an unmounted dataset, then hide: the selection falls back to a visible dataset
+	onUiThread(t, app, func() {
+		for _, entry := range browser.tableContainer.GetEntries() {
+			if entry.Name == "rpool/legacy" {
+				browser.tableContainer.Select(entry)
+			}
+		}
+	})
+	_, selected, _, _, _ = state()
+	assert.Equal(t, "rpool/legacy", selected)
+	pressKey('u')
+	visible, selected, _, _, _ = state()
+	assert.ElementsMatch(t, []string{"rpool/ROOT", "rpool/home"}, visible)
+	assert.Contains(t, visible, selected)
+
+	// a reload keeps the filter
+	mu.Lock()
+	datasets = append(datasets, &zfs.DatasetListEntry{Name: "rpool/new", MountPath: "/new"}, &zfs.DatasetListEntry{Name: "rpool/new-unmounted"})
+	mu.Unlock()
+	onUiThread(t, app, func() { browser.Refresh(false) })
+	assert.Eventually(t, func() bool {
+		visible, _, status, _, _ := state()
+		return len(visible) == 3 && status == "3 of 6 datasets · 3 unmounted hidden"
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// toggling on the header row keeps the header row selected (for sorting)
+	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
+	pressKey('u')
+	visible, selected, status, hiding, _ = state()
+	assert.False(t, hiding)
+	assert.Len(t, visible, 6)
+	assert.Empty(t, selected)
+	assert.Equal(t, "6 datasets", status)
+}
+
+func TestDatasetMatchesFilter(t *testing.T) {
+	home := &zfs.DatasetListEntry{Name: "rpool/arch/DATA/default/home", Mountpoint: "/home", MountPath: "/home"}
+	boot := &zfs.DatasetListEntry{Name: "bpool/arch/BOOT/pac-4khx6p", Mountpoint: "legacy", MountPath: "/boot"}
+	unmounted := &zfs.DatasetListEntry{Name: "rpool/arch/ROOT/old", Mountpoint: "legacy"}
+
+	// name
+	assert.True(t, datasetMatchesFilter(home, "default"))
+	// displayed mountpoint, i.e. the mount path for legacy mounts
+	assert.True(t, datasetMatchesFilter(boot, "/boot"))
+	assert.True(t, datasetMatchesFilter(unmounted, "legacy"))
+	// glob, '*' also matches across '/'
+	assert.True(t, datasetMatchesFilter(home, "rpool*home"))
+	assert.True(t, datasetMatchesFilter(home, "rpool/*/home"))
+	assert.False(t, datasetMatchesFilter(boot, "rpool*"))
+}
+
+func TestDatasetBrowser_Filter(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{
+			{Name: "rpool/ROOT", Mountpoint: "/", MountPath: "/"},
+			{Name: "rpool/home", Mountpoint: "/home", MountPath: "/home"},
+			{Name: "rpool/var/log", Mountpoint: "/var/log", MountPath: "/var/log"},
+			{Name: "rpool/var/lib/docker", Mountpoint: "/var/lib/docker", MountPath: "/var/lib/docker"},
+			{Name: "rpool/var/unmounted", Mountpoint: "legacy"},
+		}, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	pressKey := func(key tcell.Key, r rune) {
+		screen.InjectKey(key, r, tcell.ModNone)
+	}
+	state := func() (visible []string, selected string, footer string, hiding bool) {
+		onUiThread(t, app, func() {
+			visible = names(browser.tableContainer.GetEntries())
+			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
+				selected = entry.Name
+			}
+			footer = tview.NewTextView().SetDynamicColors(true).SetText(browser.tableContainer.GetFooter()).GetText(true)
+			hiding = browser.IsHidingUnmounted()
+		})
+		return
+	}
+	waitForFooter := func(expected string) {
+		assert.Eventually(t, func() bool {
+			_, _, footer, _ := state()
+			return footer == expected
+		}, 2*time.Second, 10*time.Millisecond, "expected footer %q", expected)
+	}
+
+	onUiThread(t, app, func() {
+		browser.SetPath("/home", false)
+		browser.Refresh(false)
+	})
+	waitForFooter("4 of 5 datasets · 1 unmounted hidden")
+
+	// type a filter: matches names and mountpoints, '*' across '/'
+	pressKey(tcell.KeyCtrlF, 0)
+	for _, r := range "*/var/*" {
+		pressKey(tcell.KeyRune, r)
+	}
+	waitForFooter("2 of 5 datasets · 1 unmounted hidden")
+	visible, selected, _, _ := state()
+	assert.ElementsMatch(t, []string{"rpool/var/log", "rpool/var/lib/docker"}, visible)
+	// the previously selected dataset is hidden, so the first match is selected
+	assert.Contains(t, visible, selected)
+
+	// clear the line (ctrl+u), then 'u' is typed into the filter instead of toggling unmounted datasets.
+	// It only matches the (hidden) unmounted dataset.
+	pressKey(tcell.KeyCtrlU, 0)
+	pressKey(tcell.KeyRune, 'u')
+	waitForFooter("0 of 5 datasets · 1 unmounted hidden")
+	_, _, _, hiding := state()
+	assert.True(t, hiding)
+
+	// keep the filter, then show unmounted datasets: the filter applies to them as well
+	pressKey(tcell.KeyEnter, 0)
+	pressKey(tcell.KeyRune, 'u')
+	waitForFooter("1 of 5 datasets")
+	visible, _, _, _ = state()
+	assert.Equal(t, []string{"rpool/var/unmounted"}, visible)
+
+	// esc clears the filter
+	pressKey(tcell.KeyEscape, 0)
+	waitForFooter("5 datasets")
 }

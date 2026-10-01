@@ -111,12 +111,12 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 	snapshotBrowser.diffLoader = uiutil.NewDebouncedLoader(application, func() {
 		currentSelection := snapshotBrowser.GetSelection()
 		snapshotBrowser.isRestoringSelection = true
-		snapshotBrowser.tableContainer.SetData(snapshotBrowser.tableContainer.GetEntries())
+		snapshotBrowser.tableContainer.SetData(snapshotBrowser.tableContainer.GetAllEntries())
 		if currentSelection != nil {
 			snapshotBrowser.tableContainer.Select(currentSelection)
 		}
 		snapshotBrowser.isRestoringSelection = false
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 	})
 
 	snapshotBrowser.tableContainer = snapshotBrowser.createSnapshotBrowserTable(snapshotBrowser.application)
@@ -193,6 +193,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 		return event
 	})
 
+	snapshotBrowser.tableContainer.SetFilterFunc(snapshotMatchesFilter)
+	snapshotBrowser.tableContainer.SetFilterChangedCallback(snapshotBrowser.updateTitleAndFooter)
 	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
 	snapshotBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
@@ -200,7 +202,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 			return
 		}
 		snapshotBrowser.rememberSelectionForDataset(entry)
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 		snapshotBrowser.emit(SelectedSnapshotChanged{entry})
 	})
 }
@@ -314,13 +316,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 
 	if len(snapshots) == 0 {
 		snapshotBrowser.tableContainer.SetData([]*data.SnapshotBrowserEntry{})
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 		return
 	}
 
 	ctx, seq := snapshotBrowser.diffLoader.Start()
 
-	currentEntries := snapshotBrowser.tableContainer.GetEntries()
+	// all entries, including the ones hidden by the filter
+	currentEntries := snapshotBrowser.tableContainer.GetAllEntries()
 	sameSnapshots := len(currentEntries) == len(snapshots)
 	if sameSnapshots {
 		for i, entry := range currentEntries {
@@ -352,10 +355,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			}
 		}
 		snapshotBrowser.tableContainer.SetData(initialEntries)
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 	}
 
-	entriesToProcess := slices.Clone(snapshotBrowser.tableContainer.GetEntries())
+	// also calculate the diffs of entries hidden by the filter, so they are correct once the filter changes
+	entriesToProcess := slices.Clone(snapshotBrowser.tableContainer.GetAllEntries())
 
 	go func() {
 		defer snapshotBrowser.diffLoader.Stop(seq)
@@ -452,14 +456,31 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
 	return snapshotBrowser.container.HasFocus()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) updateTableTitle() {
-	title := "Snapshots"
-	if snapshotBrowser.GetSelection() != nil {
-		currentSelectionIndex := slices.Index(snapshotBrowser.GetEntries(), snapshotBrowser.GetSelection()) + 1
-		totalEntriesCount := len(snapshotBrowser.GetEntries())
-		title = fmt.Sprintf("Snapshot: %s (%d/%d)", snapshotBrowser.GetSelection().Snapshot.Name, currentSelectionIndex, totalEntriesCount)
+// updateTitleAndFooter shows the number of (matching) snapshots in the bottom border.
+// The table shows an active filter in the title. Runs on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) updateTitleAndFooter() {
+	snapshotBrowser.tableContainer.SetTitle("Snapshots")
+	snapshotBrowser.tableContainer.SetFooter(formatFooter(
+		len(snapshotBrowser.tableContainer.GetEntries()),
+		len(snapshotBrowser.tableContainer.GetAllEntries()),
+		snapshotBrowser.tableContainer.IsFilterActive(),
+	))
+}
+
+// formatFooter returns e.g. "48 snapshots", or "3 of 48 snapshots" while a filter is active.
+func formatFooter(matchingCount int, totalCount int, filterActive bool) string {
+	if filterActive {
+		return fmt.Sprintf("%d of %d snapshots", matchingCount, totalCount)
 	}
-	snapshotBrowser.tableContainer.SetTitle(title)
+	if totalCount == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d snapshots", totalCount)
+}
+
+// snapshotMatchesFilter matches the snapshot name against the filter as a glob, see table.MatchesGlob.
+func snapshotMatchesFilter(entry *data.SnapshotBrowserEntry, filterText string) bool {
+	return table.MatchesGlob(entry.Snapshot.Name, filterText)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) clear() {
@@ -546,6 +567,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetSelection() *data.SnapshotBr
 	return snapshotBrowser.tableContainer.GetSelectedEntry()
 }
 
+// GetAllEntries returns all snapshot entries, including the ones hidden by the filter.
+func (snapshotBrowser *SnapshotBrowserComponent) GetAllEntries() []*data.SnapshotBrowserEntry {
+	return snapshotBrowser.tableContainer.GetAllEntries()
+}
+
+// GetEntries returns the displayed snapshot entries, i.e. the ones that match the filter.
 func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*data.SnapshotBrowserEntry {
 	return snapshotBrowser.tableContainer.GetEntries()
 }
@@ -770,6 +797,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 		uiutil.TableComponentShortcutPageUp,
 		uiutil.TableComponentShortcutPageDown,
 		uiutil.TableComponentShortcutColumns,
+		uiutil.TableComponentShortcutFilter,
 	}
 
 	if snapshotBrowser.GetSelection() != nil {

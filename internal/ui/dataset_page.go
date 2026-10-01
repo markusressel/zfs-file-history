@@ -76,7 +76,7 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 				datasetPage.updateShortcutMap(datasetBrowser)
 			}
 		case dataset_browser.RequestFileHistoryEvent:
-			overlay := dialog.NewFileHistoryOverlay(datasetPage.application, e.FileEntry, datasetPage.snapshotBrowser.GetEntries())
+			overlay := dialog.NewFileHistoryOverlay(datasetPage.application, e.FileEntry, datasetPage.snapshotBrowser.GetAllEntries())
 			dialog.ShowDialogOnPages(datasetPage.application, datasetPage.pages, overlay, func() {
 				datasetPage.datasetBrowser.Refresh(false)
 			})
@@ -291,12 +291,29 @@ func (datasetPage *DatasetPage) Init(path string) {
 	datasetPage.datasetBrowser.Refresh(false)
 }
 
-func (datasetPage *DatasetPage) CycleFocus(reversed bool) {
-	components := []FocusableUiComponent{
+// focusableComponents returns the components that can be focused, in focus cycle order.
+func (datasetPage *DatasetPage) focusableComponents() []FocusableUiComponent {
+	return []FocusableUiComponent{
 		datasetPage.datasetBrowser,
 		datasetPage.datasetInfo,
 		datasetPage.snapshotBrowser,
 	}
+}
+
+// refreshShortcutMap shows the shortcuts of the focused component (or the browser, if none has focus),
+// e.g. after the page was switched to.
+func (datasetPage *DatasetPage) refreshShortcutMap() {
+	for _, component := range datasetPage.focusableComponents() {
+		if component.HasFocus() {
+			datasetPage.updateShortcutMap(component)
+			return
+		}
+	}
+	datasetPage.updateShortcutMap(datasetPage.datasetBrowser)
+}
+
+func (datasetPage *DatasetPage) CycleFocus(reversed bool) {
+	components := datasetPage.focusableComponents()
 
 	currentIndex := -1
 	for i, component := range components {

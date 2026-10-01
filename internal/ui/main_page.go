@@ -89,7 +89,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				mainPage.updateShortcutMap(fileBrowser)
 			}
 		case file_browser.RequestFileHistoryEvent:
-			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetEntries())
+			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetAllEntries())
 			dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
 				mainPage.fileBrowser.Refresh(false)
 			})
@@ -303,12 +303,29 @@ func (mainPage *MainPage) Init(path string) {
 	mainPage.fileBrowser.SelectFirstEntryIfExists()
 }
 
-func (mainPage *MainPage) CycleFocus(reversed bool) {
-	components := []FocusableUiComponent{
+// focusableComponents returns the components that can be focused, in focus cycle order.
+func (mainPage *MainPage) focusableComponents() []FocusableUiComponent {
+	return []FocusableUiComponent{
 		mainPage.fileBrowser,
 		mainPage.datasetInfo,
 		mainPage.snapshotBrowser,
 	}
+}
+
+// refreshShortcutMap shows the shortcuts of the focused component (or the browser, if none has focus),
+// e.g. after the page was switched to.
+func (mainPage *MainPage) refreshShortcutMap() {
+	for _, component := range mainPage.focusableComponents() {
+		if component.HasFocus() {
+			mainPage.updateShortcutMap(component)
+			return
+		}
+	}
+	mainPage.updateShortcutMap(mainPage.fileBrowser)
+}
+
+func (mainPage *MainPage) CycleFocus(reversed bool) {
+	components := mainPage.focusableComponents()
 
 	currentIndex := -1
 	for i, component := range components {

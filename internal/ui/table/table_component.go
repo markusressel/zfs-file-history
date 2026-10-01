@@ -50,11 +50,24 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	application *tview.Application
 
 	layout    *tview.Flex
+	footer    *uiutil.BorderFooter
 	table     *tview.Table
 	scrollbar *scrollbar.ScrollbarComponent
 
+	// allEntries are all entries set with SetData, entries are the ones that match the filter (displayed)
+	allEntries   []*T
 	entries      []*T
 	entriesMutex sync.Mutex
+
+	// title is the title set with SetTitle, which is displayed together with the filter text
+	title string
+
+	// filterMatches enables filtering, see SetFilterFunc
+	filterMatches         func(entry *T, filterText string) bool
+	filterText            string
+	isEditingFilter       bool
+	filterEditor          lineEditor
+	filterChangedCallback func()
 
 	isUpdatingData bool
 
@@ -143,6 +156,9 @@ func (c *RowSelectionTable[T]) createLayout() {
 	)
 
 	table.SetSelectable(true, false)
+	table.SetBlurFunc(func() {
+		c.stopEditingFilter()
+	})
 	table.SetSelectionChangedFunc(func(row, column int) {
 		if c.isUpdatingData {
 			return
@@ -162,6 +178,15 @@ func (c *RowSelectionTable[T]) createLayout() {
 	})
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// handled before the owner's input capture, so typing a filter never triggers its shortcuts
+		if c.filterMatches != nil {
+			var handled bool
+			event, handled = c.handleFilterInput(event)
+			if handled {
+				return event
+			}
+		}
+
 		event = c.inputCapture(event)
 		if event == nil {
 			return event
@@ -232,6 +257,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.layout.SetBorder(true)
 	c.layout.SetBorderPadding(0, 0, 1, 1)
 	uiutil.SetupWindow(c.layout, "")
+	c.footer = uiutil.NewBorderFooter(c.layout.Box)
 }
 
 func (c *RowSelectionTable[T]) syncScrollbar() {
@@ -276,8 +302,42 @@ func (c *RowSelectionTable[T]) GetLayout() tview.Primitive {
 	return c.layout
 }
 
+// SetTitle sets the title of the table window. An active filter is shown after it.
 func (c *RowSelectionTable[T]) SetTitle(title string) {
-	uiutil.SetupWindow(c.layout, title)
+	c.title = title
+	c.updateTitle()
+}
+
+func (c *RowSelectionTable[T]) updateTitle() {
+	var editor *lineEditor
+	if c.isEditingFilter {
+		editor = &c.filterEditor
+	}
+	uiutil.SetupWindow(c.layout, formatTitle(c.title, c.filterText, editor))
+}
+
+// formatTitle returns e.g. "Snapshots: daily". While the filter is being typed (editor is not nil),
+// it is shown with its cursor.
+func formatTitle(title string, filterText string, editor *lineEditor) string {
+	if editor != nil {
+		return fmt.Sprintf("%s: %s", title, editor.Render())
+	}
+	if filterText == "" {
+		return title
+	}
+	return fmt.Sprintf("%s: %s", title, tview.Escape(filterText))
+}
+
+// SetFooter shows the given text right-aligned in the bottom border of the table window,
+// e.g. for counts or active filters. It may contain style tags, an empty text hides the footer.
+// Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetFooter(text string) {
+	c.footer.SetText(text)
+}
+
+// GetFooter returns the text set with SetFooter.
+func (c *RowSelectionTable[T]) GetFooter() string {
+	return c.footer.GetText()
 }
 
 func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColumn *Column, inverted bool) {
@@ -324,7 +384,8 @@ func (c *RowSelectionTable[T]) SetData(entries []*T) {
 	defer func() { c.isUpdatingData = false }()
 
 	c.entriesMutex.Lock()
-	c.entries = entries
+	c.allEntries = entries
+	c.entries = c.filterEntries(entries)
 	c.entriesMutex.Unlock()
 	c.SortBy(c.sortByColumn, c.sortInverted)
 	c.cleanupMultiSelection()
@@ -467,6 +528,12 @@ func (c *RowSelectionTable[T]) HasFocus() bool {
 	return c.layout.HasFocus()
 }
 
+// GetAllEntries returns all entries set with SetData, including the ones hidden by the filter.
+func (c *RowSelectionTable[T]) GetAllEntries() []*T {
+	return c.allEntries
+}
+
+// GetEntries returns the displayed entries, i.e. the ones that match the filter.
 func (c *RowSelectionTable[T]) GetEntries() []*T {
 	return c.entries
 }
@@ -614,4 +681,151 @@ func (c *RowSelectionTable[T]) PageUp() {
 
 func (c *RowSelectionTable[T]) PageDown() {
 
+}
+
+// SetFilterFunc enables filtering: pressing Ctrl+F starts typing a filter, which hides all entries that don't match.
+// This replaces tview's Ctrl+F (page down) for this table, PgDn still works.
+// While typing, the filter can be edited like a terminal input line (see lineEditor), ↑/↓/PgUp/PgDn still
+// navigate the list, Enter keeps the filter, Esc clears it and Backspace on an empty filter stops typing.
+// Esc also clears an active filter while not typing. See MatchesGlob for a matcher.
+func (c *RowSelectionTable[T]) SetFilterFunc(matches func(entry *T, filterText string) bool) {
+	c.filterMatches = matches
+}
+
+// SetFilterChangedCallback sets a function that is called (on the UI thread) after the filter text changed,
+// e.g. to update a footer showing the number of matches.
+func (c *RowSelectionTable[T]) SetFilterChangedCallback(f func()) {
+	c.filterChangedCallback = f
+}
+
+// GetFilterText returns the current filter text, "" if no filter is active.
+func (c *RowSelectionTable[T]) GetFilterText() string {
+	return c.filterText
+}
+
+// IsFilterActive returns whether a filter is active, i.e. whether entries may be hidden.
+func (c *RowSelectionTable[T]) IsFilterActive() bool {
+	return c.filterText != ""
+}
+
+// IsEditingFilter returns whether the filter is currently being typed.
+func (c *RowSelectionTable[T]) IsEditingFilter() bool {
+	return c.isEditingFilter
+}
+
+// SetFilterText sets the filter and updates the displayed entries.
+// The selected entry stays selected if it still matches, otherwise the first match is selected.
+// Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetFilterText(filterText string) {
+	c.filterEditor.Reset(filterText)
+	c.applyFilterText(filterText)
+	c.updateTitle()
+}
+
+// applyFilterText updates the displayed entries for the given filter text, without touching the filter editor.
+func (c *RowSelectionTable[T]) applyFilterText(filterText string) {
+	if filterText == c.filterText {
+		return
+	}
+	c.filterText = filterText
+
+	previousSelection := c.GetSelectedEntry()
+	headerSelected := previousSelection == nil && len(c.entries) > 0
+
+	c.isUpdatingData = true
+	c.entriesMutex.Lock()
+	c.entries = c.filterEntries(c.allEntries)
+	c.entriesMutex.Unlock()
+	c.SortBy(c.sortByColumn, c.sortInverted)
+	c.cleanupMultiSelection()
+	c.updateTableContents()
+	c.isUpdatingData = false
+
+	// select explicitly, so the selection changed callback keeps the owner in sync
+	switch {
+	case headerSelected:
+		c.SelectHeader()
+	case previousSelection != nil && slices.Contains(c.entries, previousSelection):
+		c.Select(previousSelection)
+	case len(c.entries) > 0:
+		c.Select(c.entries[0])
+	default:
+		c.table.Select(0, 0)
+	}
+
+	c.updateTitle()
+	if c.filterChangedCallback != nil {
+		c.filterChangedCallback()
+	}
+}
+
+func (c *RowSelectionTable[T]) filterEntries(entries []*T) []*T {
+	if c.filterMatches == nil || c.filterText == "" {
+		return entries
+	}
+	result := make([]*T, 0, len(entries))
+	for _, entry := range entries {
+		if c.filterMatches(entry, c.filterText) {
+			result = append(result, entry)
+		}
+	}
+	return result
+}
+
+func (c *RowSelectionTable[T]) startEditingFilter() {
+	c.filterEditor.Reset(c.filterText)
+	c.isEditingFilter = true
+	uiutil.SetTextInputActive(c.table, true)
+	c.updateTitle()
+}
+
+func (c *RowSelectionTable[T]) stopEditingFilter() {
+	if !c.isEditingFilter {
+		return
+	}
+	c.isEditingFilter = false
+	uiutil.SetTextInputActive(c.table, false)
+	c.updateTitle()
+}
+
+// handleFilterInput handles the keys for typing and clearing the filter.
+// If handled is true, the returned event is the result of the input capture.
+func (c *RowSelectionTable[T]) handleFilterInput(event *tcell.EventKey) (result *tcell.EventKey, handled bool) {
+	if !c.isEditingFilter {
+		switch {
+		case event.Key() == tcell.KeyCtrlF:
+			c.startEditingFilter()
+			return nil, true
+		case event.Key() == tcell.KeyEscape && c.IsFilterActive():
+			c.SetFilterText("")
+			return nil, true
+		}
+		return event, false
+	}
+
+	switch event.Key() {
+	case tcell.KeyEnter:
+		c.stopEditingFilter()
+		return nil, true
+	case tcell.KeyEscape:
+		c.stopEditingFilter()
+		c.SetFilterText("")
+		return nil, true
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if c.filterText == "" {
+			c.stopEditingFilter()
+			return nil, true
+		}
+	case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn:
+		// navigate the list while typing, skipping the owner's shortcuts
+		return event, true
+	}
+
+	if c.filterEditor.HandleKey(event) {
+		c.applyFilterText(c.filterEditor.Text())
+		// also for cursor movements
+		c.updateTitle()
+	}
+	// all other keys are consumed while typing
+	return nil, true
 }

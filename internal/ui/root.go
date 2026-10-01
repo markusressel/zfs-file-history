@@ -37,6 +37,12 @@ type FocusableUiComponent interface {
 }
 
 func CreateUi(path string, fullscreen bool) *tview.Application {
+	application, _, _ := createUi(path, fullscreen)
+	return application
+}
+
+// createUi creates the application and also returns its pages, for tests.
+func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *DatasetPage) {
 	// completely disable double click interval to avoid unnecessary delays
 	tview.DoubleClickInterval = 0
 
@@ -66,14 +72,20 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
 			application.Stop()
 			return nil
-		} else if event.Rune() == '?' || event.Key() == tcell.KeyF1 {
+		} else if (event.Key() == tcell.KeyRune && event.Rune() == '?' && !util.IsTextInputActive(application.GetFocus())) ||
+			event.Key() == tcell.KeyF1 {
 			pagesLayout.ShowPage(string(HelpDialog))
 			return nil
-		} else if event.Key() == tcell.KeyTab {
-			pagesLayout.SwitchToPage(string(adjacentPage(switchablePages, util.Page(name), false)))
-			return nil
-		} else if event.Key() == tcell.KeyBacktab {
-			pagesLayout.SwitchToPage(string(adjacentPage(switchablePages, util.Page(name), true)))
+		} else if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
+			nextPage := adjacentPage(switchablePages, util.Page(name), event.Key() == tcell.KeyBacktab)
+			pagesLayout.SwitchToPage(string(nextPage))
+			// the shortcut map of a page is only updated while it is visible, so refresh it now
+			switch nextPage {
+			case Main:
+				mainPage.refreshShortcutMap()
+			case Dataset:
+				datasetPage.refreshShortcutMap()
+			}
 			return nil
 		}
 		return event
@@ -105,5 +117,5 @@ func CreateUi(path string, fullscreen bool) *tview.Application {
 		SetFocus(mainPage.fileBrowser.GetLayout())
 	mainPage.updateShortcutMap(mainPage.fileBrowser)
 
-	return application
+	return application, mainPage, datasetPage
 }

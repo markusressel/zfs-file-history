@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -298,4 +299,242 @@ func TestHeaderBackground(t *testing.T) {
 	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
 	x, y, _ = findText(screen, "Col1")
 	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+}
+
+type namedEntry struct {
+	name string
+}
+
+func (e namedEntry) TableRowId() string {
+	return e.name
+}
+
+func newFilterTestTable() (*RowSelectionTable[namedEntry], []*namedEntry, *[]tcell.Key, *int) {
+	app := tview.NewApplication()
+	cols := []*Column{{Id: 0, Title: "Name"}}
+	table := NewTableContainer[namedEntry](
+		app,
+		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
+			return []*tview.TableCell{tview.NewTableCell(entry.name)}
+		},
+		func(entries []*namedEntry, column *Column, inverted bool) []*namedEntry {
+			return entries
+		},
+	)
+	table.SetColumnSpec(cols, cols[0], false)
+	table.SetTitle("Things")
+	table.SetFilterFunc(func(entry *namedEntry, filterText string) bool {
+		return strings.Contains(entry.name, filterText)
+	})
+
+	// records the keys that reach the owner's input capture
+	var ownerKeys []tcell.Key
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		ownerKeys = append(ownerKeys, event.Key())
+		return nil
+	})
+	filterChangedCalls := 0
+	table.SetFilterChangedCallback(func() { filterChangedCalls++ })
+
+	entries := []*namedEntry{{name: "daily-1"}, {name: "weekly-1"}, {name: "daily-2"}, {name: "monthly-1"}}
+	table.SetData(entries)
+	return table, entries, &ownerKeys, &filterChangedCalls
+}
+
+// pressKey sends a key to the table, like the application would, and returns the event that is passed on.
+func pressKey(table *RowSelectionTable[namedEntry], key tcell.Key, r rune) *tcell.EventKey {
+	return table.table.GetInputCapture()(tcell.NewEventKey(key, r, tcell.ModNone))
+}
+
+func typeText(table *RowSelectionTable[namedEntry], text string) {
+	for _, r := range text {
+		pressKey(table, tcell.KeyRune, r)
+	}
+}
+
+func entryNames(entries []*namedEntry) []string {
+	var result []string
+	for _, entry := range entries {
+		result = append(result, entry.name)
+	}
+	return result
+}
+
+func TestFilter_SetFilterText(t *testing.T) {
+	table, entries, _, filterChangedCalls := newFilterTestTable()
+
+	assert.False(t, table.IsFilterActive())
+	assert.Len(t, table.GetEntries(), 4)
+
+	table.Select(entries[2]) // daily-2
+	table.SetFilterText("daily")
+	assert.True(t, table.IsFilterActive())
+	assert.Equal(t, []string{"daily-1", "daily-2"}, entryNames(table.GetEntries()))
+	assert.Len(t, table.GetAllEntries(), 4)
+	assert.Equal(t, 1, *filterChangedCalls)
+	// the selection is kept, if it matches
+	assert.Same(t, entries[2], table.GetSelectedEntry())
+
+	// otherwise the first match is selected
+	table.SetFilterText("weekly")
+	assert.Same(t, entries[1], table.GetSelectedEntry())
+
+	// no match: nothing selected
+	table.SetFilterText("nothing")
+	assert.Empty(t, table.GetEntries())
+	assert.Nil(t, table.GetSelectedEntry())
+
+	// new data is filtered as well
+	table.SetFilterText("monthly")
+	table.SetData([]*namedEntry{{name: "monthly-1"}, {name: "monthly-2"}, {name: "daily-3"}})
+	assert.Equal(t, []string{"monthly-1", "monthly-2"}, entryNames(table.GetEntries()))
+	assert.Len(t, table.GetAllEntries(), 3)
+
+	// clearing the filter shows everything again
+	table.SetFilterText("")
+	assert.False(t, table.IsFilterActive())
+	assert.Len(t, table.GetEntries(), 3)
+}
+
+func TestFilter_HeaderRowStaysSelected(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	table.SelectHeader()
+
+	table.SetFilterText("daily")
+	assert.Nil(t, table.GetSelectedEntry())
+	row, _ := table.table.GetSelection()
+	assert.Equal(t, 0, row)
+}
+
+func TestFilter_HidesEntriesFromMultiSelection(t *testing.T) {
+	table, entries, _, _ := newFilterTestTable()
+	table.SetMultiSelect(true)
+	table.addToMultiSelection(entries[0]) // daily-1
+	table.addToMultiSelection(entries[1]) // weekly-1
+
+	// hidden entries must not stay selected, actions on the multi-selection would include invisible entries
+	table.SetFilterText("daily")
+	assert.Equal(t, []string{"daily-1"}, entryNames(table.GetMultiSelection()))
+}
+
+func TestFilter_Typing(t *testing.T) {
+	table, _, ownerKeys, _ := newFilterTestTable()
+	table.SelectFirstIfExists()
+
+	// ctrl+f starts typing
+	assert.Nil(t, pressKey(table, tcell.KeyCtrlF, 0))
+	assert.True(t, table.IsEditingFilter())
+	assert.True(t, uiutil.IsTextInputActive(table.table))
+	assert.Equal(t, " Things: [::r] [::-] ", table.layout.GetTitle())
+
+	// typed keys filter, and never reach the owner (e.g. 'd' could be a delete shortcut)
+	typeText(table, "dai")
+	assert.Equal(t, "dai", table.GetFilterText())
+	assert.Equal(t, []string{"daily-1", "daily-2"}, entryNames(table.GetEntries()))
+	assert.Equal(t, " Things: dai[::r] [::-] ", table.layout.GetTitle())
+
+	// backspace removes the last character
+	pressKey(table, tcell.KeyBackspace2, 0)
+	assert.Equal(t, "da", table.GetFilterText())
+
+	// the cursor can be moved, typing inserts at the cursor and filters immediately
+	assert.Nil(t, pressKey(table, tcell.KeyHome, 0)) // edits, does not navigate the list
+	pressKey(table, tcell.KeyRune, 'x')
+	assert.Equal(t, "xda", table.GetFilterText())
+	assert.Empty(t, table.GetEntries())
+	assert.Equal(t, " Things: x[::r]d[::-]a ", table.layout.GetTitle())
+	pressKey(table, tcell.KeyLeft, 0)
+	pressKey(table, tcell.KeyDelete, 0)
+	assert.Equal(t, "da", table.GetFilterText())
+	assert.Equal(t, []string{"daily-1", "daily-2"}, entryNames(table.GetEntries()))
+
+	// navigation still works, but skips the owner
+	assert.NotNil(t, pressKey(table, tcell.KeyDown, 0))
+	// other keys are consumed
+	assert.Nil(t, pressKey(table, tcell.KeyF2, 0))
+	assert.Empty(t, *ownerKeys)
+
+	// enter keeps the filter and stops typing
+	assert.Nil(t, pressKey(table, tcell.KeyEnter, 0))
+	assert.False(t, table.IsEditingFilter())
+	assert.False(t, uiutil.IsTextInputActive(table.table))
+	assert.Equal(t, "da", table.GetFilterText())
+	assert.Equal(t, " Things: da ", table.layout.GetTitle())
+
+	// now keys reach the owner again
+	pressKey(table, tcell.KeyRune, 'd')
+	assert.Equal(t, []tcell.Key{tcell.KeyRune}, *ownerKeys)
+
+	// esc clears an active filter, even when not typing
+	assert.Nil(t, pressKey(table, tcell.KeyEscape, 0))
+	assert.False(t, table.IsFilterActive())
+	assert.Equal(t, " Things ", table.layout.GetTitle())
+	assert.Len(t, table.GetEntries(), 4)
+}
+
+func TestFilter_TypingStopsWithEscBackspaceAndBlur(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+
+	// esc while typing clears the filter and stops typing
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "week")
+	pressKey(table, tcell.KeyEscape, 0)
+	assert.False(t, table.IsEditingFilter())
+	assert.False(t, table.IsFilterActive())
+
+	// backspace on an empty filter stops typing
+	pressKey(table, tcell.KeyCtrlF, 0)
+	pressKey(table, tcell.KeyBackspace2, 0)
+	assert.False(t, table.IsEditingFilter())
+
+	// backspace with the cursor at the start of a non-empty filter does nothing
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "da")
+	pressKey(table, tcell.KeyHome, 0)
+	pressKey(table, tcell.KeyBackspace2, 0)
+	assert.True(t, table.IsEditingFilter())
+	assert.Equal(t, "da", table.GetFilterText())
+	pressKey(table, tcell.KeyEscape, 0)
+
+	// losing focus stops typing, but keeps the filter
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "month")
+	table.table.Blur()
+	assert.False(t, table.IsEditingFilter())
+	assert.False(t, uiutil.IsTextInputActive(table.table))
+	assert.Equal(t, "month", table.GetFilterText())
+}
+
+func TestFilter_DisabledWithoutFilterFunc(t *testing.T) {
+	table, _, ownerKeys, _ := newFilterTestTable()
+	table.SetFilterFunc(nil)
+
+	pressKey(table, tcell.KeyCtrlF, 0)
+	assert.False(t, table.IsEditingFilter())
+	assert.Equal(t, []tcell.Key{tcell.KeyCtrlF}, *ownerKeys)
+}
+
+func TestFilter_SlashIsAnOrdinaryCharacter(t *testing.T) {
+	table, _, ownerKeys, _ := newFilterTestTable()
+
+	// '/' does not start typing a filter, it reaches the owner
+	pressKey(table, tcell.KeyRune, '/')
+	assert.False(t, table.IsEditingFilter())
+	assert.Equal(t, []tcell.Key{tcell.KeyRune}, *ownerKeys)
+
+	// and it can be typed into the filter
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "a/b")
+	assert.Equal(t, "a/b", table.GetFilterText())
+}
+
+func TestFormatTitle(t *testing.T) {
+	assert.Equal(t, "Things", formatTitle("Things", "", nil))
+	assert.Equal(t, "Things: daily", formatTitle("Things", "daily", nil))
+	// style tags are escaped
+	assert.Equal(t, "Things: "+tview.Escape("[red]"), formatTitle("Things", "[red]", nil))
+	// while typing, the cursor is shown
+	editor := &lineEditor{}
+	editor.Reset("daily")
+	assert.Equal(t, "Things: "+editor.Render(), formatTitle("Things", "daily", editor))
 }

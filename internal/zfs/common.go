@@ -33,6 +33,33 @@ func IsDatasetsLoaded() bool {
 	return true
 }
 
+// findSnapshotHandles returns the libzfs handles of the snapshots with the given names (if found),
+// from the snapshots loaded with the given dataset handle.
+//
+// libzfs handles are cached and shared between goroutines. golibzfs.Dataset.GetProperty writes the
+// Properties map of a handle while holding golibzfs.Global.Mtx, but Snapshots() and findSnapshot read
+// these maps without locking. Concurrent map reads and writes crash the Go runtime, so these reads
+// must hold golibzfs.Global.Mtx as well. Nothing in here may call a golibzfs function that locks
+// golibzfs.Global.Mtx itself (like GetProperty), as that would deadlock.
+func findSnapshotHandles(dataset *golibzfs.Dataset, names []string) map[string]*golibzfs.Dataset {
+	golibzfs.Global.Mtx.Lock()
+	defer golibzfs.Global.Mtx.Unlock()
+
+	result := make(map[string]*golibzfs.Dataset, len(names))
+	snapshots, _ := dataset.Snapshots()
+	if len(snapshots) == 0 {
+		return result
+	}
+	for _, name := range names {
+		if snapshot := findSnapshot(snapshots, name); snapshot != nil {
+			result[name] = snapshot
+		}
+	}
+	return result
+}
+
+// findSnapshot returns the snapshot with the given name.
+// The caller must hold golibzfs.Global.Mtx, see findSnapshotHandles.
 func findSnapshot(snapshots []golibzfs.Dataset, name string) *golibzfs.Dataset {
 	for i := range snapshots {
 		nameProperty := snapshots[i].Properties[golibzfs.DatasetPropName]

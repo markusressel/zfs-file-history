@@ -11,6 +11,8 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -89,12 +91,19 @@ type DatasetBrowserComponent struct {
 	// currentPath is the mount path of the selected dataset ("" if it is not mounted).
 	// Until the first selection, it is the path the application was started with.
 	currentPath string
+
+	// allEntries are all datasets of the last load, including the ones hidden by hideUnmounted.
+	// Only accessed on the UI thread.
+	allEntries []*zfs.DatasetListEntry
+	// hideUnmounted hides datasets that are not mounted. Only accessed on the UI thread.
+	hideUnmounted bool
 }
 
 func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent {
 	datasetBrowser := &DatasetBrowserComponent{
-		Events:      util.NewEmitter[Event](),
-		application: application,
+		Events:        util.NewEmitter[Event](),
+		application:   application,
+		hideUnmounted: true,
 	}
 
 	datasetBrowser.tableContainer = datasetBrowser.createTable(application)
@@ -193,6 +202,9 @@ func sortDatasetEntries(entries []*zfs.DatasetListEntry, column *table.Column, i
 
 func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	datasetBrowser.tableContainer.SetTitle("Datasets")
+	datasetBrowser.tableContainer.SetFilterFunc(datasetMatchesFilter)
+	datasetBrowser.tableContainer.SetFilterChangedCallback(datasetBrowser.updateStatus)
+	datasetBrowser.updateStatus()
 	datasetBrowser.tableContainer.SetColumnSpec(tableColumns, columnName, true)
 	datasetBrowser.tableContainer.SetActiveColumns(tableColumns)
 
@@ -205,6 +217,11 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 
 	datasetBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
+
+		if event.Rune() == 'u' {
+			datasetBrowser.ToggleHideUnmounted()
+			return nil
+		}
 
 		// on the header row, these keys are handled by the table to change the sort order
 		if datasetBrowser.tableContainer.GetSelectedEntry() != nil {
@@ -247,12 +264,96 @@ func (datasetBrowser *DatasetBrowserComponent) Refresh(debounce bool) {
 
 // onDatasetsLoaded runs on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) onDatasetsLoaded(entries []*zfs.DatasetListEntry) {
+	datasetBrowser.allEntries = entries
+	datasetBrowser.updateEntries()
+}
+
+// ToggleHideUnmounted shows or hides datasets that are not mounted.
+// Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) ToggleHideUnmounted() {
+	headerSelected := datasetBrowser.tableContainer.GetSelectedEntry() == nil && !datasetBrowser.tableContainer.IsEmpty()
+
+	datasetBrowser.hideUnmounted = !datasetBrowser.hideUnmounted
+	datasetBrowser.updateEntries()
+
+	if headerSelected {
+		datasetBrowser.tableContainer.SelectHeader()
+	}
+}
+
+// IsHidingUnmounted returns whether datasets that are not mounted are hidden.
+func (datasetBrowser *DatasetBrowserComponent) IsHidingUnmounted() bool {
+	return datasetBrowser.hideUnmounted
+}
+
+// filterEntries returns the entries to display. It always returns a new slice,
+// so sorting the displayed entries never reorders allEntries.
+func filterEntries(entries []*zfs.DatasetListEntry, hideUnmounted bool) []*zfs.DatasetListEntry {
+	result := make([]*zfs.DatasetListEntry, 0, len(entries))
+	for _, entry := range entries {
+		if hideUnmounted && entry.MountPath == "" {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return result
+}
+
+// updateStatus shows the dataset counts and the active modifiers in the bottom border of the list.
+func (datasetBrowser *DatasetBrowserComponent) updateStatus() {
+	datasetBrowser.tableContainer.SetFooter(formatStatus(
+		datasetBrowser.allEntries,
+		len(datasetBrowser.tableContainer.GetEntries()),
+		datasetBrowser.hideUnmounted,
+		datasetBrowser.tableContainer.IsFilterActive(),
+	))
+}
+
+// datasetMatchesFilter matches the dataset name or its (displayed) mountpoint against the filter,
+// as a glob, see table.MatchesGlob.
+func datasetMatchesFilter(entry *zfs.DatasetListEntry, filterText string) bool {
+	return table.MatchesGlob(entry.Name, filterText) || table.MatchesGlob(displayedMountpoint(entry), filterText)
+}
+
+// formatStatus returns the status text, e.g. "16 of 589 datasets · 573 unmounted hidden".
+// visibleCount is the number of displayed datasets, after hiding unmounted ones and applying the filter.
+// While a filter is active, the count is always shown as "x of y".
+// allEntries is nil until the first load.
+func formatStatus(allEntries []*zfs.DatasetListEntry, visibleCount int, hideUnmounted bool, filterActive bool) string {
+	if allEntries == nil {
+		return txwidgets.Span(theme.Colors.ShortcutMap.Name, "Loading datasets...")
+	}
+
+	var parts []string
+	if visibleCount == len(allEntries) && !filterActive {
+		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d datasets", len(allEntries)))
+	} else {
+		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d of %d datasets", visibleCount, len(allEntries)))
+	}
+
+	if hideUnmounted {
+		unmountedCount := 0
+		for _, entry := range allEntries {
+			if entry.MountPath == "" {
+				unmountedCount++
+			}
+		}
+		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%d unmounted hidden", unmountedCount))
+	}
+
+	return strings.Join(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, " · "))
+}
+
+// updateEntries displays allEntries, filtered by the current settings, and keeps the selection in sync.
+// Runs on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) updateEntries() {
 	previousName := ""
 	if previous := datasetBrowser.tableContainer.GetSelectedEntry(); previous != nil {
 		previousName = previous.Name
 	}
 
-	datasetBrowser.tableContainer.SetData(entries)
+	datasetBrowser.tableContainer.SetData(filterEntries(datasetBrowser.allEntries, datasetBrowser.hideUnmounted))
+	datasetBrowser.updateStatus()
 
 	// SetData does not notify the selection callback, so always select explicitly
 	// to keep the selection (and dependent components) in sync with the new entries.
@@ -313,7 +414,13 @@ func (datasetBrowser *DatasetBrowserComponent) SetSelectedSnapshot(snapshot *dat
 }
 
 func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
+	toggleUnmountedName := "Hide unmounted"
+	if datasetBrowser.hideUnmounted {
+		toggleUnmountedName = "Show unmounted"
+	}
 	return []shortcut_helper.ShortcutEntry{
 		{KeyCombo: []string{"Enter"}, Name: "Enter Dataset"},
+		uiutil.TableComponentShortcutFilter,
+		{KeyCombo: []string{"u"}, Name: toggleUnmountedName},
 	}
 }

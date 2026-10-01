@@ -365,20 +365,22 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 		return []*Snapshot{}, err
 	}
 
-	var rawSnapshots []golibzfs.Dataset
-	if dataset.rawGolibzfsData != nil {
-		rawSnapshots, _ = dataset.rawGolibzfsData.Snapshots()
-	}
-
+	names := make([]string, 0, len(snapshotDirs))
 	for _, file := range snapshotDirs {
 		_, name := gopath.Split(file)
+		names = append(names, name)
+	}
 
-		var s *golibzfs.Dataset
-		if len(rawSnapshots) > 0 {
-			s = findSnapshot(rawSnapshots, name)
-		}
+	var snapshotHandles map[string]*golibzfs.Dataset
+	if dataset.rawGolibzfsData != nil {
+		snapshotHandles = findSnapshotHandles(dataset.rawGolibzfsData, names)
+	}
 
-		result = append(result, NewSnapshot(name, file, dataset, s))
+	for i, file := range snapshotDirs {
+		name := names[i]
+		// NewSnapshot reads properties via GetProperty, which locks golibzfs.Global.Mtx itself,
+		// so this must happen outside of findSnapshotHandles
+		result = append(result, NewSnapshot(name, file, dataset, snapshotHandles[name]))
 	}
 
 	return result, nil
