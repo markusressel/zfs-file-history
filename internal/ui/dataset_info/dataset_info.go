@@ -15,12 +15,29 @@ import (
 )
 
 type DatasetInfoComponent struct {
-	path        string
 	application *tview.Application
-	dataset     *zfs.Dataset
 	textView    *tview.TextView
 	container   *uiutil.LoadingContainer
-	loader      *uiutil.DataLoader[*zfs.Dataset]
+	loader      *uiutil.DataLoader[*datasetInfoResult]
+
+	// All fields below are only accessed on the UI thread.
+
+	// path is the requested path, used if name is empty.
+	path string
+	// name and mountPath identify the requested dataset, if it was requested by name (see SetDatasetName).
+	name      string
+	mountPath string
+
+	// dataset is the currently displayed dataset. It is only used on the UI thread after it was loaded.
+	dataset *zfs.Dataset
+}
+
+// datasetInfoResult is the result of a background load.
+// All values are fetched in the background, so displaying them never calls into ZFS on the UI thread.
+type datasetInfoResult struct {
+	dataset    *zfs.Dataset
+	title      string
+	properties []*DatasetInfoTableEntry
 }
 
 func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
@@ -37,53 +54,98 @@ func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 
 	datasetInfo.container = uiutil.NewLoadingContainer(application, datasetInfo.textView, "Dataset", "Loading dataset info...")
 
-	datasetInfo.loader = uiutil.NewDataLoader[*zfs.Dataset](application).
+	datasetInfo.loader = uiutil.NewDataLoader[*datasetInfoResult](application).
 		OnStart(func() {
 			datasetInfo.container.SetIsLoading(true)
 		}).
-		OnLoad(func(ds *zfs.Dataset) {
-			datasetInfo.dataset = ds
+		OnLoad(func(result *datasetInfoResult) {
+			datasetInfo.dataset = result.dataset
 			datasetInfo.container.SetIsLoading(false)
-			datasetInfo.updateUi()
+			datasetInfo.updateUi(result)
 		}).
 		OnError(func(err error) {
 			datasetInfo.container.SetIsLoading(false)
 			// Handle error if needed, for now just clear
 			datasetInfo.dataset = nil
-			datasetInfo.updateUi()
+			datasetInfo.updateUi(nil)
 		})
 
 	return datasetInfo
 }
 
+// SetPath shows the dataset containing the given path.
 func (datasetInfo *DatasetInfoComponent) SetPath(path string) {
 	datasetInfo.path = path
+	datasetInfo.name = ""
+	datasetInfo.mountPath = ""
 	if datasetInfo.dataset != nil && datasetInfo.dataset.Path == path {
 		return
 	}
 
-	loadFunc := func(ctx context.Context) (*zfs.Dataset, error) {
-		return zfs.FindHostDataset(path)
+	datasetInfo.load(datasetInfo.dataset != nil)
+}
+
+// SetDatasetName shows the dataset with the given name, which does not need to be mounted.
+// mountPath is the path the dataset is mounted at, or "" if it is not mounted.
+func (datasetInfo *DatasetInfoComponent) SetDatasetName(name string, mountPath string) {
+	if name == datasetInfo.name && mountPath == datasetInfo.mountPath {
+		return
+	}
+	datasetInfo.path = mountPath
+	datasetInfo.name = name
+	datasetInfo.mountPath = mountPath
+
+	datasetInfo.load(datasetInfo.dataset != nil)
+}
+
+// Refresh reloads the currently requested dataset, showing the loading indicator while loading.
+func (datasetInfo *DatasetInfoComponent) Refresh() {
+	datasetInfo.load(false)
+}
+
+// load starts loading the currently requested dataset in the background.
+// Must be called on the UI thread.
+func (datasetInfo *DatasetInfoComponent) load(quietly bool) {
+	// capture the request on the UI thread, the load function runs in the background
+	request := datasetInfoRequest{
+		path:      datasetInfo.path,
+		name:      datasetInfo.name,
+		mountPath: datasetInfo.mountPath,
 	}
 
-	if datasetInfo.dataset != nil {
+	loadFunc := func(ctx context.Context) (*datasetInfoResult, error) {
+		return loadDatasetInfo(request)
+	}
+
+	if quietly {
 		datasetInfo.loader.LoadQuietly(loadFunc)
 	} else {
 		datasetInfo.loader.Load(loadFunc)
 	}
 }
 
-func (datasetInfo *DatasetInfoComponent) Refresh() {
-	loadFunc := func(ctx context.Context) (*zfs.Dataset, error) {
-		return zfs.FindHostDataset(datasetInfo.path)
-	}
-	datasetInfo.loader.Load(loadFunc)
+type datasetInfoRequest struct {
+	path      string
+	name      string
+	mountPath string
 }
 
-func (datasetInfo *DatasetInfoComponent) SetDataset(dataset *zfs.Dataset) {
-	datasetInfo.dataset = dataset
-	datasetInfo.container.SetIsLoading(false)
-	datasetInfo.updateUi()
+// loadDatasetInfo opens the requested dataset and reads its properties.
+// It runs in the background and is replaceable in tests.
+var loadDatasetInfo = func(request datasetInfoRequest) (*datasetInfoResult, error) {
+	if request.name != "" {
+		dataset, err := zfs.OpenDatasetByName(request.name, request.mountPath)
+		if err != nil {
+			return nil, err
+		}
+		return newDatasetInfoResult(dataset, request.name), nil
+	}
+
+	dataset, err := zfs.FindHostDataset(request.path)
+	if err != nil {
+		return nil, err
+	}
+	return newDatasetInfoResult(dataset, dataset.Path), nil
 }
 
 type DatasetInfoTableEntry struct {
@@ -91,29 +153,33 @@ type DatasetInfoTableEntry struct {
 	Value string
 }
 
-func (datasetInfo *DatasetInfoComponent) updateUi() {
-	dataset := datasetInfo.dataset
-
-	titleText := "Dataset"
-	if dataset == nil {
-		datasetInfo.textView.Clear()
-		uiutil.SetupWindow(datasetInfo.textView, titleText)
-		return
+// newDatasetInfoResult reads all displayed properties of the dataset.
+// This calls into ZFS (and may spawn processes), so it must only be called in the background.
+func newDatasetInfoResult(dataset *zfs.Dataset, titleName string) *datasetInfoResult {
+	return &datasetInfoResult{
+		dataset:    dataset,
+		title:      fmt.Sprintf("Dataset: %s", titleName),
+		properties: collectProperties(dataset),
 	}
+}
 
-	titleText = fmt.Sprintf("%s: %s", titleText, dataset.Path)
-	uiutil.SetupWindow(datasetInfo.textView, titleText)
-
+func collectProperties(dataset *zfs.Dataset) []*DatasetInfoTableEntry {
+	mounted := dataset.GetMounted()
 	properties := []*DatasetInfoTableEntry{
 		{Name: "Type", Value: dataset.GetType()},
 		{Name: "Creation", Value: dataset.GetCreationString().Format(theme.Style.Format.DateTime)},
 		{Name: "Mount Point", Value: dataset.GetMountPoint()},
-		{Name: "Mounted", Value: dataset.GetMounted()},
+		{Name: "Mounted", Value: mounted},
 		{Name: "Readonly", Value: dataset.GetReadonly()},
 		{Name: "Compression", Value: dataset.GetCompression()},
 		{Name: "Compress Ratio", Value: dataset.GetCompressRatio()},
 		{Name: "Available", Value: uiutil.StableLengthHumanizedBytes(dataset.GetAvailable())},
 		{Name: "Used", Value: uiutil.StableLengthHumanizedBytes(dataset.GetUsed())},
+	}
+
+	if mounted != "yes" {
+		// usually explains why the dataset is not mounted
+		properties = append(properties, &DatasetInfoTableEntry{Name: "Can Mount", Value: dataset.GetCanMount()})
 	}
 
 	if dataset.GetType() == "volume" {
@@ -127,19 +193,39 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 		}...)
 	}
 
-	if dataset.GetOrigin() != "" {
-		properties = append(properties, &DatasetInfoTableEntry{Name: "Origin", Value: dataset.GetOrigin()})
+	if origin := dataset.GetOrigin(); origin != "" {
+		properties = append(properties, &DatasetInfoTableEntry{Name: "Origin", Value: origin})
 	}
 
-	if dataset.GetSnapshotLimit() > 0 {
+	if snapshotLimit := dataset.GetSnapshotLimit(); snapshotLimit > 0 {
 		properties = append(properties, &DatasetInfoTableEntry{
 			Name:  "Snapshots",
-			Value: fmt.Sprintf("%d / %d", dataset.GetSnapshotCount(), dataset.GetSnapshotLimit()),
+			Value: fmt.Sprintf("%d / %d", dataset.GetSnapshotCount(), snapshotLimit),
 		})
 	}
 
-	datasetInfo.textView.Clear()
+	// Sort properties by Name for consistent display
+	sort.Slice(properties, func(i, j int) bool {
+		return properties[i].Name < properties[j].Name
+	})
 
+	return properties
+}
+
+// updateUi displays the given result, or clears the view if it is nil.
+// It only uses the pre-fetched values of the result and must not call into ZFS.
+func (datasetInfo *DatasetInfoComponent) updateUi(result *datasetInfoResult) {
+	if result == nil {
+		datasetInfo.textView.Clear()
+		uiutil.SetupWindow(datasetInfo.textView, "Dataset")
+		return
+	}
+
+	uiutil.SetupWindow(datasetInfo.textView, result.title)
+	datasetInfo.textView.SetText(formatProperties(result.properties))
+}
+
+func formatProperties(properties []*DatasetInfoTableEntry) string {
 	// Calculate alignment padding dynamically based on longest key name
 	maxKeyLen := 0
 	for _, prop := range properties {
@@ -148,12 +234,7 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 		}
 	}
 
-	// Sort properties by Name for consistent display
-	sort.Slice(properties, func(i, j int) bool {
-		return properties[i].Name < properties[j].Name
-	})
-
-	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Header)
+	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Accent)
 	var out strings.Builder
 	for _, prop := range properties {
 		valueColor := resolveValueColor(prop.Name, prop.Value)
@@ -167,8 +248,7 @@ func (datasetInfo *DatasetInfoComponent) updateUi() {
 			tview.Escape(prop.Value),
 		))
 	}
-
-	datasetInfo.textView.SetText(out.String())
+	return out.String()
 }
 
 func resolveValueColor(name, value string) tcell.Color {
@@ -226,11 +306,4 @@ func (datasetInfo *DatasetInfoComponent) SetBorderColor(color tcell.Color) {
 	if datasetInfo.container != nil {
 		datasetInfo.container.SetBorderColor(color)
 	}
-}
-
-func (datasetInfo *DatasetInfoComponent) CreateSnapshot(name string) error {
-	if datasetInfo.dataset == nil {
-		return fmt.Errorf("no dataset selected")
-	}
-	return datasetInfo.dataset.CreateSnapshot(name)
 }

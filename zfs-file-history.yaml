@@ -13,6 +13,11 @@ fileBrowser:
   #   - id   (e.g. "0") or
   #   - both (e.g. "0(root)")
   owner: name
+  # What happens to an active filter (ctrl+f) when changing directories.
+  # Can be one of
+  #   - keep  (the filter applies to the new directory as well)
+  #   - clear (the filter is removed)
+  filterOnDirectoryChange: keep
 
 profiling:
   # Whether to enable the profiling webserver

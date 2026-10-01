@@ -24,7 +24,7 @@ func TestSetHelpTableRow_WithEntry_FormatsKeyCellAndValueCell(t *testing.T) {
 
 	assert.Equal(t, "F1:", keyCell.Text)
 	assert.Equal(t, tview.AlignRight, keyCell.Align)
-	assert.Equal(t, theme.Colors.Layout.Table.Header, keyFg)
+	assert.Equal(t, theme.Colors.Layout.Table.Accent, keyFg)
 
 	assert.Equal(t, "Help", valueCell.Text)
 	assert.Equal(t, tview.AlignLeft, valueCell.Align)

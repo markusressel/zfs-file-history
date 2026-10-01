@@ -566,7 +566,7 @@ func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) 
 	oldExists := oldErr == nil && oldPath != DevNull
 	newExists := newErr == nil && newPath != DevNull
 
-	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Header)
+	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Accent)
 	maxKeyLen := 10
 
 	writeMetaRow := func(name string, oldVal, newVal string, changed bool, isPresence bool) {

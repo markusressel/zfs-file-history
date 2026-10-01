@@ -1,10 +1,15 @@
 package table
 
 import (
+	"strings"
 	"testing"
+	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockEntry struct {
@@ -94,4 +99,484 @@ func TestCreateMultiSelectionEntryId(t *testing.T) {
 
 	e1 := &mockEntry{id: "test-id"}
 	assert.Equal(t, "test-id", table.createMultiSelectionEntryId(e1))
+}
+
+func newSortHighlightTestTable() (*RowSelectionTable[mockEntry], []*Column) {
+	app := tview.NewApplication()
+	cols := []*Column{
+		{Id: 0, Title: "Col0"},
+		{Id: 1, Title: "Col1"},
+		{Id: 2, Title: "Col2"},
+	}
+	table := NewTableContainer[mockEntry](
+		app,
+		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
+			var cells []*tview.TableCell
+			for range columns {
+				cells = append(cells, tview.NewTableCell("cell"))
+			}
+			return cells
+		},
+		func(entries []*mockEntry, column *Column, inverted bool) []*mockEntry {
+			return entries
+		},
+	)
+	table.SetColumnSpec(cols, cols[1], false)
+	table.SetData([]*mockEntry{{id: "1"}, {id: "2"}})
+	return table, cols
+}
+
+func TestSortColumnHeaderHasSelectedStyle(t *testing.T) {
+	table, cols := newSortHighlightTestTable()
+
+	sortColumnStyle := tcell.StyleDefault.
+		Foreground(theme.Colors.Layout.Table.SortColumnSelectedForeground).
+		Background(theme.Colors.Layout.Table.SortColumnSelectedBackground)
+
+	assertHighlighted := func(sortColumnIndex int) {
+		for column := range cols {
+			cell := table.table.GetCell(0, column)
+			if column == sortColumnIndex {
+				assert.Equal(t, sortColumnStyle, cell.SelectedStyle, "column %d", column)
+			} else {
+				assert.Equal(t, tcell.StyleDefault, cell.SelectedStyle, "column %d", column)
+			}
+		}
+		// data rows are not affected
+		for column := range cols {
+			assert.Equal(t, tcell.StyleDefault, table.table.GetCell(1, column).SelectedStyle)
+		}
+	}
+
+	assertHighlighted(1)
+	table.nextSortOrder()
+	assertHighlighted(2)
+	table.nextSortOrder()
+	assertHighlighted(0)
+	table.previousSortOrder()
+	assertHighlighted(2)
+	table.toggleSortDirection()
+	assertHighlighted(2)
+	table.SetData([]*mockEntry{{id: "3"}})
+	assertHighlighted(2)
+}
+
+// findText returns the position of the first occurrence of text on the screen.
+func findText(screen tcell.SimulationScreen, text string) (int, int, bool) {
+	width, height := screen.Size()
+	for y := 0; y < height; y++ {
+		var line []rune
+		for x := 0; x < width; x++ {
+			primary, _, _, _ := screen.GetContent(x, y)
+			line = append(line, primary)
+		}
+		if index := strings.Index(string(line), text); index >= 0 {
+			return len([]rune(string(line)[:index])), y, true
+		}
+	}
+	return 0, 0, false
+}
+
+func backgroundAt(screen tcell.SimulationScreen, x, y int) tcell.Color {
+	_, _, style, _ := screen.GetContent(x, y)
+	_, background, _ := style.Decompose()
+	return background
+}
+
+func TestSortColumnHeaderHighlightRendering(t *testing.T) {
+	table, _ := newSortHighlightTestTable()
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	assert.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(60, 8)
+
+	draw := func() {
+		screen.Clear()
+		table.layout.SetRect(0, 0, 60, 8)
+		table.layout.Draw(screen)
+	}
+
+	// data row selected: no highlight in the header
+	table.Select(table.GetEntries()[0])
+	draw()
+	x, y, found := findText(screen, "Col1")
+	assert.True(t, found)
+	assert.NotEqual(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+
+	// header row selected: the sort column is highlighted, other columns use the regular selection color
+	table.SelectHeader()
+	draw()
+	x, y, found = findText(screen, "Col1")
+	assert.True(t, found)
+	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+	x, y, found = findText(screen, "Col0")
+	assert.True(t, found)
+	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
+
+	// the highlight follows the sort column
+	table.nextSortOrder()
+	draw()
+	x, y, _ = findText(screen, "Col2")
+	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+	x, y, _ = findText(screen, "Col1")
+	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
+}
+
+func isBoldAt(screen tcell.SimulationScreen, x, y int) bool {
+	_, _, style, _ := screen.GetContent(x, y)
+	_, _, attributes := style.Decompose()
+	return attributes&tcell.AttrBold != 0
+}
+
+func TestHeaderIsBold(t *testing.T) {
+	table, _ := newSortHighlightTestTable()
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	assert.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(60, 8)
+
+	draw := func() {
+		screen.Clear()
+		table.layout.SetRect(0, 0, 60, 8)
+		table.layout.Draw(screen)
+	}
+
+	// data row selected
+	table.Select(table.GetEntries()[0])
+	draw()
+	for _, title := range []string{"Col0", "Col1", "Col2"} {
+		x, y, found := findText(screen, title)
+		assert.True(t, found)
+		assert.True(t, isBoldAt(screen, x, y), title)
+	}
+	x, y, found := findText(screen, "cell")
+	assert.True(t, found)
+	assert.False(t, isBoldAt(screen, x, y), "data cells are not bold")
+
+	// header row selected: the selection styles keep the header bold
+	table.SelectHeader()
+	draw()
+	for _, title := range []string{"Col0", "Col1", "Col2"} {
+		x, y, _ := findText(screen, title)
+		assert.True(t, isBoldAt(screen, x, y), title)
+	}
+}
+
+func TestHeaderBackground(t *testing.T) {
+	table, _ := newSortHighlightTestTable()
+	headerBackground := theme.Colors.Layout.Table.HeaderBackground
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	assert.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(60, 8)
+
+	draw := func() {
+		screen.Clear()
+		table.layout.SetRect(0, 0, 60, 8)
+		table.layout.Draw(screen)
+	}
+
+	table.Select(table.GetEntries()[0])
+	draw()
+
+	col0X, headerY, _ := findText(screen, "Col0")
+	col2X, _, _ := findText(screen, "Col2")
+	// the whole header from the first to the last title is one band, including the gaps between columns
+	for x := col0X; x <= col2X; x++ {
+		assert.Equal(t, headerBackground, backgroundAt(screen, x, headerY), "x=%d", x)
+	}
+
+	// data rows keep the default background
+	cellX, cellY, _ := findText(screen, "cell")
+	assert.NotEqual(t, headerBackground, backgroundAt(screen, cellX, cellY))
+
+	// while selected, the selection colors replace the header background
+	table.SelectHeader()
+	draw()
+	x, y, _ := findText(screen, "Col0")
+	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
+	x, y, _ = findText(screen, "Col1")
+	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
+}
+
+type namedEntry struct {
+	name string
+}
+
+func (e namedEntry) TableRowId() string {
+	return e.name
+}
+
+func newFilterTestTable() (*RowSelectionTable[namedEntry], []*namedEntry, *[]tcell.Key, *int) {
+	app := tview.NewApplication()
+	cols := []*Column{{Id: 0, Title: "Name"}}
+	table := NewTableContainer[namedEntry](
+		app,
+		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
+			return []*tview.TableCell{tview.NewTableCell(entry.name)}
+		},
+		func(entries []*namedEntry, column *Column, inverted bool) []*namedEntry {
+			return entries
+		},
+	)
+	table.SetColumnSpec(cols, cols[0], false)
+	table.SetTitle("Things")
+	table.SetFilterFunc(func(entry *namedEntry, filterText string) bool {
+		return strings.Contains(entry.name, filterText)
+	})
+
+	// records the keys that reach the owner's input capture
+	var ownerKeys []tcell.Key
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		ownerKeys = append(ownerKeys, event.Key())
+		return nil
+	})
+	filterChangedCalls := 0
+	table.SetFilterChangedCallback(func() { filterChangedCalls++ })
+
+	entries := []*namedEntry{{name: "daily-1"}, {name: "weekly-1"}, {name: "daily-2"}, {name: "monthly-1"}}
+	table.SetData(entries)
+	return table, entries, &ownerKeys, &filterChangedCalls
+}
+
+// pressKey sends a key to the table, like the application would, and returns the event that is passed on.
+func pressKey(table *RowSelectionTable[namedEntry], key tcell.Key, r rune) *tcell.EventKey {
+	return table.table.GetInputCapture()(tcell.NewEventKey(key, r, tcell.ModNone))
+}
+
+func typeText(table *RowSelectionTable[namedEntry], text string) {
+	for _, r := range text {
+		pressKey(table, tcell.KeyRune, r)
+	}
+}
+
+func entryNames(entries []*namedEntry) []string {
+	var result []string
+	for _, entry := range entries {
+		result = append(result, entry.name)
+	}
+	return result
+}
+
+func TestFilter_SetFilterText(t *testing.T) {
+	table, entries, _, filterChangedCalls := newFilterTestTable()
+
+	assert.False(t, table.IsFilterActive())
+	assert.Len(t, table.GetEntries(), 4)
+
+	table.Select(entries[2]) // daily-2
+	table.SetFilterText("daily")
+	assert.True(t, table.IsFilterActive())
+	assert.Equal(t, []string{"daily-1", "daily-2"}, entryNames(table.GetEntries()))
+	assert.Len(t, table.GetAllEntries(), 4)
+	assert.Equal(t, 1, *filterChangedCalls)
+	// the selection is kept, if it matches
+	assert.Same(t, entries[2], table.GetSelectedEntry())
+
+	// otherwise the first match is selected
+	table.SetFilterText("weekly")
+	assert.Same(t, entries[1], table.GetSelectedEntry())
+
+	// no match: nothing selected
+	table.SetFilterText("nothing")
+	assert.Empty(t, table.GetEntries())
+	assert.Nil(t, table.GetSelectedEntry())
+
+	// new data is filtered as well
+	table.SetFilterText("monthly")
+	table.SetData([]*namedEntry{{name: "monthly-1"}, {name: "monthly-2"}, {name: "daily-3"}})
+	assert.Equal(t, []string{"monthly-1", "monthly-2"}, entryNames(table.GetEntries()))
+	assert.Len(t, table.GetAllEntries(), 3)
+
+	// clearing the filter shows everything again
+	table.SetFilterText("")
+	assert.False(t, table.IsFilterActive())
+	assert.Len(t, table.GetEntries(), 3)
+}
+
+func TestFilter_HeaderRowStaysSelected(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	table.SelectHeader()
+
+	table.SetFilterText("daily")
+	assert.Nil(t, table.GetSelectedEntry())
+	row, _ := table.table.GetSelection()
+	assert.Equal(t, 0, row)
+}
+
+func TestFilter_HidesEntriesFromMultiSelection(t *testing.T) {
+	table, entries, _, _ := newFilterTestTable()
+	table.SetMultiSelect(true)
+	table.addToMultiSelection(entries[0]) // daily-1
+	table.addToMultiSelection(entries[1]) // weekly-1
+
+	// hidden entries must not stay selected, actions on the multi-selection would include invisible entries
+	table.SetFilterText("daily")
+	assert.Equal(t, []string{"daily-1"}, entryNames(table.GetMultiSelection()))
+}
+
+func TestFilter_Typing(t *testing.T) {
+	table, _, ownerKeys, _ := newFilterTestTable()
+	table.SelectFirstIfExists()
+
+	// ctrl+f starts typing
+	assert.Nil(t, pressKey(table, tcell.KeyCtrlF, 0))
+	assert.True(t, table.IsEditingFilter())
+	assert.True(t, uiutil.IsTextInputActive(table.table))
+	assert.Equal(t, filterFooter{text: "Filter:", cursor: 10}, drawFilterFooter(t, table))
+	// the title is not affected
+	assert.Equal(t, " Things ", table.layout.GetTitle())
+
+	// typed keys filter, and never reach the owner (e.g. 'd' could be a delete shortcut)
+	typeText(table, "dai")
+	assert.Equal(t, "dai", table.GetFilterText())
+	assert.Equal(t, []string{"daily-1", "daily-2"}, entryNames(table.GetEntries()))
+	assert.Equal(t, filterFooter{text: "Filter: dai", cursor: 13}, drawFilterFooter(t, table))
+
+	// backspace removes the last character
+	pressKey(table, tcell.KeyBackspace2, 0)
+	assert.Equal(t, "da", table.GetFilterText())
+
+	// the cursor can be moved, typing inserts at the cursor and filters immediately
+	assert.Nil(t, pressKey(table, tcell.KeyHome, 0)) // edits, does not navigate the list
+	pressKey(table, tcell.KeyRune, 'x')
+	assert.Equal(t, "xda", table.GetFilterText())
+	assert.Empty(t, table.GetEntries())
+	assert.Equal(t, filterFooter{text: "Filter: xda", cursor: 11}, drawFilterFooter(t, table))
+	pressKey(table, tcell.KeyLeft, 0)
+	pressKey(table, tcell.KeyDelete, 0)
+	assert.Equal(t, "da", table.GetFilterText())
+	assert.Equal(t, []string{"daily-1", "daily-2"}, entryNames(table.GetEntries()))
+
+	// navigation still works, but skips the owner
+	assert.NotNil(t, pressKey(table, tcell.KeyDown, 0))
+	// other keys are consumed
+	assert.Nil(t, pressKey(table, tcell.KeyF2, 0))
+	assert.Empty(t, *ownerKeys)
+
+	// enter keeps the filter and stops typing
+	assert.Nil(t, pressKey(table, tcell.KeyEnter, 0))
+	assert.False(t, table.IsEditingFilter())
+	assert.False(t, uiutil.IsTextInputActive(table.table))
+	assert.Equal(t, "da", table.GetFilterText())
+	assert.Equal(t, filterFooter{text: "Filter: da", cursor: -1}, drawFilterFooter(t, table))
+
+	// now keys reach the owner again
+	pressKey(table, tcell.KeyRune, 'd')
+	assert.Equal(t, []tcell.Key{tcell.KeyRune}, *ownerKeys)
+
+	// esc clears an active filter, even when not typing
+	assert.Nil(t, pressKey(table, tcell.KeyEscape, 0))
+	assert.False(t, table.IsFilterActive())
+	assert.Equal(t, filterFooter{text: "", cursor: -1}, drawFilterFooter(t, table))
+	assert.Len(t, table.GetEntries(), 4)
+}
+
+func TestFilter_TypingStopsWithEscBackspaceAndBlur(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+
+	// esc while typing clears the filter and stops typing
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "week")
+	pressKey(table, tcell.KeyEscape, 0)
+	assert.False(t, table.IsEditingFilter())
+	assert.False(t, table.IsFilterActive())
+
+	// backspace on an empty filter stops typing
+	pressKey(table, tcell.KeyCtrlF, 0)
+	pressKey(table, tcell.KeyBackspace2, 0)
+	assert.False(t, table.IsEditingFilter())
+
+	// backspace with the cursor at the start of a non-empty filter does nothing
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "da")
+	pressKey(table, tcell.KeyHome, 0)
+	pressKey(table, tcell.KeyBackspace2, 0)
+	assert.True(t, table.IsEditingFilter())
+	assert.Equal(t, "da", table.GetFilterText())
+	pressKey(table, tcell.KeyEscape, 0)
+
+	// losing focus stops typing, but keeps the filter
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "month")
+	table.table.Blur()
+	assert.False(t, table.IsEditingFilter())
+	assert.False(t, uiutil.IsTextInputActive(table.table))
+	assert.Equal(t, "month", table.GetFilterText())
+}
+
+func TestFilter_DisabledWithoutFilterFunc(t *testing.T) {
+	table, _, ownerKeys, _ := newFilterTestTable()
+	table.SetFilterFunc(nil)
+
+	pressKey(table, tcell.KeyCtrlF, 0)
+	assert.False(t, table.IsEditingFilter())
+	assert.Equal(t, []tcell.Key{tcell.KeyCtrlF}, *ownerKeys)
+}
+
+func TestFilter_SlashIsAnOrdinaryCharacter(t *testing.T) {
+	table, _, ownerKeys, _ := newFilterTestTable()
+
+	// '/' does not start typing a filter, it reaches the owner
+	pressKey(table, tcell.KeyRune, '/')
+	assert.False(t, table.IsEditingFilter())
+	assert.Equal(t, []tcell.Key{tcell.KeyRune}, *ownerKeys)
+
+	// and it can be typed into the filter
+	pressKey(table, tcell.KeyCtrlF, 0)
+	typeText(table, "a/b")
+	assert.Equal(t, "a/b", table.GetFilterText())
+}
+
+type filterFooter struct {
+	// text is the visible text in the bottom border, without the border characters
+	text string
+	// cursor is the screen column of the cell in reverse video, -1 if none
+	cursor int
+}
+
+// drawFilterFooter draws the table window and returns the left part of its bottom border.
+func drawFilterFooter(t *testing.T, table *RowSelectionTable[namedEntry]) filterFooter {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(40, 8)
+	table.layout.SetRect(0, 0, 40, 8)
+	table.layout.Draw(screen)
+
+	result := filterFooter{cursor: -1}
+	var line strings.Builder
+	for x := 0; x < 40; x++ {
+		primary, _, style, _ := screen.GetContent(x, 7)
+		line.WriteRune(primary)
+		_, _, attributes := style.Decompose()
+		if attributes&tcell.AttrReverse != 0 {
+			result.cursor = x
+		}
+	}
+	result.text = strings.TrimSpace(strings.Trim(line.String(), "└┘─╚╝═"))
+	return result
+}
+
+func TestFilter_FooterAndCountsDoNotOverlap(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	table.SetFooter("2 of 4 things")
+	table.SetFilterText("daily")
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	defer screen.Fini()
+	screen.SetSize(40, 8)
+	table.layout.SetRect(0, 0, 40, 8)
+	table.layout.Draw(screen)
+
+	var line strings.Builder
+	for x := 0; x < 40; x++ {
+		primary, _, _, _ := screen.GetContent(x, 7)
+		line.WriteRune(primary)
+	}
+	assert.Equal(t, "└ Filter: daily ──────── 2 of 4 things ┘", line.String())
 }

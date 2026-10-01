@@ -90,6 +90,8 @@ type FileBrowserComponent struct {
 	Events *util.Emitter[Event]
 
 	path string
+	// entriesPath is the path the displayed entries belong to. It differs from path while a new path is loading.
+	entriesPath string
 
 	currentSnapshot *data.SnapshotBrowserEntry
 
@@ -142,6 +144,8 @@ func (fileBrowser *FileBrowserComponent) createLayout() {
 }
 
 func (fileBrowser *FileBrowserComponent) setupTable() {
+	fileBrowser.tableContainer.SetFilterFunc(fileMatchesFilter)
+	fileBrowser.tableContainer.SetFilterChangedCallback(fileBrowser.updateFooter)
 	fileBrowser.tableContainer.SetColumnSpec(tableColumns, columnType, true)
 	fileBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
 	fileBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -225,9 +229,14 @@ func (fileBrowser *FileBrowserComponent) Focus() {
 	fileBrowser.application.SetFocus(fileBrowser.layout)
 }
 
-func (fileBrowser *FileBrowserComponent) computeTableEntries(ctx context.Context, previousDiffs map[string]diff_state.DiffState) ([]*data.FileBrowserEntry, error) {
-	path := fileBrowser.path
-	snapshotEntry := fileBrowser.currentSnapshot
+// computeTableEntries lists the entries of the given path. It runs in the background, so path and snapshotEntry
+// must be captured on the UI thread.
+func (fileBrowser *FileBrowserComponent) computeTableEntries(
+	ctx context.Context,
+	path string,
+	snapshotEntry *data.SnapshotBrowserEntry,
+	previousDiffs map[string]diff_state.DiffState,
+) ([]*data.FileBrowserEntry, error) {
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -421,6 +430,12 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 	}
 
 	if fileBrowser.path != newPath {
+		// Depending on the configuration, an active filter (e.g. "*.txt") is cleared when changing directories.
+		// This happens before changing the path, so the resulting selection is remembered for the old path.
+		if !configuration.CurrentConfig.FileBrowser.KeepsFilterOnDirectoryChange() {
+			fileBrowser.tableContainer.SetFilterText("")
+		}
+
 		fileBrowser.path = newPath
 
 		// Optimization: only clear the current snapshot if the new path is no longer within its dataset.
@@ -441,17 +456,20 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		return
 	}
 
-	// 1. Define the blocking work
+	// captured on the UI thread, asyncWork runs in the background
+	path := fileBrowser.path
+	currentSnapshot := fileBrowser.currentSnapshot
+	var createdSnapshotName string
+
+	// 1. Define the blocking work (runs in the background: no UI access)
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
 		case dialog.FileDialogShowDiffActionId:
-			return fileBrowser.showDiff(selection, fileBrowser.currentSnapshot)
+			return fileBrowser.showDiff(selection, currentSnapshot)
 		case dialog.FileDialogCreateSnapshotDialogActionId:
-			return fileBrowser.createSnapshot(selection)
-		case dialog.FileDialogRestoreRecursiveDialogActionId:
-			return fileBrowser.runRestoreFileAction(selection, true)
-		case dialog.FileDialogRestoreFileActionId:
-			return fileBrowser.runRestoreFileAction(selection, false)
+			name, err := createSnapshot(path)
+			createdSnapshotName = name
+			return err
 		case dialog.FileDialogDeleteDialogActionId:
 			return fileBrowser.delete(selection)
 		}
@@ -469,8 +487,16 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 			return
 		}
 
-		if option.Id == dialog.FileDialogShowHistoryActionId {
+		switch option.Id {
+		case dialog.FileDialogShowHistoryActionId:
 			fileBrowser.emit(RequestFileHistoryEvent{FileEntry: selection})
+		case dialog.FileDialogCreateSnapshotDialogActionId:
+			fileBrowser.emit(SnapshotCreatedEvent{SnapshotName: createdSnapshotName})
+		// restores mount the progress dialog, so they must be started on the UI thread, not in asyncWork
+		case dialog.FileDialogRestoreRecursiveDialogActionId:
+			fileBrowser.runRestoreFileAction(selection, true)
+		case dialog.FileDialogRestoreFileActionId:
+			fileBrowser.runRestoreFileAction(selection, false)
 		}
 	}
 
@@ -551,7 +577,8 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 	}
 
 	snapshotEntry := fileBrowser.currentSnapshot
-	entriesToProcess := slices.Clone(fileBrowser.tableContainer.GetEntries())
+	// also calculate the diffs of entries hidden by the filter, so they are correct once the filter changes
+	entriesToProcess := slices.Clone(fileBrowser.tableContainer.GetAllEntries())
 
 	if len(entriesToProcess) == 0 {
 		return
@@ -650,11 +677,16 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	fileBrowser.tableContainer.SetTitle(title)
 
 	previousDiffs := make(map[string]diff_state.DiffState)
-	for _, entry := range fileBrowser.tableContainer.GetEntries() {
+	// all entries, including the ones hidden by the filter
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
 		if entry != nil {
 			previousDiffs[entry.GetRealPath()] = entry.DiffState
 		}
 	}
+
+	// captured on the UI thread for the background computation
+	path := fileBrowser.path
+	snapshotEntry := fileBrowser.currentSnapshot
 
 	ctx, seq := fileBrowser.refreshLoader.Start()
 
@@ -668,7 +700,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 			}
 		}
 
-		entries, err := fileBrowser.computeTableEntries(ctx, previousDiffs)
+		entries, err := fileBrowser.computeTableEntries(ctx, path, snapshotEntry, previousDiffs)
 
 		fileBrowser.application.QueueUpdateDraw(func() {
 			if !fileBrowser.refreshLoader.IsCurrentSequence(seq) {
@@ -678,6 +710,8 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 				fileBrowser.showError(err)
 			} else {
 				fileBrowser.tableContainer.SetData(entries)
+				fileBrowser.entriesPath = path
+				fileBrowser.updateFooter()
 				fileBrowser.restoreSelectionForPath()
 				fileBrowser.updateFileWatcher()
 
@@ -762,6 +796,11 @@ func (fileBrowser *FileBrowserComponent) selectFileEntry(newSelection *data.File
 }
 
 func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
+	if !fileBrowser.entriesAreCurrent() {
+		// the remembered selection must not be applied to the entries of another path
+		return false
+	}
+
 	var entryToSelect *data.FileBrowserEntry
 	if fileBrowser.isEmpty() {
 		entryToSelect = nil
@@ -795,6 +834,11 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
 }
 
 func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
+	if !fileBrowser.entriesAreCurrent() {
+		// a selection within the entries of the previous path must not overwrite the memory of the current path
+		return
+	}
+
 	selectedEntry := fileBrowser.tableContainer.GetSelectedEntry()
 	if selectedEntry == nil {
 		fileBrowser.selectionMemory.Remember(fileBrowser.path, -1, nil)
@@ -859,17 +903,24 @@ func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
 	fileBrowser.showDialog(d, nil)
 }
 
+// enterFileEntry opens the given directory. The remembered selection of that directory is restored
+// once its entries are loaded (see Refresh).
 func (fileBrowser *FileBrowserComponent) enterFileEntry(selection *data.FileBrowserEntry) {
 	if !selection.HasReal() && selection.HasSnapshot() {
 		fileBrowser.SetPath(selection.GetRealPath(), false)
 	} else if selection.HasReal() {
 		fileBrowser.SetPath(selection.GetRealPath(), true)
 	}
-	if !fileBrowser.restoreSelectionForPath() {
-		fileBrowser.SelectFirstEntryIfExists()
-	}
 }
 
+// entriesAreCurrent returns whether the displayed entries belong to the current path.
+// After changing the path, the table shows the entries of the previous path until they are loaded.
+func (fileBrowser *FileBrowserComponent) entriesAreCurrent() bool {
+	return fileBrowser.entriesPath == fileBrowser.path
+}
+
+// runRestoreFileAction shows the restore progress dialog, which runs the restore in the background.
+// Must be called on the UI thread.
 func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBrowserEntry, recursive bool) error {
 	// If the file is absent in the snapshot, create a dummy SnapshotFile referencing the current snapshot.
 	if len(entry.SnapshotFiles) == 0 && fileBrowser.currentSnapshot != nil {
@@ -932,20 +983,27 @@ func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEnt
 	return nil
 }
 
+// delete removes the real file of the given entry. It runs in the background (asyncWork of the dialogs),
+// so errors are returned to the dialog, which shows them on the UI thread.
 func (fileBrowser *FileBrowserComponent) delete(entry *data.FileBrowserEntry) error {
-	path := entry.RealFile.Path
-	err := os.RemoveAll(path)
-	if err != nil {
-		fileBrowser.showError(err)
-	}
-	return nil
+	return os.RemoveAll(entry.RealFile.Path)
 }
 
-func (fileBrowser *FileBrowserComponent) createSnapshot(entry *data.FileBrowserEntry) error {
+// createSnapshot creates a snapshot of the dataset containing the given path, replaceable in tests.
+var createSnapshot = createSnapshotForPath
+
+// createSnapshotForPath creates a snapshot of the dataset containing the given path and returns its name.
+// It calls into ZFS (and spawns processes), so it must not be called on the UI thread.
+func createSnapshotForPath(path string) (string, error) {
+	dataset, err := zfs.FindHostDataset(path)
+	if err != nil {
+		return "", err
+	}
 	snapshotName := fmt.Sprintf("zfh-%s", time.Now().Format(zfs.SnapshotTimeFormat))
-	// TODO: return error from this event chain, and probably not use an event here at all
-	fileBrowser.emit(CreateSnapshotEvent{snapshotName})
-	return nil
+	if err := dataset.CreateSnapshot(snapshotName); err != nil {
+		return "", err
+	}
+	return snapshotName, nil
 }
 
 func (fileBrowser *FileBrowserComponent) showMessage(message *status_message.StatusMessage) {
@@ -971,6 +1029,32 @@ func (fileBrowser *FileBrowserComponent) SelectFirstEntryIfExists() {
 	fileBrowser.tableContainer.SelectFirstIfExists()
 }
 
+// updateFooter shows the number of (matching) entries in the bottom border. Runs on the UI thread.
+func (fileBrowser *FileBrowserComponent) updateFooter() {
+	fileBrowser.tableContainer.SetFooter(formatFooter(
+		len(fileBrowser.tableContainer.GetEntries()),
+		len(fileBrowser.tableContainer.GetAllEntries()),
+		fileBrowser.tableContainer.IsFilterActive(),
+	))
+}
+
+// formatFooter returns e.g. "42 entries", or "5 of 42 entries" while a filter is active.
+func formatFooter(matchingCount int, totalCount int, filterActive bool) string {
+	noun := uiutil.Plural(totalCount, "entry", "entries")
+	if filterActive {
+		return fmt.Sprintf("%d of %d %s", matchingCount, totalCount, noun)
+	}
+	if totalCount == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d %s", totalCount, noun)
+}
+
+// fileMatchesFilter matches the file name against the filter as a glob, see table.MatchesGlob.
+func fileMatchesFilter(entry *data.FileBrowserEntry, filterText string) bool {
+	return table.MatchesGlob(entry.Name, filterText)
+}
+
 func (fileBrowser *FileBrowserComponent) GetEntries() []*data.FileBrowserEntry {
 	return fileBrowser.tableContainer.GetEntries()
 }
@@ -986,6 +1070,7 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		uiutil.TableComponentShortcutPageUp,
 		uiutil.TableComponentShortcutPageDown,
 		uiutil.TableComponentShortcutColumns,
+		uiutil.TableComponentShortcutFilter,
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {

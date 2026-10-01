@@ -25,11 +25,14 @@
   errors.
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
+* 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
+* 🌳 **Dataset overview:** Browse all datasets as a collapsible tree or as a flat list (`t`), unmounted datasets are
+  hidden by default (`u`).
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
-* 🗂️ **Snapshot lifecycle actions:** Create and destroy snapshots from within the UI.
+* 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
 
 # How to use
 
@@ -84,7 +87,8 @@ otherwise zfs-file-history will show a permission error.
 ## Configuration
 
 > **Note:**
-> The configuration is optional and currently only contains debugging settings.
+> The configuration is optional. It contains display and behavior settings of the file browser,
+> as well as debugging settings.
 
 Then configure zfs-file-history by creating a YAML configuration file in **one** of the following locations:
 

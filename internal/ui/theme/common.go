@@ -98,13 +98,26 @@ type LayoutColors struct {
 }
 
 type LayoutTableColors struct {
-	Header tcell.Color
+	// Accent highlights important values, e.g. directory names and the keys of key-value listings
+	Accent tcell.Color
+
+	HeaderForeground tcell.Color
+	HeaderBackground tcell.Color
 
 	SelectedForeground tcell.Color
 	SelectedBackground tcell.Color
 
+	// SortColumnSelected* highlight the header cell of the sort column while the header row is selected
+	SortColumnSelectedForeground tcell.Color
+	SortColumnSelectedBackground tcell.Color
+
 	MultiSelectionBackground tcell.Color
 	MultiSelectionForeground tcell.Color
+
+	// TreeLines are the lines of tree views (e.g. "├─ ")
+	TreeLines tcell.Color
+	// TreeCollapsedIndicator is the "▸ +N" behind collapsed entries of tree views
+	TreeCollapsedIndicator tcell.Color
 }
 
 type ShortcutMapColors struct {

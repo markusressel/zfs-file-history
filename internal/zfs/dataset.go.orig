@@ -1,15 +1,12 @@
 package zfs
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	gopath "path"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"zfs-file-history/internal/util"
 
@@ -21,7 +18,6 @@ const (
 	propType            = "type"
 	propMountpoint      = "mountpoint"
 	propMounted         = "mounted"
-	propCanmount        = "canmount"
 	propReadonly        = "readonly"
 	propVolsize         = "volsize"
 	propAvailable       = "available"
@@ -41,11 +37,7 @@ type Dataset struct {
 	Path          string
 	HiddenZfsPath string
 
-	// rawGozfsData is loaded lazily and may be accessed from different goroutines (e.g. a snapshot action in the
-	// background while the UI uses the same dataset), so it must only be accessed with gozfsMutex held,
-	// see gozfsData and loadedGozfsData.
 	rawGozfsData    *gozfs.Dataset
-	gozfsMutex      sync.Mutex
 	rawGolibzfsData *golibzfs.Dataset
 }
 
@@ -97,24 +89,6 @@ func NewDataset(path string, hiddenZfsPath string) (*Dataset, error) {
 	return dataset, nil
 }
 
-// gozfsData returns the go-zfs data of this dataset, loading it first if necessary (which may spawn zfs processes).
-// It returns nil if it cannot be loaded. Safe for concurrent use.
-func (dataset *Dataset) gozfsData() *gozfs.Dataset {
-	dataset.gozfsMutex.Lock()
-	defer dataset.gozfsMutex.Unlock()
-	_ = dataset.lazyLoadGozfsData()
-	return dataset.rawGozfsData
-}
-
-// loadedGozfsData returns the go-zfs data of this dataset if it was loaded already, without loading it.
-// Safe for concurrent use.
-func (dataset *Dataset) loadedGozfsData() *gozfs.Dataset {
-	dataset.gozfsMutex.Lock()
-	defer dataset.gozfsMutex.Unlock()
-	return dataset.rawGozfsData
-}
-
-// lazyLoadGozfsData loads the go-zfs data, if not loaded already. The caller must hold gozfsMutex.
 func (dataset *Dataset) lazyLoadGozfsData() error {
 	if dataset.rawGozfsData != nil {
 		return nil
@@ -143,48 +117,6 @@ func (dataset *Dataset) lazyLoadGozfsData() error {
 	}
 
 	return errors.New("could not load gozfs metadata")
-}
-
-// OpenDatasetByName opens the dataset with the given name, which does not need to be mounted.
-// mountPath is the path the dataset is currently mounted at, or "" if it is not mounted.
-// This calls into libzfs, so it must not be called on the UI thread.
-func OpenDatasetByName(name string, mountPath string) (*Dataset, error) {
-	if name == "" {
-		return nil, errors.New("cannot open dataset with empty name")
-	}
-
-	cacheMtx.RLock()
-	handle, cached := datasetByNameCache[name]
-	cacheMtx.RUnlock()
-
-	if !cached {
-		// only opens this dataset, unlike golibzfs.DatasetOpen, which recursively opens all children
-		opened, err := golibzfs.DatasetOpenSingle(name)
-		if err != nil {
-			return nil, err
-		}
-
-		cacheMtx.Lock()
-		if existing, exists := datasetByNameCache[name]; exists {
-			// opened concurrently by someone else, our handle was never shared
-			opened.Close()
-			handle = existing
-		} else {
-			datasetByNameCache[name] = &opened
-			handle = &opened
-		}
-		cacheMtx.Unlock()
-	}
-
-	dataset := &Dataset{
-		Path:            mountPath,
-		rawGolibzfsData: handle,
-	}
-	if mountPath != "" {
-		dataset.Path = gopath.Clean(mountPath)
-		dataset.HiddenZfsPath = gopath.Join(dataset.Path, ".zfs")
-	}
-	return dataset, nil
 }
 
 // FindHostDataset returns the root path of the dataset containing this path
@@ -221,8 +153,9 @@ func (dataset *Dataset) getPropertyString(libProp golibzfs.Prop, goProp string) 
 			return prop.Value
 		}
 	}
-	if gozfsDataset := dataset.gozfsData(); gozfsDataset != nil {
-		val, err := gozfsDataset.GetProperty(goProp)
+	_ = dataset.lazyLoadGozfsData()
+	if dataset.rawGozfsData != nil {
+		val, err := dataset.rawGozfsData.GetProperty(goProp)
 		if err == nil {
 			return val
 		}
@@ -277,10 +210,6 @@ func (dataset *Dataset) GetMountPoint() string {
 
 func (dataset *Dataset) GetMounted() string {
 	return dataset.getPropertyString(golibzfs.DatasetPropMounted, propMounted)
-}
-
-func (dataset *Dataset) GetCanMount() string {
-	return dataset.getPropertyString(golibzfs.DatasetPropCanmount, propCanmount)
 }
 
 func (dataset *Dataset) GetReadonly() string {
@@ -342,16 +271,18 @@ func (dataset *Dataset) GetSnapshotCount() int {
 }
 
 func (dataset *Dataset) CreateSnapshot(name string) error {
-	if gozfsDataset := dataset.gozfsData(); gozfsDataset != nil {
-		_, err := gozfsDataset.Snapshot(name, false)
+	_ = dataset.lazyLoadGozfsData()
+	if dataset.rawGozfsData != nil {
+		_, err := dataset.rawGozfsData.Snapshot(name, false)
 		return err
 	}
 	return errors.New("cannot create snapshot: no dataset metadata available")
 }
 
 func (dataset *Dataset) DestroySnapshot(name string, recursive bool, dependantClones bool) error {
-	if gozfsDataset := dataset.gozfsData(); gozfsDataset != nil {
-		fullName := fmt.Sprintf("%s@%s", gozfsDataset.Name, name)
+	_ = dataset.lazyLoadGozfsData()
+	if dataset.rawGozfsData != nil {
+		fullName := fmt.Sprintf("%s@%s", dataset.rawGozfsData.Name, name)
 		snapshots, err := gozfs.Snapshots(fullName)
 		if err != nil {
 			return err
@@ -385,30 +316,28 @@ func (dataset *Dataset) GetSnapshots() ([]*Snapshot, error) {
 		return []*Snapshot{}, err
 	}
 
-	names := make([]string, 0, len(snapshotDirs))
+	var rawSnapshots []golibzfs.Dataset
+	if dataset.rawGolibzfsData != nil {
+		rawSnapshots, _ = dataset.rawGolibzfsData.Snapshots()
+	}
+
 	for _, file := range snapshotDirs {
 		_, name := gopath.Split(file)
-		names = append(names, name)
-	}
 
-	var snapshotHandles map[string]*golibzfs.Dataset
-	if dataset.rawGolibzfsData != nil {
-		snapshotHandles = findSnapshotHandles(dataset.rawGolibzfsData, names)
-	}
+		var s *golibzfs.Dataset
+		if len(rawSnapshots) > 0 {
+			s = findSnapshot(rawSnapshots, name)
+		}
 
-	for i, file := range snapshotDirs {
-		name := names[i]
-		// NewSnapshot reads properties via GetProperty, which locks golibzfs.Global.Mtx itself,
-		// so this must happen outside of findSnapshotHandles
-		result = append(result, NewSnapshot(name, file, dataset, snapshotHandles[name]))
+		result = append(result, NewSnapshot(name, file, dataset, s))
 	}
 
 	return result, nil
 }
 
 func (dataset *Dataset) GetName() string {
-	if gozfsDataset := dataset.loadedGozfsData(); gozfsDataset != nil {
-		return gozfsDataset.Name
+	if dataset.rawGozfsData != nil {
+		return dataset.rawGozfsData.Name
 	}
 	if dataset.rawGolibzfsData != nil {
 		nameProperty, err := dataset.rawGolibzfsData.GetProperty(golibzfs.DatasetPropName)
@@ -419,86 +348,21 @@ func (dataset *Dataset) GetName() string {
 	return ""
 }
 
-// DatasetListEntry is a snapshot of the listing properties of a filesystem dataset.
-// All values are fetched up front, so reading them never spawns a zfs process.
-type DatasetListEntry struct {
-	Name      string
-	Used      uint64
-	Available uint64
-	// Mountpoint is the value of the "mountpoint" property (e.g. "/data", "legacy" or "none").
-	Mountpoint string
-	// MountPath is the path the dataset is currently mounted at, or "" if it is not mounted.
-	MountPath string
-}
-
-func (entry DatasetListEntry) TableRowId() string {
-	return entry.Name
-}
-
-// ListAllDatasets returns the listing properties of all filesystem datasets on the system.
-// This executes "zfs list" and reads /proc/mounts, so it must not be called on the UI thread.
-func ListAllDatasets() ([]*DatasetListEntry, error) {
+// GetAllDatasets returns a list of all datasets on the system.
+func GetAllDatasets() ([]*Dataset, error) {
 	fsList, err := gozfs.Filesystems("")
 	if err != nil {
 		return nil, err
 	}
 
-	mountPaths := map[string]string{}
-	mounts, err := os.Open("/proc/mounts")
-	if err == nil {
-		mountPaths = parseZfsMountPaths(mounts)
-		_ = mounts.Close()
-	}
-
-	entries := make([]*DatasetListEntry, 0, len(fsList))
+	var datasets []*Dataset
 	for _, fs := range fsList {
-		entries = append(entries, &DatasetListEntry{
-			Name:       fs.Name,
-			Used:       fs.Used,
-			Available:  fs.Avail,
-			Mountpoint: fs.Mountpoint,
-			MountPath:  mountPaths[fs.Name],
-		})
+		dataset := &Dataset{
+			Path:         fs.Mountpoint,
+			rawGozfsData: fs,
+		}
+		datasets = append(datasets, dataset)
 	}
 
-	return entries, nil
-}
-
-// parseZfsMountPaths maps the names of mounted zfs datasets to their mount path,
-// given content in the format of /proc/mounts. If a dataset is mounted multiple times,
-// the first mount wins.
-func parseZfsMountPaths(reader io.Reader) map[string]string {
-	result := map[string]string{}
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) < 3 || fields[2] != "zfs" {
-			continue
-		}
-		name := unescapeMountField(fields[0])
-		if _, exists := result[name]; exists {
-			continue
-		}
-		result[name] = gopath.Clean(unescapeMountField(fields[1]))
-	}
-	return result
-}
-
-// unescapeMountField decodes the octal escapes (e.g. "\040" for a space) used in /proc/mounts.
-func unescapeMountField(field string) string {
-	if !strings.Contains(field, `\`) {
-		return field
-	}
-	var builder strings.Builder
-	for i := 0; i < len(field); i++ {
-		if field[i] == '\\' && i+4 <= len(field) {
-			if value, err := strconv.ParseUint(field[i+1:i+4], 8, 8); err == nil {
-				builder.WriteByte(byte(value))
-				i += 3
-				continue
-			}
-		}
-		builder.WriteByte(field[i])
-	}
-	return builder.String()
+	return datasets, nil
 }

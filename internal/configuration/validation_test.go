@@ -113,6 +113,46 @@ func TestValidateConfig(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "file browser filter is kept on directory change",
+			config: &Configuration{
+				FileBrowser: FileBrowserConfig{
+					Permissions:             FileBrowserPermissionsFormatOctal,
+					Owner:                   FileBrowserOwnerFormatName,
+					FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeKeep,
+				},
+			},
+		},
+		{
+			name: "file browser filter is cleared on directory change",
+			config: &Configuration{
+				FileBrowser: FileBrowserConfig{
+					Permissions:             FileBrowserPermissionsFormatOctal,
+					Owner:                   FileBrowserOwnerFormatName,
+					FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeClear,
+				},
+			},
+		},
+		{
+			name: "empty file browser filter on directory change means the default",
+			config: &Configuration{
+				FileBrowser: FileBrowserConfig{
+					Permissions: FileBrowserPermissionsFormatOctal,
+					Owner:       FileBrowserOwnerFormatName,
+				},
+			},
+		},
+		{
+			name: "invalid file browser filter on directory change",
+			config: &Configuration{
+				FileBrowser: FileBrowserConfig{
+					Permissions:             FileBrowserPermissionsFormatOctal,
+					Owner:                   FileBrowserOwnerFormatName,
+					FilterOnDirectoryChange: "forget",
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -129,4 +169,10 @@ func TestValidateConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKeepsFilterOnDirectoryChange(t *testing.T) {
+	assert.True(t, FileBrowserConfig{}.KeepsFilterOnDirectoryChange(), "keep is the default")
+	assert.True(t, FileBrowserConfig{FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeKeep}.KeepsFilterOnDirectoryChange())
+	assert.False(t, FileBrowserConfig{FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeClear}.KeepsFilterOnDirectoryChange())
 }

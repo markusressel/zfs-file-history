@@ -111,12 +111,12 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 	snapshotBrowser.diffLoader = uiutil.NewDebouncedLoader(application, func() {
 		currentSelection := snapshotBrowser.GetSelection()
 		snapshotBrowser.isRestoringSelection = true
-		snapshotBrowser.tableContainer.SetData(snapshotBrowser.tableContainer.GetEntries())
+		snapshotBrowser.tableContainer.SetData(snapshotBrowser.tableContainer.GetAllEntries())
 		if currentSelection != nil {
 			snapshotBrowser.tableContainer.Select(currentSelection)
 		}
 		snapshotBrowser.isRestoringSelection = false
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 	})
 
 	snapshotBrowser.tableContainer = snapshotBrowser.createSnapshotBrowserTable(snapshotBrowser.application)
@@ -182,7 +182,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
 				}
 				return nil
-			} else if event.Rune() == 'd' {
+			} else if event.Rune() == 'd' || key == tcell.KeyDelete {
 				currentSelection := snapshotBrowser.GetSelection()
 				if currentSelection != nil {
 					snapshotBrowser.openDeleteDialog(currentSelection)
@@ -193,6 +193,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 		return event
 	})
 
+	snapshotBrowser.tableContainer.SetFilterFunc(snapshotMatchesFilter)
+	snapshotBrowser.tableContainer.SetFilterChangedCallback(snapshotBrowser.updateTitleAndFooter)
 	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
 	snapshotBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
@@ -200,7 +202,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 			return
 		}
 		snapshotBrowser.rememberSelectionForDataset(entry)
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 		snapshotBrowser.emit(SelectedSnapshotChanged{entry})
 	})
 }
@@ -314,13 +316,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 
 	if len(snapshots) == 0 {
 		snapshotBrowser.tableContainer.SetData([]*data.SnapshotBrowserEntry{})
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 		return
 	}
 
 	ctx, seq := snapshotBrowser.diffLoader.Start()
 
-	currentEntries := snapshotBrowser.tableContainer.GetEntries()
+	// all entries, including the ones hidden by the filter
+	currentEntries := snapshotBrowser.tableContainer.GetAllEntries()
 	sameSnapshots := len(currentEntries) == len(snapshots)
 	if sameSnapshots {
 		for i, entry := range currentEntries {
@@ -352,10 +355,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			}
 		}
 		snapshotBrowser.tableContainer.SetData(initialEntries)
-		snapshotBrowser.updateTableTitle()
+		snapshotBrowser.updateTitleAndFooter()
 	}
 
-	entriesToProcess := slices.Clone(snapshotBrowser.tableContainer.GetEntries())
+	// also calculate the diffs of entries hidden by the filter, so they are correct once the filter changes
+	entriesToProcess := slices.Clone(snapshotBrowser.tableContainer.GetAllEntries())
 
 	go func() {
 		defer snapshotBrowser.diffLoader.Stop(seq)
@@ -452,14 +456,32 @@ func (snapshotBrowser *SnapshotBrowserComponent) HasFocus() bool {
 	return snapshotBrowser.container.HasFocus()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) updateTableTitle() {
-	title := "Snapshots"
-	if snapshotBrowser.GetSelection() != nil {
-		currentSelectionIndex := slices.Index(snapshotBrowser.GetEntries(), snapshotBrowser.GetSelection()) + 1
-		totalEntriesCount := len(snapshotBrowser.GetEntries())
-		title = fmt.Sprintf("Snapshot: %s (%d/%d)", snapshotBrowser.GetSelection().Snapshot.Name, currentSelectionIndex, totalEntriesCount)
+// updateTitleAndFooter shows the number of (matching) snapshots in the bottom border.
+// The table shows an active filter in the title. Runs on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) updateTitleAndFooter() {
+	snapshotBrowser.tableContainer.SetTitle("Snapshots")
+	snapshotBrowser.tableContainer.SetFooter(formatFooter(
+		len(snapshotBrowser.tableContainer.GetEntries()),
+		len(snapshotBrowser.tableContainer.GetAllEntries()),
+		snapshotBrowser.tableContainer.IsFilterActive(),
+	))
+}
+
+// formatFooter returns e.g. "48 snapshots", or "3 of 48 snapshots" while a filter is active.
+func formatFooter(matchingCount int, totalCount int, filterActive bool) string {
+	noun := uiutil.Plural(totalCount, "snapshot", "snapshots")
+	if filterActive {
+		return fmt.Sprintf("%d of %d %s", matchingCount, totalCount, noun)
 	}
-	snapshotBrowser.tableContainer.SetTitle(title)
+	if totalCount == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d %s", totalCount, noun)
+}
+
+// snapshotMatchesFilter matches the snapshot name against the filter as a glob, see table.MatchesGlob.
+func snapshotMatchesFilter(entry *data.SnapshotBrowserEntry, filterText string) bool {
+	return table.MatchesGlob(entry.Snapshot.Name, filterText)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) clear() {
@@ -546,6 +568,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetSelection() *data.SnapshotBr
 	return snapshotBrowser.tableContainer.GetSelectedEntry()
 }
 
+// GetAllEntries returns all snapshot entries, including the ones hidden by the filter.
+func (snapshotBrowser *SnapshotBrowserComponent) GetAllEntries() []*data.SnapshotBrowserEntry {
+	return snapshotBrowser.tableContainer.GetAllEntries()
+}
+
+// GetEntries returns the displayed snapshot entries, i.e. the ones that match the filter.
 func (snapshotBrowser *SnapshotBrowserComponent) GetEntries() []*data.SnapshotBrowserEntry {
 	return snapshotBrowser.tableContainer.GetEntries()
 }
@@ -568,6 +596,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	}
 
 	var createdName string
+	// destroying asks for confirmation first, with the result of a dry run
+	var destroy *destroyRequest
+	var destroyPreviewResult *zfs.DestroyPreview
 
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
@@ -576,9 +607,15 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			createdName = name
 			return err
 		case dialog.SnapshotDialogDestroySnapshotActionId:
-			return snapshotBrowser.destroySnapshot(selection, false, false)
+			destroy = &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}}
+			preview, err := destroy.preview()
+			destroyPreviewResult = preview
+			return err
 		case dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
-			return snapshotBrowser.destroySnapshot(selection, true, true)
+			destroy = &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}, recursive: true, dependantClones: true}
+			preview, err := destroy.preview()
+			destroyPreviewResult = preview
+			return err
 		}
 		return nil
 	}
@@ -595,6 +632,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 
 		// Handle downstream states depending on what succeeded
 		switch option.Id {
+		case dialog.SnapshotDialogCloneSnapshotActionId:
+			// asks for the name first, the clone itself is created afterwards
+			snapshotBrowser.openCloneDialog(selection)
+			return
 		case dialog.SnapshotDialogCreateSnapshotActionId:
 			snapshotBrowser.selectLatestOnNextLoad = true
 
@@ -602,8 +643,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 			snapshotBrowser.showDialog(successDialog, nil)
 
 		case dialog.SnapshotDialogDestroySnapshotActionId, dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
-			successDialog := dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshot Destroyed", fmt.Sprintf("Snapshot '%s' destroyed.", selection.Snapshot.Name))
-			snapshotBrowser.showDialog(successDialog, nil)
+			// nothing was destroyed yet, the confirmation does that
+			snapshotBrowser.showDestroyConfirmation(destroy, destroyPreviewResult)
+			return
 		}
 
 		snapshotBrowser.Refresh(true)
@@ -613,48 +655,87 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	snapshotBrowser.showDialog(actionDialog, nil)
 }
 
+// cloneSnapshot creates a new dataset from a snapshot, replaceable in tests.
+var cloneSnapshot = func(snapshot *zfs.Snapshot, targetName string) error {
+	return snapshot.Clone(targetName)
+}
+
+// openCloneDialog asks for the name of the new dataset and creates the clone. Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) openCloneDialog(selection *data.SnapshotBrowserEntry) {
+	snapshot := selection.Snapshot
+	cloneDialog := dialog.NewTextInputDialog(
+		snapshotBrowser.application,
+		"CloneSnapshotDialog",
+		" 🧬 Clone Snapshot ",
+		fmt.Sprintf("Create a new dataset from snapshot '%s'. Name of the new dataset (in the same pool):", snapshot.FullName),
+		snapshot.SuggestCloneName(),
+		func(targetName string) {
+			snapshotBrowser.cloneInBackground(snapshot, targetName)
+		},
+	)
+	snapshotBrowser.showDialog(cloneDialog, nil)
+}
+
+// cloneInBackground creates the clone in the background and shows the result. Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) cloneInBackground(snapshot *zfs.Snapshot, targetName string) {
+	go func() {
+		err := cloneSnapshot(snapshot, targetName)
+
+		snapshotBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Failed to clone snapshot %s to %s: %s", snapshot.FullName, targetName, err.Error())
+				snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Clone Failed", err), nil)
+			} else {
+				snapshotBrowser.showDialog(dialog.NewSuccessDialog(
+					snapshotBrowser.application,
+					"Snapshot Cloned",
+					fmt.Sprintf("Created dataset '%s' from snapshot '%s'.", targetName, snapshot.FullName),
+				), nil)
+			}
+			// the clone may exist even if an error occurred (e.g. it could not be mounted)
+			zfs.RefreshZfsData()
+		})
+	}()
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries []*data.SnapshotBrowserEntry) {
 	if len(entries) <= 0 {
 		return
 	}
 
+	// destroying asks for confirmation first, with the result of a dry run
+	var destroy *destroyRequest
+	var destroyPreviewResult *zfs.DestroyPreview
+
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
 		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
-			for _, entry := range entries {
-				if err := snapshotBrowser.destroySnapshot(entry, false, false); err != nil {
-					logging.Error("Failed to destroy snapshot: %s", err.Error())
-					return err // Break early on failure
-				}
-			}
+			destroy = &destroyRequest{entries: entries}
 		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
-			for _, entry := range entries {
-				if err := snapshotBrowser.destroySnapshot(entry, true, true); err != nil {
-					logging.Error("Failed to destroy snapshot: %s", err.Error())
-					return err // Break early on failure
-				}
-			}
+			destroy = &destroyRequest{entries: entries, recursive: true, dependantClones: true}
+		default:
+			return nil
 		}
-		return nil
+		preview, err := destroy.preview()
+		destroyPreviewResult = preview
+		return err
 	}
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
 
-		// Always clear selection states after an action choice completes
-		if option.Id == dialog.MultiSnapshotDialogClearSelectionActionId || option.Id == dialog.MultiSnapshotDialogDestroySnapshotActionId || option.Id == dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId {
-			snapshotBrowser.ClearMultiSelection()
-		}
-
 		if err != nil {
-			errDialog := dialog.NewErrorDialog(snapshotBrowser.application, "Batch Destroy Failed", err)
-			snapshotBrowser.showDialog(errDialog, nil)
+			logging.Error("Cannot destroy snapshots: %s", err.Error())
+			snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Cannot Destroy", err), nil)
 			return
 		}
 
-		if option.Id == dialog.MultiSnapshotDialogDestroySnapshotActionId || option.Id == dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId {
-			successDialog := dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshots Destroyed", fmt.Sprintf("Successfully destroyed %d snapshots.", len(entries)))
-			snapshotBrowser.showDialog(successDialog, nil)
+		switch option.Id {
+		case dialog.MultiSnapshotDialogClearSelectionActionId:
+			snapshotBrowser.ClearMultiSelection()
+		case dialog.MultiSnapshotDialogDestroySnapshotActionId, dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
+			// nothing was destroyed yet, the confirmation does that
+			snapshotBrowser.showDestroyConfirmation(destroy, destroyPreviewResult)
 		}
 	}
 
@@ -662,34 +743,111 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 	snapshotBrowser.showDialog(actionDialog, nil)
 }
 
+// openDeleteDialog asks for confirmation to destroy the given snapshot, with the result of a dry run.
+// Must be called on the UI thread.
 func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *data.SnapshotBrowserEntry) {
 	if selection == nil {
 		return
 	}
 
-	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
-		if action == dialog.DeleteSnapshotDialogDeleteSnapshotActionId {
-			return snapshotBrowser.destroySnapshot(selection, false, false)
+	request := &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}}
+	go func() {
+		preview, err := request.preview()
+		snapshotBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Cannot destroy snapshot: %s", err.Error())
+				snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Cannot Destroy", err), nil)
+				return
+			}
+			snapshotBrowser.showDestroyConfirmation(request, preview)
+		})
+	}()
+}
+
+// destroyRequest describes which snapshots to destroy and how, captured on the UI thread.
+type destroyRequest struct {
+	entries         []*data.SnapshotBrowserEntry
+	recursive       bool
+	dependantClones bool
+}
+
+func (r *destroyRequest) snapshots() []*zfs.Snapshot {
+	result := make([]*zfs.Snapshot, 0, len(r.entries))
+	for _, entry := range r.entries {
+		result = append(result, entry.Snapshot)
+	}
+	return result
+}
+
+// preview does a dry run of the destroy. Runs in the background.
+func (r *destroyRequest) preview() (*zfs.DestroyPreview, error) {
+	return previewDestroySnapshots(r.snapshots(), r.recursive, r.dependantClones)
+}
+
+// previewDestroySnapshots and destroySnapshots are replaceable in tests, so tests never destroy anything.
+var (
+	previewDestroySnapshots = zfs.PreviewDestroySnapshots
+	destroySnapshots        = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) error {
+		for _, snapshot := range snapshots {
+			if err := snapshot.Destroy(recursive, dependantClones); err != nil {
+				return err
+			}
 		}
 		return nil
+	}
+)
+
+// maxListedDestroyed is the maximum number of destroyed snapshots / datasets listed in the confirmation.
+const maxListedDestroyed = 10
+
+// formatDestroyDescription describes what a destroy would do, based on its dry run.
+func formatDestroyDescription(preview *zfs.DestroyPreview) string {
+	var description strings.Builder
+	fmt.Fprintf(&description, "This frees %s and cannot be undone.\n\n", uiutil.HumanizedBytes(preview.Reclaim))
+	fmt.Fprintf(&description, "Will be destroyed (%d):", len(preview.Destroyed))
+	for i, name := range preview.Destroyed {
+		if i == maxListedDestroyed {
+			fmt.Fprintf(&description, "\n  … and %d more", len(preview.Destroyed)-maxListedDestroyed)
+			break
+		}
+		fmt.Fprintf(&description, "\n  %s", name)
+	}
+	return description.String()
+}
+
+// showDestroyConfirmation shows what would be destroyed and destroys it on confirmation, exactly as previewed.
+// Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) showDestroyConfirmation(request *destroyRequest, preview *zfs.DestroyPreview) {
+	snapshots := request.snapshots()
+
+	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
+		if action != dialog.DestroySnapshotsDialogDestroyActionId {
+			return nil
+		}
+		return destroySnapshots(snapshots, request.recursive, request.dependantClones)
 	}
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
 
 		if err != nil {
-			logging.Error("Failed to destroy snapshot: %s", err.Error())
-			errDialog := dialog.NewErrorDialog(snapshotBrowser.application, "Delete Failed", err)
-			snapshotBrowser.showDialog(errDialog, nil)
+			logging.Error("Failed to destroy snapshots: %s", err.Error())
+			snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Destroy Failed", err), nil)
+			// some snapshots may have been destroyed already
+			snapshotBrowser.ClearMultiSelection()
+			snapshotBrowser.Refresh(true)
 			return
 		}
 
-		// Reload on success thread
-		snapshotBrowser.reloadSnapshotEntries(true)
+		message := fmt.Sprintf("Destroyed %d %s, freed %s.",
+			len(preview.Destroyed), uiutil.Plural(len(preview.Destroyed), "snapshot", "snapshots"), uiutil.HumanizedBytes(preview.Reclaim))
+		snapshotBrowser.showDialog(dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshots Destroyed", message), nil)
+		snapshotBrowser.ClearMultiSelection()
+		snapshotBrowser.Refresh(true)
 	}
 
-	deleteDialog := dialog.NewDeleteSnapshotDialog(snapshotBrowser.application, selection, asyncWork, onComplete)
-	snapshotBrowser.showDialog(deleteDialog, nil)
+	confirmation := dialog.NewDestroySnapshotsDialog(snapshotBrowser.application, formatDestroyDescription(preview), asyncWork, onComplete)
+	snapshotBrowser.showDialog(confirmation, nil)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
@@ -720,9 +878,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.Snap
 	return name, nil
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) destroySnapshot(entry *data.SnapshotBrowserEntry, recursive bool, dependantClones bool) (err error) {
-	snapshot := entry.Snapshot
-	return snapshot.Destroy(recursive, dependantClones)
+// SelectLatestOnNextLoad selects the latest snapshot after the next (re)load, e.g. after creating a snapshot.
+// Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) SelectLatestOnNextLoad() {
+	snapshotBrowser.selectLatestOnNextLoad = true
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
@@ -770,6 +929,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 		uiutil.TableComponentShortcutPageUp,
 		uiutil.TableComponentShortcutPageDown,
 		uiutil.TableComponentShortcutColumns,
+		uiutil.TableComponentShortcutFilter,
 	}
 
 	if snapshotBrowser.GetSelection() != nil {

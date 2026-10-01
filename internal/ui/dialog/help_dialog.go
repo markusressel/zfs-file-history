@@ -40,7 +40,12 @@ func (p *HelpPage) createLayout() {
 		{Key: "←", Value: "Opens parent directory"},
 		{Key: "→", Value: "Enters selected directory"},
 		{Key: "space", Value: "Toggle Multi-Selection"},
-		{Key: "⭾, shift+⭾", Value: "Cycles window focus"},
+		{Key: "ctrl+f", Value: "Filters the list, e.g. daily or *-22???? (enter: keep, esc: clear)"},
+		{Key: "u", Value: "Shows/hides unmounted datasets"},
+		{Key: "t", Value: "Switches datasets between list and tree view"},
+		{Key: "←, →", Value: "Collapses/expands datasets in the tree view"},
+		{Key: "ctrl+n, ctrl+p", Value: "Cycles window focus"},
+		{Key: "⭾, shift+⭾", Value: "Switches page"},
 		emptyEntry,
 		{Key: "esc", Value: "Closes any currently open dialog"},
 		{Key: "ctrl+q", Value: "Quits zfs-file-history"},
@@ -82,7 +87,7 @@ func setHelpTableRow(helpTable *tview.Table, row int, entry *TableEntry) {
 	keyColor := tcell.ColorWhite
 	if entry != emptyEntry {
 		keyText = fmt.Sprintf("%s:", entry.Key)
-		keyColor = theme.Colors.Layout.Table.Header
+		keyColor = theme.Colors.Layout.Table.Accent
 	}
 
 	helpTable.SetCell(row, 0, tview.NewTableCell(keyText).

@@ -23,6 +23,7 @@ var (
 	TableComponentShortcutActions              = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"}
 	TableComponentShortcutDelete               = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Delete"}, Name: "Delete"}
 	TableComponentShortcutColumns              = shortcut_helper.ShortcutEntry{KeyCombo: []string{"F2"}, Name: "Columns"}
+	TableComponentShortcutFilter               = shortcut_helper.ShortcutEntry{KeyCombo: []string{"ctrl+f"}, Name: "Filter"}
 	TableComponentShortcutUp                   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↑"}, Name: "Up"}
 	TableComponentShortcutDown                 = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↓"}, Name: "Down"}
 	TableComponentShortcutPageUp               = shortcut_helper.ShortcutEntry{KeyCombo: []string{"PgUp"}, Name: "Page up"}

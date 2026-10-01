@@ -1,6 +1,7 @@
 package zfs
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -369,6 +370,35 @@ func (s *Snapshot) DetermineDiffStateBetween(path string, prev *Snapshot) diff_s
 	}
 
 	return diff_state.Equal
+}
+
+// Clone creates a new dataset with the given name from this snapshot ("zfs clone").
+// The target must be in the same pool. The clone is created even if it cannot be mounted (e.g. without root),
+// in which case an error is returned nonetheless.
+// This spawns zfs processes, so it must not be called on the UI thread.
+func (s *Snapshot) Clone(targetName string) error {
+	if strings.TrimSpace(targetName) == "" {
+		return errors.New("the name of the clone must not be empty")
+	}
+	snapshots, err := gozfs.Snapshots(s.FullName)
+	if err != nil {
+		return err
+	}
+	if len(snapshots) == 0 {
+		return fmt.Errorf("snapshot not found: %s", s.FullName)
+	}
+	_, err = snapshots[0].Clone(targetName, nil)
+	return err
+}
+
+// SuggestCloneName returns a name for a clone of this snapshot, next to its parent dataset,
+// e.g. "pool/data-daily-2026" for "pool/data@daily-2026".
+func (s *Snapshot) SuggestCloneName() string {
+	datasetName, snapshotName, found := strings.Cut(s.FullName, "@")
+	if !found {
+		return ""
+	}
+	return fmt.Sprintf("%s-%s", datasetName, snapshotName)
 }
 
 func (s *Snapshot) Destroy(recursive bool, dependantClones bool) error {

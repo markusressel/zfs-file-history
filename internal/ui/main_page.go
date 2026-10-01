@@ -89,7 +89,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				mainPage.updateShortcutMap(fileBrowser)
 			}
 		case file_browser.RequestFileHistoryEvent:
-			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetEntries())
+			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetAllEntries())
 			dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
 				mainPage.fileBrowser.Refresh(false)
 			})
@@ -125,9 +125,9 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		switch key {
-		case tcell.KeyTab:
+		case tcell.KeyCtrlN:
 			mainPage.CycleFocus(false)
-		case tcell.KeyBacktab:
+		case tcell.KeyCtrlP:
 			mainPage.CycleFocus(true)
 		case tcell.KeyF5:
 			zfs.RefreshZfsData()
@@ -141,17 +141,11 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		switch e := event.(type) {
 		case file_browser.RequestFocusEvent:
 			application.SetFocus(e.Layout)
-		case file_browser.CreateSnapshotEvent:
-			name := e.SnapshotName
-			err := datasetInfo.CreateSnapshot(name)
-			if err != nil {
-				logging.Error("Failed to create snapshot: %s", err)
-				mainPage.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
-			} else {
-				snapshotBrowser.Refresh(true)
-				snapshotBrowser.SelectLatest()
-				mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", name)))
-			}
+		case file_browser.SnapshotCreatedEvent:
+			// emitted on the UI thread, after the snapshot was created in the background
+			snapshotBrowser.SelectLatestOnNextLoad()
+			snapshotBrowser.Refresh(true)
+			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", e.SnapshotName)))
 		}
 	})
 
@@ -283,51 +277,6 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 		return action, event
 	})
 
-	// Configure drawing of highlighted adjacent borders after the screen draws
-	mainPage.application.SetAfterDrawFunc(func(screen tcell.Screen) {
-		if mainPage.pages != nil {
-			frontPage, _ := mainPage.pages.GetFrontPage()
-			if frontPage != string(Main) {
-				return
-			}
-		}
-
-		// Highlight vertical boundary adjacent line segment
-		if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
-			_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
-			diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
-			_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-
-			if diW > 0 && sbH > 0 {
-				highlightColor := theme.Primary
-				for y := diY; y < sbY+sbH; y++ {
-					for _, x := range []int{diX - 1, diX} {
-						primary, combining, style, _ := screen.GetContent(x, y)
-						newStyle := style.Foreground(highlightColor)
-						screen.SetContent(x, y, primary, combining, newStyle)
-					}
-				}
-			}
-		}
-
-		// Highlight horizontal boundary adjacent line segment
-		if mainPage.hoveredBoundary == boundaryHorizontal || (mainPage.isDragging && mainPage.dragType == dragHorizontal) {
-			diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
-			_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-
-			if diW > 0 && sbH > 0 {
-				highlightColor := theme.Primary
-				for x := diX; x < diX+diW; x++ {
-					for _, y := range []int{sbY - 1, sbY} {
-						primary, combining, style, _ := screen.GetContent(x, y)
-						newStyle := style.Foreground(highlightColor)
-						screen.SetContent(x, y, primary, combining, newStyle)
-					}
-				}
-			}
-		}
-	})
-
 	mainPage.header = header
 
 	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application)
@@ -348,12 +297,29 @@ func (mainPage *MainPage) Init(path string) {
 	mainPage.fileBrowser.SelectFirstEntryIfExists()
 }
 
-func (mainPage *MainPage) CycleFocus(reversed bool) {
-	components := []FocusableUiComponent{
+// focusableComponents returns the components that can be focused, in focus cycle order.
+func (mainPage *MainPage) focusableComponents() []FocusableUiComponent {
+	return []FocusableUiComponent{
 		mainPage.fileBrowser,
 		mainPage.datasetInfo,
 		mainPage.snapshotBrowser,
 	}
+}
+
+// refreshShortcutMap shows the shortcuts of the focused component (or the browser, if none has focus),
+// e.g. after the page was switched to.
+func (mainPage *MainPage) refreshShortcutMap() {
+	for _, component := range mainPage.focusableComponents() {
+		if component.HasFocus() {
+			mainPage.updateShortcutMap(component)
+			return
+		}
+	}
+	mainPage.updateShortcutMap(mainPage.fileBrowser)
+}
+
+func (mainPage *MainPage) CycleFocus(reversed bool) {
+	components := mainPage.focusableComponents()
 
 	currentIndex := -1
 	for i, component := range components {
@@ -395,7 +361,8 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 		shortcutMap := c.GetShortcutMap()
 
 		globalShortcutMapEntries := []shortcut_helper.ShortcutEntry{
-			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Cycle focus"},
+			{KeyCombo: []string{"ctrl+n", "ctrl+p"}, Name: "Cycle focus"},
+			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Switch page"},
 			{KeyCombo: []string{"F5"}, Name: "Refresh"},
 			{KeyCombo: []string{"ctrl+q"}, Name: "Quit"},
 		}
@@ -408,7 +375,7 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 }
 
 func (mainPage *MainPage) updateBorderHighlights() {
-	// Redraw logic is handled by SetAfterDrawFunc based on the hoveredBoundary/isDragging states.
+	// Redraw logic is handled by drawBoundaryHighlights based on the hoveredBoundary/isDragging states.
 }
 
 func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH int) {
@@ -446,4 +413,43 @@ func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY,
 
 func (mainPage *MainPage) SetPages(pages *tview.Pages) {
 	mainPage.pages = pages
+}
+
+// drawBoundaryHighlights highlights the pane boundary that is hovered or dragged.
+// Called after each draw while this page is in front (see CreateUi).
+func (mainPage *MainPage) drawBoundaryHighlights(screen tcell.Screen) {
+	// Highlight vertical boundary adjacent line segment
+	if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
+		_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
+		diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
+		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+
+		if diW > 0 && sbH > 0 {
+			highlightColor := theme.Primary
+			for y := diY; y < sbY+sbH; y++ {
+				for _, x := range []int{diX - 1, diX} {
+					primary, combining, style, _ := screen.GetContent(x, y)
+					newStyle := style.Foreground(highlightColor)
+					screen.SetContent(x, y, primary, combining, newStyle)
+				}
+			}
+		}
+	}
+
+	// Highlight horizontal boundary adjacent line segment
+	if mainPage.hoveredBoundary == boundaryHorizontal || (mainPage.isDragging && mainPage.dragType == dragHorizontal) {
+		diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
+		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+
+		if diW > 0 && sbH > 0 {
+			highlightColor := theme.Primary
+			for x := diX; x < diX+diW; x++ {
+				for _, y := range []int{sbY - 1, sbY} {
+					primary, combining, style, _ := screen.GetContent(x, y)
+					newStyle := style.Foreground(highlightColor)
+					screen.SetContent(x, y, primary, combining, newStyle)
+				}
+			}
+		}
+	}
 }
