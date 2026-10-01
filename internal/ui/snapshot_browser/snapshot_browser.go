@@ -623,6 +623,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 
 		// Handle downstream states depending on what succeeded
 		switch option.Id {
+		case dialog.SnapshotDialogCloneSnapshotActionId:
+			// asks for the name first, the clone itself is created afterwards
+			snapshotBrowser.openCloneDialog(selection)
+			return
 		case dialog.SnapshotDialogCreateSnapshotActionId:
 			snapshotBrowser.selectLatestOnNextLoad = true
 
@@ -639,6 +643,49 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 
 	actionDialog := dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection, asyncWork, onComplete)
 	snapshotBrowser.showDialog(actionDialog, nil)
+}
+
+// cloneSnapshot creates a new dataset from a snapshot, replaceable in tests.
+var cloneSnapshot = func(snapshot *zfs.Snapshot, targetName string) error {
+	return snapshot.Clone(targetName)
+}
+
+// openCloneDialog asks for the name of the new dataset and creates the clone. Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) openCloneDialog(selection *data.SnapshotBrowserEntry) {
+	snapshot := selection.Snapshot
+	cloneDialog := dialog.NewTextInputDialog(
+		snapshotBrowser.application,
+		"CloneSnapshotDialog",
+		" 🧬 Clone Snapshot ",
+		fmt.Sprintf("Create a new dataset from snapshot '%s'. Name of the new dataset (in the same pool):", snapshot.FullName),
+		snapshot.SuggestCloneName(),
+		func(targetName string) {
+			snapshotBrowser.cloneInBackground(snapshot, targetName)
+		},
+	)
+	snapshotBrowser.showDialog(cloneDialog, nil)
+}
+
+// cloneInBackground creates the clone in the background and shows the result. Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) cloneInBackground(snapshot *zfs.Snapshot, targetName string) {
+	go func() {
+		err := cloneSnapshot(snapshot, targetName)
+
+		snapshotBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Failed to clone snapshot %s to %s: %s", snapshot.FullName, targetName, err.Error())
+				snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Clone Failed", err), nil)
+			} else {
+				snapshotBrowser.showDialog(dialog.NewSuccessDialog(
+					snapshotBrowser.application,
+					"Snapshot Cloned",
+					fmt.Sprintf("Created dataset '%s' from snapshot '%s'.", targetName, snapshot.FullName),
+				), nil)
+			}
+			// the clone may exist even if an error occurred (e.g. it could not be mounted)
+			zfs.RefreshZfsData()
+		})
+	}()
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries []*data.SnapshotBrowserEntry) {

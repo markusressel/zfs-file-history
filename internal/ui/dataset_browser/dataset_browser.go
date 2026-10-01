@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -60,24 +59,12 @@ type SelectedDatasetChangedEvent struct {
 	Dataset *zfs.DatasetListEntry
 }
 
-type RequestFocusEvent struct {
-	Layout tview.Primitive
-}
-
 type PathChangedEvent struct {
 	NewPath string
 }
 
 type DatasetBrowserStatusEvent struct {
 	Message *status_message.StatusMessage
-}
-
-type RequestFileHistoryEvent struct {
-	FileEntry *data.FileBrowserEntry
-}
-
-type CreateSnapshotEvent struct {
-	SnapshotName string
 }
 
 type DatasetBrowserComponent struct {
@@ -226,7 +213,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 		// on the header row, these keys are handled by the table to change the sort order
 		if datasetBrowser.tableContainer.GetSelectedEntry() != nil {
 			if key == tcell.KeyRight || key == tcell.KeyEnter {
-				// might open an action menu for dataset later
+				// no actions on data rows (yet), but don't let tview handle them either
 				return nil
 			}
 		}
@@ -410,17 +397,12 @@ func (datasetBrowser *DatasetBrowserComponent) SetPath(path string, checkExists 
 	datasetBrowser.currentPath = path
 }
 
-func (datasetBrowser *DatasetBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
-	// Optional: highlight dataset that contains this snapshot
-}
-
 func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	toggleUnmountedName := "Hide unmounted"
 	if datasetBrowser.hideUnmounted {
 		toggleUnmountedName = "Show unmounted"
 	}
 	return []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{"Enter"}, Name: "Enter Dataset"},
 		uiutil.TableComponentShortcutFilter,
 		{KeyCombo: []string{"u"}, Name: toggleUnmountedName},
 	}

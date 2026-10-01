@@ -1,12 +1,10 @@
 package ui
 
 import (
-	"fmt"
 	"time"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_browser"
 	"zfs-file-history/internal/ui/dataset_info"
-	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
@@ -75,18 +73,12 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 			if datasetBrowser.HasFocus() {
 				datasetPage.updateShortcutMap(datasetBrowser)
 			}
-		case dataset_browser.RequestFileHistoryEvent:
-			overlay := dialog.NewFileHistoryOverlay(datasetPage.application, e.FileEntry, datasetPage.snapshotBrowser.GetAllEntries())
-			dialog.ShowDialogOnPages(datasetPage.application, datasetPage.pages, overlay, func() {
-				datasetPage.datasetBrowser.Refresh(false)
-			})
 		}
 	})
 
 	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
-		switch e := event.(type) {
+		switch event.(type) {
 		case snapshot_browser.SelectedSnapshotChanged:
-			datasetBrowser.SetSelectedSnapshot(e.Snapshot)
 			if snapshotBrowser.HasFocus() {
 				datasetPage.updateShortcutMap(snapshotBrowser)
 			}
@@ -123,24 +115,6 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 		default:
 		}
 		return event
-	})
-
-	datasetBrowser.Events.Subscribe(func(event dataset_browser.Event) {
-		switch e := event.(type) {
-		case dataset_browser.RequestFocusEvent:
-			application.SetFocus(e.Layout)
-		case dataset_browser.CreateSnapshotEvent:
-			name := e.SnapshotName
-			err := datasetInfo.CreateSnapshot(name)
-			if err != nil {
-				logging.Error("Failed to create snapshot: %s", err)
-				datasetPage.showStatusMessage(status_message.NewErrorStatusMessage(fmt.Sprintf("Failed to create snapshot: %s", err)))
-			} else {
-				snapshotBrowser.Refresh(true)
-				snapshotBrowser.SelectLatest()
-				datasetPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", name)))
-			}
-		}
 	})
 
 	return datasetPage

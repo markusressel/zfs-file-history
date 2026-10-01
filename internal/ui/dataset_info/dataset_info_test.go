@@ -187,8 +187,6 @@ func TestDatasetInfo_ErrorClearsDisplay(t *testing.T) {
 
 	onUiThread(t, app, func() {
 		assert.Nil(t, datasetInfo.dataset)
-		// creating a snapshot must not target the previously displayed dataset
-		assert.Error(t, datasetInfo.CreateSnapshot("test"))
 	})
 }
 

@@ -307,10 +307,3 @@ func (datasetInfo *DatasetInfoComponent) SetBorderColor(color tcell.Color) {
 		datasetInfo.container.SetBorderColor(color)
 	}
 }
-
-func (datasetInfo *DatasetInfoComponent) CreateSnapshot(name string) error {
-	if datasetInfo.dataset == nil {
-		return fmt.Errorf("no dataset selected")
-	}
-	return datasetInfo.dataset.CreateSnapshot(name)
-}

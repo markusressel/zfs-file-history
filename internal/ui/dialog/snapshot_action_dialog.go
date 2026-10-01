@@ -15,6 +15,7 @@ const (
 	SnapshotDialogCreateSnapshotActionId DialogActionId = iota
 	SnapshotDialogDestroySnapshotActionId
 	SnapshotDialogDestroySnapshotRecursivelyActionId
+	SnapshotDialogCloneSnapshotActionId
 )
 
 func NewSnapshotActionDialog(
@@ -27,6 +28,10 @@ func NewSnapshotActionDialog(
 		{
 			Id:   SnapshotDialogCreateSnapshotActionId,
 			Name: "📸 Create Snapshot",
+		},
+		{
+			Id:   SnapshotDialogCloneSnapshotActionId,
+			Name: fmt.Sprintf("🧬 Clone '%s'", snapshot.Snapshot.Name),
 		},
 		{
 			Id:       SnapshotDialogDestroySnapshotActionId,
