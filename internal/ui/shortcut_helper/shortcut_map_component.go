@@ -159,7 +159,6 @@ func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 		lines := sm.CalculateHeightFromTerminal()
 		sm.onHeightChanged(lines)
 	}
-	sm.application.ForceDraw()
 }
 
 func (sm *ShortcutMapComponent) Clear() {
@@ -171,7 +170,6 @@ func (sm *ShortcutMapComponent) Clear() {
 		}
 		sm.onHeightChanged(height)
 	}
-	sm.application.ForceDraw()
 }
 
 func (sm *ShortcutMapComponent) GetLayout() *tview.Flex {

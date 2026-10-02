@@ -58,18 +58,34 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 		}
 	})
 
+	// Loading the dataset info and the snapshots of the selected dataset waits until the selection rests, so
+	// holding an arrow key only moves the selection (like in the file browser).
+	selectionDebouncer := uiutil.NewDebouncer(application, uiutil.SelectionDebounceDelay)
+	var selectedDataset *zfs.DatasetListEntry
+	var selectedPath string
+	var pathChanged bool
+	applySelection := func() {
+		if selectedDataset != nil {
+			// by name, so unmounted datasets can be shown as well
+			datasetInfo.SetDatasetName(selectedDataset.Name, selectedDataset.MountPath)
+		}
+		snapshotBrowser.SetFileEntry(nil) // No file selected in dataset view
+		if pathChanged {
+			pathChanged = false
+			snapshotBrowser.SetPath(selectedPath, false)
+		}
+	}
+
 	datasetBrowser.Events.Subscribe(func(event dataset_browser.Event) {
 		switch e := event.(type) {
 		case dataset_browser.PathChangedEvent:
-			snapshotBrowser.SetPath(e.NewPath, false)
+			selectedPath, pathChanged = e.NewPath, true
+			selectionDebouncer.Call(applySelection)
 		case dataset_browser.DatasetBrowserStatusEvent:
 			datasetPage.showStatusMessage(e.Message)
 		case dataset_browser.SelectedDatasetChangedEvent:
-			if e.Dataset != nil {
-				// by name, so unmounted datasets can be shown as well
-				datasetInfo.SetDatasetName(e.Dataset.Name, e.Dataset.MountPath)
-			}
-			snapshotBrowser.SetFileEntry(nil) // No file selected in dataset view
+			selectedDataset = e.Dataset
+			selectionDebouncer.Call(applySelection)
 			if datasetBrowser.HasFocus() {
 				datasetPage.updateShortcutMap(datasetBrowser)
 			}

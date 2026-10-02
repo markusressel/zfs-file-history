@@ -489,7 +489,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 
 		if err != nil {
 			logging.Error("Failed to scan history: %s", err.Error())
-			o.application.QueueUpdate(func() {
+			o.application.QueueUpdateDraw(func() {
 				o.loadingView.Stop()
 				o.pages.HidePage(string(HistoryLoadingPage))
 				o.pages.ShowPage(string(HistoryMainPage))
@@ -504,7 +504,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 		slices.Reverse(chronological)
 		sizes := scanner.sizesOf(chronological)
 
-		o.application.QueueUpdate(func() {
+		o.application.QueueUpdateDraw(func() {
 			o.historyEntries = history
 			o.sizes = sizes
 			o.tableContainer.SetData(history)
@@ -727,7 +727,7 @@ func (o *FileHistoryOverlay) updateDiff() {
 		rawDiff := filterDiffHeaders(diffText)
 		coloredDiff := FormatDiffText(rawDiff, false)
 
-		o.application.QueueUpdate(func() {
+		o.application.QueueUpdateDraw(func() {
 			if !o.diffLoader.IsCurrentSequence(seq) {
 				return
 			}
@@ -905,7 +905,7 @@ func (o *FileHistoryOverlay) copyDiffToClipboard() {
 		o.copyShortcutLabel = "Copied!"
 		o.updateShortcuts()
 		time.AfterFunc(2*time.Second, func() {
-			o.application.QueueUpdate(func() {
+			o.application.QueueUpdateDraw(func() {
 				o.copyShortcutLabel = ""
 				o.updateShortcuts()
 			})
