@@ -18,7 +18,8 @@ const (
 func globalShortcuts() []shortcut_helper.ShortcutEntry {
 	return []shortcut_helper.ShortcutEntry{
 		{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Cycle focus", Group: shortcut_helper.GroupNavigation},
-		{KeyCombo: []string{shortcut_helper.Ctrl(shortcut_helper.KeyTab), shortcut_helper.Ctrl(shortcut_helper.Shift(shortcut_helper.KeyTab))}, Name: "Switch page", Group: shortcut_helper.GroupGlobal},
+		{KeyCombo: []string{"1", "2"}, Name: "Go to page", Group: shortcut_helper.GroupGlobal},
+		{KeyCombo: []string{shortcut_helper.Alt("←"), shortcut_helper.Alt("→")}, Name: "Switch page", Group: shortcut_helper.GroupGlobal},
 		shortcut_helper.ShortcutTimeFormat,
 		{KeyCombo: []string{"F5"}, Name: "Refresh", Group: shortcut_helper.GroupGlobal},
 		shortcut_helper.ShortcutHide,
@@ -120,10 +121,22 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 		if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
 			application.Stop()
 			return nil
-		} else if (event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab) && event.Modifiers()&tcell.ModCtrl != 0 {
-			nextPage := adjacentPage(switchablePages, util.Page(name), event.Key() == tcell.KeyBacktab || event.Modifiers()&tcell.ModShift != 0)
+		} else if (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight) && event.Modifiers()&tcell.ModAlt != 0 && !util.IsTextInputActive(application.GetFocus()) {
+			nextPage := adjacentPage(switchablePages, util.Page(name), event.Key() == tcell.KeyLeft)
 			pagesLayout.SwitchToPage(string(nextPage))
-			// the shortcut map of a page is only updated while it is visible, so refresh it now
+			switch nextPage {
+			case Main:
+				mainPage.refreshShortcutMap()
+			case Dataset:
+				datasetPage.refreshShortcutMap()
+			}
+			return nil
+		} else if event.Key() == tcell.KeyRune && (event.Rune() == '1' || event.Rune() == '2') && !util.IsTextInputActive(application.GetFocus()) {
+			nextPage := Main
+			if event.Rune() == '2' {
+				nextPage = Dataset
+			}
+			pagesLayout.SwitchToPage(string(nextPage))
 			switch nextPage {
 			case Main:
 				mainPage.refreshShortcutMap()

@@ -16,6 +16,11 @@ const (
 	KeyTab    = "⭾"
 )
 
+// Alt returns the name of the key with alt, e.g. "alt+f".
+func Alt(key string) string {
+	return "alt+" + key
+}
+
 // Ctrl returns the name of the key with ctrl, e.g. "ctrl+f".
 func Ctrl(key string) string {
 	return "ctrl+" + key
