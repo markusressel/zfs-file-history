@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -24,11 +25,13 @@ import (
 var (
 	columnName = &table.Column{
 		Id:        0,
+		Key:       "name",
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
 	columnUsed = &table.Column{
 		Id:        1,
+		Key:       "used",
 		Title:     "Used",
 		Alignment: tview.AlignRight,
 	}
@@ -36,31 +39,37 @@ var (
 	// break down columnUsed.
 	columnUsedBySnapshots = &table.Column{
 		Id:        2,
+		Key:       "usedBySnapshots",
 		Title:     "Snapshots",
 		Alignment: tview.AlignRight,
 	}
 	columnUsedByDataset = &table.Column{
 		Id:        3,
+		Key:       "usedByDataset",
 		Title:     "Dataset",
 		Alignment: tview.AlignRight,
 	}
 	columnUsedByChildren = &table.Column{
 		Id:        4,
+		Key:       "usedByChildren",
 		Title:     "Children",
 		Alignment: tview.AlignRight,
 	}
 	columnUsedByRefreservation = &table.Column{
 		Id:        5,
+		Key:       "usedByRefreservation",
 		Title:     "Refreserv",
 		Alignment: tview.AlignRight,
 	}
 	columnAvail = &table.Column{
 		Id:        6,
+		Key:       "available",
 		Title:     "Avail",
 		Alignment: tview.AlignRight,
 	}
 	columnMountpoint = &table.Column{
 		Id:        7,
+		Key:       "mountpoint",
 		Title:     "Mountpoint",
 		Alignment: tview.AlignLeft,
 	}
@@ -285,6 +294,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	// sorted by name, ascending: parents before their children
 	datasetBrowser.tableContainer.SetColumnSpec(tableColumns, columnName, false)
 	datasetBrowser.tableContainer.SetActiveColumns(tableColumns)
+	datasetBrowser.tableContainer.BindColumnLayout(state.Current, "datasetBrowser", tableColumns)
 
 	datasetBrowser.tableContainer.SetSelectionChangedCallback(func(selectedEntry *zfs.DatasetListEntry) {
 		datasetBrowser.Events.Emit(SelectedDatasetChangedEvent{selectedEntry})
@@ -325,15 +335,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 
 // openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) openColumnSelectionDialog() {
-	d := dialog.NewColumnSelectionDialog(
-		datasetBrowser.application,
-		"Configure Dataset Columns",
-		tableColumns,
-		datasetBrowser.tableContainer.GetColumnSpec(),
-		func(activeColumns []*table.Column) {
-			datasetBrowser.tableContainer.SetActiveColumns(activeColumns)
-		},
-	)
+	d := dialog.NewTableColumnSelectionDialog(datasetBrowser.application, "Configure Dataset Columns", tableColumns, datasetBrowser.tableContainer)
 	dialog.ShowDialogOnPages(datasetBrowser.application, datasetBrowser.layout, d, nil)
 }
 

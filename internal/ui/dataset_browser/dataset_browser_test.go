@@ -2,9 +2,11 @@ package dataset_browser
 
 import (
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -620,4 +622,47 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 func TestDatasetBrowser_ShortcutMapContainsColumns(t *testing.T) {
 	browser := NewDatasetBrowser(tview.NewApplication())
 	assert.Contains(t, browser.GetShortcutMap(), uiutil.TableComponentShortcutColumns)
+}
+
+func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store := state.Load(path)
+	state.Current = store
+	t.Cleanup(func() {
+		_ = store.Flush()
+		state.Current = nil
+	})
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	onUiThread(t, app, func() { browser.Focus() })
+	pressKey := func(key tcell.Key, r rune) {
+		screen.InjectKey(key, r, tcell.ModNone)
+		onUiThread(t, app, func() {})
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// remove the first column (name)
+	pressKey(tcell.KeyF2, 0)
+	pressKey(tcell.KeyDelete, 0)
+	pressKey(tcell.KeyEscape, 0)
+	require.NoError(t, store.Flush())
+
+	// a new browser (e.g. after a restart) restores the layout from the file
+	state.Current = state.Load(path)
+	restored := NewDatasetBrowser(tview.NewApplication())
+	assert.Equal(t, tableColumns[1:], restored.tableContainer.GetColumnSpec())
+	state.Current = store
+
+	// reset in the dialog restores the default columns and removes the saved layout
+	pressKey(tcell.KeyF2, 0)
+	pressKey(tcell.KeyRune, 'r')
+	pressKey(tcell.KeyEscape, 0)
+	var columns []*table.Column
+	onUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
+	assert.Equal(t, tableColumns, columns)
+	_, saved := store.TableLayout("datasetBrowser")
+	assert.False(t, saved)
 }

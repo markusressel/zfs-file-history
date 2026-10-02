@@ -10,6 +10,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -54,36 +55,43 @@ type snapshotLoadResult struct {
 var (
 	columnName = &table.Column{
 		Id:        0,
+		Key:       "name",
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
 	columnDate = &table.Column{
 		Id:        1,
+		Key:       "creation",
 		Title:     "Creation",
 		Alignment: tview.AlignLeft,
 	}
 	columnDiff = &table.Column{
 		Id:        2,
+		Key:       "diff",
 		Title:     "Diff",
 		Alignment: tview.AlignCenter,
 	}
 	columnUsed = &table.Column{
 		Id:        3,
+		Key:       "used",
 		Title:     "Used",
 		Alignment: tview.AlignCenter,
 	}
 	columnRefer = &table.Column{
 		Id:        4,
+		Key:       "referenced",
 		Title:     "Refer",
 		Alignment: tview.AlignCenter,
 	}
 	columnRatio = &table.Column{
 		Id:        5,
+		Key:       "compressRatio",
 		Title:     "Ratio",
 		Alignment: tview.AlignCenter,
 	}
 	columnClones = &table.Column{
 		Id:        6,
+		Key:       "clones",
 		Title:     "Clones",
 		Alignment: tview.AlignCenter,
 	}
@@ -197,6 +205,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 	snapshotBrowser.tableContainer.SetFilterChangedCallback(snapshotBrowser.updateTitleAndFooter)
 	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
 	snapshotBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
+	// shared by the snapshot browsers of the main and the dataset page
+	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, "snapshotBrowser", tableColumns)
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		if snapshotBrowser.isRestoringSelection {
 			return
@@ -855,17 +865,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onC
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {
-	currentActive := snapshotBrowser.tableContainer.GetColumnSpec()
-
-	d := dialog.NewColumnSelectionDialog(
-		snapshotBrowser.application,
-		"Configure Snapshot Columns",
-		tableColumns,
-		slices.Clone(currentActive),
-		func(activeColumns []*table.Column) {
-			snapshotBrowser.tableContainer.SetActiveColumns(activeColumns)
-		},
-	)
+	d := dialog.NewTableColumnSelectionDialog(snapshotBrowser.application, "Configure Snapshot Columns", tableColumns, snapshotBrowser.tableContainer)
 	snapshotBrowser.showDialog(d, nil)
 }
 

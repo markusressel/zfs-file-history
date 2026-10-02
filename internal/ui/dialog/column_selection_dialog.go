@@ -13,6 +13,12 @@ import (
 
 const (
 	ColumnSelectionDialogPage util.Page = "ColumnSelectionDialog"
+
+	// columnSelectionShortcutLines is the height of the shortcut map
+	columnSelectionShortcutLines = 2
+	// columnSelectionMinContentWidth is the minimum content width, so all shortcuts fit into
+	// columnSelectionShortcutLines (see TestColumnSelectionDialog_ShortcutsFit)
+	columnSelectionMinContentWidth = 58
 )
 
 type ColumnSelectionDialog struct {
@@ -25,6 +31,8 @@ type ColumnSelectionDialog struct {
 	availableColumns []*table.Column
 
 	onChange func(activeColumns []*table.Column)
+	// onReset restores the default columns and returns them, nil if resetting is not available
+	onReset func() []*table.Column
 
 	layout         *tview.Flex
 	actionChannel  chan DialogActionId
@@ -55,6 +63,31 @@ func NewColumnSelectionDialog(
 	return d
 }
 
+// NewTableColumnSelectionDialog creates a ColumnSelectionDialog that applies the changes to tableContainer directly.
+// If the layout of tableContainer is saved (see table.RowSelectionTable.BindColumnLayout), it can be reset.
+func NewTableColumnSelectionDialog[T table.RowSelectionTableEntry](
+	application *tview.Application,
+	title string,
+	allColumns []*table.Column,
+	tableContainer *table.RowSelectionTable[T],
+) *ColumnSelectionDialog {
+	d := NewColumnSelectionDialog(application, title, allColumns, tableContainer.GetColumnSpec(), tableContainer.SetActiveColumns)
+	if tableContainer.CanResetColumnLayout() {
+		d.SetResetFunc(func() []*table.Column {
+			tableContainer.ResetColumnLayout()
+			return tableContainer.GetColumnSpec()
+		})
+	}
+	return d
+}
+
+// SetResetFunc enables resetting the columns (key "r"): f restores the default columns and returns them.
+func (d *ColumnSelectionDialog) SetResetFunc(f func() []*table.Column) *ColumnSelectionDialog {
+	d.onReset = f
+	d.updateShortcutMap()
+	return d
+}
+
 func (d *ColumnSelectionDialog) createLayout() {
 	d.activeTable = tview.NewTable().SetSelectable(true, false)
 	d.activeTable.SetBorder(true)
@@ -75,7 +108,7 @@ func (d *ColumnSelectionDialog) createLayout() {
 	columns.AddItem(d.availableTable, 0, 1, false)
 
 	content := tview.NewFlex().SetDirection(tview.FlexRow)
-	content.AddItem(d.shortcutMap.GetLayout(), 1, 0, false)
+	content.AddItem(d.shortcutMap.GetLayout(), columnSelectionShortcutLines, 0, false)
 	content.AddItem(columns, 0, 1, true)
 	content.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action == tview.MouseLeftDown {
@@ -107,8 +140,8 @@ func (d *ColumnSelectionDialog) createLayout() {
 		}
 	}
 
-	extraWidth := 2 * (maxColWidth + 4)
-	staticHeight := 1 + len(d.allColumns) + 2
+	extraWidth := max(2*(maxColWidth+4), columnSelectionMinContentWidth)
+	staticHeight := columnSelectionShortcutLines + len(d.allColumns) + 2
 
 	d.layout = createModal(d.title, content, DialogSizeConstraints{
 		Title:             d.title,
@@ -168,7 +201,18 @@ func (d *ColumnSelectionDialog) updateShortcutMap() {
 		)
 	}
 
+	if d.onReset != nil {
+		entries = append(entries, shortcut_helper.ShortcutEntry{KeyCombo: []string{"r"}, Name: "Reset"})
+	}
+
 	d.shortcutMap.SetEntries(entries)
+}
+
+// reset restores the default columns. Must only be called if onReset is set.
+func (d *ColumnSelectionDialog) reset() {
+	d.activeColumns = slices.Clone(d.onReset())
+	d.availableColumns = computeAvailableColumns(d.allColumns, d.activeColumns)
+	d.refreshTables()
 }
 
 func renderColumnTable(tableView *tview.Table, columns []*table.Column) {
@@ -192,6 +236,11 @@ func (d *ColumnSelectionDialog) captureInput(event *tcell.EventKey) *tcell.Event
 			return nil
 		default:
 		}
+	}
+
+	if d.onReset != nil && event.Key() == tcell.KeyRune && event.Rune() == 'r' && event.Modifiers() == tcell.ModNone {
+		d.reset()
+		return nil
 	}
 
 	switch event.Key() {

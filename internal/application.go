@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/profiling"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui"
 	"zfs-file-history/internal/zfs"
 
@@ -24,7 +25,11 @@ func RunApplication(path string) {
 	ui.AddActor(&g, ctx, path)
 	zfs.AddZpoolEventWatcherActor(&g, ctx)
 
-	if err := g.Run(); err != nil {
+	err := g.Run()
+	if flushErr := state.Current.Flush(); flushErr != nil {
+		logging.Error("Cannot save state: %v", flushErr)
+	}
+	if err != nil {
 		logging.Error("%v", err)
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

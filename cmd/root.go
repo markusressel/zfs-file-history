@@ -8,6 +8,7 @@ import (
 	"zfs-file-history/internal"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -45,6 +46,7 @@ var rootCmd = &cobra.Command{
 			path = currentWorkingDirectory
 		}
 
+		state.Init()
 		internal.RunApplication(path)
 	},
 }

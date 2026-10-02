@@ -12,6 +12,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -27,41 +28,49 @@ import (
 var (
 	columnSize = &table.Column{
 		Id:        0,
+		Key:       "size",
 		Title:     "Size",
 		Alignment: tview.AlignLeft,
 	}
 	columnDateTime = &table.Column{
 		Id:        1,
+		Key:       "modified",
 		Title:     "Date/Time",
 		Alignment: tview.AlignLeft,
 	}
 	columnType = &table.Column{
 		Id:        2,
+		Key:       "type",
 		Title:     "Type",
 		Alignment: tview.AlignCenter,
 	}
 	columnDiff = &table.Column{
 		Id:        3,
+		Key:       "diff",
 		Title:     "Diff",
 		Alignment: tview.AlignCenter,
 	}
 	columnPermissions = &table.Column{
 		Id:        4,
+		Key:       "permissions",
 		Title:     "Perm",
 		Alignment: tview.AlignLeft,
 	}
 	columnUID = &table.Column{
 		Id:        5,
+		Key:       "uid",
 		Title:     "UID",
 		Alignment: tview.AlignLeft,
 	}
 	columnGID = &table.Column{
 		Id:        6,
+		Key:       "gid",
 		Title:     "GID",
 		Alignment: tview.AlignLeft,
 	}
 	columnName = &table.Column{
 		Id:        7,
+		Key:       "name",
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
@@ -148,6 +157,7 @@ func (fileBrowser *FileBrowserComponent) setupTable() {
 	fileBrowser.tableContainer.SetFilterChangedCallback(fileBrowser.updateFooter)
 	fileBrowser.tableContainer.SetColumnSpec(tableColumns, columnType, true)
 	fileBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
+	fileBrowser.tableContainer.BindColumnLayout(state.Current, "fileBrowser", tableColumns)
 	fileBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 		if key == tcell.KeyF2 {
@@ -889,17 +899,7 @@ func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, onClosed fu
 }
 
 func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
-	currentActive := fileBrowser.tableContainer.GetColumnSpec()
-
-	d := dialog.NewColumnSelectionDialog(
-		fileBrowser.application,
-		"Configure File Browser Columns",
-		tableColumns,
-		slices.Clone(currentActive),
-		func(activeColumns []*table.Column) {
-			fileBrowser.tableContainer.SetActiveColumns(activeColumns)
-		},
-	)
+	d := dialog.NewTableColumnSelectionDialog(fileBrowser.application, "Configure File Browser Columns", tableColumns, fileBrowser.tableContainer)
 	fileBrowser.showDialog(d, nil)
 }
 

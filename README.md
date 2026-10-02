@@ -26,6 +26,8 @@
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
 * 🧱 **Configurable columns:** Select and order the columns of the file, snapshot and dataset tables (`F2`).
+  The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
+  see [State](#state)), `r` in the column dialog resets them.
 * 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree or as a flat list (`t`), unmounted datasets are
   hidden by default (`u`). The used space is broken down into snapshots, the dataset itself, its children and its
@@ -107,6 +109,16 @@ nano ~/.config/zfs-file-history/zfs-file-history.yaml
 
 An example configuration file including more detailed documentation can be found
 in [zfs-file-history.yaml](/zfs-file-history.yaml).
+
+## State
+
+Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
+(currently the columns and sort order of the tables) in a state file:
+
+* `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`
+
+It is written by the application and specific to the machine, so there is no need to copy it to other systems.
+Deleting it resets all remembered settings.
 
 # Dependencies
 
