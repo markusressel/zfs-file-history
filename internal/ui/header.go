@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal/ui/status_message"
@@ -19,6 +20,8 @@ type ApplicationHeaderComponent struct {
 	version        string
 	statusTextView *tview.TextView
 	lastStatus     *status_message.StatusMessage
+	// pageIndicator shows the page and its position, e.g. "FILES 1/2", see SetPage
+	pageIndicator *tview.TextView
 }
 
 func NewApplicationHeader(application *tview.Application) *ApplicationHeaderComponent {
@@ -61,13 +64,38 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	helpText := "Press F1 or '?' for help"
 	helpTextView := uiutil.CreateAttentionTextView(helpText)
 
+	pageIndicator := tview.NewTextView().
+		SetTextStyle(tcell.StyleDefault.Bold(true)).
+		SetTextColor(theme.Colors.Header.PageIndicator).
+		SetTextAlign(tview.AlignCenter)
+	pageIndicator.SetBackgroundColor(theme.Colors.Header.PageIndicatorBackground)
+
 	layout.AddItem(nameTextView, len(nameText), 0, false)
 	layout.AddItem(versionTextView, len(versionText), 0, false)
 	layout.AddItem(statusTextView, 0, 1, false)
+	// hidden until SetPage
+	layout.AddItem(pageIndicator, 0, 0, false)
 	layout.AddItem(helpTextView, len(helpText)+4, 0, false)
+
+	applicationHeader.pageIndicator = pageIndicator
 
 	applicationHeader.statusTextView = statusTextView
 	applicationHeader.layout = layout
+}
+
+// SetPage shows the title of the page the header belongs to and its position among the pages, e.g. "FILES 1/2".
+// The title is padded to titleWidth (the longest title of all pages), so the indicator has the same width on all
+// pages and the position is right-aligned in it.
+func (applicationHeader *ApplicationHeaderComponent) SetPage(title string, titleWidth int, number int, count int) {
+	text := formatPageIndicator(title, titleWidth, number, count)
+	applicationHeader.pageIndicator.SetText(text)
+	// one space on each side
+	applicationHeader.layout.ResizeItem(applicationHeader.pageIndicator, len(text)+2, 0)
+}
+
+// formatPageIndicator returns e.g. "FILES    1/2" for a titleWidth of 8.
+func formatPageIndicator(title string, titleWidth int, number int, count int) string {
+	return fmt.Sprintf("%-*s %d/%d", titleWidth, strings.ToUpper(title), number, count)
 }
 
 // SetStatus shows a status message. A message with a duration is cleared after it, unless another message was shown

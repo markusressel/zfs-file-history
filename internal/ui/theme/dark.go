@@ -8,9 +8,12 @@ import (
 )
 
 var (
-	Primary   = tcell.ColorIsRGB | tcell.ColorValid | 0xFFA333
-	Secondary = tcell.ColorIsRGB | tcell.ColorValid | 0x48525C
-	Accent    = tcell.ColorDarkOrange
+	Primary = tcell.ColorIsRGB | tcell.ColorValid | 0xFFA333
+	// PrimaryMuted is a less bright variant of Primary (same hue, ~70% of its brightness) for larger areas,
+	// with black text (contrast 7.6:1). Darker variants look brown.
+	PrimaryMuted = tcell.ColorIsRGB | tcell.ColorValid | 0xE8820C
+	Secondary    = tcell.ColorIsRGB | tcell.ColorValid | 0x48525C
+	Accent       = tcell.ColorDarkOrange
 
 	OnPrimary   = tcell.ColorBlack
 	OnSecondary = tcell.ColorWhite
@@ -26,6 +29,9 @@ var (
 
 			VersionBackground: Secondary,
 			Version:           OnSecondary,
+
+			PageIndicatorBackground: PrimaryMuted,
+			PageIndicator:           OnPrimary,
 		},
 		Dialog: DialogColors{
 			Border: Secondary,
