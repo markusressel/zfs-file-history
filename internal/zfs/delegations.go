@@ -50,14 +50,6 @@ type Delegation struct {
 	Permissions []string
 }
 
-// Principal describes who the delegation is granted to, e.g. "user alice", "group staff" or "everyone".
-func (d Delegation) Principal() string {
-	if d.Who == "" {
-		return string(d.WhoType)
-	}
-	return string(d.WhoType) + " " + d.Who
-}
-
 // PermissionSet is a named set of permissions ("zfs allow -s @name"), usable on its dataset and the descendants.
 type PermissionSet struct {
 	Dataset     string
@@ -203,7 +195,7 @@ func (d *Delegations) grants(who identity) map[Permission][]Grant {
 			}
 			permission := Permission(name)
 			if !slices.ContainsFunc(result[permission], func(g Grant) bool {
-				return g.Delegation.Dataset == grant.Delegation.Dataset && g.Delegation.Principal() == grant.Delegation.Principal() && g.Delegation.Scope == grant.Delegation.Scope
+				return g.Delegation.Dataset == grant.Delegation.Dataset && g.Delegation.Grantee() == grant.Delegation.Grantee() && g.Delegation.Scope == grant.Delegation.Scope
 			}) {
 				result[permission] = append(result[permission], grant)
 			}

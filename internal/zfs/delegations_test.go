@@ -28,12 +28,6 @@ func TestParseDelegations(t *testing.T) {
 	}, delegations.Entries)
 }
 
-func TestDelegation_Principal(t *testing.T) {
-	assert.Equal(t, "user alice", Delegation{WhoType: WhoUser, Who: "alice"}.Principal())
-	assert.Equal(t, "group staff", Delegation{WhoType: WhoGroup, Who: "staff"}.Principal())
-	assert.Equal(t, "everyone", Delegation{WhoType: WhoEveryone}.Principal())
-}
-
 func TestDelegations_Grants(t *testing.T) {
 	grants := parseDelegations(testDelegations, "pool/data/child").grants(alice)
 

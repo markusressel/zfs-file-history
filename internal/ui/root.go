@@ -18,6 +18,21 @@ const (
 // switchablePages are the pages cycled through with tab / shift+tab, in order.
 var switchablePages = []util.Page{Main, Dataset}
 
+// pageTitles are the titles of the switchable pages, shown in the page indicator of the header.
+var pageTitles = map[util.Page]string{
+	Main:    "Files",
+	Dataset: "Datasets",
+}
+
+// pageTitleWidth is the length of the longest page title, so the page indicator has the same width on all pages.
+func pageTitleWidth() int {
+	width := 0
+	for _, page := range switchablePages {
+		width = max(width, len(pageTitles[page]))
+	}
+	return width
+}
+
 // adjacentPage returns the page after (or before, if reversed) current, wrapping around.
 func adjacentPage(pages []util.Page, current util.Page, reversed bool) util.Page {
 	index := slices.Index(pages, current)
@@ -60,6 +75,11 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 
 	mainPage.SetPages(pagesLayout)
 	datasetPage.SetPages(pagesLayout)
+
+	headers := map[util.Page]*ApplicationHeaderComponent{Main: mainPage.header, Dataset: datasetPage.header}
+	for index, page := range switchablePages {
+		headers[page].SetPage(pageTitles[page], pageTitleWidth(), index+1, len(switchablePages))
+	}
 
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// ignore events, if some other page is open

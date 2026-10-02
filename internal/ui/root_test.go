@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -167,4 +168,46 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 	waitFor("filter cleared", func() bool { return !screenContains("Filter:")() })
 	press(tcell.KeyRune, '?')
 	waitFor("help opened", func() bool { return frontPage() == string(HelpDialog) })
+}
+
+func TestPageIndicator(t *testing.T) {
+	app, _, _ := createUi(t.TempDir(), true)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	screen.SetSize(200, 30)
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+
+	shows := func(text string) func() bool {
+		return func() bool { return strings.Contains(screenText(t, app, screen), text) }
+	}
+
+	assert.Eventually(t, shows("FILES    1/2"), 3*time.Second, 20*time.Millisecond)
+
+	// bold, in the theme's colors
+	var style tcell.Style
+	onUiThreadT(t, app, func() {
+		cells, width, _ := screen.GetContents()
+		for x := 0; x < width; x++ {
+			if runes := cells[x].Runes; len(runes) > 0 && runes[0] == 'F' && x+1 < width && cells[x+1].Runes[0] == 'I' {
+				style = cells[x].Style
+			}
+		}
+	})
+	foreground, background, attributes := style.Decompose()
+	assert.Equal(t, theme.Colors.Header.PageIndicator, foreground)
+	assert.Equal(t, theme.Colors.Header.PageIndicatorBackground, background)
+	assert.NotZero(t, attributes&tcell.AttrBold, "bold")
+
+	screen.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
+	assert.Eventually(t, shows("DATASETS 2/2"), 3*time.Second, 20*time.Millisecond)
+	assert.False(t, shows("FILES    1/2")())
+	screen.InjectKey(tcell.KeyBacktab, 0, tcell.ModNone)
+	assert.Eventually(t, shows("FILES    1/2"), 3*time.Second, 20*time.Millisecond)
+}
+
+func TestPageIndicatorWidth(t *testing.T) {
+	assert.Equal(t, "FILES    1/2", formatPageIndicator("Files", 8, 1, 2), "the position is right-aligned")
+	assert.Equal(t, "DATASETS 2/2", formatPageIndicator("Datasets", 8, 2, 2))
+	assert.Equal(t, len("Datasets"), pageTitleWidth())
 }
