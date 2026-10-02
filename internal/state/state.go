@@ -40,6 +40,8 @@ type TableLayout struct {
 type fileContent struct {
 	Version int                    `json:"version"`
 	Tables  map[string]TableLayout `json:"tables,omitempty"`
+	// Toggles are on/off settings of the UI, e.g. "datasetBrowser.treeView"
+	Toggles map[string]bool `json:"toggles,omitempty"`
 }
 
 // Store holds the state in memory and saves it to its file in the background after every change.
@@ -104,6 +106,9 @@ func Load(path string) *Store {
 	if store.content.Tables == nil {
 		store.content.Tables = map[string]TableLayout{}
 	}
+	if store.content.Toggles == nil {
+		store.content.Toggles = map[string]bool{}
+	}
 	return store
 }
 
@@ -161,6 +166,34 @@ func (store *Store) DeleteTableLayout(key string) {
 		return
 	}
 	delete(store.content.Tables, key)
+	store.scheduleSave()
+}
+
+// Toggle returns the saved value of the on/off setting with the given key, or defaultValue if it is not saved.
+func (store *Store) Toggle(key string, defaultValue bool) bool {
+	if store == nil {
+		return defaultValue
+	}
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	value, ok := store.content.Toggles[key]
+	if !ok {
+		return defaultValue
+	}
+	return value
+}
+
+// SetToggle saves the value of the on/off setting with the given key.
+func (store *Store) SetToggle(key string, value bool) {
+	if store == nil {
+		return
+	}
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	if current, ok := store.content.Toggles[key]; ok && current == value {
+		return
+	}
+	store.content.Toggles[key] = value
 	store.scheduleSave()
 }
 

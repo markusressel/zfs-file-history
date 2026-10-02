@@ -86,6 +86,13 @@ var (
 	}
 )
 
+// keys of the settings remembered in state.Current
+const (
+	stateKeyTable       = "datasetBrowser"
+	toggleHideUnmounted = "datasetBrowser.hideUnmounted"
+	toggleTreeView      = "datasetBrowser.treeView"
+)
+
 // listDatasets is replaceable in tests.
 var listDatasets = zfs.ListAllDatasets
 
@@ -137,8 +144,8 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 	datasetBrowser := &DatasetBrowserComponent{
 		Events:        util.NewEmitter[Event](),
 		application:   application,
-		hideUnmounted: true,
-		treeView:      true,
+		hideUnmounted: state.Current.Toggle(toggleHideUnmounted, true),
+		treeView:      state.Current.Toggle(toggleTreeView, true),
 		collapsed:     map[string]bool{},
 	}
 
@@ -294,7 +301,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	// sorted by name, ascending: parents before their children
 	datasetBrowser.tableContainer.SetColumnSpec(tableColumns, columnName, false)
 	datasetBrowser.tableContainer.SetActiveColumns(tableColumns)
-	datasetBrowser.tableContainer.BindColumnLayout(state.Current, "datasetBrowser", tableColumns)
+	datasetBrowser.tableContainer.BindColumnLayout(state.Current, stateKeyTable, tableColumns)
 
 	datasetBrowser.tableContainer.SetSelectionChangedCallback(func(selectedEntry *zfs.DatasetListEntry) {
 		datasetBrowser.Events.Emit(SelectedDatasetChangedEvent{selectedEntry})
@@ -379,6 +386,7 @@ func (datasetBrowser *DatasetBrowserComponent) ToggleHideUnmounted() {
 	headerSelected := datasetBrowser.tableContainer.GetSelectedEntry() == nil && !datasetBrowser.tableContainer.IsEmpty()
 
 	datasetBrowser.hideUnmounted = !datasetBrowser.hideUnmounted
+	state.Current.SetToggle(toggleHideUnmounted, datasetBrowser.hideUnmounted)
 	datasetBrowser.updateEntries()
 
 	if headerSelected {
@@ -432,6 +440,7 @@ func (datasetBrowser *DatasetBrowserComponent) ToggleTreeView() {
 	headerSelected := datasetBrowser.tableContainer.GetSelectedEntry() == nil && !datasetBrowser.tableContainer.IsEmpty()
 
 	datasetBrowser.treeView = !datasetBrowser.treeView
+	state.Current.SetToggle(toggleTreeView, datasetBrowser.treeView)
 	datasetBrowser.updateEntries()
 
 	if headerSelected {

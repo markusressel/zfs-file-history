@@ -148,3 +148,39 @@ func TestDefaultPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/home/test/.local/state/zfs-file-history/state.json", path)
 }
+
+func TestStore_Toggles(t *testing.T) {
+	store, path := newTestStore(t)
+
+	assert.True(t, store.Toggle("tree", true))
+	assert.False(t, store.Toggle("tree", false))
+
+	store.SetToggle("tree", false)
+	store.SetToggle("hidden", true)
+	assert.False(t, store.Toggle("tree", true))
+	require.NoError(t, store.Flush())
+
+	loaded := Load(path)
+	assert.False(t, loaded.Toggle("tree", true))
+	assert.True(t, loaded.Toggle("hidden", false))
+	// table layouts and toggles are independent
+	_, ok := loaded.TableLayout("tree")
+	assert.False(t, ok)
+}
+
+func TestStore_SetToggleWithoutChangeDoesNotSave(t *testing.T) {
+	store, path := newTestStore(t)
+	store.SetToggle("tree", true)
+	require.NoError(t, store.Flush())
+	require.NoError(t, os.Remove(path))
+
+	store.SetToggle("tree", true)
+	require.NoError(t, store.Flush())
+	assert.NoFileExists(t, path)
+}
+
+func TestStore_NilToggle(t *testing.T) {
+	var store *Store
+	store.SetToggle("tree", false)
+	assert.True(t, store.Toggle("tree", true))
+}

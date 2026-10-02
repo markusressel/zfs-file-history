@@ -30,8 +30,9 @@
   see [State](#state)), `r` in the column dialog resets them.
 * 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree or as a flat list (`t`), unmounted datasets are
-  hidden by default (`u`). The used space is broken down into snapshots, the dataset itself, its children and its
-  refreservation (sortable, to find the datasets whose snapshots use the most space).
+  hidden by default (`u`). Both choices are remembered between runs. The used space is broken down into snapshots,
+  the dataset itself, its children and its refreservation (sortable, to find the datasets whose snapshots use the
+  most space).
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
@@ -113,7 +114,8 @@ in [zfs-file-history.yaml](/zfs-file-history.yaml).
 ## State
 
 Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
-(currently the columns and sort order of the tables) in a state file:
+(the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview)
+in a state file:
 
 * `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`
 

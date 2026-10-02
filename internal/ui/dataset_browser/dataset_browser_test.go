@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -665,4 +666,41 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 	assert.Equal(t, tableColumns, columns)
 	_, saved := store.TableLayout("datasetBrowser")
 	assert.False(t, saved)
+}
+
+func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store := state.Load(path)
+	state.Current = store
+	t.Cleanup(func() {
+		_ = store.Flush()
+		state.Current = nil
+	})
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	onUiThread(t, app, func() { browser.Focus() })
+	var hiding, tree bool
+	onUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
+	// defaults without a saved state
+	require.True(t, hiding)
+	require.True(t, tree)
+
+	screen.InjectKey(tcell.KeyRune, 'u', tcell.ModNone)
+	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	assert.Eventually(t, func() bool {
+		onUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
+		return !hiding && !tree
+	}, 2*time.Second, 10*time.Millisecond)
+	require.NoError(t, store.Flush())
+
+	// a new browser (e.g. after a restart) restores the toggles from the file
+	state.Current = state.Load(path)
+	restored := NewDatasetBrowser(tview.NewApplication())
+	assert.False(t, restored.IsHidingUnmounted())
+	assert.False(t, restored.IsTreeView())
+	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"u"}, Name: "Hide unmounted"})
+	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"t"}, Name: "Tree view"})
 }
