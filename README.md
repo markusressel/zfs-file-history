@@ -25,9 +25,11 @@
   errors.
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
+* 🧱 **Configurable columns:** Select and order the columns of the file, snapshot and dataset tables (`F2`).
 * 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree or as a flat list (`t`), unmounted datasets are
-  hidden by default (`u`).
+  hidden by default (`u`). The used space is broken down into snapshots, the dataset itself, its children and its
+  refreservation (sortable, to find the datasets whose snapshots use the most space).
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	gopath "path"
 	"strconv"
 	"strings"
@@ -425,6 +426,15 @@ type DatasetListEntry struct {
 	Name      string
 	Used      uint64
 	Available uint64
+	// UsedBySnapshots is the space that would be freed by destroying all snapshots of the dataset ("usedbysnapshots").
+	UsedBySnapshots uint64
+	// UsedByDataset is the space used by the dataset itself ("usedbydataset").
+	UsedByDataset uint64
+	// UsedByChildren is the space used by the descendants of the dataset ("usedbychildren").
+	UsedByChildren uint64
+	// UsedByRefreservation is the space reserved for the dataset by its refreservation, beyond what it actually
+	// uses ("usedbyrefreservation"). Together with the other UsedBy* values, it adds up to Used.
+	UsedByRefreservation uint64
 	// Mountpoint is the value of the "mountpoint" property (e.g. "/data", "legacy" or "none").
 	Mountpoint string
 	// MountPath is the path the dataset is currently mounted at, or "" if it is not mounted.
@@ -435,11 +445,19 @@ func (entry DatasetListEntry) TableRowId() string {
 	return entry.Name
 }
 
+// datasetListProperties are the properties requested by ListAllDatasets, in the order parseDatasetList expects them.
+// The mountpoint is last, so it may contain any character but a newline.
+var datasetListProperties = []string{"name", "used", "available", "usedbysnapshots", "usedbydataset", "usedbychildren", "usedbyrefreservation", "mountpoint"}
+
 // ListAllDatasets returns the listing properties of all filesystem datasets on the system.
 // This executes "zfs list" and reads /proc/mounts, so it must not be called on the UI thread.
 func ListAllDatasets() ([]*DatasetListEntry, error) {
-	fsList, err := gozfs.Filesystems("")
+	output, err := exec.Command("zfs", "list", "-H", "-p", "-t", "filesystem", "-o", strings.Join(datasetListProperties, ",")).Output()
 	if err != nil {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) && len(strings.TrimSpace(string(exitError.Stderr))) > 0 {
+			return nil, errors.New(strings.TrimSpace(string(exitError.Stderr)))
+		}
 		return nil, err
 	}
 
@@ -450,18 +468,46 @@ func ListAllDatasets() ([]*DatasetListEntry, error) {
 		_ = mounts.Close()
 	}
 
-	entries := make([]*DatasetListEntry, 0, len(fsList))
-	for _, fs := range fsList {
-		entries = append(entries, &DatasetListEntry{
-			Name:       fs.Name,
-			Used:       fs.Used,
-			Available:  fs.Avail,
-			Mountpoint: fs.Mountpoint,
-			MountPath:  mountPaths[fs.Name],
-		})
-	}
+	return parseDatasetList(string(output), mountPaths)
+}
 
+// parseDatasetList parses the output of "zfs list -Hp -o <datasetListProperties>". mountPaths maps the names of
+// mounted datasets to their mount path, see parseZfsMountPaths.
+func parseDatasetList(output string, mountPaths map[string]string) ([]*DatasetListEntry, error) {
+	var entries []*DatasetListEntry
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.SplitN(line, "\t", len(datasetListProperties))
+		if len(fields) != len(datasetListProperties) {
+			return nil, fmt.Errorf("unexpected output of zfs list: %q", line)
+		}
+
+		entry := &DatasetListEntry{
+			Name:       fields[0],
+			Mountpoint: fields[7],
+			MountPath:  mountPaths[fields[0]],
+		}
+		sizes := []*uint64{&entry.Used, &entry.Available, &entry.UsedBySnapshots, &entry.UsedByDataset, &entry.UsedByChildren, &entry.UsedByRefreservation}
+		for i, size := range sizes {
+			value, err := parseSizeProperty(fields[i+1])
+			if err != nil {
+				return nil, fmt.Errorf("cannot parse %s of %s: %w", datasetListProperties[i+1], entry.Name, err)
+			}
+			*size = value
+		}
+		entries = append(entries, entry)
+	}
 	return entries, nil
+}
+
+// parseSizeProperty parses a size in bytes, as printed by "zfs list -p". "-" (not applicable) is 0.
+func parseSizeProperty(value string) (uint64, error) {
+	if value == "-" {
+		return 0, nil
+	}
+	return strconv.ParseUint(value, 10, 64)
 }
 
 // parseZfsMountPaths maps the names of mounted zfs datasets to their mount path,
