@@ -142,8 +142,8 @@ func datasetPermissionsShortcuts(isRoot bool) []shortcut_helper.ShortcutEntry {
 		)
 	}
 	return append(shortcuts,
-		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyPgUp, shortcut_helper.KeyPgDn}, Name: "Scroll delegations"},
-		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Discard/close"},
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyPgUp, shortcut_helper.KeyPgDn}, Name: "Scroll delegations", Group: shortcut_helper.GroupNavigation},
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Discard/close", Group: shortcut_helper.GroupGlobal},
 	)
 }
 

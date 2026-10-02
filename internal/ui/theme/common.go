@@ -147,8 +147,17 @@ type LayoutTableColors struct {
 }
 
 type ShortcutMapColors struct {
+	// KeyCombo is the color of the keys of actions (shortcut_helper.GroupAction), the ones looked for most
 	KeyCombo tcell.Color
-	Name     tcell.Color
+	// ViewKeyCombo is the color of the keys that change what is shown (columns, filter, sorting, modes)
+	ViewKeyCombo tcell.Color
+	// NavigationKeyCombo is the color of the keys that move the selection or the focus
+	NavigationKeyCombo tcell.Color
+	// GlobalKeyCombo is the color of the keys that work everywhere (switch page, refresh, quit)
+	GlobalKeyCombo tcell.Color
+	Name           tcell.Color
+	// Separator is the color of the line between groups of shortcuts
+	Separator tcell.Color
 }
 
 func CreateTitleText(text string) string {

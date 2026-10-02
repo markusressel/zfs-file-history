@@ -1083,20 +1083,17 @@ func (fileBrowser *FileBrowserComponent) currentFolderEntry() *data.FileBrowserE
 
 func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	shortcutMap := []shortcut_helper.ShortcutEntry{
-		uiutil.TableComponentShortcutUp,
-		uiutil.TableComponentShortcutDown,
-		uiutil.TableComponentShortcutPageUp,
-		uiutil.TableComponentShortcutPageDown,
+		uiutil.TableComponentShortcutMove,
 		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
 		{KeyCombo: []string{"H"}, Name: "Folder history"},
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {
-		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory"})
+		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory", Group: shortcut_helper.GroupNavigation})
 
 		if ok, _ := selection.CanEnter(); ok {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Enter directory"})
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Enter directory", Group: shortcut_helper.GroupNavigation})
 		}
 
 		shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutActions)

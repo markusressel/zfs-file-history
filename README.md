@@ -51,7 +51,8 @@
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like
   "3 minutes ago" (remembered between runs).
-* ⌨️ **Inline shortcuts:** The available keys are shown at the bottom of each page and overlay. `?` (or `F1`) hides
+* ⌨️ **Inline shortcuts:** The available keys are shown at the bottom of each page and overlay, grouped and
+  color-coded: actions first, then view options, navigation and global keys. `?` (or `F1`) hides
   them to make room in small terminals, and shows them again (remembered between runs).
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.

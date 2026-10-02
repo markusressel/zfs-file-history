@@ -669,13 +669,13 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 	shortcuts := []shortcut_helper.ShortcutEntry{
 		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
-		{KeyCombo: []string{"u"}, Name: toggleUnmountedName},
-		{KeyCombo: []string{"t"}, Name: toggleTreeViewName},
+		{KeyCombo: []string{"u"}, Name: toggleUnmountedName, Group: shortcut_helper.GroupView},
+		{KeyCombo: []string{"t"}, Name: toggleTreeViewName, Group: shortcut_helper.GroupView},
 	}
 	if datasetBrowser.treeView && datasetBrowser.tableContainer.GetSelectedEntry() != nil {
 		shortcuts = append(shortcuts,
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"-", "+"}, Name: "Collapse/expand"},
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"*"}, Name: "All"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"-", "+"}, Name: "Collapse/expand", Group: shortcut_helper.GroupView},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"*"}, Name: "All", Group: shortcut_helper.GroupView},
 		)
 	}
 	if datasetBrowser.tableContainer.GetSelectedEntry() != nil {

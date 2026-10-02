@@ -588,8 +588,8 @@ func (o *FolderHistoryOverlay) toggleMode() {
 
 func (o *FolderHistoryOverlay) updateShortcuts() {
 	entries := []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{shortcut_helper.KeyTab}, Name: "Switch list"},
-		{KeyCombo: []string{"d"}, Name: "Toggle mode"},
+		{KeyCombo: []string{shortcut_helper.KeyTab}, Name: "Switch list", Group: shortcut_helper.GroupNavigation},
+		{KeyCombo: []string{"d"}, Name: "Toggle mode", Group: shortcut_helper.GroupView},
 	}
 	if o.changes.HasFocus() {
 		entries = append(entries,
@@ -604,7 +604,7 @@ func (o *FolderHistoryOverlay) updateShortcuts() {
 		uiutil.TableComponentShortcutColumns,
 		shortcut_helper.ShortcutTimeFormat,
 		shortcut_helper.ShortcutHide,
-		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close"},
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close", Group: shortcut_helper.GroupGlobal},
 	)
 	o.shortcuts.SetEntries(entries)
 }

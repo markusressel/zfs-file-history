@@ -98,7 +98,7 @@ func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 	}
 
 	// shown by the file browser for both the header and data rows, but not by the dataset browser
-	const mainPageShortcut = "[PgUp]: Page up"
+	const mainPageShortcut = "[↑ǀ↓ǀPgUpǀPgDn]: Move"
 	const datasetPageShortcut = "[u]: Show unmounted"
 
 	waitForText(mainPageShortcut)

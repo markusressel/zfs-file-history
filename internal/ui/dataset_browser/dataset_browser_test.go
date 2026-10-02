@@ -701,6 +701,6 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	restored := NewDatasetBrowser(tview.NewApplication())
 	assert.False(t, restored.IsHidingUnmounted())
 	assert.False(t, restored.IsTreeView())
-	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"u"}, Name: "Hide unmounted"})
-	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"t"}, Name: "Tree view"})
+	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"u"}, Name: "Hide unmounted", Group: shortcut_helper.GroupView})
+	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"t"}, Name: "Tree view", Group: shortcut_helper.GroupView})
 }

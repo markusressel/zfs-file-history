@@ -186,8 +186,8 @@ func (d *ColumnSelectionDialog) updateShortcutMap() {
 	}
 
 	entries := []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{"←", "→"}, Name: "Switch Side"},
-		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close"},
+		{KeyCombo: []string{"←", "→"}, Name: "Switch Side", Group: shortcut_helper.GroupNavigation},
+		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close", Group: shortcut_helper.GroupGlobal},
 	}
 
 	if d.focusActive {

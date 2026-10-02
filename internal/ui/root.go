@@ -17,12 +17,12 @@ const (
 // globalShortcuts are the shortcuts that work on all pages, shown after the ones of the focused component.
 func globalShortcuts() []shortcut_helper.ShortcutEntry {
 	return []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{shortcut_helper.Ctrl("n"), shortcut_helper.Ctrl("p")}, Name: "Cycle focus"},
-		{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Switch page"},
+		{KeyCombo: []string{shortcut_helper.Ctrl("n"), shortcut_helper.Ctrl("p")}, Name: "Cycle focus", Group: shortcut_helper.GroupNavigation},
+		{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Switch page", Group: shortcut_helper.GroupGlobal},
 		shortcut_helper.ShortcutTimeFormat,
-		{KeyCombo: []string{"F5"}, Name: "Refresh"},
+		{KeyCombo: []string{"F5"}, Name: "Refresh", Group: shortcut_helper.GroupGlobal},
 		shortcut_helper.ShortcutHide,
-		{KeyCombo: []string{shortcut_helper.Ctrl("q")}, Name: "Quit"},
+		{KeyCombo: []string{shortcut_helper.Ctrl("q")}, Name: "Quit", Group: shortcut_helper.GroupGlobal},
 	}
 }
 

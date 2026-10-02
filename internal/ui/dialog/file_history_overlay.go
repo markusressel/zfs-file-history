@@ -426,23 +426,23 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 
 	if o.tableContainer.HasFocus() {
 		entries = []shortcut_helper.ShortcutEntry{
-			{KeyCombo: []string{shortcut_helper.KeyTab}, Name: "Focus Diff"},
-			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
+			{KeyCombo: []string{shortcut_helper.KeyTab}, Name: "Focus Diff", Group: shortcut_helper.GroupNavigation},
+			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode", Group: shortcut_helper.GroupView},
 			{KeyCombo: []string{"c"}, Name: copyLabel},
 			{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Restore version"},
 			uiutil.TableComponentShortcutColumns,
 			shortcut_helper.ShortcutTimeFormat,
 			shortcut_helper.ShortcutHide,
-			{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close history"},
+			{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close history", Group: shortcut_helper.GroupGlobal},
 		}
 	} else {
 		entries = []shortcut_helper.ShortcutEntry{
-			{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Focus List"},
-			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
+			{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Focus List", Group: shortcut_helper.GroupNavigation},
+			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode", Group: shortcut_helper.GroupView},
 			{KeyCombo: []string{"c"}, Name: copyLabel},
 			shortcut_helper.ShortcutTimeFormat,
 			shortcut_helper.ShortcutHide,
-			{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close history"},
+			{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close history", Group: shortcut_helper.GroupGlobal},
 		}
 	}
 	o.shortcutHelp.SetEntries(entries)

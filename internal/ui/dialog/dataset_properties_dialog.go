@@ -151,8 +151,8 @@ func datasetPropertiesShortcuts() []shortcut_helper.ShortcutEntry {
 		{KeyCombo: []string{"i"}, Name: "Inherit"},
 		util.TableComponentShortcutFilter,
 		util.TableComponentShortcutColumns,
-		{KeyCombo: []string{"←", "→"}, Name: "Scroll"},
-		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close"},
+		{KeyCombo: []string{"←", "→"}, Name: "Scroll", Group: shortcut_helper.GroupNavigation},
+		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close", Group: shortcut_helper.GroupGlobal},
 	}
 }
 

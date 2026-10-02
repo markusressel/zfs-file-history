@@ -3,7 +3,9 @@ package shortcut_helper
 import (
 	"testing"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
@@ -138,4 +140,42 @@ func TestDrawFuncHeightResize(t *testing.T) {
 
 	// Invoke the DrawFunc to trigger size verification logic
 	drawFunc(nil, 0, 0, 8, 1)
+}
+
+func TestFormatEntriesGroupsShortcuts(t *testing.T) {
+	entries := []ShortcutEntry{
+		{KeyCombo: []string{"q"}, Name: "Quit", Group: GroupGlobal},
+		{KeyCombo: []string{"↑", "↓"}, Name: "Move", Group: GroupNavigation},
+		{KeyCombo: []string{"h"}, Name: "History"},
+		{KeyCombo: []string{"F2"}, Name: "Columns", Group: GroupView},
+		{KeyCombo: []string{"r"}, Name: "Restore file"},
+	}
+
+	// ordered by group (stable within a group), groups separated by a line
+	assert.Equal(t,
+		"[h]: History  [r]: Restore file  │  [F2]: Columns  │  [↑ǀ↓]: Move  │  [q]: Quit",
+		formatEntries(entries, false))
+	assert.Equal(t, "[h]: History", formatEntries(entries[2:3], false), "no separator for a single group")
+
+	// the keys of each group have their own color, the shown text is the same
+	styled := formatEntries(entries, true)
+	for _, color := range []tcell.Color{
+		theme.Colors.ShortcutMap.KeyCombo, theme.Colors.ShortcutMap.ViewKeyCombo,
+		theme.Colors.ShortcutMap.NavigationKeyCombo, theme.Colors.ShortcutMap.GlobalKeyCombo,
+		theme.Colors.ShortcutMap.Separator,
+	} {
+		assert.Contains(t, styled, txwidgets.ColorTag(color))
+	}
+	view := tview.NewTextView().SetDynamicColors(true).SetText(styled)
+	assert.Equal(t, formatEntries(entries, false), view.GetText(true))
+	assert.Equal(t, entries[0].Name, "Quit", "the entries are not reordered in place")
+}
+
+func TestGroupColorsDiffer(t *testing.T) {
+	colors := map[tcell.Color]ShortcutGroup{}
+	for _, group := range []ShortcutGroup{GroupAction, GroupView, GroupNavigation, GroupGlobal} {
+		previous, exists := colors[group.keyColor()]
+		assert.False(t, exists, "group %d has the color of group %d", group, previous)
+		colors[group.keyColor()] = group
+	}
 }

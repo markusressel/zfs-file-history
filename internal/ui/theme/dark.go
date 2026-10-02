@@ -94,8 +94,12 @@ var (
 			},
 		},
 		ShortcutMap: ShortcutMapColors{
-			KeyCombo: Accent,
-			Name:     tcell.ColorLightGray,
+			KeyCombo:           Accent,
+			ViewKeyCombo:       tcell.ColorIsRGB | tcell.ColorValid | 0x6CB6E8,
+			NavigationKeyCombo: tcell.ColorIsRGB | tcell.ColorValid | 0x8CC98C,
+			GlobalKeyCombo:     tcell.ColorIsRGB | tcell.ColorValid | 0x9AA5B1,
+			Name:               tcell.ColorLightGray,
+			Separator:          Secondary,
 		},
 		Permissions: PermissionColors{
 			Granted: tcell.ColorGreen,

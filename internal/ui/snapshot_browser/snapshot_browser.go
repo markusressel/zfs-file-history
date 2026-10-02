@@ -975,10 +975,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
 
 func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	shortcutMap := []shortcut_helper.ShortcutEntry{
-		uiutil.TableComponentShortcutUp,
-		uiutil.TableComponentShortcutDown,
-		uiutil.TableComponentShortcutPageUp,
-		uiutil.TableComponentShortcutPageDown,
+		uiutil.TableComponentShortcutMove,
 		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
 	}

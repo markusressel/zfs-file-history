@@ -29,7 +29,7 @@ func Shift(key string) string {
 
 var (
 	// ShortcutTimeFormat switches times in tables between absolute and relative (see uiutil.ToggleRelativeTimes).
-	ShortcutTimeFormat = ShortcutEntry{KeyCombo: []string{"T"}, Name: "Time format"}
+	ShortcutTimeFormat = ShortcutEntry{KeyCombo: []string{"T"}, Name: "Time format", Group: GroupView}
 	// ShortcutHide hides the shortcuts (see ToggleShortcuts).
-	ShortcutHide = ShortcutEntry{KeyCombo: []string{"?"}, Name: "Hide shortcuts"}
+	ShortcutHide = ShortcutEntry{KeyCombo: []string{"?"}, Name: "Hide shortcuts", Group: GroupGlobal}
 )
