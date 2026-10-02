@@ -3,6 +3,7 @@ package dialog
 import (
 	"strings"
 	"unicode/utf8"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 
@@ -44,9 +45,9 @@ func NewTextInputDialog(
 }
 
 func (d *TextInputDialog) createLayout(title string, description string, initialText string) {
-	helpText := txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "enter") +
+	helpText := txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%s", shortcut_helper.KeyEnter) +
 		txwidgets.Span(theme.Colors.ShortcutMap.Name, ": confirm  ") +
-		txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "esc") +
+		txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%s", shortcut_helper.KeyEsc) +
 		txwidgets.Span(theme.Colors.ShortcutMap.Name, ": cancel")
 
 	// leave room for editing longer names than the initial text

@@ -93,6 +93,9 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	}, 3*time.Second, 10*time.Millisecond, "diff with line counts")
 
 	assert.GreaterOrEqual(t, row(lines, "Size"), 0, "size sparkline")
+	// the shortcuts of the focused list (shortcut names use non-breaking spaces)
+	assert.GreaterOrEqual(t, row(lines, "[T]:\u00a0Time\u00a0format"), 0, "time format shortcut")
+	assert.GreaterOrEqual(t, row(lines, "[F2]:\u00a0Columns"), 0, "columns shortcut")
 	assert.GreaterOrEqual(t, row(lines, "▲"), 0, "selected version")
 	assert.Less(t, row(lines, "Presence"), row(lines, "Changes (Working Copy"), "the metadata is above the diff")
 	assert.Equal(t, row(lines, "Snapshots"), row(lines, "Changes (Working Copy"), "both start on the same line")
@@ -102,4 +105,21 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	var sizes []int64
 	onUiThread(t, app, func() { sizes = overlay.sizes })
 	assert.Equal(t, []int64{4, 8}, sizes, "d1 and d2, oldest first")
+
+	// the boundary between the versions and the changes can be dragged
+	var boundary, leftWidth int
+	onUiThread(t, app, func() {
+		boundary, _, _, _ = overlay.rightLayoutContainer.GetRect()
+		_, _, leftWidth, _ = overlay.tableContainer.GetLayout().GetRect()
+	})
+	screen.InjectMouse(boundary, 20, tcell.Button1, tcell.ModNone)
+	time.Sleep(50 * time.Millisecond)
+	screen.InjectMouse(boundary+15, 20, tcell.Button1, tcell.ModNone)
+	time.Sleep(50 * time.Millisecond)
+	screen.InjectMouse(boundary+15, 20, tcell.ButtonNone, tcell.ModNone)
+	require.Eventually(t, func() bool {
+		width := 0
+		onUiThread(t, app, func() { _, _, width, _ = overlay.tableContainer.GetLayout().GetRect() })
+		return width >= leftWidth+10
+	}, 3*time.Second, 10*time.Millisecond, "versions wider")
 }

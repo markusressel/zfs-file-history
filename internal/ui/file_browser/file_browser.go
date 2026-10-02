@@ -1110,7 +1110,7 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		}
 
 		if selection.HasSnapshot() && selection.DiffState != diff_state.Equal {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Ctrl+r"}, Name: "Restore"})
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("r")}, Name: "Restore"})
 		}
 	} else {
 		shortcutMap = append(shortcutMap,

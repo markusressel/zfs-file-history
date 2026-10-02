@@ -69,6 +69,8 @@ type FolderHistoryOverlay struct {
 	changes     *table.RowSelectionTable[folderChange]
 	details     *tview.TextView
 	shortcuts   *shortcut_helper.ShortcutMapComponent
+	// split separates the timeline and the changes, its boundary can be dragged with the mouse
+	split *uiutil.ResizableSplit
 
 	// state, only accessed on the UI thread
 	history  *folderHistory
@@ -116,6 +118,17 @@ func (o *FolderHistoryOverlay) Close() {
 	}
 }
 
+// captureMouse lets the boundary between the timeline and the changes be dragged (see ShowDialogOnPages).
+func (o *FolderHistoryOverlay) captureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	return o.split.MouseCapture(action, event)
+}
+
+// isMainPageInFront returns whether the history is shown, not the loading view or a dialog above it.
+func (o *FolderHistoryOverlay) isMainPageInFront() bool {
+	front, _ := o.pages.GetFrontPage()
+	return front == string(HistoryMainPage)
+}
+
 func (o *FolderHistoryOverlay) folderName() string {
 	return filepath.Base(o.folderPath)
 }
@@ -149,7 +162,8 @@ func (o *FolderHistoryOverlay) createLayout() {
 
 	o.details = tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetWordWrap(true)
 	o.details.SetDrawFunc(drawLeftDivider)
-	o.shortcuts = shortcut_helper.NewShortcutMap(o.application)
+	// hidden with ? (see shortcut_helper.ToggleShortcuts)
+	o.shortcuts = shortcut_helper.NewShortcutMap(o.application).SetCollapsible()
 
 	left := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(o.modeView, 1, 0, false).
@@ -158,9 +172,9 @@ func (o *FolderHistoryOverlay) createLayout() {
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(o.details, folderHistoryHeaderLines, 0, false).
 		AddItem(o.changes.GetLayout(), 0, 1, false)
-	split := tview.NewFlex().
-		AddItem(left, 0, 2, true).
-		AddItem(right, 0, 3, false)
+	o.split = uiutil.NewResizableSplit(o.application, left, right, 2, 3).
+		SetEnabledFunc(o.isMainPageInFront)
+	split := o.split
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(split, 0, 1, true).
 		AddItem(o.shortcuts.GetLayout(), 1, 0, false)
@@ -252,7 +266,7 @@ func (o *FolderHistoryOverlay) toTimelineCells(row int, columns []*table.Column,
 				text = fmt.Sprintf("%d", len(version.Listing.Entries))
 			}
 		case timelineColumnDate:
-			text = version.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
+			text = uiutil.FormatTime(version.Snapshot.Properties.CreationDate)
 		}
 		cells = append(cells, tview.NewTableCell(text).SetAlign(column.Alignment))
 	}
@@ -455,7 +469,7 @@ func (o *FolderHistoryOverlay) toChangeCells(row int, columns []*table.Column, c
 		case changeColumnSize:
 			text = formatChangeSize(change)
 		case changeColumnModified:
-			text = newestEntry(change).ModTime.Format(theme.Style.Format.DateTime)
+			text = uiutil.FormatTime(newestEntry(change).ModTime)
 		}
 		cells = append(cells, tview.NewTableCell(text).SetTextColor(cellColor).SetAlign(column.Alignment))
 	}
@@ -574,21 +588,23 @@ func (o *FolderHistoryOverlay) toggleMode() {
 
 func (o *FolderHistoryOverlay) updateShortcuts() {
 	entries := []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{"⭾"}, Name: "Switch list"},
+		{KeyCombo: []string{shortcut_helper.KeyTab}, Name: "Switch list"},
 		{KeyCombo: []string{"d"}, Name: "Toggle mode"},
 	}
 	if o.changes.HasFocus() {
 		entries = append(entries,
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Restore entry"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Restore entry"},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History of entry"},
 			uiutil.TableComponentShortcutFilter,
 		)
 	} else {
-		entries = append(entries, shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Restore folder"})
+		entries = append(entries, shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Restore folder"})
 	}
 	entries = append(entries,
 		uiutil.TableComponentShortcutColumns,
-		shortcut_helper.ShortcutEntry{KeyCombo: []string{"Esc"}, Name: "Close"},
+		shortcut_helper.ShortcutTimeFormat,
+		shortcut_helper.ShortcutHide,
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close"},
 	)
 	o.shortcuts.SetEntries(entries)
 }

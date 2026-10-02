@@ -146,13 +146,13 @@ func (d *DatasetPropertiesDialog) createLayout(properties []*zfs.Property) {
 
 func datasetPropertiesShortcuts() []shortcut_helper.ShortcutEntry {
 	return []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{"Enter"}, Name: "Edit"},
+		{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Edit"},
 		{KeyCombo: []string{"a"}, Name: "Add"},
 		{KeyCombo: []string{"i"}, Name: "Inherit"},
 		util.TableComponentShortcutFilter,
 		util.TableComponentShortcutColumns,
 		{KeyCombo: []string{"←", "→"}, Name: "Scroll"},
-		{KeyCombo: []string{"Esc"}, Name: "Close"},
+		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close"},
 	}
 }
 

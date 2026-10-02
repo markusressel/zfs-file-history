@@ -62,6 +62,8 @@ type FileHistoryOverlay struct {
 	// diffFooter shows the number of added and removed lines in the bottom border of the diff
 	diffFooter   *uiutil.BorderFooter
 	shortcutHelp *shortcut_helper.ShortcutMapComponent
+	// split separates the versions and the changes, its boundary can be dragged with the mouse
+	split *uiutil.ResizableSplit
 	// sizes are the sizes of the file in the versions of historyEntries, oldest first (-1: absent), for the
 	// sparkline. Only accessed on the UI thread.
 	sizes []int64
@@ -140,7 +142,8 @@ func NewFileHistoryOverlay(
 	uiutil.SetupWindow(overlay.diffView, " Changes ")
 	overlay.diffFooter = uiutil.NewBorderFooter(overlay.diffView.Box)
 
-	overlay.shortcutHelp = shortcut_helper.NewShortcutMap(application)
+	// hidden with ? (see shortcut_helper.ToggleShortcuts)
+	overlay.shortcutHelp = shortcut_helper.NewShortcutMap(application).SetCollapsible()
 	overlay.updateShortcuts()
 
 	overlay.layout = overlay.createLayout()
@@ -158,6 +161,17 @@ func NewFileHistoryOverlay(
 	overlay.scanHistoryAsync()
 
 	return overlay
+}
+
+// captureMouse lets the boundary between the versions and the changes be dragged (see ShowDialogOnPages).
+func (o *FileHistoryOverlay) captureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	return o.split.MouseCapture(action, event)
+}
+
+// isMainPageInFront returns whether the history is shown, not the loading view or a dialog above it.
+func (o *FileHistoryOverlay) isMainPageInFront() bool {
+	front, _ := o.pages.GetFrontPage()
+	return front == string(HistoryMainPage)
 }
 
 func (o *FileHistoryOverlay) GetName() string {
@@ -252,7 +266,7 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 				}
 			}
 		case historyColumnDate:
-			text = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
+			text = uiutil.FormatTime(entry.Snapshot.Properties.CreationDate)
 		}
 
 		cell := tview.NewTableCell(text).
@@ -312,9 +326,9 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 	rightLayout.AddItem(o.metadataView, fileHistoryHeaderLines, 0, false)
 	rightLayout.AddItem(o.rightLayoutContainer, 0, 1, false)
 
-	splitLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
-	splitLayout.AddItem(leftLayout, 0, 1, true)
-	splitLayout.AddItem(rightLayout, 0, 2, false)
+	o.split = uiutil.NewResizableSplit(o.application, leftLayout, rightLayout, 1, 2).
+		SetEnabledFunc(o.isMainPageInFront)
+	splitLayout := o.split
 
 	overlayContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	overlayContent.AddItem(splitLayout, 0, 1, true)
@@ -412,19 +426,23 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 
 	if o.tableContainer.HasFocus() {
 		entries = []shortcut_helper.ShortcutEntry{
-			{KeyCombo: []string{"⭾"}, Name: "Focus Diff"},
+			{KeyCombo: []string{shortcut_helper.KeyTab}, Name: "Focus Diff"},
 			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
 			{KeyCombo: []string{"c"}, Name: copyLabel},
-			{KeyCombo: []string{"Enter"}, Name: "Restore version"},
+			{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Restore version"},
 			uiutil.TableComponentShortcutColumns,
-			{KeyCombo: []string{"Esc"}, Name: "Close history"},
+			shortcut_helper.ShortcutTimeFormat,
+			shortcut_helper.ShortcutHide,
+			{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close history"},
 		}
 	} else {
 		entries = []shortcut_helper.ShortcutEntry{
-			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Focus List"},
+			{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Focus List"},
 			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
 			{KeyCombo: []string{"c"}, Name: copyLabel},
-			{KeyCombo: []string{"Esc"}, Name: "Close history"},
+			shortcut_helper.ShortcutTimeFormat,
+			shortcut_helper.ShortcutHide,
+			{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close history"},
 		}
 	}
 	o.shortcutHelp.SetEntries(entries)
@@ -501,6 +519,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 				o.rightLayoutContainer.SetIsLoading(false)
 				o.renderDiffTextSync("No snapshot changes found for this file.")
 				o.application.SetFocus(o.tableContainer.GetLayout())
+				o.updateShortcuts()
 			}
 		})
 	}()
@@ -734,6 +753,7 @@ func (o *FileHistoryOverlay) updateDiff() {
 				o.pages.HidePage(string(HistoryLoadingPage))
 				o.pages.ShowPage(string(HistoryMainPage))
 				o.application.SetFocus(o.tableContainer.GetLayout())
+				o.updateShortcuts()
 			}
 		})
 	}()

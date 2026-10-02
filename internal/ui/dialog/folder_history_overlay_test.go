@@ -324,3 +324,34 @@ func TestFolderHistoryOverlay_DividerBetweenSparklinesAndDetails(t *testing.T) {
 	}
 	assert.Equal(t, detailsX+2, innerX, "the text starts right of the line, with a space")
 }
+
+func TestFolderHistoryOverlay_DragBoundary(t *testing.T) {
+	ft := newFolderHistoryTest(t)
+	var boundary, leftWidth int
+	onUiThread(t, ft.app, func() {
+		boundary, _, _, _ = ft.overlay.changes.GetLayout().GetRect()
+		_, _, leftWidth, _ = ft.overlay.timeline.GetLayout().GetRect()
+	})
+	ft.waitFor("drawn", func() bool { return boundary > 0 })
+
+	ft.screen.InjectMouse(boundary, 20, tcell.Button1, tcell.ModNone)
+	time.Sleep(50 * time.Millisecond)
+	ft.screen.InjectMouse(boundary+15, 20, tcell.Button1, tcell.ModNone)
+	time.Sleep(50 * time.Millisecond)
+	ft.screen.InjectMouse(boundary+15, 20, tcell.ButtonNone, tcell.ModNone)
+
+	ft.waitFor("timeline wider", func() bool {
+		width := 0
+		onUiThread(t, ft.app, func() { _, _, width, _ = ft.overlay.timeline.GetLayout().GetRect() })
+		return width >= leftWidth+10
+	})
+}
+
+func TestFolderHistoryOverlay_NoDragWhileADialogIsShown(t *testing.T) {
+	ft := newFolderHistoryTest(t)
+	ft.press(tcell.KeyF2, 0)
+	ft.waitFor("column dialog", func() bool { return ft.hasPage(string(ColumnSelectionDialogPage)) })
+	var enabled bool
+	onUiThread(t, ft.app, func() { enabled = ft.overlay.isMainPageInFront() })
+	assert.False(t, enabled)
+}

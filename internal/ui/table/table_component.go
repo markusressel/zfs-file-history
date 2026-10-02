@@ -56,8 +56,10 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	footer *uiutil.BorderFooter
 	table  *tview.Table
 	// view is the table as placed in the layout, see tableView
-	view      *tableView
-	scrollbar *scrollbar.ScrollbarComponent
+	view *tableView
+	// renderedTimeFormat is the uiutil.TimeFormatGeneration the cells were rendered with
+	renderedTimeFormat uint64
+	scrollbar          *scrollbar.ScrollbarComponent
 
 	// allEntries are all entries set with SetData, entries are the ones that match the filter (displayed)
 	allEntries   []*T
@@ -273,7 +275,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.table = table
 
 	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
-	c.view = &tableView{Table: c.table, afterDraw: c.redrawScrollbar}
+	c.view = &tableView{Table: c.table, beforeDraw: c.renderIfTimeFormatChanged, afterDraw: c.redrawScrollbar}
 
 	c.isScrollbarVisible = true
 	c.layout = tview.NewFlex().
@@ -311,14 +313,26 @@ func (c *RowSelectionTable[T]) syncScrollbar() {
 // tview adjusts the row offset while drawing the table (e.g. to keep the selection visible after PgDn), which is
 // after the selection changed callback. And tview's Flex draws its focused item (the table) last, after the
 // scrollbar. So without this, the bar would show the previous offset and never reach the end.
+//
+// Before drawing, it renders the cells again if formatted times changed (see uiutil.TimeFormatGeneration).
 type tableView struct {
 	*tview.Table
-	afterDraw func(screen tcell.Screen)
+	beforeDraw func()
+	afterDraw  func(screen tcell.Screen)
 }
 
 func (v *tableView) Draw(screen tcell.Screen) {
+	v.beforeDraw()
 	v.Table.Draw(screen)
 	v.afterDraw(screen)
+}
+
+// renderIfTimeFormatChanged renders the cells again if times are formatted differently now, e.g. after switching
+// to relative times, or because "1 minute ago" became "2 minutes ago". Runs while drawing.
+func (c *RowSelectionTable[T]) renderIfTimeFormatChanged() {
+	if c.renderedTimeFormat != uiutil.TimeFormatGeneration() {
+		c.updateTableContents()
+	}
 }
 
 // redrawScrollbar updates the scrollbar from the table as just drawn, and draws it again. Runs while drawing.
@@ -513,6 +527,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	}
 
 	table.Clear()
+	c.renderedTimeFormat = uiutil.TimeFormatGeneration()
 	columns := c.visibleColumns()
 
 	// Table Header

@@ -23,6 +23,8 @@ type ShortcutMapComponent struct {
 	layout                  *tview.Flex
 	shortcutEntriesTextView *tview.TextView
 	onHeightChanged         func(height int)
+	// collapsible maps are hidden with ToggleShortcuts, see SetCollapsible
+	collapsible bool
 
 	ShortCutEntries []ShortcutEntry
 }
@@ -74,6 +76,13 @@ func (sm *ShortcutMapComponent) SetOnHeightChanged(f func(height int)) {
 
 func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 	sm.ShortCutEntries = entries
+	if sm.isHidden() {
+		sm.shortcutEntriesTextView.SetText("")
+		if sm.onHeightChanged != nil {
+			sm.onHeightChanged(0)
+		}
+		return
+	}
 	var statusText string
 	for _, entry := range entries {
 		// comma separated list joined with non-breaking vertical line
@@ -94,7 +103,11 @@ func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 func (sm *ShortcutMapComponent) Clear() {
 	sm.shortcutEntriesTextView.SetText("")
 	if sm.onHeightChanged != nil {
-		sm.onHeightChanged(1)
+		height := 1
+		if sm.isHidden() {
+			height = 0
+		}
+		sm.onHeightChanged(height)
 	}
 	sm.application.ForceDraw()
 }
@@ -116,6 +129,9 @@ func (sm *ShortcutMapComponent) CalculateHeightFromTerminal() int {
 }
 
 func (sm *ShortcutMapComponent) CalculateHeightForWidth(width int) int {
+	if sm.isHidden() {
+		return 0
+	}
 	availableWidth := width - 2 // padding
 	if availableWidth <= 0 {
 		availableWidth = 80

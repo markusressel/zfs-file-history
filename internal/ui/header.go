@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 	"zfs-file-history/cmd/global"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -20,6 +21,8 @@ type ApplicationHeaderComponent struct {
 	version        string
 	statusTextView *tview.TextView
 	lastStatus     *status_message.StatusMessage
+	// shortcutHint tells how to show the shortcuts while they are hidden, see UpdateShortcutHint
+	shortcutHint *tview.TextView
 	// pageIndicator shows the page and its position, e.g. "FILES 1/2", see SetPage
 	pageIndicator *tview.TextView
 }
@@ -61,8 +64,7 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	statusTextView.SetTextColor(tcell.ColorGray)
 	statusTextView.SetTextAlign(tview.AlignLeft)
 
-	helpText := "Press F1 or '?' for help"
-	helpTextView := uiutil.CreateAttentionTextView(helpText)
+	shortcutHint := uiutil.CreateAttentionTextView(shortcutHintText)
 
 	pageIndicator := tview.NewTextView().
 		SetTextStyle(tcell.StyleDefault.Bold(true)).
@@ -75,12 +77,28 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	layout.AddItem(statusTextView, 0, 1, false)
 	// hidden until SetPage
 	layout.AddItem(pageIndicator, 0, 0, false)
-	layout.AddItem(helpTextView, len(helpText)+4, 0, false)
+	// sized by UpdateShortcutHint
+	layout.AddItem(shortcutHint, 0, 0, false)
 
 	applicationHeader.pageIndicator = pageIndicator
+	applicationHeader.shortcutHint = shortcutHint
 
 	applicationHeader.statusTextView = statusTextView
 	applicationHeader.layout = layout
+	applicationHeader.UpdateShortcutHint()
+}
+
+// shortcutHintText is shown while the shortcuts are hidden.
+const shortcutHintText = "? shortcuts"
+
+// UpdateShortcutHint shows how to show the shortcuts while they are hidden (see shortcut_helper.ToggleShortcuts),
+// and nothing while they are shown. Must be called on the UI thread.
+func (applicationHeader *ApplicationHeaderComponent) UpdateShortcutHint() {
+	width := 0
+	if shortcut_helper.ShortcutsHidden() {
+		width = len(shortcutHintText) + 4
+	}
+	applicationHeader.layout.ResizeItem(applicationHeader.shortcutHint, width, 0)
 }
 
 // SetPage shows the title of the page the header belongs to and its position among the pages, e.g. "FILES 1/2".

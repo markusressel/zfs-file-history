@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"zfs-file-history/internal/logging"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/oklog/run"
@@ -17,6 +18,8 @@ func AddActor(g *run.Group, ctx context.Context, path string) {
 		logging.Info("Launching UI...")
 
 		application := CreateUi(path, true)
+		stopTimeRefresh := uiutil.StartRelativeTimeRefresh(application)
+		defer stopTimeRefresh()
 		return application.Run()
 	}, func(err error) {
 		if err != nil {

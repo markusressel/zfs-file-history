@@ -49,6 +49,10 @@
   are applied with `sudo` if needed. The dataset info box lists your permissions as well.
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
+* 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like
+  "3 minutes ago" (remembered between runs).
+* ⌨️ **Inline shortcuts:** The available keys are shown at the bottom of each page and overlay. `?` (or `F1`) hides
+  them to make room in small terminals, and shows them again (remembered between runs).
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
 * 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
@@ -136,8 +140,8 @@ in [zfs-file-history.yaml](/zfs-file-history.yaml).
 ## State
 
 Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
-(the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview, and
-the comparison mode of the file and folder history)
+(the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview, the
+comparison mode of the file and folder history, relative times and hidden shortcuts)
 in a state file:
 
 * `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`
