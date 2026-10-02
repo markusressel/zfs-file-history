@@ -87,6 +87,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	columnSpec   []*Column
 	sortInverted bool
+	// columnOffset is the number of columns hidden on the left (horizontal scrolling), see scrollColumns.
+	// Only accessed on the UI thread.
+	columnOffset int
 
 	defaultSortColumn   *Column
 	defaultSortInverted bool
@@ -215,6 +218,18 @@ func (c *RowSelectionTable[T]) createLayout() {
 				c.toggleSortDirection()
 				return nil
 			default:
+			}
+		}
+
+		// current selection is on a DATA row: ← and → (h and l) scroll horizontally
+		if c.GetSelectedEntry() != nil && event.Modifiers()&tcell.ModShift == 0 {
+			switch {
+			case key == tcell.KeyRight || (key == tcell.KeyRune && event.Rune() == 'l'):
+				c.scrollColumns(1)
+				return nil
+			case key == tcell.KeyLeft || (key == tcell.KeyRune && event.Rune() == 'h'):
+				c.scrollColumns(-1)
+				return nil
 			}
 		}
 
@@ -410,7 +425,7 @@ func (c *RowSelectionTable[T]) UpdateEntry(entry *T) {
 		return
 	}
 
-	cells := c.toTableCells(index, c.columnSpec, entry)
+	cells := c.toTableCells(index, c.visibleColumns(), entry)
 	for column, cell := range cells {
 		if c.isInMultiSelection(entry) {
 			cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
@@ -464,9 +479,10 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	}
 
 	table.Clear()
+	columns := c.visibleColumns()
 
 	// Table Header
-	for column, tableColumn := range c.columnSpec {
+	for column, tableColumn := range columns {
 		cellColor := theme.Colors.Layout.Table.HeaderForeground
 		cellAlignment := tableColumn.Alignment
 		cellExpansion := 0
@@ -478,6 +494,10 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 				sortDirectionIndicator = "↑"
 			}
 			cellText = fmt.Sprintf("%s %s", cellText, sortDirectionIndicator)
+		}
+		if column == 0 && c.columnOffset > 0 {
+			// columns are hidden on the left (horizontal scrolling)
+			cellText = "◂ " + cellText
 		}
 
 		cell := tview.NewTableCell(cellText).
@@ -500,7 +520,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 
 	// Table Content
 	for row, entry := range c.entries {
-		cells := c.toTableCells(row, c.columnSpec, entry)
+		cells := c.toTableCells(row, columns, entry)
 		for column, cell := range cells {
 			if c.isInMultiSelection(entry) {
 				cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
@@ -530,6 +550,50 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 	}
 	c.table.Select(index, 0)
 	c.syncScrollbar()
+}
+
+// visibleColumns returns the displayed columns, without the ones hidden by horizontal scrolling.
+func (c *RowSelectionTable[T]) visibleColumns() []*Column {
+	offset := min(c.columnOffset, max(len(c.columnSpec)-1, 0))
+	return c.columnSpec[offset:]
+}
+
+// scrollColumns scrolls horizontally by delta columns: to the right only while columns are cut off on the right,
+// and never so far that no column is left. Must be called on the UI thread.
+//
+// tview's own horizontal scrolling (its column offset) is not used: when the scrolled columns fit with space to
+// spare, tview's Draw moves the offset back to the start ("don't waste space"), so tables that are only slightly
+// too wide could not be scrolled, or jumped back on the next redraw.
+func (c *RowSelectionTable[T]) scrollColumns(delta int) {
+	offset := c.columnOffset + delta
+	if offset < 0 || offset >= len(c.columnSpec) || offset == c.columnOffset {
+		return
+	}
+	if delta > 0 && !c.isCutOffOnTheRight() {
+		return
+	}
+	c.columnOffset = offset
+	c.updateTableContents()
+}
+
+// isCutOffOnTheRight returns whether the displayed columns are wider than the table, like tview measures them
+// (the widest cell of each column, one space between columns).
+func (c *RowSelectionTable[T]) isCutOffOnTheRight() bool {
+	_, _, width, _ := c.table.GetInnerRect()
+	tableWidth := -1
+	for column := 0; column < c.table.GetColumnCount(); column++ {
+		columnWidth := 0
+		for row := 0; row < c.table.GetRowCount(); row++ {
+			cell := c.table.GetCell(row, column)
+			cellWidth := tview.TaggedStringWidth(cell.Text)
+			if cell.MaxWidth > 0 && cell.MaxWidth < cellWidth {
+				cellWidth = cell.MaxWidth
+			}
+			columnWidth = max(columnWidth, cellWidth)
+		}
+		tableWidth += columnWidth + 1
+	}
+	return tableWidth > width
 }
 
 // scrollToTop scrolls to the first row. Unlike tview's ScrollToBeginning, the horizontal scroll position is kept.

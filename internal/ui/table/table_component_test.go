@@ -582,18 +582,19 @@ func TestFilter_FooterAndCountsDoNotOverlap(t *testing.T) {
 	assert.Equal(t, "└ Filter: daily ──────── 2 of 4 things ┘", line.String())
 }
 
-// newWideTestTable returns a table with more columns than fit, and many rows.
-func newWideTestTable() (*RowSelectionTable[namedEntry], []*namedEntry) {
+// newWideTestTable returns a table with the given number of columns (20 characters each, so 21 with the space
+// between them) in a 40 characters wide view, and 50 rows.
+func newWideTestTable(columnCount int) (*RowSelectionTable[namedEntry], []*namedEntry, []*Column) {
 	var cols []*Column
-	for i := 0; i < 10; i++ {
-		cols = append(cols, &Column{Id: ColumnId(i), Title: strings.Repeat("x", 20)})
+	for i := 0; i < columnCount; i++ {
+		cols = append(cols, &Column{Id: ColumnId(i), Title: fmt.Sprintf("col%d", i)})
 	}
 	table := NewTableContainer[namedEntry](
 		tview.NewApplication(),
 		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
 			var cells []*tview.TableCell
-			for range columns {
-				cells = append(cells, tview.NewTableCell(entry.name+strings.Repeat(".", 15)))
+			for _, column := range columns {
+				cells = append(cells, tview.NewTableCell(fmt.Sprintf("%-20s", entry.name+"/"+column.Title)))
 			}
 			return cells
 		},
@@ -608,7 +609,7 @@ func newWideTestTable() (*RowSelectionTable[namedEntry], []*namedEntry) {
 	}
 	table.SetData(entries)
 	table.table.SetRect(0, 0, 40, 10)
-	return table, entries
+	return table, entries, cols
 }
 
 // pressTableKey sends a key through the input capture of the component and then to tview, like the application.
@@ -619,34 +620,78 @@ func pressTableKey(table *RowSelectionTable[namedEntry], key tcell.Key) {
 	}
 }
 
-func TestTable_HorizontalScrollIsKept(t *testing.T) {
-	table, entries := newWideTestTable()
-	columnOffset := func() int {
-		_, column := table.table.GetOffset()
-		return column
+func headerTexts(table *RowSelectionTable[namedEntry]) []string {
+	var texts []string
+	for column := 0; column < table.table.GetColumnCount(); column++ {
+		texts = append(texts, table.table.GetCell(0, column).Text)
 	}
+	return texts
+}
 
-	// → on a data row scrolls horizontally
+func TestTable_HorizontalScroll(t *testing.T) {
+	table, entries, cols := newWideTestTable(4)
+	table.Select(entries[0])
+
+	// → hides the first column, while columns are cut off on the right (4 columns: 83 characters in 40)
+	pressTableKey(table, tcell.KeyRight)
+	assert.Equal(t, 1, table.columnOffset)
+	assert.Equal(t, []string{"◂ col1", "col2", "col3"}, headerTexts(table), "the indicator shows hidden columns")
+	assert.Equal(t, "entry-00/col1", strings.TrimSpace(table.table.GetCell(1, 0).Text))
+	pressTableKey(table, tcell.KeyRight)
+	assert.Equal(t, 2, table.columnOffset, "col2 and col3 fit now (41 characters in 40 do not)")
+	pressTableKey(table, tcell.KeyRight)
+	assert.Equal(t, 3, table.columnOffset)
+	pressTableKey(table, tcell.KeyRight)
+	assert.Equal(t, 3, table.columnOffset, "nothing is cut off anymore, and at least one column is left")
+	_, tviewOffset := table.table.GetOffset()
+	assert.Zero(t, tviewOffset, "tview's own offset is not used")
+
+	// ← scrolls back
+	pressTableKey(table, tcell.KeyLeft)
+	assert.Equal(t, 2, table.columnOffset)
+	assert.Equal(t, cols[2], table.visibleColumns()[0])
+}
+
+func TestTable_HorizontalScrollOnlyIfCutOff(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	table.Select(entries[0])
+
+	pressTableKey(table, tcell.KeyRight)
+	assert.Zero(t, table.columnOffset)
+}
+
+func TestTable_HorizontalScrollIsKept(t *testing.T) {
+	table, entries, cols := newWideTestTable(4)
 	table.Select(entries[0])
 	pressTableKey(table, tcell.KeyRight)
 	pressTableKey(table, tcell.KeyRight)
-	require.Equal(t, 2, columnOffset())
+	require.Equal(t, 2, table.columnOffset)
 
-	// selecting the first entry again (e.g. after a reload) keeps it
+	// changing the selection, reloading and selecting the first entry again keep it
+	pressTableKey(table, tcell.KeyDown)
 	table.SetData(entries)
 	table.Select(entries[0])
-	assert.Equal(t, 2, columnOffset())
+	table.UpdateEntry(entries[0])
+	assert.Equal(t, 2, table.columnOffset)
+	assert.Equal(t, "entry-00/col2", strings.TrimSpace(table.table.GetCell(1, 0).Text))
 
-	// moving up to the header row keeps it
+	// on the header row, ← and → change the sort column instead of scrolling
 	pressTableKey(table, tcell.KeyUp)
 	require.Nil(t, table.GetSelectedEntry())
-	assert.Equal(t, 2, columnOffset())
+	pressTableKey(table, tcell.KeyRight)
+	assert.Equal(t, 2, table.columnOffset)
+	assert.Equal(t, cols[1], table.sortByColumn)
 
-	// a page jump to the header row still scrolls to the top row (PgUp workaround), but not to the left
+	// a page jump to the header row still scrolls to the top row (PgUp workaround), the columns stay scrolled
 	table.Select(entries[20])
-	table.table.SetOffset(15, 2)
+	table.table.SetOffset(15, 0)
 	table.SelectHeader()
-	row, column := table.table.GetOffset()
+	row, _ := table.table.GetOffset()
 	assert.Equal(t, 0, row)
-	assert.Equal(t, 2, column)
+	assert.Equal(t, 2, table.columnOffset)
+
+	// fewer columns (F2): at least one column is left
+	table.SetActiveColumns(cols[:2])
+	assert.Equal(t, 1, table.columnOffset)
+	assert.Equal(t, []*Column{cols[1]}, table.visibleColumns())
 }

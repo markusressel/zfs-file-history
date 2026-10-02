@@ -36,6 +36,8 @@ func (c *RowSelectionTable[T]) SetColumnLayout(layout ColumnLayout) {
 		return
 	}
 	c.columnSpec = slices.Clone(layout.Columns)
+	// keep the horizontal scroll position, as long as a column is left
+	c.columnOffset = min(c.columnOffset, len(c.columnSpec)-1)
 	c.sortByColumn = layout.SortColumn
 	c.sortInverted = layout.SortInverted
 	if !slices.Contains(c.columnSpec, c.sortByColumn) {
