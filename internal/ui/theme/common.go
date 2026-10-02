@@ -89,6 +89,15 @@ type Color struct {
 	List            ListColors
 	Layout          LayoutColors
 	ShortcutMap     ShortcutMapColors
+	Permissions     PermissionColors
+}
+
+// PermissionColors are used to show which ZFS permissions the user has.
+type PermissionColors struct {
+	Granted tcell.Color
+	Missing tcell.Color
+	// Unknown is used while the permissions are loading or if they cannot be read
+	Unknown tcell.Color
 }
 
 type LayoutColors struct {

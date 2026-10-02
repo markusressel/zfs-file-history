@@ -90,6 +90,11 @@ var (
 			KeyCombo: Accent,
 			Name:     tcell.ColorLightGray,
 		},
+		Permissions: PermissionColors{
+			Granted: tcell.ColorGreen,
+			Missing: tcell.ColorGray,
+			Unknown: tcell.ColorDarkGray,
+		},
 	}
 
 	Style = StyleStruct{

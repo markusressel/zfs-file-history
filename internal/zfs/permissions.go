@@ -17,9 +17,11 @@ const (
 	PermissionClone    Permission = "clone"
 	PermissionCreate   Permission = "create"
 	PermissionDestroy  Permission = "destroy"
+	PermissionDiff     Permission = "diff"
 	PermissionHold     Permission = "hold"
 	PermissionMount    Permission = "mount"
 	PermissionRelease  Permission = "release"
+	PermissionRollback Permission = "rollback"
 	PermissionSnapshot Permission = "snapshot"
 )
 
@@ -200,90 +202,12 @@ func findMissingPermissions(who identity, required []PermissionGap) ([]Permissio
 	return missing, nil
 }
 
-// effectivePermissions returns the permissions the user has on dataset, given the output of "zfs allow <dataset>":
-//
-//	---- Permissions on pool/data ----------------------------------------
-//	Permission sets:
-//		@backup hold,send
-//	Local permissions:
-//		user alice snapshot
-//	Descendent permissions:
-//		group staff mount
-//	Local+Descendent permissions:
-//		user alice @backup,destroy
-//		everyone mount
-//
-// The output contains a block for the dataset and for each ancestor with delegations. Local permissions apply to the
-// dataset of their block only, descendent permissions to its descendants only. Create time permissions are ignored.
+// effectivePermissions returns the permissions the user has on dataset, given the output of "zfs allow <dataset>".
 func effectivePermissions(output string, dataset string, who identity) map[Permission]bool {
-	sets := map[string][]string{}
-	var granted []string
-
-	blockDataset := ""
-	section := ""
-	for _, line := range strings.Split(output, "\n") {
-		trimmed := strings.TrimSpace(line)
-		switch {
-		case trimmed == "":
-			continue
-		case strings.HasPrefix(trimmed, "---- Permissions on "):
-			blockDataset = strings.Fields(strings.TrimPrefix(trimmed, "---- Permissions on "))[0]
-			section = ""
-			continue
-		case strings.HasSuffix(trimmed, ":") && !strings.HasPrefix(line, "\t") && !strings.HasPrefix(line, " "):
-			section = strings.TrimSuffix(trimmed, ":")
-			continue
-		}
-
-		fields := strings.Fields(trimmed)
-		if section == "Permission sets" {
-			if len(fields) == 2 && strings.HasPrefix(fields[0], "@") {
-				sets[fields[0]] = append(sets[fields[0]], strings.Split(fields[1], ",")...)
-			}
-			continue
-		}
-
-		isSelf := blockDataset == dataset
-		if !isSelf && !strings.HasPrefix(dataset, blockDataset+"/") {
-			// not an ancestor
-			continue
-		}
-		applies := section == "Local+Descendent permissions" ||
-			(section == "Local permissions" && isSelf) ||
-			(section == "Descendent permissions" && !isSelf)
-		if !applies {
-			continue
-		}
-
-		var permissions string
-		switch {
-		case len(fields) == 2 && fields[0] == "everyone":
-			permissions = fields[1]
-		case len(fields) == 3 && fields[0] == "user" && (fields[1] == who.name || fields[1] == who.uid):
-			permissions = fields[2]
-		case len(fields) == 3 && fields[0] == "group" && slices.Contains(who.groups, fields[1]):
-			permissions = fields[2]
-		default:
-			continue
-		}
-		granted = append(granted, strings.Split(permissions, ",")...)
-	}
-
 	result := map[Permission]bool{}
-	var expand func(names []string, depth int)
-	expand = func(names []string, depth int) {
-		for _, name := range names {
-			if strings.HasPrefix(name, "@") {
-				// sets may contain sets, the depth guards against cycles
-				if depth < 10 {
-					expand(sets[name], depth+1)
-				}
-				continue
-			}
-			result[Permission(name)] = true
-		}
+	for permission := range parseDelegations(output, dataset).grants(who) {
+		result[permission] = true
 	}
-	expand(granted, 0)
 	return result
 }
 

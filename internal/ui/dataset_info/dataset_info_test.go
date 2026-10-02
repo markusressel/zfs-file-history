@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
@@ -218,4 +219,23 @@ func TestFormatProperties(t *testing.T) {
 	assert.Contains(t, lines[0], "    Mounted:")
 	// values are escaped
 	assert.Contains(t, lines[1], tview.Escape("/with[brackets]"))
+}
+
+func TestFormatPermissions(t *testing.T) {
+	granted := &zfs.DatasetPermissions{Grants: map[zfs.Permission][]zfs.Grant{
+		zfs.PermissionHold:     {{}},
+		zfs.PermissionSnapshot: {{}},
+		"send":                 {{}}, // not shown, not used by zfs-file-history
+	}}
+	assert.Equal(t, "snapshot, hold", formatPermissions(granted, nil), "in display order")
+	assert.Equal(t, "none", formatPermissions(&zfs.DatasetPermissions{}, nil))
+	assert.Equal(t, "all (root)", formatPermissions(&zfs.DatasetPermissions{IsRoot: true}, nil))
+	assert.Equal(t, "unknown", formatPermissions(nil, errors.New("zfs not found")))
+}
+
+func TestResolveValueColor_Permissions(t *testing.T) {
+	assert.Equal(t, theme.Colors.Permissions.Granted, resolveValueColor("Permissions", "snapshot, hold"))
+	assert.Equal(t, theme.Colors.Permissions.Granted, resolveValueColor("Permissions", "all (root)"))
+	assert.Equal(t, theme.Colors.Permissions.Unknown, resolveValueColor("Permissions", "unknown"))
+	assert.Equal(t, tcell.ColorGray, resolveValueColor("Permissions", "none"))
 }
