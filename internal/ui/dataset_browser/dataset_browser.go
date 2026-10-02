@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
@@ -23,21 +25,51 @@ import (
 var (
 	columnName = &table.Column{
 		Id:        0,
+		Key:       "name",
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
 	columnUsed = &table.Column{
 		Id:        1,
+		Key:       "used",
 		Title:     "Used",
 		Alignment: tview.AlignRight,
 	}
-	columnAvail = &table.Column{
+	// columnUsedBySnapshots, columnUsedByDataset, columnUsedByChildren and columnUsedByRefreservation
+	// break down columnUsed.
+	columnUsedBySnapshots = &table.Column{
 		Id:        2,
+		Key:       "usedBySnapshots",
+		Title:     "Snapshots",
+		Alignment: tview.AlignRight,
+	}
+	columnUsedByDataset = &table.Column{
+		Id:        3,
+		Key:       "usedByDataset",
+		Title:     "Dataset",
+		Alignment: tview.AlignRight,
+	}
+	columnUsedByChildren = &table.Column{
+		Id:        4,
+		Key:       "usedByChildren",
+		Title:     "Children",
+		Alignment: tview.AlignRight,
+	}
+	columnUsedByRefreservation = &table.Column{
+		Id:        5,
+		Key:       "usedByRefreservation",
+		Title:     "Refreserv",
+		Alignment: tview.AlignRight,
+	}
+	columnAvail = &table.Column{
+		Id:        6,
+		Key:       "available",
 		Title:     "Avail",
 		Alignment: tview.AlignRight,
 	}
 	columnMountpoint = &table.Column{
-		Id:        3,
+		Id:        7,
+		Key:       "mountpoint",
 		Title:     "Mountpoint",
 		Alignment: tview.AlignLeft,
 	}
@@ -45,9 +77,20 @@ var (
 	tableColumns = []*table.Column{
 		columnName,
 		columnUsed,
+		columnUsedBySnapshots,
+		columnUsedByDataset,
+		columnUsedByChildren,
+		columnUsedByRefreservation,
 		columnAvail,
 		columnMountpoint,
 	}
+)
+
+// keys of the settings remembered in state.Current
+const (
+	stateKeyTable       = "datasetBrowser"
+	toggleHideUnmounted = "datasetBrowser.hideUnmounted"
+	toggleTreeView      = "datasetBrowser.treeView"
 )
 
 // listDatasets is replaceable in tests.
@@ -101,8 +144,8 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 	datasetBrowser := &DatasetBrowserComponent{
 		Events:        util.NewEmitter[Event](),
 		application:   application,
-		hideUnmounted: true,
-		treeView:      true,
+		hideUnmounted: state.Current.Toggle(toggleHideUnmounted, true),
+		treeView:      state.Current.Toggle(toggleTreeView, true),
 		collapsed:     map[string]bool{},
 	}
 
@@ -153,6 +196,18 @@ func (datasetBrowser *DatasetBrowserComponent) toTableCells(row int, columns []*
 			}
 		case columnUsed:
 			text = uiutil.StableLengthHumanizedBytes(entry.Used)
+			alignment = tview.AlignRight
+		case columnUsedBySnapshots:
+			text = uiutil.StableLengthHumanizedBytes(entry.UsedBySnapshots)
+			alignment = tview.AlignRight
+		case columnUsedByDataset:
+			text = uiutil.StableLengthHumanizedBytes(entry.UsedByDataset)
+			alignment = tview.AlignRight
+		case columnUsedByChildren:
+			text = uiutil.StableLengthHumanizedBytes(entry.UsedByChildren)
+			alignment = tview.AlignRight
+		case columnUsedByRefreservation:
+			text = uiutil.StableLengthHumanizedBytes(entry.UsedByRefreservation)
 			alignment = tview.AlignRight
 		case columnAvail:
 			text = uiutil.StableLengthHumanizedBytes(entry.Available)
@@ -214,6 +269,14 @@ func sortDatasetEntries(entries []*zfs.DatasetListEntry, column *table.Column, i
 		switch column {
 		case columnUsed:
 			result = cmp.Compare(a.Used, b.Used)
+		case columnUsedBySnapshots:
+			result = cmp.Compare(a.UsedBySnapshots, b.UsedBySnapshots)
+		case columnUsedByDataset:
+			result = cmp.Compare(a.UsedByDataset, b.UsedByDataset)
+		case columnUsedByChildren:
+			result = cmp.Compare(a.UsedByChildren, b.UsedByChildren)
+		case columnUsedByRefreservation:
+			result = cmp.Compare(a.UsedByRefreservation, b.UsedByRefreservation)
 		case columnAvail:
 			result = cmp.Compare(a.Available, b.Available)
 		case columnMountpoint:
@@ -238,6 +301,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	// sorted by name, ascending: parents before their children
 	datasetBrowser.tableContainer.SetColumnSpec(tableColumns, columnName, false)
 	datasetBrowser.tableContainer.SetActiveColumns(tableColumns)
+	datasetBrowser.tableContainer.BindColumnLayout(state.Current, stateKeyTable, tableColumns)
 
 	datasetBrowser.tableContainer.SetSelectionChangedCallback(func(selectedEntry *zfs.DatasetListEntry) {
 		datasetBrowser.Events.Emit(SelectedDatasetChangedEvent{selectedEntry})
@@ -249,6 +313,10 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	datasetBrowser.tableContainer.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
 
+		if key == tcell.KeyF2 {
+			datasetBrowser.openColumnSelectionDialog()
+			return nil
+		}
 		if event.Rune() == 'u' {
 			datasetBrowser.ToggleHideUnmounted()
 			return nil
@@ -270,6 +338,12 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 		}
 		return event
 	})
+}
+
+// openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) openColumnSelectionDialog() {
+	d := dialog.NewTableColumnSelectionDialog(datasetBrowser.application, "Configure Dataset Columns", tableColumns, datasetBrowser.tableContainer)
+	dialog.ShowDialogOnPages(datasetBrowser.application, datasetBrowser.layout, d, nil)
 }
 
 // setCurrentPath updates the current path and notifies listeners.
@@ -312,6 +386,7 @@ func (datasetBrowser *DatasetBrowserComponent) ToggleHideUnmounted() {
 	headerSelected := datasetBrowser.tableContainer.GetSelectedEntry() == nil && !datasetBrowser.tableContainer.IsEmpty()
 
 	datasetBrowser.hideUnmounted = !datasetBrowser.hideUnmounted
+	state.Current.SetToggle(toggleHideUnmounted, datasetBrowser.hideUnmounted)
 	datasetBrowser.updateEntries()
 
 	if headerSelected {
@@ -365,6 +440,7 @@ func (datasetBrowser *DatasetBrowserComponent) ToggleTreeView() {
 	headerSelected := datasetBrowser.tableContainer.GetSelectedEntry() == nil && !datasetBrowser.tableContainer.IsEmpty()
 
 	datasetBrowser.treeView = !datasetBrowser.treeView
+	state.Current.SetToggle(toggleTreeView, datasetBrowser.treeView)
 	datasetBrowser.updateEntries()
 
 	if headerSelected {
@@ -517,6 +593,7 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 		toggleTreeViewName = "Flat list"
 	}
 	shortcuts := []shortcut_helper.ShortcutEntry{
+		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
 		{KeyCombo: []string{"u"}, Name: toggleUnmountedName},
 		{KeyCombo: []string{"t"}, Name: toggleTreeViewName},

@@ -29,7 +29,9 @@ const (
 type ColumnId int
 
 type Column struct {
-	Id        ColumnId
+	Id ColumnId
+	// Key identifies the column in the saved table layout (see BindColumnLayout), so it must never change.
+	Key       string
 	Title     string
 	Alignment int
 }
@@ -88,6 +90,12 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	defaultSortColumn   *Column
 	defaultSortInverted bool
+
+	// columnLayoutChangedCallback is called when the user changes the columns or the sort order,
+	// see SetColumnLayoutChangedCallback
+	columnLayoutChangedCallback func(layout ColumnLayout)
+	// savedLayout is the binding to the saved layout, see BindColumnLayout
+	savedLayout *savedLayoutBinding
 
 	isScrollbarVisible bool
 
@@ -362,24 +370,14 @@ func (c *RowSelectionTable[T]) SetColumnSpec(columns []*Column, defaultSortColum
 	c.updateTableContents()
 }
 
+// SetActiveColumns displays the given columns, keeping the sort order if its column is still displayed.
+// Notifies the callback set with SetColumnLayoutChangedCallback. Must be called on the UI thread.
 func (c *RowSelectionTable[T]) SetActiveColumns(columns []*Column) {
 	if len(columns) <= 0 {
 		return
 	}
-
-	c.columnSpec = slices.Clone(columns)
-
-	if !slices.Contains(c.columnSpec, c.sortByColumn) {
-		if c.defaultSortColumn != nil && slices.Contains(c.columnSpec, c.defaultSortColumn) {
-			c.sortByColumn = c.defaultSortColumn
-			c.sortInverted = c.defaultSortInverted
-		} else {
-			c.sortByColumn = c.columnSpec[0]
-		}
-	}
-
-	c.SortBy(c.sortByColumn, c.sortInverted)
-	c.updateTableContents()
+	c.SetColumnLayout(ColumnLayout{Columns: columns, SortColumn: c.sortByColumn, SortInverted: c.sortInverted})
+	c.notifyColumnLayoutChanged()
 }
 
 func (c *RowSelectionTable[T]) GetColumnSpec() []*Column {
@@ -439,6 +437,7 @@ func (c *RowSelectionTable[T]) nextSortOrder() {
 	column := c.columnSpec[nextIndex]
 	c.SortBy(column, c.sortInverted)
 	c.updateTableContents()
+	c.notifyColumnLayoutChanged()
 }
 
 func (c *RowSelectionTable[T]) previousSortOrder() {
@@ -447,12 +446,14 @@ func (c *RowSelectionTable[T]) previousSortOrder() {
 	column := c.columnSpec[nextIndex]
 	c.SortBy(column, c.sortInverted)
 	c.updateTableContents()
+	c.notifyColumnLayoutChanged()
 }
 
 func (c *RowSelectionTable[T]) toggleSortDirection() {
 	c.sortInverted = !c.sortInverted
 	c.SortBy(c.sortByColumn, c.sortInverted)
 	c.updateTableContents()
+	c.notifyColumnLayoutChanged()
 }
 
 func (c *RowSelectionTable[T]) updateTableContents() {

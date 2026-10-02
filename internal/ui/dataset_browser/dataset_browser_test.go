@@ -2,10 +2,15 @@ package dataset_browser
 
 import (
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -25,9 +30,9 @@ func names(entries []*zfs.DatasetListEntry) []string {
 func TestSortDatasetEntries(t *testing.T) {
 	newEntries := func() []*zfs.DatasetListEntry {
 		return []*zfs.DatasetListEntry{
-			{Name: "pool/b", Used: 10, Available: 5, Mountpoint: "legacy", MountPath: "/b"},
-			{Name: "Pool/a", Used: 30, Available: 5, Mountpoint: "none"},
-			{Name: "pool/c", Used: 20, Available: 1, Mountpoint: "/c", MountPath: "/c"},
+			{Name: "pool/b", Used: 10, Available: 5, UsedBySnapshots: 1, UsedByDataset: 9, UsedByChildren: 0, UsedByRefreservation: 0, Mountpoint: "legacy", MountPath: "/b"},
+			{Name: "Pool/a", Used: 30, Available: 5, UsedBySnapshots: 25, UsedByDataset: 1, UsedByChildren: 4, UsedByRefreservation: 0, Mountpoint: "none"},
+			{Name: "pool/c", Used: 20, Available: 1, UsedBySnapshots: 0, UsedByDataset: 15, UsedByChildren: 5, UsedByRefreservation: 7, Mountpoint: "/c", MountPath: "/c"},
 		}
 	}
 
@@ -40,6 +45,15 @@ func TestSortDatasetEntries(t *testing.T) {
 		{columnName, true, []string{"pool/c", "pool/b", "Pool/a"}},
 		{columnUsed, false, []string{"pool/b", "pool/c", "Pool/a"}},
 		{columnUsed, true, []string{"Pool/a", "pool/c", "pool/b"}},
+		{columnUsedBySnapshots, false, []string{"pool/c", "pool/b", "Pool/a"}},
+		{columnUsedBySnapshots, true, []string{"Pool/a", "pool/b", "pool/c"}},
+		{columnUsedByDataset, false, []string{"Pool/a", "pool/b", "pool/c"}},
+		{columnUsedByDataset, true, []string{"pool/c", "pool/b", "Pool/a"}},
+		{columnUsedByChildren, false, []string{"pool/b", "Pool/a", "pool/c"}},
+		{columnUsedByChildren, true, []string{"pool/c", "Pool/a", "pool/b"}},
+		// equal values fall back to the name, inverted as well
+		{columnUsedByRefreservation, false, []string{"Pool/a", "pool/b", "pool/c"}},
+		{columnUsedByRefreservation, true, []string{"pool/c", "pool/b", "Pool/a"}},
 		// equal values fall back to the name
 		{columnAvail, false, []string{"pool/c", "Pool/a", "pool/b"}},
 		// the actual mount path is used if mounted
@@ -559,4 +573,134 @@ func TestDatasetBrowser_Filter(t *testing.T) {
 	// esc clears the filter
 	pressKey(tcell.KeyEscape, 0)
 	waitForFooter("5 datasets")
+}
+
+func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{
+			{Name: "rpool/a", Used: 30, MountPath: "/a"},
+			{Name: "rpool/b", Used: 10, MountPath: "/b"},
+		}, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	onUiThread(t, app, func() {
+		browser.Refresh(false)
+		browser.Focus()
+	})
+	assert.Eventually(t, func() bool {
+		var count int
+		onUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
+		return count == 2
+	}, 2*time.Second, 10*time.Millisecond)
+
+	pressKey := func(key tcell.Key) {
+		screen.InjectKey(key, 0, tcell.ModNone)
+		onUiThread(t, app, func() {})
+		time.Sleep(20 * time.Millisecond)
+	}
+	dialogOpen := func() bool {
+		var open bool
+		onUiThread(t, app, func() { open = browser.layout.HasPage(string(dialog.ColumnSelectionDialogPage)) })
+		return open
+	}
+
+	pressKey(tcell.KeyF2)
+	require.True(t, dialogOpen())
+
+	// the first active column (name) is selected; removing it applies immediately
+	pressKey(tcell.KeyDelete)
+	var columns []*table.Column
+	onUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
+	assert.Equal(t, tableColumns[1:], columns)
+
+	pressKey(tcell.KeyEscape)
+	assert.False(t, dialogOpen())
+	onUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
+	assert.Equal(t, tableColumns[1:], columns)
+}
+
+func TestDatasetBrowser_ShortcutMapContainsColumns(t *testing.T) {
+	browser := NewDatasetBrowser(tview.NewApplication())
+	assert.Contains(t, browser.GetShortcutMap(), uiutil.TableComponentShortcutColumns)
+}
+
+func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store := state.Load(path)
+	state.Current = store
+	t.Cleanup(func() {
+		_ = store.Flush()
+		state.Current = nil
+	})
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	onUiThread(t, app, func() { browser.Focus() })
+	pressKey := func(key tcell.Key, r rune) {
+		screen.InjectKey(key, r, tcell.ModNone)
+		onUiThread(t, app, func() {})
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// remove the first column (name)
+	pressKey(tcell.KeyF2, 0)
+	pressKey(tcell.KeyDelete, 0)
+	pressKey(tcell.KeyEscape, 0)
+	require.NoError(t, store.Flush())
+
+	// a new browser (e.g. after a restart) restores the layout from the file
+	state.Current = state.Load(path)
+	restored := NewDatasetBrowser(tview.NewApplication())
+	assert.Equal(t, tableColumns[1:], restored.tableContainer.GetColumnSpec())
+	state.Current = store
+
+	// reset in the dialog restores the default columns and removes the saved layout
+	pressKey(tcell.KeyF2, 0)
+	pressKey(tcell.KeyRune, 'r')
+	pressKey(tcell.KeyEscape, 0)
+	var columns []*table.Column
+	onUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
+	assert.Equal(t, tableColumns, columns)
+	_, saved := store.TableLayout("datasetBrowser")
+	assert.False(t, saved)
+}
+
+func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store := state.Load(path)
+	state.Current = store
+	t.Cleanup(func() {
+		_ = store.Flush()
+		state.Current = nil
+	})
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
+	})
+
+	app, browser, screen := newBrowserApp(t)
+	onUiThread(t, app, func() { browser.Focus() })
+	var hiding, tree bool
+	onUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
+	// defaults without a saved state
+	require.True(t, hiding)
+	require.True(t, tree)
+
+	screen.InjectKey(tcell.KeyRune, 'u', tcell.ModNone)
+	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	assert.Eventually(t, func() bool {
+		onUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
+		return !hiding && !tree
+	}, 2*time.Second, 10*time.Millisecond)
+	require.NoError(t, store.Flush())
+
+	// a new browser (e.g. after a restart) restores the toggles from the file
+	state.Current = state.Load(path)
+	restored := NewDatasetBrowser(tview.NewApplication())
+	assert.False(t, restored.IsHidingUnmounted())
+	assert.False(t, restored.IsTreeView())
+	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"u"}, Name: "Hide unmounted"})
+	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"t"}, Name: "Tree view"})
 }

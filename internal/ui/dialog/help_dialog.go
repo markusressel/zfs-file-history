@@ -40,6 +40,7 @@ func (p *HelpPage) createLayout() {
 		{Key: "←", Value: "Opens parent directory"},
 		{Key: "→", Value: "Enters selected directory"},
 		{Key: "space", Value: "Toggle Multi-Selection"},
+		{Key: "F2", Value: "Selects and orders the columns of the focused table"},
 		{Key: "ctrl+f", Value: "Filters the list, e.g. daily or *-22???? (enter: keep, esc: clear)"},
 		{Key: "u", Value: "Shows/hides unmounted datasets"},
 		{Key: "t", Value: "Switches datasets between list and tree view"},

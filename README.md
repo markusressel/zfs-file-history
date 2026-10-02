@@ -25,14 +25,22 @@
   errors.
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
+* 🧱 **Configurable columns:** Select and order the columns of the file, snapshot and dataset tables (`F2`).
+  The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
+  see [State](#state)), `r` in the column dialog resets them.
 * 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree or as a flat list (`t`), unmounted datasets are
-  hidden by default (`u`).
+  hidden by default (`u`). Both choices are remembered between runs. The used space is broken down into snapshots,
+  the dataset itself, its children and its refreservation (sortable, to find the datasets whose snapshots use the
+  most space).
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
 * 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
+* 🔒 **Snapshot holds:** Hold snapshots (`zfs hold`, tag `zfs-file-history`) to protect them from being destroyed,
+  e.g. by automatic pruning while you investigate, and release them again. Only holds with this tag are ever
+  released, holds of other tools (e.g. replication) stay untouched. The `Holds` column shows the number of holds.
 
 # How to use
 
@@ -76,10 +84,11 @@ sudo zfs-file-history setup
 
 ### Permissions
 
-To create or destroy ZFS snapshots, the user running zfs-file-history needs to have the appropriate permissions, f.ex.:
+To create, destroy, hold or release ZFS snapshots, the user running zfs-file-history needs to have the appropriate
+permissions, f.ex.:
 
 ```shell
-sudo zfs allow markus mount,snapshot,destroy rpool/HOME/default/markus
+sudo zfs allow markus mount,snapshot,destroy,hold,release rpool/HOME/default/markus
 ```
 
 otherwise zfs-file-history will show a permission error.
@@ -105,6 +114,17 @@ nano ~/.config/zfs-file-history/zfs-file-history.yaml
 
 An example configuration file including more detailed documentation can be found
 in [zfs-file-history.yaml](/zfs-file-history.yaml).
+
+## State
+
+Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
+(the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview)
+in a state file:
+
+* `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`
+
+It is written by the application and specific to the machine, so there is no need to copy it to other systems.
+Deleting it resets all remembered settings.
 
 # Dependencies
 

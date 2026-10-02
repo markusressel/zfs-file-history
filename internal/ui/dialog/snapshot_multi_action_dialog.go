@@ -15,6 +15,8 @@ const (
 	MultiSnapshotDialogClearSelectionActionId DialogActionId = iota
 	MultiSnapshotDialogDestroySnapshotActionId
 	MultiSnapshotDialogDestroySnapshotRecursivelyActionId
+	MultiSnapshotDialogHoldSnapshotsActionId
+	MultiSnapshotDialogReleaseSnapshotsActionId
 )
 
 func NewMultiSnapshotActionDialog(
@@ -24,30 +26,44 @@ func NewMultiSnapshotActionDialog(
 	onComplete func(d *SelectionDialog, option *DialogOption, err error),
 ) *SelectionDialog {
 	snapshotNames := make([]string, 0)
+	anyHeld := false
 	for _, snapshot := range snapshots {
 		snapshotNames = append(snapshotNames, snapshot.Snapshot.Name)
+		anyHeld = anyHeld || snapshot.Snapshot.Properties.Holds > 0
 	}
 
 	dialogOptions := []*DialogOption{
 		{
+			Id:   MultiSnapshotDialogHoldSnapshotsActionId,
+			Name: "🔒 Hold all (protect from destruction)",
+		},
+	}
+	if anyHeld {
+		dialogOptions = append(dialogOptions, &DialogOption{
+			Id:   MultiSnapshotDialogReleaseSnapshotsActionId,
+			Name: "🔓 Release holds of all",
+		})
+	}
+	dialogOptions = append(dialogOptions,
+		&DialogOption{
 			Id:       MultiSnapshotDialogDestroySnapshotActionId,
 			Name:     "💥 Destroy all",
 			Severity: DialogSeverityDanger,
 		},
-		{
+		&DialogOption{
 			Id:       MultiSnapshotDialogDestroySnapshotRecursivelyActionId,
 			Name:     "💥 Destroy all (recursive)",
 			Severity: DialogSeverityDanger,
 		},
-		{
+		&DialogOption{
 			Id:   MultiSnapshotDialogClearSelectionActionId,
 			Name: "Clear Selection",
 		},
-		{
+		&DialogOption{
 			Id:   DialogCloseActionId,
 			Name: localization.LocalizationCommonClose,
 		},
-	}
+	)
 
 	return NewSelectionDialog(
 		application,

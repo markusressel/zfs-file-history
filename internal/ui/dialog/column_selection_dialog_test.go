@@ -4,6 +4,7 @@ import (
 	"testing"
 	"zfs-file-history/internal/ui/table"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
@@ -89,4 +90,59 @@ func TestColumnSelectionDialog_Actions(t *testing.T) {
 	changeCalled = false
 	d.moveActiveColumnDown()
 	assert.True(t, changeCalled)
+}
+
+func TestColumnSelectionDialog_Reset(t *testing.T) {
+	app := tview.NewApplication()
+	all := []*table.Column{
+		{Id: table.ColumnId(1), Title: "Col 1"},
+		{Id: table.ColumnId(2), Title: "Col 2"},
+		{Id: table.ColumnId(3), Title: "Col 3"},
+	}
+	pressR := func(d *ColumnSelectionDialog) *tcell.EventKey {
+		return d.captureInput(tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone))
+	}
+
+	// without a reset function, "r" is not handled and not shown
+	d := NewColumnSelectionDialog(app, "Columns", all, all[:1], nil)
+	assert.NotNil(t, pressR(d))
+	assert.NotContains(t, shortcutNames(d), "Reset")
+
+	resetCalls := 0
+	d.SetResetFunc(func() []*table.Column {
+		resetCalls++
+		return []*table.Column{all[2], all[0]}
+	})
+	assert.Contains(t, shortcutNames(d), "Reset")
+
+	assert.Nil(t, pressR(d))
+	assert.Equal(t, 1, resetCalls)
+	assert.Equal(t, []*table.Column{all[2], all[0]}, d.activeColumns)
+	assert.Equal(t, []*table.Column{all[1]}, d.availableColumns)
+	assert.Equal(t, "Col 3", d.activeTable.GetCell(0, 0).Text)
+}
+
+func shortcutNames(d *ColumnSelectionDialog) []string {
+	var names []string
+	for _, entry := range d.shortcutMap.ShortCutEntries {
+		names = append(names, entry.Name)
+	}
+	return names
+}
+
+func TestColumnSelectionDialog_ShortcutsFit(t *testing.T) {
+	app := tview.NewApplication()
+	all := []*table.Column{{Id: table.ColumnId(1), Title: "Col 1"}}
+	d := NewColumnSelectionDialog(app, "Columns", all, all, nil)
+	d.SetResetFunc(func() []*table.Column { return all })
+
+	// the content width of the dialog, see CalculateDialogSize: the dialog frame has a border,
+	// and the content is as wide as columnSelectionMinContentWidth
+	width := columnSelectionMinContentWidth + 6 - 2
+	for _, focusActive := range []bool{true, false} {
+		d.focusActive = focusActive
+		d.updateShortcutMap()
+		assert.LessOrEqual(t, d.shortcutMap.CalculateHeightForWidth(width), columnSelectionShortcutLines,
+			"shortcuts with focus on the active side: %v", focusActive)
+	}
 }

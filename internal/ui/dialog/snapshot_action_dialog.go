@@ -16,6 +16,8 @@ const (
 	SnapshotDialogDestroySnapshotActionId
 	SnapshotDialogDestroySnapshotRecursivelyActionId
 	SnapshotDialogCloneSnapshotActionId
+	SnapshotDialogHoldSnapshotActionId
+	SnapshotDialogReleaseSnapshotActionId
 )
 
 func NewSnapshotActionDialog(
@@ -34,20 +36,32 @@ func NewSnapshotActionDialog(
 			Name: fmt.Sprintf("🧬 Clone '%s'", snapshot.Snapshot.Name),
 		},
 		{
+			Id:   SnapshotDialogHoldSnapshotActionId,
+			Name: fmt.Sprintf("🔒 Hold '%s' (protect from destruction)", snapshot.Snapshot.Name),
+		},
+	}
+	if snapshot.Snapshot.Properties.Holds > 0 {
+		dialogOptions = append(dialogOptions, &DialogOption{
+			Id:   SnapshotDialogReleaseSnapshotActionId,
+			Name: fmt.Sprintf("🔓 Release hold of '%s'", snapshot.Snapshot.Name),
+		})
+	}
+	dialogOptions = append(dialogOptions,
+		&DialogOption{
 			Id:       SnapshotDialogDestroySnapshotActionId,
 			Name:     fmt.Sprintf("💥 Destroy '%s'", snapshot.Snapshot.Name),
 			Severity: DialogSeverityDanger,
 		},
-		{
+		&DialogOption{
 			Id:       SnapshotDialogDestroySnapshotRecursivelyActionId,
 			Name:     fmt.Sprintf("💥 Destroy (recursive) '%s'", snapshot.Snapshot.Name),
 			Severity: DialogSeverityDanger,
 		},
-		{
+		&DialogOption{
 			Id:   DialogCloseActionId,
 			Name: localization.LocalizationCommonClose,
 		},
-	}
+	)
 
 	return NewSelectionDialog(
 		application,

@@ -10,6 +10,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -54,42 +55,57 @@ type snapshotLoadResult struct {
 var (
 	columnName = &table.Column{
 		Id:        0,
+		Key:       "name",
 		Title:     "Name",
 		Alignment: tview.AlignLeft,
 	}
 	columnDate = &table.Column{
 		Id:        1,
+		Key:       "creation",
 		Title:     "Creation",
 		Alignment: tview.AlignLeft,
 	}
 	columnDiff = &table.Column{
 		Id:        2,
+		Key:       "diff",
 		Title:     "Diff",
 		Alignment: tview.AlignCenter,
 	}
 	columnUsed = &table.Column{
 		Id:        3,
+		Key:       "used",
 		Title:     "Used",
 		Alignment: tview.AlignCenter,
 	}
 	columnRefer = &table.Column{
 		Id:        4,
+		Key:       "referenced",
 		Title:     "Refer",
 		Alignment: tview.AlignCenter,
 	}
 	columnRatio = &table.Column{
 		Id:        5,
+		Key:       "compressRatio",
 		Title:     "Ratio",
 		Alignment: tview.AlignCenter,
 	}
 	columnClones = &table.Column{
 		Id:        6,
+		Key:       "clones",
 		Title:     "Clones",
 		Alignment: tview.AlignCenter,
 	}
 
+	// columnHolds is the number of holds, see zfs.ListHolds
+	columnHolds = &table.Column{
+		Id:        7,
+		Key:       "holds",
+		Title:     "Holds",
+		Alignment: tview.AlignCenter,
+	}
+
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
+		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones, columnHolds,
 	}
 
 	initialActiveTableColumns = []*table.Column{
@@ -97,6 +113,7 @@ var (
 		columnDiff,
 		columnDate,
 		columnUsed,
+		columnHolds,
 	}
 )
 
@@ -197,6 +214,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 	snapshotBrowser.tableContainer.SetFilterChangedCallback(snapshotBrowser.updateTitleAndFooter)
 	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
 	snapshotBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
+	// shared by the snapshot browsers of the main and the dataset page
+	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, "snapshotBrowser", tableColumns)
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		if snapshotBrowser.isRestoringSelection {
 			return
@@ -599,9 +618,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	// destroying asks for confirmation first, with the result of a dry run
 	var destroy *destroyRequest
 	var destroyPreviewResult *zfs.DestroyPreview
+	var holdResultValue *holdResult
+	selectedNames := []string{selection.Snapshot.FullName}
 
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
+		case dialog.SnapshotDialogHoldSnapshotActionId, dialog.SnapshotDialogReleaseSnapshotActionId:
+			result, err := holdOrRelease(selectedNames, action == dialog.SnapshotDialogHoldSnapshotActionId)
+			holdResultValue = result
+			// shown in onComplete, together with the reload
+			return err
 		case dialog.SnapshotDialogCreateSnapshotActionId:
 			name, err := snapshotBrowser.createSnapshot(selection)
 			createdName = name
@@ -622,6 +648,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close() // Dismiss selection menu
+
+		if option.Id == dialog.SnapshotDialogHoldSnapshotActionId || option.Id == dialog.SnapshotDialogReleaseSnapshotActionId {
+			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.SnapshotDialogHoldSnapshotActionId, err)
+			return
+		}
 
 		if err != nil {
 			logging.Error("Action failed: %s", err.Error())
@@ -707,8 +738,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 	var destroy *destroyRequest
 	var destroyPreviewResult *zfs.DestroyPreview
 
+	var holdResultValue *holdResult
+	selectedNames := snapshotFullNames(entries)
+
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
+		case dialog.MultiSnapshotDialogHoldSnapshotsActionId, dialog.MultiSnapshotDialogReleaseSnapshotsActionId:
+			result, err := holdOrRelease(selectedNames, action == dialog.MultiSnapshotDialogHoldSnapshotsActionId)
+			holdResultValue = result
+			// shown in onComplete, together with the reload
+			return err
 		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
 			destroy = &destroyRequest{entries: entries}
 		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
@@ -723,6 +762,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
+
+		if option.Id == dialog.MultiSnapshotDialogHoldSnapshotsActionId || option.Id == dialog.MultiSnapshotDialogReleaseSnapshotsActionId {
+			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.MultiSnapshotDialogHoldSnapshotsActionId, err)
+			return
+		}
 
 		if err != nil {
 			logging.Error("Cannot destroy snapshots: %s", err.Error())
@@ -780,7 +824,15 @@ func (r *destroyRequest) snapshots() []*zfs.Snapshot {
 }
 
 // preview does a dry run of the destroy. Runs in the background.
+// Held snapshots are reported as an error, as the dry run does not check holds, but the destroy would fail.
 func (r *destroyRequest) preview() (*zfs.DestroyPreview, error) {
+	holds, err := listHolds(snapshotFullNames(r.entries), r.recursive)
+	if err != nil {
+		return nil, err
+	}
+	if len(holds) > 0 {
+		return nil, heldSnapshotsError(holds)
+	}
 	return previewDestroySnapshots(r.snapshots(), r.recursive, r.dependantClones)
 }
 
@@ -855,17 +907,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onC
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {
-	currentActive := snapshotBrowser.tableContainer.GetColumnSpec()
-
-	d := dialog.NewColumnSelectionDialog(
-		snapshotBrowser.application,
-		"Configure Snapshot Columns",
-		tableColumns,
-		slices.Clone(currentActive),
-		func(activeColumns []*table.Column) {
-			snapshotBrowser.tableContainer.SetActiveColumns(activeColumns)
-		},
-	)
+	d := dialog.NewTableColumnSelectionDialog(snapshotBrowser.application, "Configure Snapshot Columns", tableColumns, snapshotBrowser.tableContainer)
 	snapshotBrowser.showDialog(d, nil)
 }
 
