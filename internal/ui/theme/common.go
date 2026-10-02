@@ -98,6 +98,8 @@ type PermissionColors struct {
 	Missing tcell.Color
 	// Unknown is used while the permissions are loading or if they cannot be read
 	Unknown tcell.Color
+	// Pending marks changes of delegations that are not applied yet
+	Pending tcell.Color
 }
 
 type LayoutColors struct {

@@ -224,7 +224,9 @@ func (datasetBrowser *DatasetBrowserComponent) openPermissionsDialog(entry *zfs.
 			}
 			// the dialog read them anyway, so the column shows the same
 			datasetBrowser.applyPermissions(map[string]permissionState{name: {permissions: permissions}})
-			datasetBrowser.showDialog(dialog.NewDatasetPermissionsDialog(datasetBrowser.application, permissions))
+			// changed delegations can affect the descendants as well, and the dataset info shows them too
+			onChanged := func() { zfs.RefreshZfsData() }
+			datasetBrowser.showDialog(dialog.NewDatasetPermissionsDialog(datasetBrowser.application, permissions, onChanged))
 		})
 	}()
 }

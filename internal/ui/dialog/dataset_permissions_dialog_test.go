@@ -36,7 +36,8 @@ func tableRows(d *DatasetPermissionsDialog) []string {
 	for row := 0; row < d.table.GetRowCount(); row++ {
 		var cells []string
 		for column := 0; column < d.table.GetColumnCount(); column++ {
-			cells = append(cells, d.table.GetCell(row, column).Text)
+			// as displayed, e.g. "[x]" instead of the escaped "[x[]"
+			cells = append(cells, strings.ReplaceAll(d.table.GetCell(row, column).Text, "[]", "]"))
 		}
 		rows = append(rows, strings.TrimRight(strings.Join(cells, "|"), "|"))
 	}
@@ -44,7 +45,7 @@ func tableRows(d *DatasetPermissionsDialog) []string {
 }
 
 func TestDatasetPermissionsDialog_Content(t *testing.T) {
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions())
+	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions(), nil)
 
 	assert.Equal(t, "DatasetPermissionsDialog", d.GetName())
 	assert.Equal(t, []string{
@@ -59,7 +60,8 @@ func TestDatasetPermissionsDialog_Content(t *testing.T) {
 		"rollback|b|✗",
 		"diff|f|✗",
 	}, tableRows(d))
-	assert.Equal(t, "Delegations\n"+
+	assert.Equal(t, "What user alice may do on this dataset and its children:", d.summary.GetText(true))
+	assert.Equal(t, "All delegations\n"+
 		"on this dataset:\n"+
 		"  user alice: @backup,snapshot (local+descendent)\n"+
 		"on pool:\n"+
@@ -68,15 +70,22 @@ func TestDatasetPermissionsDialog_Content(t *testing.T) {
 }
 
 func TestDatasetPermissionsDialog_Details(t *testing.T) {
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions())
+	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions(), nil)
 
 	// the first permission is selected
-	assert.Equal(t, "snapshot: Create snapshots (also needs mount)\nGranted to user alice (this dataset), local+descendent", d.details.GetText(true))
+	assert.Equal(t, "snapshot: Create snapshots (also needs mount)\n"+
+		"Space: revoke it.\n"+
+		"Granted to user alice (this dataset), local+descendent", d.details.GetText(true))
 
 	d.table.Select(3, 0) // mount
 	assert.Equal(t, "mount: Mount and unmount datasets, needed by most other permissions\n"+
+		"Cannot be revoked here, change the delegation it is granted by.\n"+
 		"Granted to group staff (from pool), descendent\n"+
 		"Granted to user alice (this dataset), local+descendent", d.details.GetText(true))
+
+	d.table.Select(2, 0) // destroy
+	assert.Equal(t, "destroy: Destroy snapshots and datasets (also needs mount)\n"+
+		"Space: grant it to you on this dataset and its children.", d.details.GetText(true))
 
 	// the header row has no details
 	d.updateDetails(0)
@@ -89,16 +98,17 @@ func TestDatasetPermissionsDialog_Root(t *testing.T) {
 		User:        "root",
 		IsRoot:      true,
 		Delegations: &zfs.Delegations{Dataset: "pool/data"},
-	})
+	}, nil)
 
 	assert.Equal(t, "destroy|d|✓|root", tableRows(d)[2])
-	assert.Equal(t, "Delegations\nnone on this dataset or its parents", d.delegations.GetText(true))
+	assert.Equal(t, "You are root and have all permissions, no delegations needed.", d.summary.GetText(true))
+	assert.Equal(t, "All delegations\nnone on this dataset or its parents", d.delegations.GetText(true))
 }
 
 func TestDatasetPermissionsDialog_EscapesNames(t *testing.T) {
 	permissions := newTestDatasetPermissions()
 	permissions.Delegations.Entries[0].Who = "[red]alice"
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions)
+	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions, nil)
 	// escaped, so it is displayed as "[red]alice" instead of coloring the text
 	assert.Contains(t, d.delegations.GetText(true), "  user [red]alice: @backup,snapshot (local+descendent)")
 }
@@ -109,7 +119,7 @@ func TestDatasetPermissionsDialog_ScrollDelegations(t *testing.T) {
 		permissions.Delegations.Entries = append(permissions.Delegations.Entries,
 			zfs.Delegation{Dataset: "pool", Scope: zfs.ScopeLocal, WhoType: zfs.WhoUser, Who: fmt.Sprintf("user%d", i), Permissions: []string{"hold"}})
 	}
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions)
+	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions, nil)
 	d.delegations.SetRect(0, 0, 40, 5)
 
 	press := func(key tcell.Key) {

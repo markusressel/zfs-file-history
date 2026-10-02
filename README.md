@@ -35,8 +35,9 @@
   datasets whose snapshots use the most space).
 * 🔑 **ZFS permissions:** The `Perms` column of the dataset overview shows which delegated ZFS permissions
   (`zfs allow`) you have on each dataset, e.g. `sdmh-----` for snapshot, destroy, mount and hold. `p` shows the
-  details: who grants each permission and all delegations of the dataset and its parents. The dataset info box lists
-  your permissions as well.
+  details: who grants each permission and all delegations of the dataset and its parents. There you can also grant
+  permissions to yourself or revoke them, for the dataset and its children (`zfs allow` / `zfs unallow`); the changes
+  are applied with `sudo` if needed. The dataset info box lists your permissions as well.
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,

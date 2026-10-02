@@ -94,6 +94,7 @@ var (
 			Granted: tcell.ColorGreen,
 			Missing: tcell.ColorGray,
 			Unknown: tcell.ColorDarkGray,
+			Pending: tcell.ColorYellow,
 		},
 	}
 

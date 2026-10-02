@@ -564,6 +564,8 @@ func (c *RowSelectionTable[T]) visibleColumns() []*Column {
 // tview's own horizontal scrolling (its column offset) is not used: when the scrolled columns fit with space to
 // spare, tview's Draw moves the offset back to the start ("don't waste space"), so tables that are only slightly
 // too wide could not be scrolled, or jumped back on the next redraw.
+// Workaround for https://github.com/rivo/tview/issues/1169: once a tview release with the fix is used, this can
+// be replaced by tview's column offset again (keeping the "◂" indicator would then need GetOffset in Draw).
 func (c *RowSelectionTable[T]) scrollColumns(delta int) {
 	offset := c.columnOffset + delta
 	if offset < 0 || offset >= len(c.columnSpec) || offset == c.columnOffset {
