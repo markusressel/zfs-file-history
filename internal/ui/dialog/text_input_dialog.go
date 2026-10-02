@@ -16,8 +16,11 @@ type TextInputDialog struct {
 	name          string
 	layout        *tview.Flex
 	inputField    *tview.InputField
+	errorView     *tview.TextView
 	actionChannel chan DialogActionId
 	onSubmit      func(text string)
+	// validate checks the text before it is submitted, see SetValidator. May be nil.
+	validate func(text string) error
 }
 
 // NewTextInputDialog creates a dialog that asks for a single line of text, prefilled with initialText.
@@ -82,21 +85,38 @@ func (d *TextInputDialog) createLayout(title string, description string, initial
 		SetDynamicColors(true).
 		SetText(helpText)
 
+	// the line between the input field and the help shows validation errors, see SetValidator
+	d.errorView = tview.NewTextView().SetTextColor(theme.Colors.Dialog.Error)
+	d.inputField.SetChangedFunc(func(string) { d.errorView.SetText("") })
+
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(descriptionView, calculateWrappedHeight(description, textLineWidth), 0, false).
 		AddItem(tview.NewBox(), 1, 0, false).
 		AddItem(d.inputField, 1, 0, true).
-		AddItem(tview.NewBox(), 1, 0, false).
+		AddItem(d.errorView, 1, 0, false).
 		AddItem(helpView, 1, 0, false)
 
 	d.layout = createModal(title, content, constraints)
 }
 
-// submit closes the dialog and passes the text on, unless it is empty.
+// SetValidator sets a check for the (trimmed) text: if it returns an error, the error is shown in the dialog and the
+// text is not submitted, so it can be corrected. The error disappears when the text is edited.
+func (d *TextInputDialog) SetValidator(validate func(text string) error) *TextInputDialog {
+	d.validate = validate
+	return d
+}
+
+// submit closes the dialog and passes the text on, unless it is empty or invalid.
 func (d *TextInputDialog) submit() {
 	text := strings.TrimSpace(d.inputField.GetText())
 	if text == "" {
 		return
+	}
+	if d.validate != nil {
+		if err := d.validate(text); err != nil {
+			d.errorView.SetText(err.Error())
+			return
+		}
 	}
 	d.Close()
 	if d.onSubmit != nil {

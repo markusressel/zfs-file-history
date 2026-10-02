@@ -1,7 +1,6 @@
 package dialog
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"zfs-file-history/internal/logging"
@@ -309,11 +308,10 @@ func (d *DatasetPermissionsDialog) confirmChange() {
 		if action != ApplyDelegationsDialogApplyActionId {
 			return nil
 		}
-		err := applyDelegationChange(change)
-		if errors.Is(err, zfs.ErrPermissionDenied) && !d.permissions.IsRoot {
-			explanation := fmt.Sprintf("changing the ZFS permissions of %s on %s.", change.Grantee, change.Dataset)
-			err = grantPermissions(d.application, explanation, change.Commands())
-		}
+		explanation := fmt.Sprintf("changing the ZFS permissions of %s on %s.", change.Grantee, change.Dataset)
+		err := runZfsChange(d.application, d.permissions.IsRoot, explanation, change.Commands(), func() error {
+			return applyDelegationChange(change)
+		})
 		if err != nil {
 			return err
 		}

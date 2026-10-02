@@ -103,9 +103,39 @@ func MakeFlexResizing(
 
 // createModal creates a [tview.Flex] layout for a modal dialog with the given title and content.
 func createModal(title string, content tview.Primitive, constraints DialogSizeConstraints) *tview.Flex {
+	layout, _ := createModalWithFrame(title, content, constraints)
+	return layout
+}
+
+// clearInside makes a bordered dialog frame clear its inside before its children are drawn. tview's Flex does not
+// clear its area, so gaps between the children (e.g. the padding of a table) would show the page behind the dialog.
+// The draw func runs after the border is drawn and before the children. Call it before other draw funcs are
+// installed on the frame (e.g. uiutil.NewBorderFooter), which keep and call it.
+func clearInside(frame *tview.Box) {
+	frame.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		fillBackground(screen, x+1, y+1, width-2, height-2)
+		// -1: tview computes the inner rect (border and padding) itself
+		return -1, 0, 0, 0
+	})
+}
+
+// fillBackground fills the given area with the background of the widgets.
+func fillBackground(screen tcell.Screen, x, y, width, height int) {
+	style := tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor)
+	for row := y; row < y+height; row++ {
+		for column := x; column < x+width; column++ {
+			screen.SetContent(column, row, ' ', nil, style)
+		}
+	}
+}
+
+// createModalWithFrame is createModal, and also returns the frame (with the border and title) around the content,
+// e.g. to show the footer of a table in its bottom border, see table.RowSelectionTable.EmbedInFrame.
+func createModalWithFrame(title string, content tview.Primitive, constraints DialogSizeConstraints) (*tview.Flex, *tview.Flex) {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
 	uiutil.SetupDialogWindow(dialogFrame, title)
+	clearInside(dialogFrame.Box)
 	dialogFrame.AddItem(content, 0, 1, true)
 
 	dialogContentColumnWrapper := tview.NewFlex()
@@ -150,7 +180,7 @@ func createModal(title string, content tview.Primitive, constraints DialogSizeCo
 		return dx, dy, w, h
 	})
 
-	return dialogContentColumnWrapper
+	return dialogContentColumnWrapper, dialogFrame
 }
 
 func createOptionTable(application *tview.Application, options []*DialogOption, onSelect func(option *DialogOption)) *tview.Table {

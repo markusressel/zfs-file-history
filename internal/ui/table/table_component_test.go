@@ -695,3 +695,101 @@ func TestTable_HorizontalScrollIsKept(t *testing.T) {
 	assert.Equal(t, 1, table.columnOffset)
 	assert.Equal(t, []*Column{cols[1]}, table.visibleColumns())
 }
+
+func TestTable_EmbedInFrame(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	frame := tview.NewFlex()
+	frame.SetBorder(true)
+	frame.AddItem(table.GetLayout(), 0, 1, true)
+
+	table.EmbedInFrame(frame.Box)
+	table.SetFooter("4 things")
+	table.SetFilterText("daily")
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 8)
+	frame.SetRect(0, 0, 40, 8)
+	frame.Draw(screen)
+	screen.Show()
+
+	cells, width, height := screen.GetContents()
+	line := func(y int) string {
+		var text strings.Builder
+		for x := 0; x < width; x++ {
+			if runes := cells[y*width+x].Runes; len(runes) > 0 {
+				text.WriteRune(runes[0])
+			}
+		}
+		return text.String()
+	}
+
+	bottom := line(height - 1)
+	assert.Contains(t, bottom, "4 things", "the footer is drawn into the frame")
+	assert.Contains(t, bottom, "Filter: daily")
+	assert.Equal(t, "4 things", table.GetFooter())
+	// the content directly above the frame's border is not overwritten by the table's former footer
+	assert.NotContains(t, line(height-2), "4 things")
+	// with a border of its own, line 1 would be the table's border
+	assert.Contains(t, line(1), "Name", "the header row starts right below the frame's top border")
+}
+
+// drawTableLayout draws the whole table component (table and scrollbar), like the application does after each key.
+func drawTableLayout(table *RowSelectionTable[namedEntry], screen tcell.Screen) {
+	table.GetLayout().Draw(screen)
+}
+
+func TestTable_ScrollbarReachesTheEndWithPgDn(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 12)
+	table.GetLayout().SetRect(0, 0, 40, 12)
+	// like in the application: tview's Flex draws the focused item (the table) last, after the scrollbar
+	table.table.Focus(func(tview.Primitive) {})
+	table.Select(entries[0])
+	drawTableLayout(table, screen)
+	require.False(t, table.scrollbar.IsAtEnd(), "50 rows do not fit")
+
+	for i := 0; i < 20 && table.GetSelectedEntry() != entries[len(entries)-1]; i++ {
+		pressTableKey(table, tcell.KeyPgDn)
+		drawTableLayout(table, screen)
+	}
+	require.Equal(t, entries[len(entries)-1], table.GetSelectedEntry(), "the last row is selected")
+
+	rowOffset, _ := table.table.GetOffset()
+	assert.Equal(t, rowOffset, table.scrollbar.GetPosition(), "the scrollbar shows the offset of the table as drawn")
+	assert.True(t, table.scrollbar.IsAtEnd(), "the bar reaches the bottom")
+
+	// and back to the top
+	for i := 0; i < 20 && table.GetSelectedEntry() != entries[0]; i++ {
+		pressTableKey(table, tcell.KeyPgUp)
+		drawTableLayout(table, screen)
+	}
+	assert.Zero(t, table.scrollbar.GetPosition())
+}
+
+func TestTable_ScrollbarVisibility(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 12)
+
+	// 12 lines: the border (2) and the header row (1) leave 9 lines for data rows
+	tests := []struct {
+		rows    int
+		visible bool
+	}{
+		{9, false},
+		{10, true}, // one row does not fit
+	}
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("%d rows", test.rows), func(t *testing.T) {
+			table, entries, _ := newWideTestTable(1)
+			table.SetData(entries[:test.rows])
+			table.GetLayout().SetRect(0, 0, 40, 12)
+			drawTableLayout(table, screen)
+			table.syncScrollbar()
+			assert.Equal(t, test.visible, table.isScrollbarVisible)
+		})
+	}
+}

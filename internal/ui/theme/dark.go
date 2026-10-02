@@ -35,6 +35,7 @@ var (
 		},
 		Dialog: DialogColors{
 			Border: Secondary,
+			Error:  tcell.ColorRed,
 		},
 		FileBrowser: FileBrowserColors{
 			Table: FileBrowserTableColors{
@@ -101,6 +102,12 @@ var (
 			Missing: tcell.ColorGray,
 			Unknown: tcell.ColorDarkGray,
 			Pending: tcell.ColorYellow,
+		},
+		Properties: PropertyColors{
+			Value:    tcell.ColorLightGray,
+			Local:    Accent,
+			ReadOnly: tcell.ColorGray,
+			Hint:     tcell.ColorGray,
 		},
 	}
 

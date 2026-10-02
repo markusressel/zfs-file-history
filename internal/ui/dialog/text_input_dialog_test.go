@@ -1,6 +1,8 @@
 package dialog
 
 import (
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -101,4 +103,36 @@ func TestTextInputDialog_EscCancels(t *testing.T) {
 
 	require.Eventually(t, func() bool { return !dt.isShown() }, 2*time.Second, 10*time.Millisecond)
 	assert.Empty(t, dt.getSubmitted())
+}
+
+func TestTextInputDialog_Validator(t *testing.T) {
+	dt := newTextInputDialogTest(t, "")
+	onUiThread(t, dt.app, func() {
+		dt.dialog.SetValidator(func(text string) error {
+			if !strings.Contains(text, ":") {
+				return errors.New("needs a colon")
+			}
+			return nil
+		})
+	})
+	errorText := func() string {
+		text := ""
+		onUiThread(t, dt.app, func() { text = dt.dialog.errorView.GetText(true) })
+		return text
+	}
+
+	dt.typeText("note")
+	dt.press(tcell.KeyEnter, 0)
+	require.Eventually(t, func() bool { return errorText() == "needs a colon" }, 2*time.Second, 10*time.Millisecond)
+	assert.Empty(t, dt.getSubmitted())
+	assert.True(t, dt.isShown(), "the dialog stays open to correct the text")
+
+	// editing clears the error
+	dt.press(tcell.KeyCtrlU, 0)
+	require.Eventually(t, func() bool { return errorText() == "" }, 2*time.Second, 10*time.Millisecond)
+
+	dt.typeText("org:note")
+	dt.press(tcell.KeyEnter, 0)
+	require.Eventually(t, func() bool { return len(dt.getSubmitted()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"org:note"}, dt.getSubmitted())
 }

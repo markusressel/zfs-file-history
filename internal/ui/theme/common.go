@@ -65,6 +65,8 @@ type SnapshotBrowserTableStatusColors struct {
 
 type DialogColors struct {
 	Border tcell.Color
+	// Error is the color of validation errors in input dialogs
+	Error tcell.Color
 }
 
 type StyleStruct struct {
@@ -90,6 +92,19 @@ type Color struct {
 	Layout          LayoutColors
 	ShortcutMap     ShortcutMapColors
 	Permissions     PermissionColors
+	Properties      PropertyColors
+}
+
+// PropertyColors are used in the table of ZFS properties.
+type PropertyColors struct {
+	// Value is a property with a default or inherited value
+	Value tcell.Color
+	// Local is a property set on the dataset itself
+	Local tcell.Color
+	// ReadOnly is a property that cannot be set (statistics, values fixed at creation)
+	ReadOnly tcell.Color
+	// Hint explains the selected property
+	Hint tcell.Color
 }
 
 // PermissionColors are used to show which ZFS permissions the user has.
