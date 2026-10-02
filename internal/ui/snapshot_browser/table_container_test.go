@@ -65,3 +65,20 @@ func snapshotNames(entries []*data.SnapshotBrowserEntry) []string {
 	}
 	return result
 }
+
+func TestHoldsColumn(t *testing.T) {
+	newEntry := func(name string, holds uint64) *data.SnapshotBrowserEntry {
+		return &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: name, Properties: zfs.SnapshotProperties{Holds: holds}}}
+	}
+	snapshotBrowser := &SnapshotBrowserComponent{}
+
+	// empty without holds, so held snapshots stand out
+	cells := snapshotBrowser.createSnapshotBrowserTableCells(0, []*table.Column{columnHolds}, newEntry("a", 0))
+	assert.Equal(t, "", cells[0].Text)
+	cells = snapshotBrowser.createSnapshotBrowserTableCells(0, []*table.Column{columnHolds}, newEntry("a", 2))
+	assert.Equal(t, "2", cells[0].Text)
+
+	entries := []*data.SnapshotBrowserEntry{newEntry("two", 2), newEntry("none", 0), newEntry("one", 1)}
+	createSnapshotBrowserTableSortFunction(entries, columnHolds, false)
+	assert.Equal(t, []string{"none", "one", "two"}, snapshotNames(entries))
+}

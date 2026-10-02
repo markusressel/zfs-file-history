@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	gopath "path"
 	"strconv"
 	"strings"
@@ -452,12 +451,8 @@ var datasetListProperties = []string{"name", "used", "available", "usedbysnapsho
 // ListAllDatasets returns the listing properties of all filesystem datasets on the system.
 // This executes "zfs list" and reads /proc/mounts, so it must not be called on the UI thread.
 func ListAllDatasets() ([]*DatasetListEntry, error) {
-	output, err := exec.Command("zfs", "list", "-H", "-p", "-t", "filesystem", "-o", strings.Join(datasetListProperties, ",")).Output()
+	output, err := runZfs("list", "-H", "-p", "-t", "filesystem", "-o", strings.Join(datasetListProperties, ","))
 	if err != nil {
-		var exitError *exec.ExitError
-		if errors.As(err, &exitError) && len(strings.TrimSpace(string(exitError.Stderr))) > 0 {
-			return nil, errors.New(strings.TrimSpace(string(exitError.Stderr)))
-		}
 		return nil, err
 	}
 
@@ -468,7 +463,7 @@ func ListAllDatasets() ([]*DatasetListEntry, error) {
 		_ = mounts.Close()
 	}
 
-	return parseDatasetList(string(output), mountPaths)
+	return parseDatasetList(output, mountPaths)
 }
 
 // parseDatasetList parses the output of "zfs list -Hp -o <datasetListProperties>". mountPaths maps the names of

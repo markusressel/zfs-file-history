@@ -96,8 +96,16 @@ var (
 		Alignment: tview.AlignCenter,
 	}
 
+	// columnHolds is the number of holds, see zfs.ListHolds
+	columnHolds = &table.Column{
+		Id:        7,
+		Key:       "holds",
+		Title:     "Holds",
+		Alignment: tview.AlignCenter,
+	}
+
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones,
+		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones, columnHolds,
 	}
 
 	initialActiveTableColumns = []*table.Column{
@@ -105,6 +113,7 @@ var (
 		columnDiff,
 		columnDate,
 		columnUsed,
+		columnHolds,
 	}
 )
 
@@ -609,9 +618,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	// destroying asks for confirmation first, with the result of a dry run
 	var destroy *destroyRequest
 	var destroyPreviewResult *zfs.DestroyPreview
+	var holdResultValue *holdResult
+	selectedNames := []string{selection.Snapshot.FullName}
 
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
+		case dialog.SnapshotDialogHoldSnapshotActionId, dialog.SnapshotDialogReleaseSnapshotActionId:
+			result, err := holdOrRelease(selectedNames, action == dialog.SnapshotDialogHoldSnapshotActionId)
+			holdResultValue = result
+			// shown in onComplete, together with the reload
+			return err
 		case dialog.SnapshotDialogCreateSnapshotActionId:
 			name, err := snapshotBrowser.createSnapshot(selection)
 			createdName = name
@@ -632,6 +648,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close() // Dismiss selection menu
+
+		if option.Id == dialog.SnapshotDialogHoldSnapshotActionId || option.Id == dialog.SnapshotDialogReleaseSnapshotActionId {
+			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.SnapshotDialogHoldSnapshotActionId, err)
+			return
+		}
 
 		if err != nil {
 			logging.Error("Action failed: %s", err.Error())
@@ -717,8 +738,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 	var destroy *destroyRequest
 	var destroyPreviewResult *zfs.DestroyPreview
 
+	var holdResultValue *holdResult
+	selectedNames := snapshotFullNames(entries)
+
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
+		case dialog.MultiSnapshotDialogHoldSnapshotsActionId, dialog.MultiSnapshotDialogReleaseSnapshotsActionId:
+			result, err := holdOrRelease(selectedNames, action == dialog.MultiSnapshotDialogHoldSnapshotsActionId)
+			holdResultValue = result
+			// shown in onComplete, together with the reload
+			return err
 		case dialog.MultiSnapshotDialogDestroySnapshotActionId:
 			destroy = &destroyRequest{entries: entries}
 		case dialog.MultiSnapshotDialogDestroySnapshotRecursivelyActionId:
@@ -733,6 +762,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
+
+		if option.Id == dialog.MultiSnapshotDialogHoldSnapshotsActionId || option.Id == dialog.MultiSnapshotDialogReleaseSnapshotsActionId {
+			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.MultiSnapshotDialogHoldSnapshotsActionId, err)
+			return
+		}
 
 		if err != nil {
 			logging.Error("Cannot destroy snapshots: %s", err.Error())
@@ -790,7 +824,15 @@ func (r *destroyRequest) snapshots() []*zfs.Snapshot {
 }
 
 // preview does a dry run of the destroy. Runs in the background.
+// Held snapshots are reported as an error, as the dry run does not check holds, but the destroy would fail.
 func (r *destroyRequest) preview() (*zfs.DestroyPreview, error) {
+	holds, err := listHolds(snapshotFullNames(r.entries), r.recursive)
+	if err != nil {
+		return nil, err
+	}
+	if len(holds) > 0 {
+		return nil, heldSnapshotsError(holds)
+	}
 	return previewDestroySnapshots(r.snapshots(), r.recursive, r.dependantClones)
 }
 

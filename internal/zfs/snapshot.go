@@ -503,12 +503,32 @@ func (s *Snapshot) GetClones() uint64 {
 	return val
 }
 
+// GetHolds returns the number of holds of the snapshot (see ListHolds for their tags).
+func (s *Snapshot) GetHolds() uint64 {
+	if s.rawGolibzfsData == nil {
+		return 0
+	}
+	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUserrefs)
+	if err != nil {
+		logging.Error("Could not get userrefs property for %s: %s", s.FullName, err.Error())
+		return 0
+	}
+	val, err := strconv.ParseUint(prop.Value, 10, 64)
+	if err != nil {
+		logging.Error("Could not parse userrefs property for %s: %s", s.FullName, err.Error())
+		return 0
+	}
+	return val
+}
+
 type SnapshotProperties struct {
 	CreationDate     time.Time
 	Used             uint64
 	Referenced       uint64
 	CompressionRatio float64
 	Clones           uint64
+	// Holds is the number of holds ("userrefs"). A held snapshot cannot be destroyed.
+	Holds uint64
 }
 
 func (s *Snapshot) FetchDetails() {
@@ -518,6 +538,7 @@ func (s *Snapshot) FetchDetails() {
 		Referenced:       s.GetReferenced(),
 		CompressionRatio: s.GetRatio(),
 		Clones:           s.GetClones(),
+		Holds:            s.GetHolds(),
 	}
 }
 

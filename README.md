@@ -38,6 +38,9 @@
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
 * 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
+* 🔒 **Snapshot holds:** Hold snapshots (`zfs hold`, tag `zfs-file-history`) to protect them from being destroyed,
+  e.g. by automatic pruning while you investigate, and release them again. Only holds with this tag are ever
+  released, holds of other tools (e.g. replication) stay untouched. The `Holds` column shows the number of holds.
 
 # How to use
 
@@ -81,10 +84,11 @@ sudo zfs-file-history setup
 
 ### Permissions
 
-To create or destroy ZFS snapshots, the user running zfs-file-history needs to have the appropriate permissions, f.ex.:
+To create, destroy, hold or release ZFS snapshots, the user running zfs-file-history needs to have the appropriate
+permissions, f.ex.:
 
 ```shell
-sudo zfs allow markus mount,snapshot,destroy rpool/HOME/default/markus
+sudo zfs allow markus mount,snapshot,destroy,hold,release rpool/HOME/default/markus
 ```
 
 otherwise zfs-file-history will show a permission error.

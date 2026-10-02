@@ -1,6 +1,7 @@
 package snapshot_browser
 
 import (
+	"cmp"
 	"fmt"
 	"math/big"
 	"sort"
@@ -69,6 +70,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			cellText = fmt.Sprintf("%.2fx", ratio)
 		case columnClones:
 			cellText = fmt.Sprintf("%d", entry.Snapshot.Properties.Clones)
+		case columnHolds:
+			cellAlign = tview.AlignCenter
+			cellText = formatHolds(entry.Snapshot.Properties.Holds)
 		}
 		cell := tview.NewTableCell(cellText).
 			SetTextColor(cellColor).
@@ -82,6 +86,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 		result = append(result, cell)
 	}
 	return result
+}
+
+// formatHolds returns the text of the holds column, empty without holds, so held snapshots stand out.
+func formatHolds(holds uint64) string {
+	if holds == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", holds)
 }
 
 func determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
@@ -135,6 +147,8 @@ func createSnapshotBrowserTableSortFunction(entries []*data.SnapshotBrowserEntry
 			ratioA := a.Snapshot.Properties.CompressionRatio
 			ratioB := b.Snapshot.Properties.CompressionRatio
 			result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))
+		case columnHolds:
+			result = cmp.Compare(a.Snapshot.Properties.Holds, b.Snapshot.Properties.Holds)
 		case columnClones:
 			clonesA := a.Snapshot.Properties.Clones
 			clonesB := b.Snapshot.Properties.Clones

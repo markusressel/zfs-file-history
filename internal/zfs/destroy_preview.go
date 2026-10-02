@@ -3,7 +3,6 @@ package zfs
 import (
 	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -36,15 +35,11 @@ func PreviewDestroySnapshots(snapshots []*Snapshot, recursive bool, dependantClo
 	}
 	args = append(args, target)
 
-	output, err := exec.Command("zfs", args...).Output()
+	output, err := runZfs(args...)
 	if err != nil {
-		var exitError *exec.ExitError
-		if errors.As(err, &exitError) && len(strings.TrimSpace(string(exitError.Stderr))) > 0 {
-			return nil, errors.New(strings.TrimSpace(string(exitError.Stderr)))
-		}
 		return nil, err
 	}
-	return parseDestroyPreview(string(output))
+	return parseDestroyPreview(output)
 }
 
 // destroyTarget returns the argument for "zfs destroy" for the given snapshots, e.g. "pool/data@a,b".

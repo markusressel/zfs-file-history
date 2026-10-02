@@ -33,6 +33,18 @@ type destroyTest struct {
 	previews     []destroyCall
 	destroys     []destroyCall
 	previewError error
+
+	// holds are the existing holds returned by listHolds
+	holds        []zfs.Hold
+	holdCalls    []holdCall
+	releaseCalls []holdCall
+	holdsListed  []holdCall
+}
+
+type holdCall struct {
+	snapshots  []string
+	recursive  bool
+	onUiThread bool
 }
 
 func fullSnapshotNames(snapshots []*zfs.Snapshot) []string {
@@ -49,6 +61,35 @@ func newDestroyTest(t *testing.T) *destroyTest {
 
 	originalPreview, originalDestroy := previewDestroySnapshots, destroySnapshots
 	t.Cleanup(func() { previewDestroySnapshots, destroySnapshots = originalPreview, originalDestroy })
+	originalList, originalHold, originalRelease := listHolds, holdSnapshots, releaseSnapshots
+	t.Cleanup(func() { listHolds, holdSnapshots, releaseSnapshots = originalList, originalHold, originalRelease })
+	listHolds = func(names []string, recursive bool) ([]zfs.Hold, error) {
+		dt.mu.Lock()
+		defer dt.mu.Unlock()
+		dt.holdsListed = append(dt.holdsListed, holdCall{names, recursive, isOnUiThread(dt.app)})
+		var result []zfs.Hold
+		for _, h := range dt.holds {
+			for _, name := range names {
+				if h.Snapshot == name || (recursive && strings.HasSuffix(h.Snapshot, name[strings.Index(name, "@"):])) {
+					result = append(result, h)
+					break
+				}
+			}
+		}
+		return result, nil
+	}
+	holdSnapshots = func(names []string) error {
+		dt.mu.Lock()
+		defer dt.mu.Unlock()
+		dt.holdCalls = append(dt.holdCalls, holdCall{snapshots: names, onUiThread: isOnUiThread(dt.app)})
+		return nil
+	}
+	releaseSnapshots = func(names []string) error {
+		dt.mu.Lock()
+		defer dt.mu.Unlock()
+		dt.releaseCalls = append(dt.releaseCalls, holdCall{snapshots: names, onUiThread: isOnUiThread(dt.app)})
+		return nil
+	}
 	previewDestroySnapshots = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) (*zfs.DestroyPreview, error) {
 		dt.mu.Lock()
 		dt.previews = append(dt.previews, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, isOnUiThread(dt.app)})
@@ -127,6 +168,19 @@ func (dt *destroyTest) screenText() string {
 	return text.String()
 }
 
+// selectAll selects both snapshots with the space key.
+func (dt *destroyTest) selectAll() {
+	onUiThread(dt.t, dt.app, func() { dt.browser.tableContainer.SelectFirstIfExists() })
+	dt.press(tcell.KeyRune, ' ')
+	dt.press(tcell.KeyDown, 0)
+	dt.press(tcell.KeyRune, ' ')
+	require.Eventually(dt.t, func() bool {
+		count := 0
+		onUiThread(dt.t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
+		return count == 2
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
 // confirm selects the first option of the confirmation ("Destroy").
 func (dt *destroyTest) confirm() {
 	dt.press(tcell.KeyRune, '1')
@@ -185,10 +239,10 @@ func TestSnapshotBrowser_DeleteKeyShowsDryRunAndDestroysOnConfirmation(t *testin
 func TestSnapshotBrowser_RecursiveDestroyFromTheMenu(t *testing.T) {
 	dt := newDestroyTest(t)
 
-	// menu: 1 create, 2 clone, 3 destroy, 4 destroy (recursive)
+	// menu: 1 create, 2 clone, 3 hold, 4 destroy, 5 destroy (recursive)
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SnapshotActionDialog")
-	dt.press(tcell.KeyRune, '4')
+	dt.press(tcell.KeyRune, '5')
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("DestroySnapshotsDialog")
 
@@ -212,7 +266,7 @@ func TestSnapshotBrowser_FailedDryRunDestroysNothing(t *testing.T) {
 
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SnapshotActionDialog")
-	dt.press(tcell.KeyRune, '3') // destroy
+	dt.press(tcell.KeyRune, '4') // destroy
 	dt.press(tcell.KeyEnter, 0)
 
 	dt.waitForDialog("ErrorDialog")
@@ -225,21 +279,12 @@ func TestSnapshotBrowser_FailedDryRunDestroysNothing(t *testing.T) {
 func TestSnapshotBrowser_DestroyMultiSelection(t *testing.T) {
 	dt := newDestroyTest(t)
 
-	// select both snapshots
-	onUiThread(t, dt.app, func() { dt.browser.tableContainer.SelectFirstIfExists() })
-	dt.press(tcell.KeyRune, ' ')
-	dt.press(tcell.KeyDown, 0)
-	dt.press(tcell.KeyRune, ' ')
-	require.Eventually(t, func() bool {
-		count := 0
-		onUiThread(t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
-		return count == 2
-	}, 2*time.Second, 10*time.Millisecond)
+	dt.selectAll()
 
-	// multi menu: 1 destroy all
+	// multi menu: 1 hold all, 2 destroy all
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("MultiSnapshotActionDialog")
-	dt.press(tcell.KeyRune, '1')
+	dt.press(tcell.KeyRune, '2')
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("DestroySnapshotsDialog")
 
