@@ -2,6 +2,7 @@ package zfs
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -59,4 +60,23 @@ func TestSetProperty_Invalid(t *testing.T) {
 	}
 	assert.Error(t, SetProperty("pool/data", "com.sun:note", "line\nbreak"))
 	assert.Error(t, InheritProperty("pool/data", ""))
+}
+
+func TestValidateUserPropertyName(t *testing.T) {
+	valid := []string{"org.example:note", "com.sun:auto-snapshot", "a:b", "x_y:1.2-3"}
+	for _, name := range valid {
+		assert.NoError(t, ValidateUserPropertyName(name), name)
+	}
+	invalid := map[string]string{
+		"":                              "must not be empty",
+		"note":                          "need a colon",
+		"org.Example:note":              "invalid character 'E'",
+		"org example:note":              "invalid character ' '",
+		"a:" + strings.Repeat("x", 254): "too long",
+	}
+	for name, message := range invalid {
+		err := ValidateUserPropertyName(name)
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), message, name)
+	}
 }

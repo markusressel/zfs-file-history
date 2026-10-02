@@ -97,6 +97,30 @@ func InheritProperty(dataset string, name string) error {
 	return runZfsAsUser(InheritPropertyCommand(dataset, name))
 }
 
+// maxUserPropertyNameLength is the maximum length of user property names, see zfsprops(7).
+const maxUserPropertyNameLength = 255
+
+// ValidateUserPropertyName checks the name of a user property, see zfsprops(7): it must contain a colon (to
+// distinguish it from native properties), and may only contain lowercase letters, digits and ":", "-", ".", "_".
+// By convention it is "module:property", e.g. "com.sun:auto-snapshot".
+func ValidateUserPropertyName(name string) error {
+	switch {
+	case name == "":
+		return fmt.Errorf("the name must not be empty")
+	case !strings.Contains(name, ":"):
+		return fmt.Errorf("user properties need a colon in their name, e.g. org.example:%s", name)
+	case len(name) > maxUserPropertyNameLength:
+		return fmt.Errorf("the name is too long (at most %d characters)", maxUserPropertyNameLength)
+	}
+	for _, char := range name {
+		valid := (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || strings.ContainsRune(":-._", char)
+		if !valid {
+			return fmt.Errorf("invalid character %q: only lowercase letters, digits and : - . _ are allowed", char)
+		}
+	}
+	return nil
+}
+
 func validatePropertyName(name string) error {
 	if name == "" || strings.ContainsAny(name, "= \t\n") {
 		return fmt.Errorf("invalid property name: %q", name)

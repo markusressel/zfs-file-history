@@ -65,6 +65,8 @@ type SnapshotBrowserTableStatusColors struct {
 
 type DialogColors struct {
 	Border tcell.Color
+	// Error is the color of validation errors in input dialogs
+	Error tcell.Color
 }
 
 type StyleStruct struct {

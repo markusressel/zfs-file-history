@@ -19,6 +19,7 @@ import (
 
 func newTestProperties() []*zfs.Property {
 	return []*zfs.Property{
+		{Name: "org.example:note", Value: "hello", Source: "local"},
 		{Name: "used", Value: "271G", Source: "-"},
 		{Name: "compression", Value: "zstd", Source: "inherited from rpool"},
 		{Name: "canmount", Value: "on", Source: "local"},
@@ -108,13 +109,15 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 	return pt
 }
 
-// apply changes the property that listProperties returns. Must be called with mu held.
+// apply changes (or creates) the property that listProperties returns. Must be called with mu held.
 func (pt *propertiesTest) apply(name string, value string, source string) {
 	for _, property := range pt.properties {
 		if property.Name == name {
 			property.Value, property.Source = value, source
+			return
 		}
 	}
+	pt.properties = append(pt.properties, &zfs.Property{Name: name, Value: value, Source: source})
 }
 
 func (pt *propertiesTest) press(key tcell.Key, r rune) {
@@ -167,8 +170,8 @@ func TestDatasetPropertiesDialog_Content(t *testing.T) {
 	for _, property := range d.table.GetEntries() {
 		names = append(names, property.Name)
 	}
-	assert.Equal(t, []string{"atime", "canmount", "compression", "used"}, names, "sorted by name")
-	assert.Equal(t, "4 properties", d.table.GetFooter())
+	assert.Equal(t, []string{"atime", "canmount", "compression", "org.example:note", "used"}, names, "sorted by name")
+	assert.Equal(t, "5 properties", d.table.GetFooter())
 	assert.Equal(t, "atime = on (default)\nEnter: change", d.details.GetText(true))
 
 	colorOf := func(property *zfs.Property) tcell.Color {
@@ -199,6 +202,8 @@ func TestDatasetPropertiesDialog_Details(t *testing.T) {
 	assert.Equal(t, "used = 271G (-)\nread-only (a statistic, or fixed when the dataset was created)", d.details.GetText(true))
 	selectByName("canmount")
 	assert.Equal(t, "canmount = on (local)\nEnter: change, i: reset to the inherited/default value", d.details.GetText(true))
+	selectByName("org.example:note")
+	assert.Equal(t, "org.example:note = hello (local)\nEnter: change, i: remove", d.details.GetText(true))
 }
 
 func TestDatasetPropertiesDialog_ShortcutsFit(t *testing.T) {
@@ -332,4 +337,96 @@ func TestDatasetPropertiesDialog_EscClosesUnlessFiltering(t *testing.T) {
 
 	pt.press(tcell.KeyEscape, 0)
 	pt.waitFor("closed", func() bool { return !pt.hasPage("DatasetPropertiesDialog") })
+}
+
+func (pt *propertiesTest) typeText(text string) {
+	for _, r := range text {
+		pt.press(tcell.KeyRune, r)
+	}
+}
+
+func (pt *propertiesTest) screenText() string {
+	var text strings.Builder
+	onUiThread(pt.t, pt.app, func() {
+		pt.app.ForceDraw()
+		cells, width, height := pt.screen.GetContents()
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				if runes := cells[y*width+x].Runes; len(runes) > 0 {
+					text.WriteRune(runes[0])
+				}
+			}
+			text.WriteRune('\n')
+		}
+	})
+	return text.String()
+}
+
+func (pt *propertiesTest) selectedName() string {
+	name := ""
+	onUiThread(pt.t, pt.app, func() {
+		if selected := pt.dialog.table.GetSelectedEntry(); selected != nil {
+			name = selected.Name
+		}
+	})
+	return name
+}
+
+func TestDatasetPropertiesDialog_AddUserProperty(t *testing.T) {
+	pt := newPropertiesTest(t, false)
+
+	pt.press(tcell.KeyRune, 'a')
+	pt.waitFor("name dialog", func() bool { return pt.hasPage("AddPropertyNameDialog") })
+
+	// invalid names keep the dialog open, with the reason
+	pt.typeText("note")
+	pt.press(tcell.KeyEnter, 0)
+	pt.waitFor("colon error", func() bool { return strings.Contains(pt.screenText(), "need a colon") })
+	pt.press(tcell.KeyCtrlU, 0)
+	pt.typeText("compression")
+	pt.press(tcell.KeyEnter, 0)
+	pt.waitFor("native error", func() bool { return strings.Contains(pt.screenText(), "native property") })
+	assert.True(t, pt.hasPage("AddPropertyNameDialog"))
+
+	pt.press(tcell.KeyCtrlU, 0)
+	pt.typeText("org.example:owner")
+	pt.press(tcell.KeyEnter, 0)
+	pt.waitFor("value dialog", func() bool { return pt.hasPage("AddPropertyValueDialog") })
+	pt.waitFor("command shown", func() bool {
+		// the description is word-wrapped
+		return strings.Contains(pt.screenText(), "org.example:owner=<value>")
+	})
+	pt.typeText("markus")
+	pt.press(tcell.KeyEnter, 0)
+
+	pt.waitFor("added, reloaded and selected", func() bool {
+		return pt.value("org.example:owner") == "markus (local)" && pt.selectedName() == "org.example:owner"
+	})
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	assert.Equal(t, []string{"pool/data org.example:owner=markus"}, pt.set)
+	assert.Equal(t, 1, pt.onChanged)
+}
+
+func TestDatasetPropertiesDialog_AddExistingUserPropertyEditsIt(t *testing.T) {
+	pt := newPropertiesTest(t, false)
+
+	pt.press(tcell.KeyRune, 'a')
+	pt.waitFor("name dialog", func() bool { return pt.hasPage("AddPropertyNameDialog") })
+	pt.typeText("org.example:note")
+	pt.press(tcell.KeyEnter, 0)
+
+	pt.waitFor("edit dialog", func() bool { return pt.hasPage("EditPropertyDialog") })
+	assert.False(t, pt.hasPage("AddPropertyValueDialog"))
+}
+
+func TestDatasetPropertiesDialog_RemoveUserProperty(t *testing.T) {
+	pt := newPropertiesTest(t, false)
+	pt.selectProperty("org.example:note")
+
+	pt.press(tcell.KeyRune, 'i')
+	pt.waitFor("confirmation", func() bool { return pt.hasPage("InheritPropertyDialog") })
+	pt.waitFor("remove wording", func() bool {
+		return strings.Contains(pt.screenText(), "Remove the user property org.example:note")
+	})
 }

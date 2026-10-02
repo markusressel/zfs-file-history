@@ -43,7 +43,8 @@ var (
 )
 
 // DatasetPropertiesDialog shows all ZFS properties of a dataset ("zfs get all"), and lets the user change them
-// ("zfs set") or reset local values to the inherited or default ones ("zfs inherit").
+// ("zfs set"), add user properties ("module:property"), and reset local values to the inherited or default ones
+// ("zfs inherit", which removes user properties).
 type DatasetPropertiesDialog struct {
 	application   *tview.Application
 	dataset       string
@@ -57,6 +58,8 @@ type DatasetPropertiesDialog struct {
 
 	table   *table.RowSelectionTable[zfs.Property]
 	details *tview.TextView
+	// selectAfterReload is the name of the property to select after the next reload (e.g. an added one)
+	selectAfterReload string
 }
 
 // NewDatasetPropertiesDialog creates the dialog for the given properties of the dataset. isRoot is whether the
@@ -142,6 +145,7 @@ func (d *DatasetPropertiesDialog) createLayout(properties []*zfs.Property) {
 func datasetPropertiesShortcuts() []shortcut_helper.ShortcutEntry {
 	return []shortcut_helper.ShortcutEntry{
 		{KeyCombo: []string{"Enter"}, Name: "Edit"},
+		{KeyCombo: []string{"a"}, Name: "Add"},
 		{KeyCombo: []string{"i"}, Name: "Inherit"},
 		util.TableComponentShortcutFilter,
 		{KeyCombo: []string{"←", "→"}, Name: "Scroll"},
@@ -151,6 +155,11 @@ func datasetPropertiesShortcuts() []shortcut_helper.ShortcutEntry {
 
 // captureTableInput handles the keys on the table, after the filter input (see table.RowSelectionTable).
 func (d *DatasetPropertiesDialog) captureTableInput(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyRune && event.Rune() == 'a' {
+		// also on the header row
+		d.addProperty()
+		return nil
+	}
 	property := d.table.GetSelectedEntry()
 	if property == nil {
 		// e.g. Enter on the header row changes the sort direction
@@ -172,6 +181,10 @@ func (d *DatasetPropertiesDialog) setProperties(properties []*zfs.Property) {
 	selectedName := ""
 	if selected := d.table.GetSelectedEntry(); selected != nil {
 		selectedName = selected.Name
+	}
+	if d.selectAfterReload != "" {
+		selectedName = d.selectAfterReload
+		d.selectAfterReload = ""
 	}
 	d.table.SetData(properties)
 	for _, property := range d.table.GetEntries() {
@@ -203,6 +216,8 @@ func (d *DatasetPropertiesDialog) updateDetails() {
 	switch {
 	case !property.IsEditable():
 		hint = "read-only (a statistic, or fixed when the dataset was created)"
+	case property.IsLocal() && property.IsUserProperty():
+		hint = "Enter: change, i: remove"
 	case property.IsLocal():
 		hint = "Enter: change, i: reset to the inherited/default value"
 	default:
@@ -278,6 +293,53 @@ func (d *DatasetPropertiesDialog) editProperty(property *zfs.Property) {
 	ShowDialogOnPages(d.application, d.pages, input, nil)
 }
 
+// findProperty returns the property with the given name, or nil.
+func (d *DatasetPropertiesDialog) findProperty(name string) *zfs.Property {
+	for _, property := range d.table.GetAllEntries() {
+		if property.Name == name {
+			return property
+		}
+	}
+	return nil
+}
+
+// addProperty asks for the name of a new user property ("module:property") and then for its value. Native
+// properties always exist, so only user properties can be added. Must be called on the UI thread.
+func (d *DatasetPropertiesDialog) addProperty() {
+	if d.pages == nil {
+		return
+	}
+	nameInput := NewTextInputDialog(d.application, "AddPropertyNameDialog", " Add User Property ",
+		"Name of the new user property, in the form module:property, e.g. org.example:note. "+
+			"User properties are free-form metadata, also used by tools (e.g. com.sun:auto-snapshot).",
+		"", d.askForNewPropertyValue)
+	nameInput.SetValidator(func(name string) error {
+		if existing := d.findProperty(name); existing != nil && !existing.IsUserProperty() {
+			return fmt.Errorf("%s is a native property, change it with Enter in the list", name)
+		}
+		return zfs.ValidateUserPropertyName(name)
+	})
+	ShowDialogOnPages(d.application, d.pages, nameInput, nil)
+}
+
+// askForNewPropertyValue asks for the value of the new user property and sets it. If the property exists already,
+// it is edited instead. Runs on the UI thread.
+func (d *DatasetPropertiesDialog) askForNewPropertyValue(name string) {
+	if existing := d.findProperty(name); existing != nil {
+		d.editProperty(existing)
+		return
+	}
+	description := fmt.Sprintf("Value of the new user property %s. Runs: zfs set %s=<value> %s", name, name, d.dataset)
+	valueInput := NewTextInputDialog(d.application, "AddPropertyValueDialog", fmt.Sprintf(" Add %s ", name), description, "",
+		func(value string) {
+			d.selectAfterReload = name
+			d.change(fmt.Sprintf("setting %s=%s on %s.", name, value, d.dataset),
+				[][]string{zfs.SetPropertyCommand(d.dataset, name, value)},
+				func() error { return setProperty(d.dataset, name, value) })
+		})
+	ShowDialogOnPages(d.application, d.pages, valueInput, nil)
+}
+
 // inheritProperty asks for confirmation and resets the local value of the property. Must be called on the UI thread.
 func (d *DatasetPropertiesDialog) inheritProperty(property *zfs.Property) {
 	if !property.IsLocal() || d.pages == nil {
@@ -294,6 +356,10 @@ func (d *DatasetPropertiesDialog) inheritProperty(property *zfs.Property) {
 	}
 	description := fmt.Sprintf("Remove the local value of %s (%s), so the value inherited from the parent dataset "+
 		"(or the default) applies?\n\n  %s", name, property.Value, strings.Join(command, " "))
+	if property.IsUserProperty() {
+		description = fmt.Sprintf("Remove the user property %s (%s)? If a parent dataset sets it, its value applies "+
+			"instead.\n\n  %s", name, property.Value, strings.Join(command, " "))
+	}
 	confirmation := NewSelectionDialog(d.application, "InheritPropertyDialog", " Reset Property ", description,
 		buildConfirmDialogOptions(InheritPropertyDialogInheritActionId, "Reset", true, DialogSeverityWarning),
 		nil, onComplete)
@@ -313,6 +379,7 @@ func (d *DatasetPropertiesDialog) change(explanation string, commands [][]string
 		d.application.QueueUpdateDraw(func() {
 			if err != nil {
 				logging.Error("Changing a property of %s failed: %v", d.dataset, err)
+				d.selectAfterReload = ""
 				d.updateDetails()
 				ShowDialogOnPages(d.application, d.pages, NewErrorDialog(d.application, "Changing Property Failed", err), nil)
 				return

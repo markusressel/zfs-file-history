@@ -35,6 +35,7 @@ var (
 		},
 		Dialog: DialogColors{
 			Border: Secondary,
+			Error:  tcell.ColorRed,
 		},
 		FileBrowser: FileBrowserColors{
 			Table: FileBrowserTableColors{
