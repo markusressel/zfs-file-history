@@ -137,13 +137,13 @@ func datasetPermissionsShortcuts(isRoot bool) []shortcut_helper.ShortcutEntry {
 	var shortcuts []shortcut_helper.ShortcutEntry
 	if !isRoot {
 		shortcuts = append(shortcuts,
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"Space"}, Name: "Grant/revoke"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeySpace}, Name: "Grant/revoke"},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"a"}, Name: "Apply"},
 		)
 	}
 	return append(shortcuts,
-		shortcut_helper.ShortcutEntry{KeyCombo: []string{"PgUp", "PgDn"}, Name: "Scroll delegations"},
-		shortcut_helper.ShortcutEntry{KeyCombo: []string{"Esc"}, Name: "Discard/close"},
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyPgUp, shortcut_helper.KeyPgDn}, Name: "Scroll delegations", Group: shortcut_helper.GroupNavigation},
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Discard/close", Group: shortcut_helper.GroupGlobal},
 	)
 }
 

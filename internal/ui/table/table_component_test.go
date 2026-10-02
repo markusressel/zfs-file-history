@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 
@@ -792,4 +793,34 @@ func TestTable_ScrollbarVisibility(t *testing.T) {
 			assert.Equal(t, test.visible, table.isScrollbarVisible)
 		})
 	}
+}
+
+func TestTable_RendersAgainWhenTheTimeFormatChanged(t *testing.T) {
+	then := time.Now().Add(-2 * time.Hour)
+	table := NewTableContainer[namedEntry](
+		tview.NewApplication(),
+		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
+			return []*tview.TableCell{tview.NewTableCell(uiutil.FormatTime(then))}
+		},
+		func(entries []*namedEntry, column *Column, inverted bool) []*namedEntry { return entries },
+	)
+	cols := []*Column{{Id: 0, Title: "Time"}}
+	table.SetColumnSpec(cols, cols[0], false)
+	table.SetData([]*namedEntry{{name: "a"}})
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 6)
+	table.GetLayout().SetRect(0, 0, 40, 6)
+	t.Cleanup(func() {
+		if uiutil.IsRelativeTimes() {
+			uiutil.ToggleRelativeTimes()
+		}
+	})
+
+	before := table.table.GetCell(1, 0).Text
+	uiutil.ToggleRelativeTimes()
+	assert.Equal(t, before, table.table.GetCell(1, 0).Text, "only rendered again when drawn")
+
+	table.GetLayout().Draw(screen)
+	assert.Equal(t, "2 hours ago", table.table.GetCell(1, 0).Text)
 }

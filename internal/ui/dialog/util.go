@@ -41,6 +41,12 @@ type pagesAware interface {
 	setPages(pages *tview.Pages)
 }
 
+// mouseCapturer is implemented by dialogs that handle mouse events themselves, e.g. dragging the boundary of
+// resizable panes. ShowDialogOnPages owns the mouse capture of the dialog layout and calls this first.
+type mouseCapturer interface {
+	captureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse)
+}
+
 type DialogOption struct {
 	Id       DialogActionId
 	Name     string
@@ -360,7 +366,13 @@ func ShowDialogOnPages(
 	}
 
 	// Ensure that clicking outside the focusable elements doesn't lose focus
+	capturer, hasMouseCapture := d.(mouseCapturer)
 	layout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if hasMouseCapture {
+			if action, event = capturer.captureMouse(action, event); event == nil {
+				return action, event
+			}
+		}
 		currentFocus := application.GetFocus()
 		if currentFocus != nil && layout.HasFocus() {
 			switch currentFocus.(type) {

@@ -74,7 +74,7 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 		case columnDateTime:
 			stat := entry.GetStat()
 			if stat != nil {
-				cellText = stat.ModTime().Format(theme.Style.Format.DateTime)
+				cellText = uiutil.FormatTime(stat.ModTime())
 			}
 			switch entry.DiffState {
 			case diff_state.Added, diff_state.Deleted:

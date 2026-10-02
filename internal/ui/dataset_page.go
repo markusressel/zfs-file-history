@@ -247,7 +247,8 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 
 	datasetPage.header = header
 
-	shortcutMap := shortcut_helper.NewShortcutMap(datasetPage.application)
+	// hidden with ? (see shortcut_helper.ToggleShortcuts)
+	shortcutMap := shortcut_helper.NewShortcutMap(datasetPage.application).SetCollapsible()
 	shortcutMap.SetOnHeightChanged(func(height int) {
 		datasetPageLayout.ResizeItem(shortcutMap.GetLayout(), height, 0)
 	})
@@ -328,12 +329,7 @@ func (datasetPage *DatasetPage) updateShortcutMap(component FocusableUiComponent
 	if c, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
 		shortcutMap := c.GetShortcutMap()
 
-		globalShortcutMapEntries := []shortcut_helper.ShortcutEntry{
-			{KeyCombo: []string{"ctrl+n", "ctrl+p"}, Name: "Cycle focus"},
-			{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Switch page"},
-			{KeyCombo: []string{"F5"}, Name: "Refresh"},
-			{KeyCombo: []string{"ctrl+q"}, Name: "Quit"},
-		}
+		globalShortcutMapEntries := globalShortcuts()
 
 		shortcutMap = append(shortcutMap, globalShortcutMapEntries...)
 		datasetPage.setShortcutMap(shortcutMap)

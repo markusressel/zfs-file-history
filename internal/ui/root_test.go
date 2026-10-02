@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/util"
 
@@ -27,7 +29,7 @@ func TestAdjacentPage(t *testing.T) {
 	assert.Equal(t, util.Page("b"), adjacentPage(three, "c", true))
 
 	// unknown pages fall back to the first page
-	assert.Equal(t, Main, adjacentPage(two, HelpDialog, false))
+	assert.Equal(t, Main, adjacentPage(two, "other", false))
 }
 
 // onUiThreadT runs f on the UI thread and waits for it, failing the test instead of hanging on a deadlock.
@@ -96,7 +98,7 @@ func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 	}
 
 	// shown by the file browser for both the header and data rows, but not by the dataset browser
-	const mainPageShortcut = "[PgUp]: Page up"
+	const mainPageShortcut = "[↑ǀ↓ǀPgUpǀPgDn]: Move"
 	const datasetPageShortcut = "[u]: Show unmounted"
 
 	waitForText(mainPageShortcut)
@@ -158,16 +160,24 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 	press(tcell.KeyCtrlF, 0)
 	waitFor("typing a filter", screenContains("Filter:"))
 
-	// the '?' is typed into the filter (shown in the footer) instead of opening the help
+	// on the UI thread, while the app still runs (deferred after app.Stop, so it runs before it)
+	defer onUiThreadT(t, app, func() {
+		if shortcut_helper.ShortcutsHidden() {
+			shortcut_helper.ToggleShortcuts()
+		}
+	})
+
+	// the '?' is typed into the filter (shown in the footer) instead of hiding the shortcuts
 	press(tcell.KeyRune, '?')
 	waitFor("'?' typed into the filter", screenContains("Filter: ?"))
-	assert.Equal(t, string(Main), frontPage(), "'?' must not open the help while typing a filter")
+	assert.False(t, shortcut_helper.ShortcutsHidden(), "'?' must not hide the shortcuts while typing a filter")
+	assert.Equal(t, string(Main), frontPage())
 
-	// after clearing the filter, '?' opens the help again
+	// after clearing the filter, '?' hides the shortcuts
 	press(tcell.KeyEscape, 0)
 	waitFor("filter cleared", func() bool { return !screenContains("Filter:")() })
 	press(tcell.KeyRune, '?')
-	waitFor("help opened", func() bool { return frontPage() == string(HelpDialog) })
+	waitFor("shortcuts hidden", shortcut_helper.ShortcutsHidden)
 }
 
 func TestPageIndicator(t *testing.T) {
@@ -210,4 +220,61 @@ func TestPageIndicatorWidth(t *testing.T) {
 	assert.Equal(t, "FILES    1/2", formatPageIndicator("Files", 8, 1, 2), "the position is right-aligned")
 	assert.Equal(t, "DATASETS 2/2", formatPageIndicator("Datasets", 8, 2, 2))
 	assert.Equal(t, len("Datasets"), pageTitleWidth())
+}
+
+func TestRelativeTimesKey(t *testing.T) {
+	app, mainPage, _ := createUi(t.TempDir(), true)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	screen.SetSize(150, 30)
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+	t.Cleanup(func() {
+		if util.IsRelativeTimes() {
+			util.ToggleRelativeTimes()
+		}
+	})
+
+	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	assert.Eventually(t, util.IsRelativeTimes, 2*time.Second, 10*time.Millisecond)
+	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	assert.Eventually(t, func() bool { return !util.IsRelativeTimes() }, 2*time.Second, 10*time.Millisecond)
+
+	// typed into a filter instead
+	onUiThreadT(t, app, func() { app.SetFocus(mainPage.fileBrowser.GetLayout()) })
+	screen.InjectKey(tcell.KeyCtrlF, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	time.Sleep(100 * time.Millisecond)
+	assert.False(t, util.IsRelativeTimes())
+	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+}
+
+// Dialogs and overlays (e.g. the histories) are pages of their own: T applies to their tables as well.
+func TestRelativeTimesKeyInDialogs(t *testing.T) {
+	app, mainPage, _ := createUi(t.TempDir(), true)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	screen.SetSize(150, 30)
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+	t.Cleanup(func() {
+		if util.IsRelativeTimes() {
+			util.ToggleRelativeTimes()
+		}
+	})
+
+	onUiThreadT(t, app, func() {
+		dialog.ShowDialogOnPages(app, mainPage.pages, dialog.NewSuccessDialog(app, "Done", "done"), nil)
+	})
+	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	assert.Eventually(t, util.IsRelativeTimes, 2*time.Second, 10*time.Millisecond)
+
+	// typed into an input instead
+	onUiThreadT(t, app, func() {
+		dialog.ShowDialogOnPages(app, mainPage.pages, dialog.NewTextInputDialog(app, "Input", "Input", "", "", nil), nil)
+	})
+	time.Sleep(50 * time.Millisecond)
+	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	time.Sleep(100 * time.Millisecond)
+	assert.True(t, util.IsRelativeTimes())
 }

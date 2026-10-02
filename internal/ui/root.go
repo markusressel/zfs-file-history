@@ -2,7 +2,7 @@ package ui
 
 import (
 	"slices"
-	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -10,10 +10,21 @@ import (
 )
 
 const (
-	Main       util.Page = "main"
-	HelpDialog util.Page = "help"
-	Dataset    util.Page = "dataset"
+	Main    util.Page = "main"
+	Dataset util.Page = "dataset"
 )
+
+// globalShortcuts are the shortcuts that work on all pages, shown after the ones of the focused component.
+func globalShortcuts() []shortcut_helper.ShortcutEntry {
+	return []shortcut_helper.ShortcutEntry{
+		{KeyCombo: []string{shortcut_helper.Ctrl("n"), shortcut_helper.Ctrl("p")}, Name: "Cycle focus", Group: shortcut_helper.GroupNavigation},
+		{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Switch page", Group: shortcut_helper.GroupGlobal},
+		shortcut_helper.ShortcutTimeFormat,
+		{KeyCombo: []string{"F5"}, Name: "Refresh", Group: shortcut_helper.GroupGlobal},
+		shortcut_helper.ShortcutHide,
+		{KeyCombo: []string{shortcut_helper.Ctrl("q")}, Name: "Quit", Group: shortcut_helper.GroupGlobal},
+	}
+}
 
 // switchablePages are the pages cycled through with tab / shift+tab, in order.
 var switchablePages = []util.Page{Main, Dataset}
@@ -63,15 +74,15 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 
 	application := tview.NewApplication()
 	application.EnableMouse(true)
+	util.InitTimeFormat()
+	shortcut_helper.InitShortcutVisibility()
 
 	mainPage := NewMainPage(application, path)
-	helpPage := dialog.NewHelpPage()
 	datasetPage := NewDatasetPage(application, path)
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
-		AddPage(string(Dataset), datasetPage.layout, true, false).
-		AddPage(string(HelpDialog), helpPage.GetLayout(), true, false)
+		AddPage(string(Dataset), datasetPage.layout, true, false)
 
 	mainPage.SetPages(pagesLayout)
 	datasetPage.SetPages(pagesLayout)
@@ -82,6 +93,23 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 	}
 
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// the time format also applies to the tables of dialogs and overlays (e.g. the histories), which are pages
+		// of their own
+		if event.Key() == tcell.KeyRune && event.Rune() == 'T' && !util.IsTextInputActive(application.GetFocus()) {
+			// tables show the new format when they are drawn, which happens after every key
+			util.ToggleRelativeTimes()
+			return nil
+		}
+		// hides or shows the shortcuts at the bottom of the pages and overlays, to make room in small terminals
+		if (event.Key() == tcell.KeyRune && event.Rune() == '?' && !util.IsTextInputActive(application.GetFocus())) ||
+			event.Key() == tcell.KeyF1 {
+			shortcut_helper.ToggleShortcuts()
+			for _, header := range headers {
+				header.UpdateShortcutHint()
+			}
+			return nil
+		}
+
 		// ignore events, if some other page is open
 		name, _ := pagesLayout.GetFrontPage()
 
@@ -91,10 +119,6 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 
 		if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
 			application.Stop()
-			return nil
-		} else if (event.Key() == tcell.KeyRune && event.Rune() == '?' && !util.IsTextInputActive(application.GetFocus())) ||
-			event.Key() == tcell.KeyF1 {
-			pagesLayout.ShowPage(string(HelpDialog))
 			return nil
 		} else if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
 			nextPage := adjacentPage(switchablePages, util.Page(name), event.Key() == tcell.KeyBacktab)
@@ -106,14 +130,6 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 			case Dataset:
 				datasetPage.refreshShortcutMap()
 			}
-			return nil
-		}
-		return event
-	})
-
-	helpPage.GetLayout().SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape {
-			pagesLayout.HidePage(string(HelpDialog))
 			return nil
 		}
 		return event

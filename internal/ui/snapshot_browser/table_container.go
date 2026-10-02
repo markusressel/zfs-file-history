@@ -34,7 +34,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 		cellColor := determineBaseTextColor(entry)
 		switch column {
 		case columnDate:
-			cellText = entry.Snapshot.Properties.CreationDate.Format(theme.Style.Format.DateTime)
+			cellText = uiutil.FormatTime(entry.Snapshot.Properties.CreationDate)
 		case columnName:
 			cellText = entry.Snapshot.Name
 		case columnDiff:

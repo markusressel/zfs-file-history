@@ -20,15 +20,13 @@ func CreateAttentionTextView(text string) *tview.TextView {
 }
 
 var (
-	TableComponentShortcutActions              = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Actions"}
-	TableComponentShortcutDelete               = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Delete"}, Name: "Delete"}
-	TableComponentShortcutColumns              = shortcut_helper.ShortcutEntry{KeyCombo: []string{"F2"}, Name: "Columns"}
-	TableComponentShortcutFilter               = shortcut_helper.ShortcutEntry{KeyCombo: []string{"ctrl+f"}, Name: "Filter"}
-	TableComponentShortcutUp                   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↑"}, Name: "Up"}
-	TableComponentShortcutDown                 = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↓"}, Name: "Down"}
-	TableComponentShortcutPageUp               = shortcut_helper.ShortcutEntry{KeyCombo: []string{"PgUp"}, Name: "Page up"}
-	TableComponentShortcutPageDown             = shortcut_helper.ShortcutEntry{KeyCombo: []string{"PgDn"}, Name: "Page down"}
-	TableComponentShortcutFlipColumnDirection  = shortcut_helper.ShortcutEntry{KeyCombo: []string{"Enter"}, Name: "Flip Direction"}
-	TableComponentShortcutCycleSortColumnLeft  = shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Cycle Sort Column Left"}
-	TableComponentShortcutCycleSortColumnRight = shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Cycle Sort Column Right"}
+	TableComponentShortcutActions = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Actions"}
+	TableComponentShortcutDelete  = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyDelete}, Name: "Delete"}
+	TableComponentShortcutColumns = shortcut_helper.ShortcutEntry{KeyCombo: []string{"F2"}, Name: "Columns", Group: shortcut_helper.GroupView}
+	TableComponentShortcutFilter  = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("f")}, Name: "Filter", Group: shortcut_helper.GroupView}
+	// TableComponentShortcutMove moves the selection (j/k/g/G work as well, like in Vim)
+	TableComponentShortcutMove                 = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↑", "↓", shortcut_helper.KeyPgUp, shortcut_helper.KeyPgDn}, Name: "Move", Group: shortcut_helper.GroupNavigation}
+	TableComponentShortcutFlipColumnDirection  = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Flip Direction", Group: shortcut_helper.GroupView}
+	TableComponentShortcutCycleSortColumnLeft  = shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Cycle Sort Column Left", Group: shortcut_helper.GroupView}
+	TableComponentShortcutCycleSortColumnRight = shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Cycle Sort Column Right", Group: shortcut_helper.GroupView}
 )

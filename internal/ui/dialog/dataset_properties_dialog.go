@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -101,6 +102,7 @@ func (d *DatasetPropertiesDialog) createLayout(properties []*zfs.Property) {
 	d.table = table.NewTableContainer[zfs.Property](d.application, toPropertyCells, sortProperties)
 	d.table.SetColumnSpec(propertyColumns, propertyColumnName, false)
 	d.table.SetActiveColumns(propertyColumns)
+	d.table.BindColumnLayout(state.Current, stateKeyPropertiesTable, propertyColumns)
 	d.table.SetFilterFunc(func(property *zfs.Property, filterText string) bool {
 		return table.MatchesGlob(property.Name, filterText) || table.MatchesGlob(property.Value, filterText)
 	})
@@ -144,17 +146,22 @@ func (d *DatasetPropertiesDialog) createLayout(properties []*zfs.Property) {
 
 func datasetPropertiesShortcuts() []shortcut_helper.ShortcutEntry {
 	return []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{"Enter"}, Name: "Edit"},
+		{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Edit"},
 		{KeyCombo: []string{"a"}, Name: "Add"},
 		{KeyCombo: []string{"i"}, Name: "Inherit"},
 		util.TableComponentShortcutFilter,
-		{KeyCombo: []string{"←", "→"}, Name: "Scroll"},
-		{KeyCombo: []string{"Esc"}, Name: "Close"},
+		util.TableComponentShortcutColumns,
+		{KeyCombo: []string{"←", "→"}, Name: "Scroll", Group: shortcut_helper.GroupNavigation},
+		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close", Group: shortcut_helper.GroupGlobal},
 	}
 }
 
 // captureTableInput handles the keys on the table, after the filter input (see table.RowSelectionTable).
 func (d *DatasetPropertiesDialog) captureTableInput(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyF2 {
+		openColumnDialog(d.application, d.pages, "Configure Property Columns", propertyColumns, d.table)
+		return nil
+	}
 	if event.Key() == tcell.KeyRune && event.Rune() == 'a' {
 		// also on the header row
 		d.addProperty()

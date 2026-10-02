@@ -23,9 +23,14 @@
 * 🩹 **Graceful Diff Fallbacks:** Diff views automatically fall back to `/dev/null` when files are missing on either
   side (e.g. deleted locally or missing in a snapshot), showing clean addition/deletion diffs instead of CLI execution
   errors.
+* 📂 **Folder history:** `h` on a folder (or `H` for the current one) shows a timeline of the snapshots in which its
+  content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed entries of
+  each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole folder from
+  a snapshot, or open the history of an entry (`h`).
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
-* 🧱 **Configurable columns:** Select and order the columns of the file, snapshot and dataset tables (`F2`).
+* 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the
+  file and folder history and the dataset properties.
   The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
   see [State](#state)), `r` in the column dialog resets them.
 * 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
@@ -44,6 +49,11 @@
   are applied with `sudo` if needed. The dataset info box lists your permissions as well.
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
+* 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like
+  "3 minutes ago" (remembered between runs). Recent times count up live.
+* ⌨️ **Inline shortcuts:** The available keys are shown at the bottom of each page and overlay, grouped and
+  color-coded: actions first, then view options, navigation and global keys. `?` (or `F1`) hides
+  them to make room in small terminals, and shows them again (remembered between runs).
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
 * 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
@@ -131,7 +141,8 @@ in [zfs-file-history.yaml](/zfs-file-history.yaml).
 ## State
 
 Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
-(the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview)
+(the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview, the
+comparison mode of the file and folder history, relative times and hidden shortcuts)
 in a state file:
 
 * `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`

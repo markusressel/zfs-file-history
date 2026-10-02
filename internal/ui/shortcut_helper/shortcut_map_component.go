@@ -1,8 +1,9 @@
 package shortcut_helper
 
 import (
-	"fmt"
+	"cmp"
 	"os"
+	"slices"
 	"strings"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -15,6 +16,76 @@ import (
 type ShortcutEntry struct {
 	KeyCombo []string
 	Name     string
+	// Group decides the color of the keys and where the entry is shown, see ShortcutGroup
+	Group ShortcutGroup
+}
+
+// ShortcutGroup groups the entries of a shortcut map, so the one looked for is found quickly: the groups are
+// shown in this order, separated by a line, and the keys of each group have their own color
+// (theme.Colors.ShortcutMap). Within a group, the entries keep their order.
+type ShortcutGroup int
+
+const (
+	// GroupAction is for actions on the selection or the component (the default), e.g. restore or history
+	GroupAction ShortcutGroup = iota
+	// GroupView is for keys that change what is shown, e.g. columns, filter, sorting or modes
+	GroupView
+	// GroupNavigation is for keys that move the selection or the focus
+	GroupNavigation
+	// GroupGlobal is for keys that work everywhere, e.g. switching pages or quitting
+	GroupGlobal
+)
+
+// keyColor returns the color of the keys of the group.
+func (group ShortcutGroup) keyColor() tcell.Color {
+	switch group {
+	case GroupView:
+		return theme.Colors.ShortcutMap.ViewKeyCombo
+	case GroupNavigation:
+		return theme.Colors.ShortcutMap.NavigationKeyCombo
+	case GroupGlobal:
+		return theme.Colors.ShortcutMap.GlobalKeyCombo
+	default:
+		return theme.Colors.ShortcutMap.KeyCombo
+	}
+}
+
+// groupSeparator is shown between groups. Surrounded by spaces, so lines may wrap around it.
+const groupSeparator = "│"
+
+// sortedByGroup returns the entries ordered by group, keeping their order within a group.
+func sortedByGroup(entries []ShortcutEntry) []ShortcutEntry {
+	sorted := slices.Clone(entries)
+	slices.SortStableFunc(sorted, func(a, b ShortcutEntry) int { return cmp.Compare(a.Group, b.Group) })
+	return sorted
+}
+
+// formatEntries returns the text of the entries, styled or (for calculating its size) plain.
+func formatEntries(entries []ShortcutEntry, styled bool) string {
+	var text strings.Builder
+	sorted := sortedByGroup(entries)
+	for i, entry := range sorted {
+		if i > 0 {
+			text.WriteString("  ")
+			if sorted[i-1].Group != entry.Group {
+				if styled {
+					text.WriteString(txwidgets.Span(theme.Colors.ShortcutMap.Separator, "%s", groupSeparator))
+				} else {
+					text.WriteString(groupSeparator)
+				}
+				text.WriteString("  ")
+			}
+		}
+		// alternative keys joined with a non-breaking vertical line, so an entry is never wrapped
+		keys := "[" + strings.Join(entry.KeyCombo, "\u01c0") + "]"
+		name := strings.ReplaceAll(entry.Name, " ", "\u00a0")
+		if styled {
+			keys = txwidgets.Span(entry.Group.keyColor(), "%s", keys)
+			name = txwidgets.Span(theme.Colors.ShortcutMap.Name, "%s", name)
+		}
+		text.WriteString(keys + ":\u00a0" + name)
+	}
+	return text.String()
 }
 
 type ShortcutMapComponent struct {
@@ -23,6 +94,8 @@ type ShortcutMapComponent struct {
 	layout                  *tview.Flex
 	shortcutEntriesTextView *tview.TextView
 	onHeightChanged         func(height int)
+	// collapsible maps are hidden with ToggleShortcuts, see SetCollapsible
+	collapsible bool
 
 	ShortCutEntries []ShortcutEntry
 }
@@ -74,16 +147,14 @@ func (sm *ShortcutMapComponent) SetOnHeightChanged(f func(height int)) {
 
 func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 	sm.ShortCutEntries = entries
-	var statusText string
-	for _, entry := range entries {
-		// comma separated list joined with non-breaking vertical line
-		shortCutsText := strings.Join(entry.KeyCombo, "\u01c0")
-		shortcuts := txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "[%s]", shortCutsText)
-		nameText := strings.ReplaceAll(entry.Name, " ", "\u00a0")
-		name := txwidgets.Span(theme.Colors.ShortcutMap.Name, "%s", nameText)
-		statusText += fmt.Sprintf("%s:\u00a0%s  ", shortcuts, name)
+	if sm.isHidden() {
+		sm.shortcutEntriesTextView.SetText("")
+		if sm.onHeightChanged != nil {
+			sm.onHeightChanged(0)
+		}
+		return
 	}
-	sm.shortcutEntriesTextView.SetText(statusText)
+	sm.shortcutEntriesTextView.SetText(formatEntries(entries, true))
 	if sm.onHeightChanged != nil {
 		lines := sm.CalculateHeightFromTerminal()
 		sm.onHeightChanged(lines)
@@ -94,7 +165,11 @@ func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 func (sm *ShortcutMapComponent) Clear() {
 	sm.shortcutEntriesTextView.SetText("")
 	if sm.onHeightChanged != nil {
-		sm.onHeightChanged(1)
+		height := 1
+		if sm.isHidden() {
+			height = 0
+		}
+		sm.onHeightChanged(height)
 	}
 	sm.application.ForceDraw()
 }
@@ -116,19 +191,15 @@ func (sm *ShortcutMapComponent) CalculateHeightFromTerminal() int {
 }
 
 func (sm *ShortcutMapComponent) CalculateHeightForWidth(width int) int {
+	if sm.isHidden() {
+		return 0
+	}
 	availableWidth := width - 2 // padding
 	if availableWidth <= 0 {
 		availableWidth = 80
 	}
 
-	var visibleText string
-	for _, entry := range sm.ShortCutEntries {
-		shortCutsText := strings.Join(entry.KeyCombo, "\u01c0")
-		nameText := strings.ReplaceAll(entry.Name, " ", "\u00a0")
-		visibleText += fmt.Sprintf("[%s]:\u00a0%s  ", shortCutsText, nameText)
-	}
-
-	visibleText = strings.TrimSpace(visibleText)
+	visibleText := formatEntries(sm.ShortCutEntries, false)
 	if len(visibleText) == 0 {
 		return 1
 	}
