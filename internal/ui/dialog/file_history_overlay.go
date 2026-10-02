@@ -10,6 +10,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -19,7 +20,14 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"golang.org/x/term"
+)
+
+const (
+	// fileHistorySparklineLines: the size, the marker of the selected version, and a spacer
+	fileHistorySparklineLines = 3
+	// fileHistoryHeaderLines is the height above both the versions and the diff: the mode and the sparkline on the
+	// left, the metadata comparison (presence, size, mode, modification time) on the right
+	fileHistoryHeaderLines = 1 + fileHistorySparklineLines
 )
 
 const (
@@ -48,10 +56,15 @@ type FileHistoryOverlay struct {
 	pages          *tview.Pages
 	tableContainer *table.RowSelectionTable[data.SnapshotBrowserEntry]
 	modeView       *tview.TextView
+	sparklines     *tview.Box
 	metadataView   *tview.TextView
 	diffView       *tview.TextView
-	rightLayout    *tview.Flex
-	shortcutHelp   *shortcut_helper.ShortcutMapComponent
+	// diffFooter shows the number of added and removed lines in the bottom border of the diff
+	diffFooter   *uiutil.BorderFooter
+	shortcutHelp *shortcut_helper.ShortcutMapComponent
+	// sizes are the sizes of the file in the versions of historyEntries, oldest first (-1: absent), for the
+	// sparkline. Only accessed on the UI thread.
+	sizes []int64
 
 	currentSelection     *data.SnapshotBrowserEntry
 	currentDiffMode      diffMode
@@ -65,16 +78,19 @@ type FileHistoryOverlay struct {
 var (
 	historyColumnName = &table.Column{
 		Id:        0,
+		Key:       "snapshot",
 		Title:     "Snapshot",
 		Alignment: tview.AlignLeft,
 	}
 	historyColumnDiff = &table.Column{
 		Id:        1,
+		Key:       "change",
 		Title:     "Change",
 		Alignment: tview.AlignCenter,
 	}
 	historyColumnDate = &table.Column{
 		Id:        2,
+		Key:       "creation",
 		Title:     "Creation Date",
 		Alignment: tview.AlignLeft,
 	}
@@ -93,7 +109,7 @@ func NewFileHistoryOverlay(
 		file:            file,
 		cachedEntries:   cachedEntries,
 		actionChannel:   make(chan DialogActionId, 1),
-		currentDiffMode: diffModeWorkingCopy,
+		currentDiffMode: loadDiffMode(toggleFileHistoryComparePrevious, diffModeWorkingCopy, diffModePredecessor),
 		historyEntries:  []*data.SnapshotBrowserEntry{},
 	}
 
@@ -105,12 +121,14 @@ func NewFileHistoryOverlay(
 		SetWrap(false)
 	overlay.updateModeView()
 
+	overlay.sparklines = tview.NewBox()
+	overlay.sparklines.SetDrawFunc(overlay.drawSparkline)
+
+	// the metadata comparison above the diff, next to the mode and the sparkline (like in the folder history)
 	overlay.metadataView = tview.NewTextView().
 		SetDynamicColors(true).
-		SetWrap(false).
-		SetScrollable(true)
-	overlay.metadataView.SetBorder(true)
-	uiutil.SetupWindow(overlay.metadataView, " Metadata Comparison ")
+		SetWrap(false)
+	overlay.metadataView.SetDrawFunc(drawLeftDivider)
 
 	overlay.diffView = tview.NewTextView().
 		SetDynamicColors(true).
@@ -119,7 +137,8 @@ func NewFileHistoryOverlay(
 			application.Draw()
 		})
 	overlay.diffView.SetBorder(true)
-	uiutil.SetupWindow(overlay.diffView, " Content ")
+	uiutil.SetupWindow(overlay.diffView, " Changes ")
+	overlay.diffFooter = uiutil.NewBorderFooter(overlay.diffView.Box)
 
 	overlay.shortcutHelp = shortcut_helper.NewShortcutMap(application)
 	overlay.updateShortcuts()
@@ -176,6 +195,7 @@ func (o *FileHistoryOverlay) createHistoryTable() *table.RowSelectionTable[data.
 	)
 	t.SetColumnSpec(historyColumns, historyColumnDate, false)
 	t.SetActiveColumns(historyColumns)
+	t.BindColumnLayout(state.Current, stateKeyFileHistoryTable, historyColumns)
 	t.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		o.currentSelection = entry
 		o.updateDiff()
@@ -277,43 +297,33 @@ func (o *FileHistoryOverlay) determineStatusColor(entry *data.SnapshotBrowserEnt
 }
 
 func (o *FileHistoryOverlay) createLayout() *tview.Flex {
-	termWidth, termHeight, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil || termWidth <= 0 || termHeight <= 0 {
-		termWidth = 100
-		termHeight = 30
-	}
-	width := termWidth - 4
-	if width < 80 {
-		width = 80
-	}
-	height := termHeight - 2
-	if height < 15 {
-		height = 15
-	}
-
 	title := fmt.Sprintf(" 📜 History of '%s' ", o.file.Name)
 
+	// the same layout as the folder history: the mode and a sparkline above the versions, the metadata comparison
+	// above the diff, so both start on the same line
 	leftLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 	leftLayout.AddItem(o.modeView, 1, 0, false)
+	leftLayout.AddItem(o.sparklines, fileHistorySparklineLines, 0, false)
 	leftLayout.AddItem(o.tableContainer.GetLayout(), 0, 1, true)
 
-	rightLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-	rightLayout.SetBorder(true)
-	uiutil.SetupWindow(rightLayout, " Changes ")
-	rightLayout.AddItem(o.metadataView, 6, 0, false)
-	rightLayout.AddItem(o.diffView, 0, 1, false)
-	o.rightLayout = rightLayout
+	o.rightLayoutContainer = uiutil.NewLoadingContainer(o.application, o.diffView, " Changes ", "Loading...")
 
-	o.rightLayoutContainer = uiutil.NewLoadingContainer(o.application, rightLayout, " Changes ", "Loading...")
+	rightLayout := tview.NewFlex().SetDirection(tview.FlexRow)
+	rightLayout.AddItem(o.metadataView, fileHistoryHeaderLines, 0, false)
+	rightLayout.AddItem(o.rightLayoutContainer, 0, 1, false)
 
 	splitLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	splitLayout.AddItem(leftLayout, 0, 1, true)
-	splitLayout.AddItem(o.rightLayoutContainer, 0, 2, false)
+	splitLayout.AddItem(rightLayout, 0, 2, false)
 
 	overlayContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	overlayContent.AddItem(splitLayout, 0, 1, true)
 	overlayContent.AddItem(o.shortcutHelp.GetLayout(), 1, 0, false)
 	overlayContent.SetBorderPadding(0, 0, 1, 1)
+	// the shortcuts wrap on narrow terminals
+	o.shortcutHelp.SetOnHeightChanged(func(height int) {
+		overlayContent.ResizeItem(o.shortcutHelp.GetLayout(), height, 0)
+	})
 
 	o.loadingView = uiutil.NewLoadingView(o.application, "", "Finding dataset snapshots...")
 	o.loadingView.SetBorder(false)
@@ -322,27 +332,7 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 		AddPage(string(HistoryMainPage), overlayContent, true, false).
 		AddPage(string(HistoryLoadingPage), o.loadingView, true, true)
 
-	dialogFrame := tview.NewFlex()
-	dialogFrame.SetBorder(true)
-	uiutil.SetupDialogWindow(dialogFrame, title)
-	clearInside(dialogFrame.Box)
-	dialogFrame.AddItem(o.pages, 0, 1, true)
-
-	dialogContentColumnWrapper := tview.NewFlex()
-	dialogContentColumnWrapper.AddItem(nil, 0, 1, false)
-
-	dialogContentRowWrapper := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(dialogFrame, height, 1, true).
-		AddItem(nil, 0, 1, false)
-
-	dialogContentColumnWrapper.
-		AddItem(dialogContentRowWrapper, width, 1, true).
-		AddItem(nil, 0, 1, false)
-
-	MakeFlexResizing(dialogContentColumnWrapper, dialogContentRowWrapper, dialogFrame, 99999, 80, 99999, 15)
-
-	return dialogContentColumnWrapper
+	return createOverlayFrame(title, o.pages)
 }
 
 func (o *FileHistoryOverlay) setupInputCaptures() {
@@ -352,6 +342,11 @@ func (o *FileHistoryOverlay) setupInputCaptures() {
 
 		if key == tcell.KeyEscape {
 			o.Close()
+			return nil
+		}
+
+		if key == tcell.KeyF2 {
+			openColumnDialog(o.application, o.pages, "Configure History Columns", historyColumns, o.tableContainer)
 			return nil
 		}
 
@@ -421,6 +416,7 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode"},
 			{KeyCombo: []string{"c"}, Name: copyLabel},
 			{KeyCombo: []string{"Enter"}, Name: "Restore version"},
+			uiutil.TableComponentShortcutColumns,
 			{KeyCombo: []string{"Esc"}, Name: "Close history"},
 		}
 	} else {
@@ -435,14 +431,11 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 }
 
 func (o *FileHistoryOverlay) updateModeView() {
-	var modeStr string
+	mode := "vs. now"
 	if o.currentDiffMode == diffModePredecessor {
-		modeStr = "vs Predecessor"
-	} else {
-		modeStr = "vs Working Copy"
+		mode = "vs. previous version"
 	}
-	o.modeView.Clear()
-	fmt.Fprintf(o.modeView, " [yellow]Diff Mode:[white] %s", modeStr)
+	o.modeView.SetText(txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, " Mode: ") + txwidgets.Span(theme.Colors.ShortcutMap.Name, "%s", mode))
 }
 
 func (o *FileHistoryOverlay) toggleDiffMode() {
@@ -451,6 +444,7 @@ func (o *FileHistoryOverlay) toggleDiffMode() {
 	} else {
 		o.currentDiffMode = diffModePredecessor
 	}
+	saveDiffMode(toggleFileHistoryComparePrevious, o.currentDiffMode, diffModePredecessor)
 	o.updateModeView()
 	o.updateShortcuts()
 	o.updateDiff()
@@ -465,9 +459,10 @@ func (o *FileHistoryOverlay) renderDiffTextSync(text string) {
 
 func (o *FileHistoryOverlay) scanHistoryAsync() {
 	filePath := o.file.GetRealPath()
+	// created here, not in the background, see historyScanner.findSnapshots
+	scanner := newHistoryScanner(filePath, o.cachedEntries)
 
 	go func() {
-		scanner := newHistoryScanner(filePath, o.cachedEntries)
 		history, err := scanner.scan(func(msg string) {
 			o.application.QueueUpdate(func() {
 				o.loadingView.SetMessage(msg)
@@ -486,8 +481,14 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 			return
 		}
 
+		// oldest first, like the sparkline shows them
+		chronological := slices.Clone(history)
+		slices.Reverse(chronological)
+		sizes := scanner.sizesOf(chronological)
+
 		o.application.QueueUpdate(func() {
 			o.historyEntries = history
+			o.sizes = sizes
 			o.tableContainer.SetData(history)
 			if len(history) > 0 {
 				o.tableContainer.SelectFirstIfExists()
@@ -503,6 +504,67 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 			}
 		})
 	}()
+}
+
+// drawSparkline draws the size of the file in its versions, oldest first, and marks the selected one.
+// Runs while drawing, on the UI thread.
+func (o *FileHistoryOverlay) drawSparkline(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+	fillBackground(screen, x, y, width, height)
+	if len(o.sizes) == 0 || height < 2 {
+		return x, y, width, height
+	}
+	selected := -1
+	if index := slices.Index(o.historyEntries, o.currentSelection); index >= 0 {
+		// historyEntries are newest first
+		selected = len(o.historyEntries) - 1 - index
+	}
+	value := ""
+	if selected >= 0 && selected < len(o.sizes) && o.sizes[selected] >= 0 {
+		value = strings.TrimSpace(uiutil.HumanizedBytes(uint64(o.sizes[selected])))
+	}
+
+	const labelWidth = 7
+	valueWidth := max(len(value), 8) + 1
+	chartWidth := width - labelWidth - valueWidth
+	if chartWidth < 4 {
+		return x, y, width, height
+	}
+	label := theme.Colors.ShortcutMap.Name
+	line, column := sparkline(o.sizes, chartWidth)
+	tview.Print(screen, "Size", x, y, labelWidth, tview.AlignLeft, label)
+	tview.Print(screen, string(line), x+labelWidth, y, chartWidth, tview.AlignLeft, theme.Colors.Layout.Table.Accent)
+	tview.Print(screen, value, x+labelWidth+len(line)+1, y, valueWidth, tview.AlignLeft, label)
+	if selected >= 0 {
+		tview.Print(screen, "▲", x+labelWidth+column(selected), y+1, 1, tview.AlignLeft, theme.Colors.Layout.Table.Accent)
+	}
+	return x, y, width, height
+}
+
+// countDiffLines returns the number of added and removed lines of a unified diff (without its file headers).
+func countDiffLines(diff string) (added int, removed int) {
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+"):
+			added++
+		case strings.HasPrefix(line, "-"):
+			removed++
+		}
+	}
+	return added, removed
+}
+
+// formatDiffLineCounts returns e.g. "+12 lines · −3 lines", counts above zero in the color of added/removed lines.
+func formatDiffLineCounts(added int, removed int) string {
+	colors := theme.Colors.FileBrowser.Table.State
+	part := func(text string, count int, color tcell.Color) string {
+		if count == 0 {
+			color = theme.Colors.ShortcutMap.Name
+		}
+		return txwidgets.Span(color, "%s", text)
+	}
+	return part(fmt.Sprintf("+%d %s", added, uiutil.Plural(added, "line", "lines")), added, colors.Added) +
+		txwidgets.Span(theme.Colors.ShortcutMap.Name, " · ") +
+		part(fmt.Sprintf("−%d %s", removed, uiutil.Plural(removed, "line", "lines")), removed, colors.Deleted)
 }
 
 func presenceStr(exists bool) string {
@@ -654,19 +716,15 @@ func (o *FileHistoryOverlay) updateDiff() {
 			o.metadataView.Clear()
 			o.metadataView.SetText(metaText)
 
-			o.rightLayout.SetTitle(theme.CreateTitleText(title))
-
+			uiutil.SetupWindow(o.diffView, title)
+			o.diffView.Clear()
 			if isBinary {
-				o.rightLayout.ResizeItem(o.metadataView, 0, 1)
-				o.rightLayout.ResizeItem(o.diffView, 0, 0)
-				o.diffView.Clear()
+				o.diffView.SetText(tview.Escape(diffText))
+				o.diffFooter.SetText("")
 			} else {
-				o.rightLayout.ResizeItem(o.metadataView, 6, 0)
-				o.rightLayout.ResizeItem(o.diffView, 0, 1)
-
-				o.diffView.Clear()
 				o.diffView.SetText(coloredDiff)
 				o.diffView.ScrollToBeginning()
+				o.diffFooter.SetText(formatDiffLineCounts(countDiffLines(rawDiff)))
 			}
 			o.rightLayoutContainer.SetIsLoading(false)
 

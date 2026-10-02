@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"time"
+	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/dialog"
@@ -89,7 +90,12 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				mainPage.updateShortcutMap(fileBrowser)
 			}
 		case file_browser.RequestFileHistoryEvent:
-			overlay := dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetAllEntries())
+			var overlay dialog.Dialog
+			if e.FileEntry.Type == data.Directory {
+				overlay = dialog.NewFolderHistoryOverlay(mainPage.application, e.FileEntry.GetRealPath(), mainPage.snapshotBrowser.GetAllEntries())
+			} else {
+				overlay = dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetAllEntries())
+			}
 			dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
 				mainPage.fileBrowser.Refresh(false)
 			})

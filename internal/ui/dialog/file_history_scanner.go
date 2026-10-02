@@ -1,7 +1,6 @@
 package dialog
 
 import (
-	"fmt"
 	"os"
 	"slices"
 	"sync"
@@ -31,6 +30,8 @@ type historyScanner struct {
 	metaCache         map[string]fileMeta
 	workingCopyExists bool
 	workingCopyStat   os.FileInfo
+	// findSnapshots is findSnapshotsOfPath, captured when the scanner is created (it may scan in the background)
+	findSnapshots func(path string, cachedEntries []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error)
 }
 
 func newHistoryScanner(filePath string, cachedEntries []*data.SnapshotBrowserEntry) *historyScanner {
@@ -38,28 +39,14 @@ func newHistoryScanner(filePath string, cachedEntries []*data.SnapshotBrowserEnt
 		filePath:      filePath,
 		cachedEntries: cachedEntries,
 		metaCache:     make(map[string]fileMeta),
+		findSnapshots: findSnapshotsOfPath,
 	}
 }
 
 func (s *historyScanner) scan(loadingMsgFunc func(string)) ([]*data.SnapshotBrowserEntry, error) {
-	ds, err := zfs.FindHostDataset(s.filePath)
+	snapshots, err := s.findSnapshots(s.filePath, s.cachedEntries)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find host dataset: %w", err)
-	}
-
-	var snapshots []*zfs.Snapshot
-	if len(s.cachedEntries) > 0 && s.cachedEntries[0].Snapshot != nil && s.cachedEntries[0].Snapshot.ParentDataset != nil && s.cachedEntries[0].Snapshot.ParentDataset.Path == ds.Path {
-		for _, entry := range s.cachedEntries {
-			if entry != nil && entry.Snapshot != nil {
-				snapshots = append(snapshots, entry.Snapshot)
-			}
-		}
-	} else {
-		var err error
-		snapshots, err = ds.GetSnapshots()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get snapshots for dataset %s: %w", ds.Path, err)
-		}
+		return nil, err
 	}
 
 	if loadingMsgFunc != nil {
@@ -251,4 +238,17 @@ func (s *historyScanner) determineDiffStateAgainstWorkingCopy(snap *zfs.Snapshot
 	}
 
 	return diff_state.Equal, nil
+}
+
+// sizesOf returns the sizes of the file in the snapshots of the entries (-1 if it is absent), from the metadata read
+// during the scan.
+func (s *historyScanner) sizesOf(entries []*data.SnapshotBrowserEntry) []int64 {
+	sizes := make([]int64, len(entries))
+	for i, entry := range entries {
+		sizes[i] = -1
+		if meta, ok := s.metaCache[entry.Snapshot.GetSnapshotPath(s.filePath)]; ok && meta.exists {
+			sizes[i] = meta.size
+		}
+	}
+	return sizes
 }

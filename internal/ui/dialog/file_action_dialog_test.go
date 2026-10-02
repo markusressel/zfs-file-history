@@ -74,6 +74,7 @@ func TestBuildFileDialogOptions_DirectoryWithSnapshot(t *testing.T) {
 	assert.Equal(t,
 		[]DialogActionId{
 			FileDialogCreateSnapshotDialogActionId,
+			FileDialogShowHistoryActionId,
 			FileDialogRestoreRecursiveDialogActionId,
 			FileDialogRestoreFileActionId,
 			FileDialogDeleteDialogActionId,
@@ -81,6 +82,28 @@ func TestBuildFileDialogOptions_DirectoryWithSnapshot(t *testing.T) {
 		},
 		optionIds(options),
 	)
+}
+
+func TestBuildFileDialogOptions_UnchangedDirectoryHasHistory(t *testing.T) {
+	entry := &data.FileBrowserEntry{
+		Name:      "example",
+		RealFile:  &data.RealFile{Name: "example"},
+		Type:      data.Directory,
+		DiffState: diff_state.Equal,
+	}
+
+	options := buildFileDialogOptions(entry, true)
+
+	assert.Equal(t,
+		[]DialogActionId{
+			FileDialogCreateSnapshotDialogActionId,
+			FileDialogShowHistoryActionId,
+			FileDialogDeleteDialogActionId,
+			DialogCloseActionId,
+		},
+		optionIds(options),
+	)
+	assert.Equal(t, "📂 Browse folder history", options[1].Name)
 }
 
 func TestBuildFileDialogOptions_OnlyRealFile(t *testing.T) {

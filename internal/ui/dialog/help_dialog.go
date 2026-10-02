@@ -40,6 +40,8 @@ func (p *HelpPage) createLayout() {
 		{Key: "←", Value: "Opens parent directory"},
 		{Key: "→", Value: "Enters selected directory"},
 		{Key: "space", Value: "Toggle Multi-Selection"},
+		{Key: "h", Value: "History of the selected file or folder across all snapshots"},
+		{Key: "H", Value: "History of the current folder across all snapshots"},
 		{Key: "F2", Value: "Selects and orders the columns of the focused table"},
 		{Key: "ctrl+f", Value: "Filters the list, e.g. daily or *-22???? (enter: keep, esc: clear)"},
 		{Key: "u", Value: "Shows/hides unmounted datasets"},

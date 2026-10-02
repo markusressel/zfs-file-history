@@ -89,6 +89,14 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 		}
 	}
 
+	if file.Type == data.Directory {
+		// also interesting if the directory did not change compared to the snapshot
+		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
+			Id:   FileDialogShowHistoryActionId,
+			Name: "📂 Browse folder history",
+		})
+	}
+
 	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
 		Id:   FileDialogCreateSnapshotDialogActionId,
 		Name: "📸 Create Snapshot",
