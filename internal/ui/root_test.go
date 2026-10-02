@@ -160,7 +160,8 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 	press(tcell.KeyCtrlF, 0)
 	waitFor("typing a filter", screenContains("Filter:"))
 
-	t.Cleanup(func() {
+	// on the UI thread, while the app still runs (deferred after app.Stop, so it runs before it)
+	defer onUiThreadT(t, app, func() {
 		if shortcut_helper.ShortcutsHidden() {
 			shortcut_helper.ToggleShortcuts()
 		}
