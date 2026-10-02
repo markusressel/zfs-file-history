@@ -15,12 +15,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMain makes sure no test reads permissions from ZFS: tests that need them stub them with stubPermissions.
+// TestMain makes sure no test reads permissions or properties from ZFS: tests that need them stub them with stubPermissions.
 func TestMain(m *testing.M) {
 	loadDatasetPermissions = func(dataset string) (*zfs.DatasetPermissions, error) {
 		return nil, errors.New("permissions are not available in tests")
 	}
 	isCurrentUserRoot = func() bool { return false }
+	listDatasetProperties = func(dataset string) ([]*zfs.Property, error) {
+		return nil, errors.New("properties are not available in tests")
+	}
 	os.Exit(m.Run())
 }
 
@@ -217,4 +220,54 @@ func TestDatasetBrowser_PermissionsDialogError(t *testing.T) {
 		onUiThread(t, app, func() { shown = browser.layout.HasPage("ErrorDialog") })
 		return shown
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestDatasetBrowser_PropertiesDialog(t *testing.T) {
+	original := listDatasetProperties
+	t.Cleanup(func() { listDatasetProperties = original })
+	var read []string
+	var mu sync.Mutex
+	listDatasetProperties = func(dataset string) ([]*zfs.Property, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		read = append(read, dataset)
+		if dataset == "rpool/broken" {
+			return nil, errors.New("cannot open 'rpool/broken'")
+		}
+		return []*zfs.Property{{Name: "compression", Value: "zstd", Source: "local"}}, nil
+	}
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}, {Name: "rpool/broken", MountPath: "/b"}}, nil
+	})
+	app, browser, screen := newBrowserApp(t)
+	onUiThread(t, app, func() {
+		browser.Refresh(false)
+		browser.Focus()
+	})
+	require.Eventually(t, func() bool {
+		count := 0
+		onUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
+		return count == 2
+	}, 2*time.Second, 10*time.Millisecond)
+	hasPage := func(name string) func() bool {
+		return func() bool {
+			shown := false
+			onUiThread(t, app, func() { shown = browser.layout.HasPage(name) })
+			return shown
+		}
+	}
+
+	onUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/a")) })
+	screen.InjectKey(tcell.KeyRune, 'e', tcell.ModNone)
+	require.Eventually(t, hasPage("DatasetPropertiesDialog"), 2*time.Second, 10*time.Millisecond)
+	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	require.Eventually(t, func() bool { return !hasPage("DatasetPropertiesDialog")() }, 2*time.Second, 10*time.Millisecond)
+
+	onUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/broken")) })
+	screen.InjectKey(tcell.KeyRune, 'e', tcell.ModNone)
+	require.Eventually(t, hasPage("ErrorDialog"), 2*time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"rpool/a", "rpool/broken"}, read)
 }

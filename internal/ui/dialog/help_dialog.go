@@ -47,6 +47,7 @@ func (p *HelpPage) createLayout() {
 		{Key: "-, +", Value: "Collapses/expands datasets in the tree view"},
 		{Key: "*", Value: "Collapses/expands all datasets in the tree view"},
 		{Key: "p", Value: "Shows your ZFS permissions on the selected dataset, grants/revokes them"},
+		{Key: "e", Value: "Shows and edits the ZFS properties of the selected dataset"},
 		{Key: "ctrl+n, ctrl+p", Value: "Cycles window focus"},
 		{Key: "⭾, shift+⭾", Value: "Switches page"},
 		emptyEntry,

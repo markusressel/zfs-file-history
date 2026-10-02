@@ -137,8 +137,7 @@ func (c *ScrollbarComponent) DrawFunc(screen tcell.Screen, x int, y int, width i
 			fg = theme.Colors.List.Scrollbar.Bar
 		}
 
-		style := tcell.StyleDefault.Foreground(fg)
-		screen.SetContent(x, y+i, char, nil, style)
+		screen.SetContent(x, y+i, char, nil, scrollbarStyle(fg))
 	}
 
 	if c.orientation == ScrollBarHorizontal {
@@ -165,12 +164,18 @@ func (c *ScrollbarComponent) DrawFunc(screen tcell.Screen, x int, y int, width i
 				fg = theme.Colors.List.Scrollbar.Bar
 			}
 
-			style := tcell.StyleDefault.Foreground(fg)
-			screen.SetContent(x+i, y, char, nil, style)
+			screen.SetContent(x+i, y, char, nil, scrollbarStyle(fg))
 		}
 	}
 
 	return x, y, width, height
+}
+
+// scrollbarStyle returns the style of a scrollbar cell. The background is set explicitly: with the terminal's default
+// background, the thin bar runes looked see-through on terminals whose background differs from the widgets'
+// (e.g. transparent ones).
+func scrollbarStyle(foreground tcell.Color) tcell.Style {
+	return tcell.StyleDefault.Foreground(foreground).Background(tview.Styles.PrimitiveBackgroundColor)
 }
 
 func (c *ScrollbarComponent) UpdateLayout() {
@@ -283,9 +288,14 @@ func (c *ScrollbarComponent) updateTopEndText() {
 	c.topArrow.SetTextColor(textColor)
 }
 
+// IsAtEnd returns whether the bar reaches the end of the track (the bottom, or the right).
+func (c *ScrollbarComponent) IsAtEnd() bool {
+	return c.scrollPosition+c.barWidth >= c.max
+}
+
 func (c *ScrollbarComponent) updateBottomEndText() {
 	c.layout.ResizeItem(c.bottomArrow, 1, 0)
-	isAtLimit := c.scrollPosition+c.barWidth >= c.max
+	isAtLimit := c.IsAtEnd()
 	text, textColor := c.determineRuneAndColor(ScrollbarRuneTypeBottom, isAtLimit)
 	c.bottomArrow.SetText(text)
 	c.bottomArrow.SetTextColor(textColor)

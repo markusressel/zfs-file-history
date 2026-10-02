@@ -352,6 +352,10 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 			datasetBrowser.openPermissionsDialog(datasetBrowser.tableContainer.GetSelectedEntry())
 			return nil
 		}
+		if event.Rune() == 'e' && datasetBrowser.tableContainer.GetSelectedEntry() != nil {
+			datasetBrowser.openPropertiesDialog(datasetBrowser.tableContainer.GetSelectedEntry())
+			return nil
+		}
 
 		if datasetBrowser.treeView && datasetBrowser.handleTreeKey(event.Rune()) {
 			return nil
@@ -675,7 +679,10 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 		)
 	}
 	if datasetBrowser.tableContainer.GetSelectedEntry() != nil {
-		shortcuts = append(shortcuts, shortcut_helper.ShortcutEntry{KeyCombo: []string{"p"}, Name: "Permissions"})
+		shortcuts = append(shortcuts,
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"p"}, Name: "Permissions"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"e"}, Name: "Properties"},
+		)
 	}
 	return shortcuts
 }

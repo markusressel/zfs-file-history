@@ -325,6 +325,7 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
 	uiutil.SetupDialogWindow(dialogFrame, title)
+	clearInside(dialogFrame.Box)
 	dialogFrame.AddItem(o.pages, 0, 1, true)
 
 	dialogContentColumnWrapper := tview.NewFlex()

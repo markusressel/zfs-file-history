@@ -126,10 +126,7 @@ func ApplyDelegationChange(change DelegationChange) error {
 		return err
 	}
 	for _, command := range change.Commands() {
-		if _, err := runZfs(command[1:]...); err != nil {
-			if isPermissionDenied(err) {
-				return fmt.Errorf("%w: %s", ErrPermissionDenied, err.Error())
-			}
+		if err := runZfsAsUser(command); err != nil {
 			return err
 		}
 	}

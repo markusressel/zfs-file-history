@@ -52,9 +52,11 @@ type Column struct {
 type RowSelectionTable[T RowSelectionTableEntry] struct {
 	application *tview.Application
 
-	layout    *tview.Flex
-	footer    *uiutil.BorderFooter
-	table     *tview.Table
+	layout *tview.Flex
+	footer *uiutil.BorderFooter
+	table  *tview.Table
+	// view is the table as placed in the layout, see tableView
+	view      *tableView
 	scrollbar *scrollbar.ScrollbarComponent
 
 	// allEntries are all entries set with SetData, entries are the ones that match the filter (displayed)
@@ -271,11 +273,12 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.table = table
 
 	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
+	c.view = &tableView{Table: c.table, afterDraw: c.redrawScrollbar}
 
 	c.isScrollbarVisible = true
 	c.layout = tview.NewFlex().
 		SetDirection(tview.FlexColumn).
-		AddItem(c.table, 0, 1, true).
+		AddItem(c.view, 0, 1, true).
 		AddItem(c.scrollbar.GetLayout(), 1, 0, false)
 
 	c.layout.SetBorder(true)
@@ -285,28 +288,59 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.footer.SetLeftFunc(c.renderFilterFooter)
 }
 
+// syncScrollbar shows the scrollbar if not all rows fit, and updates its position.
 func (c *RowSelectionTable[T]) syncScrollbar() {
 	if c.scrollbar == nil || c.table == nil {
 		return
 	}
 
-	rowOffset, _ := c.table.GetOffset()
-	rowCount := c.table.GetRowCount()
+	// without the (fixed) header row
+	dataRows := c.table.GetRowCount() - 1
 	_, _, _, height := c.table.GetInnerRect()
-
-	// rowCount - 1 because of the header row
-	if rowCount-1 <= height {
+	visibleDataRows := height - 1
+	if dataRows <= visibleDataRows {
 		c.hideScrollbar()
 		return
-	} else {
-		c.showScrollbar()
 	}
+	c.showScrollbar()
+	c.updateScrollbarPosition()
+}
 
-	if c.isScrollbarVisible {
-		c.scrollbar.SetMax(rowCount)
-		c.scrollbar.SetPosition(rowOffset)
-		c.scrollbar.SetWidth(height)
+// tableView is the tview table as placed in the layout: it draws the scrollbar again after the table was drawn.
+//
+// tview adjusts the row offset while drawing the table (e.g. to keep the selection visible after PgDn), which is
+// after the selection changed callback. And tview's Flex draws its focused item (the table) last, after the
+// scrollbar. So without this, the bar would show the previous offset and never reach the end.
+type tableView struct {
+	*tview.Table
+	afterDraw func(screen tcell.Screen)
+}
+
+func (v *tableView) Draw(screen tcell.Screen) {
+	v.Table.Draw(screen)
+	v.afterDraw(screen)
+}
+
+// redrawScrollbar updates the scrollbar from the table as just drawn, and draws it again. Runs while drawing.
+func (c *RowSelectionTable[T]) redrawScrollbar(screen tcell.Screen) {
+	if !c.isScrollbarVisible {
+		return
 	}
+	c.updateScrollbarPosition()
+	c.scrollbar.GetLayout().Draw(screen)
+}
+
+// updateScrollbarPosition sets the position and size of the bar from the row offset of the table.
+func (c *RowSelectionTable[T]) updateScrollbarPosition() {
+	if !c.isScrollbarVisible {
+		return
+	}
+	rowOffset, _ := c.table.GetOffset()
+	_, _, _, height := c.table.GetInnerRect()
+	// data rows only: the header row is fixed
+	c.scrollbar.SetMax(max(c.table.GetRowCount()-1, 1))
+	c.scrollbar.SetPosition(rowOffset)
+	c.scrollbar.SetWidth(max(height-1, 1))
 }
 
 func (c *RowSelectionTable[T]) showScrollbar() {
@@ -598,6 +632,20 @@ func (c *RowSelectionTable[T]) isCutOffOnTheRight() bool {
 	return tableWidth > width
 }
 
+// EmbedInFrame removes the table's own border (and title), for a table that fills a frame with its own border,
+// e.g. a dialog: two borders next to each other look odd. The footer (counts, filter) is drawn into the bottom
+// border of the frame instead. Must be called on the UI thread, before the table is drawn.
+func (c *RowSelectionTable[T]) EmbedInFrame(frame *tview.Box) {
+	c.layout.SetBorder(false)
+	text := c.footer.GetText()
+	// an empty footer draws nothing
+	c.footer.SetText("")
+	c.footer.SetLeftFunc(nil)
+	c.footer = uiutil.NewBorderFooter(frame)
+	c.footer.SetLeftFunc(c.renderFilterFooter)
+	c.footer.SetText(text)
+}
+
 // scrollToTop scrolls to the first row. Unlike tview's ScrollToBeginning, the horizontal scroll position is kept.
 func (c *RowSelectionTable[T]) scrollToTop() {
 	_, column := c.table.GetOffset()
@@ -855,7 +903,9 @@ func (c *RowSelectionTable[T]) filterEntries(entries []*T) []*T {
 func (c *RowSelectionTable[T]) startEditingFilter() {
 	c.filterEditor.Reset(c.filterText)
 	c.isEditingFilter = true
+	// the focused primitive is the table or its view, see tableView
 	uiutil.SetTextInputActive(c.table, true)
+	uiutil.SetTextInputActive(c.view, true)
 	c.updateTitle()
 }
 
@@ -865,6 +915,7 @@ func (c *RowSelectionTable[T]) stopEditingFilter() {
 	}
 	c.isEditingFilter = false
 	uiutil.SetTextInputActive(c.table, false)
+	uiutil.SetTextInputActive(c.view, false)
 	c.updateTitle()
 }
 

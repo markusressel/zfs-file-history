@@ -102,6 +102,12 @@ var (
 			Unknown: tcell.ColorDarkGray,
 			Pending: tcell.ColorYellow,
 		},
+		Properties: PropertyColors{
+			Value:    tcell.ColorLightGray,
+			Local:    Accent,
+			ReadOnly: tcell.ColorGray,
+			Hint:     tcell.ColorGray,
+		},
 	}
 
 	Style = StyleStruct{

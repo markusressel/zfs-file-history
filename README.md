@@ -33,6 +33,9 @@
   list (`t`), unmounted datasets are hidden by default (`u`). Both choices are remembered between runs. The used
   space is broken down into snapshots, the dataset itself, its children and its refreservation (sortable, to find the
   datasets whose snapshots use the most space).
+* ⚙️ **Dataset properties:** `e` in the dataset overview shows all ZFS properties of a dataset (`zfs get all`) with
+  their source, filterable and sortable. Change them (`zfs set`), or reset local values to the inherited or default
+  ones (`zfs inherit`); with `sudo` if needed.
 * 🔑 **ZFS permissions:** The `Perms` column of the dataset overview shows which delegated ZFS permissions
   (`zfs allow`) you have on each dataset, e.g. `sdmh-----` for snapshot, destroy, mount and hold. `p` shows the
   details: who grants each permission and all delegations of the dataset and its parents. There you can also grant

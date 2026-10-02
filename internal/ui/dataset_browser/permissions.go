@@ -16,6 +16,7 @@ import (
 var (
 	loadDatasetPermissions = zfs.LoadDatasetPermissions
 	isCurrentUserRoot      = zfs.IsCurrentUserRoot
+	listDatasetProperties  = zfs.ListProperties
 )
 
 const (
@@ -227,6 +228,30 @@ func (datasetBrowser *DatasetBrowserComponent) openPermissionsDialog(entry *zfs.
 			// changed delegations can affect the descendants as well, and the dataset info shows them too
 			onChanged := func() { zfs.RefreshZfsData() }
 			datasetBrowser.showDialog(dialog.NewDatasetPermissionsDialog(datasetBrowser.application, permissions, onChanged))
+		})
+	}()
+}
+
+// openPropertiesDialog reads the properties of the dataset in the background and shows them.
+// Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) openPropertiesDialog(entry *zfs.DatasetListEntry) {
+	if entry == nil {
+		return
+	}
+	name := entry.Name
+	go func() {
+		properties, err := listDatasetProperties(name)
+		isRoot := isCurrentUserRoot()
+		datasetBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Could not read the properties of %s: %v", name, err)
+				datasetBrowser.showDialog(dialog.NewErrorDialog(datasetBrowser.application, "Cannot Read Properties",
+					fmt.Errorf("cannot read the properties of %s: %w", name, err)))
+				return
+			}
+			// e.g. a new mountpoint changes the dataset list, the dataset info shows properties as well
+			onChanged := func() { zfs.RefreshZfsData() }
+			datasetBrowser.showDialog(dialog.NewDatasetPropertiesDialog(datasetBrowser.application, name, properties, isRoot, onChanged))
 		})
 	}()
 }

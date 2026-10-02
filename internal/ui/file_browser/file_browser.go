@@ -880,9 +880,13 @@ func (fileBrowser *FileBrowserComponent) updateFileWatcher() {
 		fileBrowser.fileWatcher = nil
 	}
 	fileBrowser.fileWatcher = util.NewFileWatcher(path)
+	// runs on the goroutine of the file watcher: the refresh reads widgets, so it belongs on the UI thread.
+	// Dispatched without waiting, as the watcher holds a lock while calling this, which Stop (on the UI thread)
+	// may wait for.
 	action := func(s string) {
-		fileBrowser.Refresh(false)
-		fileBrowser.application.Draw()
+		go fileBrowser.application.QueueUpdateDraw(func() {
+			fileBrowser.Refresh(false)
+		})
 	}
 	err := fileBrowser.fileWatcher.Watch(action)
 	if err != nil {
