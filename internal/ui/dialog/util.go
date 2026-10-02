@@ -36,6 +36,11 @@ type Dialog interface {
 	GetActionChannel() <-chan DialogActionId
 }
 
+// pagesAware is implemented by dialogs that need to know the pages they are shown on, e.g. to show follow-up dialogs.
+type pagesAware interface {
+	setPages(pages *tview.Pages)
+}
+
 type DialogOption struct {
 	Id       DialogActionId
 	Name     string
@@ -278,6 +283,9 @@ func ShowDialogOnPages(
 	onClosed func(),
 ) {
 	layout := d.GetLayout()
+	if aware, ok := d.(pagesAware); ok {
+		aware.setPages(pages)
+	}
 	var previousFocus tview.Primitive
 	if !layout.HasFocus() {
 		previousFocus = application.GetFocus()
