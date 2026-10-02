@@ -146,9 +146,9 @@ func heldSnapshotsError(holds []zfs.Hold) error {
 	return fmt.Errorf("cannot destroy held snapshots, release their holds first:%s", formatHoldList(holds))
 }
 
-// showHoldResult shows the result of holding or releasing snapshots and reloads them. Must be called on the UI
-// thread.
-func (snapshotBrowser *SnapshotBrowserComponent) showHoldResult(result *holdResult, hold bool, err error) {
+// showHoldResult shows the result of holding or releasing snapshots and reloads them. retry repeats the action, e.g.
+// after missing permissions were granted. Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) showHoldResult(result *holdResult, hold bool, err error, retry func()) {
 	title := "Snapshots Released"
 	if hold {
 		title = "Snapshots Held"
@@ -159,7 +159,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) showHoldResult(result *holdResu
 		if hold {
 			failedTitle = "Hold Failed"
 		}
-		snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, failedTitle, err), nil)
+		snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, failedTitle, err, retry), nil)
 	} else {
 		snapshotBrowser.showDialog(dialog.NewSuccessDialog(snapshotBrowser.application, title, formatHoldMessage(result, hold)), nil)
 		snapshotBrowser.ClearMultiSelection()

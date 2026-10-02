@@ -382,13 +382,17 @@ func (s *Snapshot) Clone(targetName string) error {
 	}
 	snapshots, err := gozfs.Snapshots(s.FullName)
 	if err != nil {
-		return err
+		return cleanZfsError(err)
 	}
 	if len(snapshots) == 0 {
 		return fmt.Errorf("snapshot not found: %s", s.FullName)
 	}
 	_, err = snapshots[0].Clone(targetName, nil)
-	return err
+	targetParent := path2.Dir(targetName)
+	return explainPermissionError(cleanZfsError(err), "clone the snapshot",
+		PermissionGap{Dataset: datasetOfSnapshot(s.FullName), Permissions: []Permission{PermissionClone}},
+		PermissionGap{Dataset: targetParent, Permissions: []Permission{PermissionCreate, PermissionMount}},
+	)
 }
 
 // SuggestCloneName returns a name for a clone of this snapshot, next to its parent dataset,

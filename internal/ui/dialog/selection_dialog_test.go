@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"sync"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
@@ -10,6 +11,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewSelectionDialog(t *testing.T) {
@@ -217,4 +219,59 @@ func TestSelectionDialog_StopLoadingRestoresOptionText(t *testing.T) {
 	assert.Eventually(t, func() bool { return optionCellText() != originalText }, 2*time.Second, 10*time.Millisecond)
 	onUiThread(t, app, func() { d.StopLoading() })
 	assert.Equal(t, originalText, optionCellText())
+}
+
+func TestSelectionDialog_RetryFunc(t *testing.T) {
+	app := tview.NewApplication()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	pages := tview.NewPages()
+	app.SetRoot(pages, true)
+	go func() { _ = app.Run() }()
+	t.Cleanup(app.Stop)
+
+	var mu sync.Mutex
+	var runs []DialogActionId
+	options := []*DialogOption{{Id: 7, Name: "Hold"}, {Id: DialogCloseActionId, Name: "Close"}}
+	d := NewSelectionDialog(app, "Actions", "Actions", "", options,
+		func(d *SelectionDialog, action DialogActionId) error {
+			mu.Lock()
+			defer mu.Unlock()
+			runs = append(runs, action)
+			return nil
+		},
+		func(d *SelectionDialog, option *DialogOption, err error) { d.Close() },
+	)
+	runCount := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(runs)
+	}
+	isShown := func() bool {
+		shown := false
+		onUiThread(t, app, func() { shown = pages.HasPage("Actions") })
+		return shown
+	}
+
+	onUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
+	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	require.Eventually(t, func() bool { return runCount() == 1 && !isShown() }, 2*time.Second, 10*time.Millisecond)
+
+	// the dialog is shown again and runs the option again, then closes like the first time
+	onUiThread(t, app, func() { d.RetryFunc(options[0])() })
+	require.Eventually(t, func() bool { return runCount() == 2 && !isShown() }, 2*time.Second, 10*time.Millisecond)
+	mu.Lock()
+	assert.Equal(t, []DialogActionId{7, 7}, runs)
+	mu.Unlock()
+}
+
+func TestSelectionDialog_SetOptionName(t *testing.T) {
+	options := []*DialogOption{{Id: 1, Name: "Copy"}, {Id: 2, Name: "Other"}, {Id: DialogCloseActionId, Name: "Close"}}
+	d := NewSelectionDialog(tview.NewApplication(), "Actions", "Actions", "", options, nil, nil)
+
+	d.SetOptionName(1, "Copied")
+
+	assert.Equal(t, "Copied", d.optionTable.GetCell(0, 1).Text)
+	assert.Equal(t, "Copied", options[0].Name)
+	assert.Equal(t, "Other", d.optionTable.GetCell(1, 1).Text)
 }

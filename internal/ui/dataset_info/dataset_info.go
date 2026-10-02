@@ -153,14 +153,39 @@ type DatasetInfoTableEntry struct {
 	Value string
 }
 
+// loadDatasetPermissions is replaceable in tests.
+var loadDatasetPermissions = zfs.LoadDatasetPermissions
+
 // newDatasetInfoResult reads all displayed properties of the dataset.
 // This calls into ZFS (and may spawn processes), so it must only be called in the background.
 func newDatasetInfoResult(dataset *zfs.Dataset, titleName string) *datasetInfoResult {
+	properties := collectProperties(dataset)
+	properties = append(properties, &DatasetInfoTableEntry{Name: "Permissions", Value: formatPermissions(loadDatasetPermissions(dataset.GetName()))})
+	sortProperties(properties)
 	return &datasetInfoResult{
 		dataset:    dataset,
 		title:      fmt.Sprintf("Dataset: %s", titleName),
-		properties: collectProperties(dataset),
+		properties: properties,
 	}
+}
+
+// formatPermissions lists the ZFS permissions of the current user, e.g. "snapshot, destroy, mount".
+func formatPermissions(permissions *zfs.DatasetPermissions, err error) string {
+	switch {
+	case err != nil || permissions == nil:
+		return "unknown"
+	case permissions.IsRoot:
+		return "all (root)"
+	}
+	granted := permissions.KnownGranted()
+	if len(granted) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(granted))
+	for _, permission := range granted {
+		names = append(names, string(permission))
+	}
+	return strings.Join(names, ", ")
 }
 
 func collectProperties(dataset *zfs.Dataset) []*DatasetInfoTableEntry {
@@ -204,12 +229,15 @@ func collectProperties(dataset *zfs.Dataset) []*DatasetInfoTableEntry {
 		})
 	}
 
-	// Sort properties by Name for consistent display
+	sortProperties(properties)
+	return properties
+}
+
+// sortProperties sorts the properties by name, for a consistent display.
+func sortProperties(properties []*DatasetInfoTableEntry) {
 	sort.Slice(properties, func(i, j int) bool {
 		return properties[i].Name < properties[j].Name
 	})
-
-	return properties
 }
 
 // updateUi displays the given result, or clears the view if it is nil.
@@ -258,6 +286,13 @@ func resolveValueColor(name, value string) tcell.Color {
 
 	lowerName := strings.ToLower(name)
 	lowerValue := strings.ToLower(value)
+
+	if lowerName == "permissions" {
+		if lowerValue == "unknown" {
+			return theme.Colors.Permissions.Unknown
+		}
+		return theme.Colors.Permissions.Granted
+	}
 
 	// Warning / Restrictive States
 	if lowerName == "readonly" && lowerValue == "on" {

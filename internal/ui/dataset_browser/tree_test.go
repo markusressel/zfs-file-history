@@ -240,6 +240,9 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	pressKey := func(key tcell.Key) {
 		screen.InjectKey(key, 0, tcell.ModNone)
 	}
+	typeRune := func(r rune) {
+		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+	}
 	state := func() (visible []string, selected string, footer string) {
 		onUiThread(t, app, func() {
 			visible = names(browser.tableContainer.GetEntries())
@@ -282,8 +285,8 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	waitFor("loaded", func(visible []string, selected string) bool { return len(visible) == 5 && selected == "rpool/var" })
 	_, _, footer := state()
 
-	// ← collapses an expanded dataset: its children are hidden, the count is shown, the footer stays the same
-	pressKey(tcell.KeyLeft)
+	// - collapses an expanded dataset: its children are hidden, the count is shown, the footer stays the same
+	typeRune('-')
 	waitFor("collapsed", func(visible []string, selected string) bool {
 		return assert.ObjectsAreEqual([]string{"rpool", "rpool/home", "rpool/var"}, visible) && selected == "rpool/var"
 	})
@@ -291,8 +294,8 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	_, _, collapsedFooter := state()
 	assert.Equal(t, footer, collapsedFooter)
 
-	// ← on a collapsed dataset selects its parent
-	pressKey(tcell.KeyLeft)
+	// - on a collapsed dataset selects its parent
+	typeRune('-')
 	waitFor("parent selected", selectedIs("rpool"))
 
 	// on rows that are not selected, the indicator is drawn in its own (readable) color,
@@ -310,12 +313,12 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 		return foreground == theme.Colors.Layout.Table.TreeCollapsedIndicator
 	}, 2*time.Second, 10*time.Millisecond)
 
-	// → on an expanded dataset selects its first child
-	pressKey(tcell.KeyRight)
+	// + on an expanded dataset selects its first child
+	typeRune('+')
 	waitFor("first child selected", selectedIs("rpool/home"))
 
-	// → on a leaf does nothing
-	pressKey(tcell.KeyRight)
+	// + on a leaf does nothing
+	typeRune('+')
 	time.Sleep(50 * time.Millisecond)
 	_, selected, _ := state()
 	assert.Equal(t, "rpool/home", selected)
@@ -329,16 +332,34 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	waitFor("still collapsed after reload", func(visible []string, _ string) bool { return len(visible) == 3 })
 
-	// → on a collapsed dataset expands it, then → selects its first child, ← on a leaf selects the parent
+	// + on a collapsed dataset expands it, then + selects its first child, - on a leaf selects the parent
 	pressKey(tcell.KeyDown)
 	waitFor("var selected", selectedIs("rpool/var"))
-	pressKey(tcell.KeyRight)
+	typeRune('+')
 	waitFor("expanded", func(visible []string, selected string) bool { return len(visible) == 5 && selected == "rpool/var" })
-	pressKey(tcell.KeyRight)
+	typeRune('+')
 	waitFor("first child selected", selectedIs("rpool/var/lib"))
-	pressKey(tcell.KeyLeft)
+	typeRune('-')
 	waitFor("parent selected", selectedIs("rpool/var"))
 	assert.False(t, screenContains("▸"))
+
+	// ← and → on data rows are left to the table (horizontal scrolling), they don't change the tree
+	pressKey(tcell.KeyLeft)
+	pressKey(tcell.KeyRight)
+	time.Sleep(50 * time.Millisecond)
+	visible, selected, _ := state()
+	assert.Len(t, visible, 5)
+	assert.Equal(t, "rpool/var", selected)
+
+	// * collapses all (the selection moves to the top-most ancestor), * again expands all
+	pressKey(tcell.KeyDown)
+	waitFor("lib selected", selectedIs("rpool/var/lib"))
+	typeRune('*')
+	waitFor("all collapsed", func(visible []string, selected string) bool {
+		return assert.ObjectsAreEqual([]string{"rpool"}, visible) && selected == "rpool"
+	})
+	typeRune('*')
+	waitFor("all expanded", func(visible []string, _ string) bool { return len(visible) == 5 })
 
 	// on the header row, ← and → still change the sort column
 	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })

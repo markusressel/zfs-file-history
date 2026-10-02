@@ -70,22 +70,25 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 	applicationHeader.layout = layout
 }
 
+// SetStatus shows a status message. A message with a duration is cleared after it, unless another message was shown
+// in the meantime. Must be called on the UI thread.
 func (applicationHeader *ApplicationHeaderComponent) SetStatus(status *status_message.StatusMessage) {
 	applicationHeader.statusTextView.SetText(status.Message).SetTextColor(status.Color)
-	applicationHeader.application.ForceDraw()
-	if status.Duration > 0 {
-		go func() {
-			time.Sleep(status.Duration)
-			if applicationHeader.lastStatus != status {
-				return
-			}
-			applicationHeader.ClearStatus()
-		}()
-	}
 	applicationHeader.lastStatus = status
+	if status.Duration > 0 {
+		// the timer runs on its own goroutine, so it hands the clearing over to the UI thread
+		time.AfterFunc(status.Duration, func() {
+			applicationHeader.application.QueueUpdateDraw(func() {
+				if applicationHeader.lastStatus == status {
+					applicationHeader.ClearStatus()
+				}
+			})
+		})
+	}
 }
 
+// ClearStatus removes the status message. Must be called on the UI thread.
 func (applicationHeader *ApplicationHeaderComponent) ClearStatus() {
 	applicationHeader.statusTextView.SetText("").SetTextColor(tcell.ColorWhite)
-	applicationHeader.application.ForceDraw()
+	applicationHeader.lastStatus = nil
 }

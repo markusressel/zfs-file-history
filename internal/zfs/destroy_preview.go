@@ -25,6 +25,13 @@ func PreviewDestroySnapshots(snapshots []*Snapshot, recursive bool, dependantClo
 	if err != nil {
 		return nil, err
 	}
+	// the dry run succeeds without permissions, so the destroy would only fail after the confirmation
+	if err := checkPermissions(destroyAction(len(snapshots)), PermissionGap{
+		Dataset:     datasetOfSnapshot(snapshots[0].FullName),
+		Permissions: destroyPermissions,
+	}); err != nil {
+		return nil, err
+	}
 
 	args := []string{"destroy", "-n", "-v", "-p"}
 	if recursive {
@@ -40,6 +47,16 @@ func PreviewDestroySnapshots(snapshots []*Snapshot, recursive bool, dependantClo
 		return nil, err
 	}
 	return parseDestroyPreview(output)
+}
+
+// destroyPermissions are the permissions needed to destroy snapshots.
+var destroyPermissions = []Permission{PermissionDestroy, PermissionMount}
+
+func destroyAction(count int) string {
+	if count == 1 {
+		return "destroy the snapshot"
+	}
+	return "destroy the snapshots"
 }
 
 // destroyTarget returns the argument for "zfs destroy" for the given snapshots, e.g. "pool/data@a,b".

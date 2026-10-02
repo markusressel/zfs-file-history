@@ -492,7 +492,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		d.Close()
 
 		if err != nil {
-			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Action Failed", err)
+			errDialog := dialog.NewErrorDialogWithRetry(fileBrowser.application, "Action Failed", err, d.RetryFunc(option))
 			fileBrowser.showDialog(errDialog, nil)
 			return
 		}

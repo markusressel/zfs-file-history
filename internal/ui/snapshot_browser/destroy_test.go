@@ -305,3 +305,22 @@ func TestSnapshotBrowser_DestroyMultiSelection(t *testing.T) {
 		return count == 0
 	}, 2*time.Second, 10*time.Millisecond, "the multi selection is cleared")
 }
+
+func TestSnapshotBrowser_DestroyWithoutPermissionOffersToGrantIt(t *testing.T) {
+	dt := newDestroyTest(t)
+	dt.previewError = &zfs.MissingPermissionsError{
+		Action:  "destroy the snapshot",
+		User:    "alice",
+		Missing: []zfs.PermissionGap{{Dataset: "pool/data", Permissions: []zfs.Permission{zfs.PermissionDestroy}}},
+	}
+
+	dt.press(tcell.KeyDelete, 0)
+
+	dt.waitForDialog("MissingPermissionsDialog")
+	assert.False(t, dt.hasDialog("DestroySnapshotsDialog"), "no confirmation without permission")
+	require.Eventually(t, func() bool {
+		return strings.Contains(dt.screenText(), "sudo zfs allow -u alice destroy pool/data")
+	}, 2*time.Second, 10*time.Millisecond)
+	_, destroys := dt.calls()
+	assert.Empty(t, destroys)
+}

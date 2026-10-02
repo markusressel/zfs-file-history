@@ -344,7 +344,8 @@ func (dataset *Dataset) GetSnapshotCount() int {
 func (dataset *Dataset) CreateSnapshot(name string) error {
 	if gozfsDataset := dataset.gozfsData(); gozfsDataset != nil {
 		_, err := gozfsDataset.Snapshot(name, false)
-		return err
+		return explainPermissionError(cleanZfsError(err), "create a snapshot",
+			PermissionGap{Dataset: gozfsDataset.Name, Permissions: []Permission{PermissionSnapshot, PermissionMount}})
 	}
 	return errors.New("cannot create snapshot: no dataset metadata available")
 }
@@ -354,7 +355,7 @@ func (dataset *Dataset) DestroySnapshot(name string, recursive bool, dependantCl
 		fullName := fmt.Sprintf("%s@%s", gozfsDataset.Name, name)
 		snapshots, err := gozfs.Snapshots(fullName)
 		if err != nil {
-			return err
+			return cleanZfsError(err)
 		}
 		if len(snapshots) == 0 {
 			return errors.New("snapshot not found")
@@ -366,7 +367,8 @@ func (dataset *Dataset) DestroySnapshot(name string, recursive bool, dependantCl
 		if dependantClones {
 			flags = flags | gozfs.DestroyRecursiveClones
 		}
-		return snapshots[0].Destroy(flags)
+		return explainPermissionError(cleanZfsError(snapshots[0].Destroy(flags)), "destroy the snapshot",
+			PermissionGap{Dataset: gozfsDataset.Name, Permissions: destroyPermissions})
 	}
 	return errors.New("cannot destroy snapshot: no dataset metadata available")
 }

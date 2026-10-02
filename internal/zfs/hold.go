@@ -47,7 +47,7 @@ func HoldSnapshots(snapshotNames []string) error {
 		return nil
 	}
 	_, err := runZfs(append([]string{"hold", HoldTag}, snapshotNames...)...)
-	return err
+	return explainPermissionError(err, "hold snapshots", snapshotPermissionGaps(snapshotNames, PermissionHold)...)
 }
 
 // ReleaseSnapshots removes the hold with HoldTag from the snapshots with the given full names.
@@ -58,7 +58,7 @@ func ReleaseSnapshots(snapshotNames []string) error {
 		return nil
 	}
 	_, err := runZfs(append([]string{"release", HoldTag}, snapshotNames...)...)
-	return err
+	return explainPermissionError(err, "release holds", snapshotPermissionGaps(snapshotNames, PermissionRelease)...)
 }
 
 // parseHolds parses the output of "zfs holds -H -p", e.g.:

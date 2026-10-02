@@ -33,6 +33,9 @@
   hidden by default (`u`). Both choices are remembered between runs. The used space is broken down into snapshots,
   the dataset itself, its children and its refreservation (sortable, to find the datasets whose snapshots use the
   most space).
+* 🔑 **ZFS permissions:** The `Perms` column of the dataset overview shows which delegated ZFS permissions
+  (`zfs allow`) you have on each dataset, e.g. `sdmh-----` for snapshot, destroy, mount and hold. `p` shows the
+  details: who grants each permission and all delegations of the dataset and its parents.
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
@@ -91,7 +94,11 @@ permissions, f.ex.:
 sudo zfs allow markus mount,snapshot,destroy,hold,release rpool/HOME/default/markus
 ```
 
-otherwise zfs-file-history will show a permission error.
+If a permission is missing, zfs-file-history tells you which ones are needed on which dataset, shows the matching
+`zfs allow` command and offers to run it for you (it asks for your `sudo` password) or to copy it. Once the
+permissions are in effect, the action you tried is repeated automatically (destroying asks for confirmation again).
+Destroying snapshots checks the permissions before asking for confirmation, as the dry run of `zfs destroy`
+succeeds without them.
 
 ## Configuration
 

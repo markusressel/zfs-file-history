@@ -650,13 +650,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		d.Close() // Dismiss selection menu
 
 		if option.Id == dialog.SnapshotDialogHoldSnapshotActionId || option.Id == dialog.SnapshotDialogReleaseSnapshotActionId {
-			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.SnapshotDialogHoldSnapshotActionId, err)
+			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.SnapshotDialogHoldSnapshotActionId, err, d.RetryFunc(option))
 			return
 		}
 
 		if err != nil {
 			logging.Error("Action failed: %s", err.Error())
-			errDialog := dialog.NewErrorDialog(snapshotBrowser.application, "Operation Failed", err)
+			errDialog := dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Operation Failed", err, d.RetryFunc(option))
 			snapshotBrowser.showDialog(errDialog, nil)
 			return
 		}
@@ -715,7 +715,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) cloneInBackground(snapshot *zfs
 		snapshotBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
 				logging.Error("Failed to clone snapshot %s to %s: %s", snapshot.FullName, targetName, err.Error())
-				snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Clone Failed", err), nil)
+				retry := func() { snapshotBrowser.cloneInBackground(snapshot, targetName) }
+				snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Clone Failed", err, retry), nil)
 			} else {
 				snapshotBrowser.showDialog(dialog.NewSuccessDialog(
 					snapshotBrowser.application,
@@ -764,13 +765,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 		d.Close()
 
 		if option.Id == dialog.MultiSnapshotDialogHoldSnapshotsActionId || option.Id == dialog.MultiSnapshotDialogReleaseSnapshotsActionId {
-			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.MultiSnapshotDialogHoldSnapshotsActionId, err)
+			snapshotBrowser.showHoldResult(holdResultValue, option.Id == dialog.MultiSnapshotDialogHoldSnapshotsActionId, err, d.RetryFunc(option))
 			return
 		}
 
 		if err != nil {
 			logging.Error("Cannot destroy snapshots: %s", err.Error())
-			snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Cannot Destroy", err), nil)
+			snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Cannot Destroy", err, d.RetryFunc(option)), nil)
 			return
 		}
 
@@ -794,13 +795,19 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 		return
 	}
 
-	request := &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}}
+	snapshotBrowser.previewAndConfirmDestroy(&destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}})
+}
+
+// previewAndConfirmDestroy does the dry run of request in the background and then asks for confirmation.
+// Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) previewAndConfirmDestroy(request *destroyRequest) {
 	go func() {
 		preview, err := request.preview()
 		snapshotBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
-				logging.Error("Cannot destroy snapshot: %s", err.Error())
-				snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Cannot Destroy", err), nil)
+				logging.Error("Cannot destroy snapshots: %s", err.Error())
+				retry := func() { snapshotBrowser.previewAndConfirmDestroy(request) }
+				snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Cannot Destroy", err, retry), nil)
 				return
 			}
 			snapshotBrowser.showDestroyConfirmation(request, preview)
@@ -884,7 +891,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDestroyConfirmation(request
 
 		if err != nil {
 			logging.Error("Failed to destroy snapshots: %s", err.Error())
-			snapshotBrowser.showDialog(dialog.NewErrorDialog(snapshotBrowser.application, "Destroy Failed", err), nil)
+			// a retry asks for confirmation again, with a new dry run (some snapshots may be gone already)
+			retry := func() { snapshotBrowser.previewAndConfirmDestroy(request) }
+			snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Destroy Failed", err, retry), nil)
 			// some snapshots may have been destroyed already
 			snapshotBrowser.ClearMultiSelection()
 			snapshotBrowser.Refresh(true)

@@ -26,6 +26,47 @@ type SelectionDialog struct {
 	// Handlers for exclusive async execution
 	handler    func(d *SelectionDialog, action DialogActionId) error
 	onComplete func(d *SelectionDialog, option *DialogOption, err error)
+
+	// pages the dialog is shown on, set by ShowDialogOnPages. Only accessed on the UI thread.
+	pages *tview.Pages
+}
+
+func (d *SelectionDialog) setPages(pages *tview.Pages) {
+	d.pages = pages
+}
+
+// RetryFunc returns a function that shows this dialog again and runs option again, e.g. after the user granted
+// missing permissions. The returned function must be called on the UI thread, after this dialog was closed.
+func (d *SelectionDialog) RetryFunc(option *DialogOption) func() {
+	return func() {
+		if d.pages == nil {
+			return
+		}
+		ShowDialogOnPages(d.application, d.pages, d, nil)
+		d.selectAction(option)
+	}
+}
+
+// SetOptionName changes the displayed name of the option with the given id. Must be called on the UI thread.
+func (d *SelectionDialog) SetOptionName(id DialogActionId, name string) {
+	for row := 0; row < d.optionTable.GetRowCount(); row++ {
+		cell := d.optionTable.GetCell(row, 1)
+		if option, ok := cell.GetReference().(*DialogOption); ok && option.Id == id {
+			option.Name = name
+			cell.SetText(name)
+		}
+	}
+}
+
+// ShowFollowUp closes this dialog and shows next on the same pages, e.g. the result of an action.
+// Must be called on the UI thread.
+func (d *SelectionDialog) ShowFollowUp(next Dialog) {
+	pages := d.pages
+	if pages == nil {
+		d.Close()
+		return
+	}
+	d.Chain(func() { ShowDialogOnPages(d.application, pages, next, nil) })
 }
 
 // NewSelectionDialog
