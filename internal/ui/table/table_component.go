@@ -178,7 +178,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 		if c.lastSelectedEntry != nil && selectedEntry == nil {
 			// workaround to the table not scrolling to the top when PgUp is pressed and a page jump will
 			// select the table header row.
-			table.ScrollToBeginning()
+			c.scrollToTop()
 		}
 		c.selectionChangedCallback(selectedEntry)
 
@@ -526,10 +526,16 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 		}
 	}
 	if index <= 1 {
-		c.table.ScrollToBeginning()
+		c.scrollToTop()
 	}
 	c.table.Select(index, 0)
 	c.syncScrollbar()
+}
+
+// scrollToTop scrolls to the first row. Unlike tview's ScrollToBeginning, the horizontal scroll position is kept.
+func (c *RowSelectionTable[T]) scrollToTop() {
+	_, column := c.table.GetOffset()
+	c.table.SetOffset(0, column)
 }
 
 func (c *RowSelectionTable[T]) HasFocus() bool {

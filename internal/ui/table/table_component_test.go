@@ -1,6 +1,7 @@
 package table
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"zfs-file-history/internal/ui/theme"
@@ -579,4 +580,73 @@ func TestFilter_FooterAndCountsDoNotOverlap(t *testing.T) {
 		line.WriteRune(primary)
 	}
 	assert.Equal(t, "└ Filter: daily ──────── 2 of 4 things ┘", line.String())
+}
+
+// newWideTestTable returns a table with more columns than fit, and many rows.
+func newWideTestTable() (*RowSelectionTable[namedEntry], []*namedEntry) {
+	var cols []*Column
+	for i := 0; i < 10; i++ {
+		cols = append(cols, &Column{Id: ColumnId(i), Title: strings.Repeat("x", 20)})
+	}
+	table := NewTableContainer[namedEntry](
+		tview.NewApplication(),
+		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
+			var cells []*tview.TableCell
+			for range columns {
+				cells = append(cells, tview.NewTableCell(entry.name+strings.Repeat(".", 15)))
+			}
+			return cells
+		},
+		func(entries []*namedEntry, column *Column, inverted bool) []*namedEntry {
+			return entries
+		},
+	)
+	table.SetColumnSpec(cols, cols[0], false)
+	var entries []*namedEntry
+	for i := 0; i < 50; i++ {
+		entries = append(entries, &namedEntry{name: fmt.Sprintf("entry-%02d", i)})
+	}
+	table.SetData(entries)
+	table.table.SetRect(0, 0, 40, 10)
+	return table, entries
+}
+
+// pressTableKey sends a key through the input capture of the component and then to tview, like the application.
+func pressTableKey(table *RowSelectionTable[namedEntry], key tcell.Key) {
+	event := table.table.GetInputCapture()(tcell.NewEventKey(key, 0, tcell.ModNone))
+	if event != nil {
+		table.table.InputHandler()(event, func(p tview.Primitive) {})
+	}
+}
+
+func TestTable_HorizontalScrollIsKept(t *testing.T) {
+	table, entries := newWideTestTable()
+	columnOffset := func() int {
+		_, column := table.table.GetOffset()
+		return column
+	}
+
+	// → on a data row scrolls horizontally
+	table.Select(entries[0])
+	pressTableKey(table, tcell.KeyRight)
+	pressTableKey(table, tcell.KeyRight)
+	require.Equal(t, 2, columnOffset())
+
+	// selecting the first entry again (e.g. after a reload) keeps it
+	table.SetData(entries)
+	table.Select(entries[0])
+	assert.Equal(t, 2, columnOffset())
+
+	// moving up to the header row keeps it
+	pressTableKey(table, tcell.KeyUp)
+	require.Nil(t, table.GetSelectedEntry())
+	assert.Equal(t, 2, columnOffset())
+
+	// a page jump to the header row still scrolls to the top row (PgUp workaround), but not to the left
+	table.Select(entries[20])
+	table.table.SetOffset(15, 2)
+	table.SelectHeader()
+	row, column := table.table.GetOffset()
+	assert.Equal(t, 0, row)
+	assert.Equal(t, 2, column)
 }
