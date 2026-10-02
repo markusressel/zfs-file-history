@@ -104,12 +104,12 @@ func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 	waitForText(mainPageShortcut)
 
 	// dataset page, without any further key press
-	screen.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyTab, 0, tcell.ModCtrl)
 	waitForText(datasetPageShortcut)
 	assert.NotContains(t, screenText(t, app, screen), mainPageShortcut)
 
 	// and back, in reverse
-	screen.InjectKey(tcell.KeyBacktab, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyBacktab, 0, tcell.ModCtrl)
 	waitForText(mainPageShortcut)
 	assert.NotContains(t, screenText(t, app, screen), datasetPageShortcut)
 }
@@ -150,8 +150,8 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 	})
 
 	// focus the snapshot browser and start typing a filter
-	press(tcell.KeyCtrlN, 0)
-	press(tcell.KeyCtrlN, 0)
+	press(tcell.KeyTab, 0)
+	press(tcell.KeyTab, 0)
 	waitFor("snapshot browser focused", func() bool {
 		focused := false
 		onUiThreadT(t, app, func() { focused = mainPage.snapshotBrowser.HasFocus() })
@@ -209,10 +209,10 @@ func TestPageIndicator(t *testing.T) {
 	assert.Equal(t, theme.Colors.Header.PageIndicatorBackground, background)
 	assert.NotZero(t, attributes&tcell.AttrBold, "bold")
 
-	screen.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyTab, 0, tcell.ModCtrl)
 	assert.Eventually(t, shows("DATASETS 2/2"), 3*time.Second, 20*time.Millisecond)
 	assert.False(t, shows("FILES    1/2")())
-	screen.InjectKey(tcell.KeyBacktab, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyBacktab, 0, tcell.ModCtrl)
 	assert.Eventually(t, shows("FILES    1/2"), 3*time.Second, 20*time.Millisecond)
 }
 

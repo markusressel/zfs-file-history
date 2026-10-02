@@ -104,11 +104,11 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 
 	datasetPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
+		if (key == tcell.KeyTab || key == tcell.KeyBacktab) && event.Modifiers()&tcell.ModCtrl == 0 {
+			datasetPage.CycleFocus(key == tcell.KeyBacktab || event.Modifiers()&tcell.ModShift != 0)
+			return nil
+		}
 		switch key {
-		case tcell.KeyCtrlN:
-			datasetPage.CycleFocus(false)
-		case tcell.KeyCtrlP:
-			datasetPage.CycleFocus(true)
 		case tcell.KeyF5:
 			// also reloads the dataset list, via the zfs.DatasetsLoaded subscription
 			zfs.RefreshZfsData()

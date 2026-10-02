@@ -130,11 +130,11 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		key := event.Key()
+		if (key == tcell.KeyTab || key == tcell.KeyBacktab) && event.Modifiers()&tcell.ModCtrl == 0 {
+			mainPage.CycleFocus(key == tcell.KeyBacktab || event.Modifiers()&tcell.ModShift != 0)
+			return nil
+		}
 		switch key {
-		case tcell.KeyCtrlN:
-			mainPage.CycleFocus(false)
-		case tcell.KeyCtrlP:
-			mainPage.CycleFocus(true)
 		case tcell.KeyF5:
 			zfs.RefreshZfsData()
 			fileBrowser.Refresh(false)
