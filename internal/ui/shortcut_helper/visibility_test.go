@@ -17,7 +17,7 @@ func TestToggleShortcuts(t *testing.T) {
 	t.Cleanup(func() {
 		_ = store.Flush()
 		state.Current = nil
-		shortcutsHidden = false
+		shortcutsHidden.Store(false)
 		collapsibleMaps = nil
 	})
 	InitShortcutVisibility()
@@ -59,7 +59,7 @@ func TestToggleShortcuts(t *testing.T) {
 
 	// loaded on the next start
 	ToggleShortcuts()
-	shortcutsHidden = false
+	shortcutsHidden.Store(false)
 	InitShortcutVisibility()
 	assert.True(t, ShortcutsHidden())
 }

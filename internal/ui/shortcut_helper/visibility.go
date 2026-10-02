@@ -1,6 +1,7 @@
 package shortcut_helper
 
 import (
+	"sync/atomic"
 	"weak"
 	"zfs-file-history/internal/state"
 )
@@ -10,8 +11,8 @@ const toggleHideShortcuts = "ui.hideShortcuts"
 
 var (
 	// shortcutsHidden is whether collapsible shortcut maps are hidden, to make room in small terminals.
-	// Only accessed on the UI thread.
-	shortcutsHidden bool
+	// Changed on the UI thread, atomic so it can be read anywhere (e.g. by tests).
+	shortcutsHidden atomic.Bool
 	// collapsibleMaps are the shortcut maps that are hidden with the setting. Weak, so the maps of closed overlays
 	// are not kept alive. Only accessed on the UI thread.
 	collapsibleMaps []weak.Pointer[ShortcutMapComponent]
@@ -19,19 +20,20 @@ var (
 
 // InitShortcutVisibility loads the setting from state.Current. Called when the UI is created.
 func InitShortcutVisibility() {
-	shortcutsHidden = state.Current.Toggle(toggleHideShortcuts, false)
+	shortcutsHidden.Store(state.Current.Toggle(toggleHideShortcuts, false))
 }
 
 // ShortcutsHidden returns whether collapsible shortcut maps are hidden.
 func ShortcutsHidden() bool {
-	return shortcutsHidden
+	return shortcutsHidden.Load()
 }
 
 // ToggleShortcuts hides or shows all collapsible shortcut maps, and remembers the setting.
 // Must be called on the UI thread.
 func ToggleShortcuts() {
-	shortcutsHidden = !shortcutsHidden
-	state.Current.SetToggle(toggleHideShortcuts, shortcutsHidden)
+	hidden := !shortcutsHidden.Load()
+	shortcutsHidden.Store(hidden)
+	state.Current.SetToggle(toggleHideShortcuts, hidden)
 
 	alive := collapsibleMaps[:0]
 	for _, pointer := range collapsibleMaps {
@@ -56,7 +58,7 @@ func (sm *ShortcutMapComponent) SetCollapsible() *ShortcutMapComponent {
 
 // isHidden returns whether the map is hidden by the setting.
 func (sm *ShortcutMapComponent) isHidden() bool {
-	return sm.collapsible && shortcutsHidden
+	return sm.collapsible && shortcutsHidden.Load()
 }
 
 // applyVisibility shows the entries again or hides them, after the setting changed.

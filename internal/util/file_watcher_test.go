@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFileWatcher(t *testing.T) {
@@ -69,4 +70,36 @@ func TestFileWatcherRecursive(t *testing.T) {
 
 	fw.Stop()
 	time.Sleep(100 * time.Millisecond)
+}
+
+// Regression: after the first event, the action ran every second (reloading the directory) until the next one.
+func TestFileWatcherCallsTheActionOncePerChange(t *testing.T) {
+	previousInterval := watchInterval
+	watchInterval = 20 * time.Millisecond
+	t.Cleanup(func() { watchInterval = previousInterval })
+
+	tempDir := t.TempDir()
+	fw := NewFileWatcher(tempDir)
+	eventChan := make(chan string, 100)
+	require.NoError(t, fw.Watch(func(path string) { eventChan <- path }))
+	t.Cleanup(fw.Stop)
+
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "test.txt"), []byte("hello"), 0644))
+	select {
+	case <-eventChan:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for file watcher event")
+	}
+
+	// many intervals without a change: no further action
+	time.Sleep(10 * watchInterval)
+	assert.Empty(t, eventChan)
+
+	// the next change is handled again
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "test.txt"), []byte("changed"), 0644))
+	select {
+	case <-eventChan:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for the second file watcher event")
+	}
 }

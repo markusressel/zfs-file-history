@@ -10,6 +10,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// watchInterval is how often FileWatcher.Watch calls its action at most, for all events in between.
+var watchInterval = 1 * time.Second
+
 type FileWatcher struct {
 	RootPath   string
 	stop       chan bool
@@ -49,7 +52,8 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 		return err
 	}
 
-	t := time.NewTicker(1 * time.Second)
+	// events are coalesced: at most one action per interval
+	t := time.NewTicker(watchInterval)
 
 	go func() {
 		defer t.Stop()
@@ -62,6 +66,8 @@ func (fileWatcher *FileWatcher) watchDir(path string, action func(s string)) err
 
 				fileWatcher.actionLock.Lock()
 				event := fileWatcher.newEvent
+				// handled: the next action needs a new event (otherwise it ran every second after the first one)
+				fileWatcher.newEvent = nil
 				action(event.Name)
 				fileWatcher.actionLock.Unlock()
 			// watch for events

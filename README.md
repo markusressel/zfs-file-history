@@ -50,7 +50,7 @@
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like
-  "3 minutes ago" (remembered between runs).
+  "3 minutes ago" (remembered between runs). Recent times count up live.
 * ⌨️ **Inline shortcuts:** The available keys are shown at the bottom of each page and overlay, grouped and
   color-coded: actions first, then view options, navigation and global keys. `?` (or `F1`) hides
   them to make room in small terminals, and shows them again (remembered between runs).
