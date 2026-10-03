@@ -64,13 +64,16 @@
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
 * 📏 **Written:** The `Written` column of the snapshot list shows how much was written between a snapshot and its
-  predecessor (`zfs get written`): `0 B` (dimmed) for snapshots in which nothing changed. Deleting files writes
+  predecessor (`zfs get written`): `0 B` (dimmed) for snapshots in which nothing changed. `Used` and `Written` are
+  colored by how big they are compared to the other snapshots (logarithmically, so outliers do not hide the rest).
+  Deleting files writes
   nothing; the snapshot right before a big deletion stands out in `Used` instead, as it is the only one still holding
   the deleted data.
 * 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
 * 🔒 **Snapshot holds:** Hold snapshots (`zfs hold`, tag `zfs-file-history`) to protect them from being destroyed,
   e.g. by automatic pruning while you investigate, and release them again. Only holds with this tag are ever
-  released, holds of other tools (e.g. replication) stay untouched. The `Holds` column shows the number of holds.
+  released, holds of other tools (e.g. replication) stay untouched. Held snapshots have a 🔒 in front of their name,
+  the `Holds` column shows the number of holds.
 
 # How to use
 

@@ -38,6 +38,10 @@ type SnapshotBrowserComponent struct {
 	hostDataset      *zfs.Dataset
 	currentSnapshots []*zfs.Snapshot
 	currentFileEntry *data.FileBrowserEntry
+	// usedScale and writtenScale color the sizes by how big they are compared to all snapshots of the dataset
+	// (also the ones hidden by the filter, so filtering does not change the colors), see updateSizeScales
+	usedScale    uiutil.MagnitudeScale
+	writtenScale uiutil.MagnitudeScale
 	// historyTarget returns the file or folder whose history can be opened at the selected snapshot (h), or nil.
 	// Not set on pages without a file browser.
 	historyTarget func() *data.FileBrowserEntry
@@ -351,6 +355,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 	snapshots := snapshotBrowser.currentSnapshots
 	fileEntry := snapshotBrowser.currentFileEntry
 	folderPath := snapshotBrowser.path
+	// before the cells are rendered below
+	snapshotBrowser.updateSizeScales(snapshots)
 
 	if len(snapshots) == 0 {
 		snapshotBrowser.tableContainer.SetData([]*data.SnapshotBrowserEntry{})
@@ -513,6 +519,18 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			}
 		})
 	}()
+}
+
+// updateSizeScales computes the scales of the size columns from the given snapshots. Runs on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) updateSizeScales(snapshots []*zfs.Snapshot) {
+	used := make([]uint64, len(snapshots))
+	written := make([]uint64, len(snapshots))
+	for i, snapshot := range snapshots {
+		used[i] = snapshot.Properties.Used
+		written[i] = snapshot.Properties.Written
+	}
+	snapshotBrowser.usedScale = uiutil.NewMagnitudeScale(used)
+	snapshotBrowser.writtenScale = uiutil.NewMagnitudeScale(written)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) Focus() {

@@ -68,14 +68,14 @@ func TestGradientColor(t *testing.T) {
 	red := tcell.NewRGBColor(200, 0, 0)
 	stops := []theme.GradientStop{{Position: 0, Color: black}, {Position: 0.5, Color: white}, {Position: 1, Color: red}}
 
-	assert.Equal(t, black, gradientColor(stops, -1, red), "below the first stop")
-	assert.Equal(t, black, gradientColor(stops, 0, red))
-	assert.Equal(t, tcell.NewRGBColor(128, 128, 128), gradientColor(stops, 0.25, red), "between two stops")
-	assert.Equal(t, white, gradientColor(stops, 0.5, red))
-	assert.Equal(t, tcell.NewRGBColor(228, 128, 128), gradientColor(stops, 0.75, red))
-	assert.Equal(t, red, gradientColor(stops, 1, red))
-	assert.Equal(t, red, gradientColor(stops, 2, black), "above the last stop")
-	assert.Equal(t, red, gradientColor(nil, 0.5, red), "the fallback without stops")
+	assert.Equal(t, black, GradientColor(stops, -1, red), "below the first stop")
+	assert.Equal(t, black, GradientColor(stops, 0, red))
+	assert.Equal(t, tcell.NewRGBColor(128, 128, 128), GradientColor(stops, 0.25, red), "between two stops")
+	assert.Equal(t, white, GradientColor(stops, 0.5, red))
+	assert.Equal(t, tcell.NewRGBColor(228, 128, 128), GradientColor(stops, 0.75, red))
+	assert.Equal(t, red, GradientColor(stops, 1, red))
+	assert.Equal(t, red, GradientColor(stops, 2, black), "above the last stop")
+	assert.Equal(t, red, GradientColor(nil, 0.5, red), "the fallback without stops")
 }
 
 // The cells are colored by the higher of their values: the lowest with the first stop, the highest with the last.
@@ -83,7 +83,7 @@ func TestDrawSparkline_Gradient(t *testing.T) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	require.NoError(t, screen.Init())
 	screen.SetSize(10, 1)
-	stops := theme.Colors.Sparkline.Gradient
+	stops := theme.Colors.Magnitude
 	require.GreaterOrEqual(t, len(stops), 2)
 
 	// cells: (0, 0), (5, 5), (0, 10)
@@ -94,6 +94,6 @@ func TestDrawSparkline_Gradient(t *testing.T) {
 		return color
 	}
 	assert.Equal(t, stops[0].Color, foreground(0), "zero")
-	assert.Equal(t, gradientColor(stops, 0.5, theme.Colors.Sparkline.Graph), foreground(1), "half")
+	assert.Equal(t, GradientColor(stops, 0.5, theme.Colors.Sparkline.Graph), foreground(1), "half")
 	assert.Equal(t, stops[len(stops)-1].Color, foreground(2), "the highest value, although the cell also has a zero")
 }

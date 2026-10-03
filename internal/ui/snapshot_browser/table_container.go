@@ -11,6 +11,7 @@ import (
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -36,7 +37,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 		case columnDate:
 			cellText = uiutil.FormatTime(entry.Snapshot.Properties.CreationDate)
 		case columnName:
-			cellText = entry.Snapshot.Name
+			cellText = formatName(entry.Snapshot)
 		case columnDiff:
 			cellAlign = tview.AlignCenter
 			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
@@ -63,14 +64,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			}
 		case columnUsed:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Used)
+			cellColor = sizeColor(entry.Snapshot.Properties.Used, snapshotBrowser.usedScale, cellColor)
 		case columnRefer:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Referenced)
 		case columnWritten:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Written)
-			if entry.Snapshot.Properties.Written == 0 {
-				// nothing changed in this snapshot
-				cellColor = theme.Colors.SnapshotBrowser.Table.EmptySnapshot
-			}
+			cellColor = sizeColor(entry.Snapshot.Properties.Written, snapshotBrowser.writtenScale, cellColor)
 		case columnRatio:
 			ratio := entry.Snapshot.Properties.CompressionRatio
 			cellText = fmt.Sprintf("%.2fx", ratio)
@@ -92,6 +91,27 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 		result = append(result, cell)
 	}
 	return result
+}
+
+// heldMarker is shown in front of the names of held snapshots, like in the action dialog.
+const heldMarker = "🔒 "
+
+// formatName returns the text of the name column: the name, behind a lock if the snapshot is held, so held
+// snapshots stand out without the holds column and independent of the selection.
+func formatName(snapshot *zfs.Snapshot) string {
+	if snapshot.Properties.Holds > 0 {
+		return heldMarker + snapshot.Name
+	}
+	return snapshot.Name
+}
+
+// sizeColor returns the color of a size: dimmed for 0 (e.g. a snapshot in which nothing changed), otherwise by how
+// big it is compared to the other snapshots (see theme.Colors.Magnitude).
+func sizeColor(size uint64, scale uiutil.MagnitudeScale, fallback tcell.Color) tcell.Color {
+	if size == 0 {
+		return theme.Colors.SnapshotBrowser.Table.ZeroSize
+	}
+	return scale.MagnitudeColor(size, fallback)
 }
 
 // formatHolds returns the text of the holds column, empty without holds, so held snapshots stand out.

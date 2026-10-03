@@ -13,6 +13,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCreateSnapshotBrowserTableCells_ClonesColumn(t *testing.T) {
@@ -102,8 +103,8 @@ func TestWrittenColumn(t *testing.T) {
 		color, _, _ := cell.Style.Decompose()
 		return color
 	}
-	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.EmptySnapshot, foreground(empty))
-	assert.NotEqual(t, theme.Colors.SnapshotBrowser.Table.EmptySnapshot, foreground(written))
+	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.ZeroSize, foreground(empty))
+	assert.NotEqual(t, theme.Colors.SnapshotBrowser.Table.ZeroSize, foreground(written))
 
 	// beyond the range of int, where subtracting would overflow
 	entries := []*data.SnapshotBrowserEntry{newEntry("small", 1), newEntry("none", 0), newEntry("huge", math.MaxUint64), newEntry("big", 1<<40)}
@@ -111,4 +112,61 @@ func TestWrittenColumn(t *testing.T) {
 	assert.Equal(t, []string{"huge", "big", "small", "none"}, snapshotNames(entries))
 	createSnapshotBrowserTableSortFunction(entries, columnWritten, true)
 	assert.Equal(t, []string{"none", "small", "big", "huge"}, snapshotNames(entries))
+}
+
+// Used and Written are colored by how big they are compared to all snapshots: the smallest calm, the largest warm,
+// 0 dimmed.
+func TestSizeColors(t *testing.T) {
+	newSnapshot := func(name string, used uint64, written uint64) *zfs.Snapshot {
+		return &zfs.Snapshot{Name: name, Properties: zfs.SnapshotProperties{Used: used, Written: written}}
+	}
+	snapshots := []*zfs.Snapshot{newSnapshot("small", 1<<10, 0), newSnapshot("large", 1<<30, 1<<20), newSnapshot("none", 0, 1<<10)}
+	snapshotBrowser := &SnapshotBrowserComponent{}
+	snapshotBrowser.updateSizeScales(snapshots)
+
+	color := func(snapshot *zfs.Snapshot, column *table.Column) tcell.Color {
+		cell := snapshotBrowser.createSnapshotBrowserTableCells(0, []*table.Column{column}, &data.SnapshotBrowserEntry{Snapshot: snapshot})[0]
+		foreground, _, _ := cell.Style.Decompose()
+		return foreground
+	}
+	stops := theme.Colors.Magnitude
+	zero := theme.Colors.SnapshotBrowser.Table.ZeroSize
+	assert.Equal(t, stops[0].Color, color(snapshots[0], columnUsed))
+	assert.Equal(t, stops[len(stops)-1].Color, color(snapshots[1], columnUsed))
+	assert.Equal(t, zero, color(snapshots[2], columnUsed))
+	// each column has its own scale
+	assert.Equal(t, zero, color(snapshots[0], columnWritten))
+	assert.Equal(t, stops[len(stops)-1].Color, color(snapshots[1], columnWritten))
+	assert.Equal(t, stops[0].Color, color(snapshots[2], columnWritten))
+}
+
+// Held snapshots have a lock in front of their name; the name itself (sorting, filter) is unchanged.
+func TestHeldSnapshotName(t *testing.T) {
+	held := &zfs.Snapshot{Name: "daily-1", Properties: zfs.SnapshotProperties{Holds: 1}}
+	free := &zfs.Snapshot{Name: "daily-2"}
+	assert.Equal(t, "🔒 daily-1", formatName(held))
+	assert.Equal(t, "daily-2", formatName(free))
+	assert.True(t, snapshotMatchesFilter(&data.SnapshotBrowserEntry{Snapshot: held}, "daily-*"))
+
+	// the lock is two cells wide, the columns behind it stay aligned
+	tableView := tview.NewTable()
+	tableView.SetCell(0, 0, tview.NewTableCell(formatName(held)))
+	tableView.SetCell(0, 1, tview.NewTableCell("A"))
+	tableView.SetCell(1, 0, tview.NewTableCell(formatName(free)))
+	tableView.SetCell(1, 1, tview.NewTableCell("B"))
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 2)
+	tableView.SetRect(0, 0, 40, 2)
+	tableView.Draw(screen)
+	column := func(y int, r rune) int {
+		for x := 0; x < 40; x++ {
+			if char, _, _, _ := screen.GetContent(x, y); char == r {
+				return x
+			}
+		}
+		return -1
+	}
+	assert.Equal(t, column(0, 'A'), column(1, 'B'))
+	assert.Positive(t, column(0, 'A'))
 }

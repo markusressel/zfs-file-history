@@ -53,8 +53,9 @@ type SnapshotBrowserColors struct {
 
 type SnapshotBrowserTableColors struct {
 	State SnapshotBrowserTableStatusColors
-	// EmptySnapshot is the "Written" of snapshots in which nothing changed, dimmed so the others stand out
-	EmptySnapshot tcell.Color
+	// ZeroSize is the color of sizes of 0 (e.g. "Written" of snapshots in which nothing changed), dimmed so the
+	// others stand out
+	ZeroSize tcell.Color
 }
 
 type SnapshotBrowserTableStatusColors struct {
@@ -94,8 +95,11 @@ type Color struct {
 	Layout          LayoutColors
 	ShortcutMap     ShortcutMapColors
 	Sparkline       SparklineColors
-	Permissions     PermissionColors
-	Properties      PropertyColors
+	// Magnitude colors values by how big they are (see GradientStop), from the lowest to the highest stop: the
+	// sparklines and the size columns of the snapshot list, so warm means big everywhere
+	Magnitude   []GradientStop
+	Permissions PermissionColors
+	Properties  PropertyColors
 }
 
 // PropertyColors are used in the table of ZFS properties.
@@ -152,13 +156,11 @@ type LayoutTableColors struct {
 // SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the
 // histories.
 type SparklineColors struct {
-	// Graph is the color of the sparklines without a Gradient
+	// Graph is the color of the sparklines without Color.Magnitude stops
 	Graph tcell.Color
-	// Gradient colors the values by their height (see GradientStop), from the lowest to the highest stop
 	// Selected and SelectedBackground mark the selected value, e.g. the snapshot selected in a list
 	Selected           tcell.Color
 	SelectedBackground tcell.Color
-	Gradient           []GradientStop
 }
 
 // GradientStop is a color of a gradient: values at Position (0: zero, 1: the highest value of the graph) have this
