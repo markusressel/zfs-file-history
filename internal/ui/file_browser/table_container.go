@@ -54,10 +54,14 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 			cellColor = typeCellColor
 			cellAlignment = tview.AlignCenter
 		case columnDiff:
-			if entry.IsLoading && fileBrowser.diffLoader != nil && fileBrowser.diffLoader.ShowLoadingSpinner() {
+			switch {
+			case entry.IsLoading && fileBrowser.diffLoader != nil && fileBrowser.diffLoader.ShowLoadingSpinner():
 				cellText = "⟳"
 				cellColor = tcell.ColorYellow
-			} else {
+			case entry.IsLoading && entry.DiffState == diff_state.Unknown:
+				// empty until it is known (or the spinner shows up), so it does not flash "N/A"
+				cellText = ""
+			default:
 				cellText = statusCellText
 				cellColor = statusCellColor
 			}
@@ -115,17 +119,13 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
 
-		// Keep row statusCellText visible while selected by using statusCellColor as selected background.
-		// If status is unknown, use default selected background to avoid 'flash'.
-		bg := statusCellColor
-		if entry.DiffState == diff_state.Unknown {
-			bg = theme.Colors.Layout.Table.SelectedBackground
-		}
-
+		// Keep row statusCellText visible while selected by using statusCellColor as selected background. Unknown
+		// states (e.g. while they are determined) have the color of equal ones, so the selection only changes its
+		// color for entries that differ, instead of flashing for all of them when a folder is entered.
 		cell.SetSelectedStyle(
 			tcell.StyleDefault.
 				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(bg),
+				Background(statusCellColor),
 		)
 		cells = append(cells, cell)
 	}

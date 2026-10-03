@@ -5,9 +5,11 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
@@ -49,8 +51,8 @@ func TestChangedInSnapshot(t *testing.T) {
 	browser.entryVersions.path = "/pool/docs/b.txt"
 	assert.Equal(t, [2]bool{false, false}, check(s2))
 
-	// unchanged rows are dimmed, unknown ones are not
-	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.Changed, browser.rowColor(&data.SnapshotBrowserEntry{Snapshot: s1}))
+	// unchanged rows are dimmed, and so are unknown ones (so the rows do not flash while moving through the files)
+	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.Unchanged, browser.rowColor(&data.SnapshotBrowserEntry{Snapshot: s2}))
 	browser.entryVersions.path = "/pool/docs/a.txt"
 	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.Unchanged, browser.rowColor(&data.SnapshotBrowserEntry{Snapshot: s1}))
 	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.Changed, browser.rowColor(&data.SnapshotBrowserEntry{Snapshot: s2}))
@@ -128,4 +130,16 @@ func TestOnlyChangesKey(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { onlyChanges = browser.onlyChanges })
 		return onlyChanges
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// Regression: the Diff column flashed "?" while the state of a snapshot was determined.
+func TestDiffColumnWhileLoading(t *testing.T) {
+	browser := NewSnapshotBrowser(nil)
+	text := func(entry *data.SnapshotBrowserEntry) string {
+		return browser.createSnapshotBrowserTableCells(0, []*table.Column{columnDiff}, entry)[0].Text
+	}
+	snapshot := &zfs.Snapshot{Name: "s1"}
+	assert.Equal(t, "", text(&data.SnapshotBrowserEntry{Snapshot: snapshot, DiffState: diff_state.Unknown, IsLoading: true}))
+	assert.Equal(t, "?", text(&data.SnapshotBrowserEntry{Snapshot: snapshot, DiffState: diff_state.Unknown}))
+	assert.Equal(t, "≠", text(&data.SnapshotBrowserEntry{Snapshot: snapshot, DiffState: diff_state.Modified, IsLoading: true}))
 }

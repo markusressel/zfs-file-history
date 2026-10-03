@@ -51,9 +51,10 @@ func File(size int64, modTime time.Time) fs.FileInfo {
 	return fileInfo{size: size, modTime: modTime}
 }
 
-// Folder returns the info of a folder as returned by os.Lstat.
-func Folder(modTime time.Time) fs.FileInfo {
-	return fileInfo{size: 4096, modTime: modTime, dir: true}
+// Folder returns the info of a folder with the given number of items as returned by os.Lstat on ZFS, where the size
+// of a directory is its number of entries (plus "." and "..").
+func Folder(items int, modTime time.Time) fs.FileInfo {
+	return fileInfo{size: int64(items) + 2, modTime: modTime, dir: true}
 }
 
 type fileInfo struct {

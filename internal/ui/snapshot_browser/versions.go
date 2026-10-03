@@ -37,12 +37,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) changedInSnapshot(snapshot *zfs
 }
 
 // rowColor returns the text color of the row of a snapshot: bright if something changed in it (see
-// changedInSnapshot), dimmed if it holds the same as the previous one.
+// changedInSnapshot), dimmed if it holds the same as the previous one. Dimmed as well while it is determined, so
+// moving through the files only brightens the rows that changed, instead of all rows flashing.
 func (snapshotBrowser *SnapshotBrowserComponent) rowColor(entry *data.SnapshotBrowserEntry) tcell.Color {
-	if changed, known := snapshotBrowser.changedInSnapshot(entry.Snapshot); known && !changed {
-		return theme.Colors.SnapshotBrowser.Table.Unchanged
+	if changed, _ := snapshotBrowser.changedInSnapshot(entry.Snapshot); changed {
+		return theme.Colors.SnapshotBrowser.Table.Changed
 	}
-	return theme.Colors.SnapshotBrowser.Table.Changed
+	return theme.Colors.SnapshotBrowser.Table.Unchanged
 }
 
 // setEntryVersions sets where new versions of the selected entry start, and updates the rows. Runs on the UI thread.

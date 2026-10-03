@@ -146,7 +146,7 @@ func TestEntryColumns(t *testing.T) {
 	modified := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	file := &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: testutil.File(2048, modified)}
 	missing := &data.SnapshotBrowserEntry{HasEntryInfo: true}
-	folder := &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: testutil.Folder(modified)}
+	folder := &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: testutil.Folder(19, modified)}
 	none := &data.SnapshotBrowserEntry{}
 
 	text := func(format func(*data.SnapshotBrowserEntry, tcell.Color) (string, tcell.Color), entry *data.SnapshotBrowserEntry) string {
@@ -155,7 +155,8 @@ func TestEntryColumns(t *testing.T) {
 	}
 	assert.Equal(t, uiutil.StableLengthHumanizedBytes(2048), text(formatEntrySize, file))
 	assert.Equal(t, "—", text(formatEntrySize, missing), "not in the snapshot")
-	assert.Equal(t, "", text(formatEntrySize, folder), "the size of a folder says nothing")
+	assert.Equal(t, "19 items", text(formatEntrySize, folder), "the number of items of a folder, from its size on ZFS")
+	assert.Equal(t, "1 item", text(formatEntrySize, &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: testutil.Folder(1, modified)}))
 	assert.Equal(t, "", text(formatEntrySize, none), "no selected entry")
 	assert.Equal(t, uiutil.FormatTime(modified), text(formatEntryModified, file))
 	assert.Equal(t, uiutil.FormatTime(modified), text(formatEntryModified, folder))

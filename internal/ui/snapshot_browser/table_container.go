@@ -46,6 +46,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
 				cellText = "⟳"
 				cellColor = tcell.ColorYellow
+			} else if entry.IsLoading && entry.DiffState == diff_state.Unknown {
+				// empty until it is known (or the spinner shows up), so it does not flash "?"
+				cellText = ""
 			} else {
 				switch entry.DiffState {
 				case diff_state.Equal:
@@ -102,8 +105,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 	return result
 }
 
-// formatEntrySize returns the size of the selected file in the snapshot: empty without a selected entry (or for
-// folders, whose size says nothing), "—" if the snapshot does not contain it.
+// formatEntrySize returns the size of the selected file in the snapshot, or the number of items of the selected
+// folder: empty without a selected entry, "—" if the snapshot does not contain it.
 func formatEntrySize(entry *data.SnapshotBrowserEntry, color tcell.Color) (string, tcell.Color) {
 	switch {
 	case !entry.HasEntryInfo:
@@ -111,9 +114,16 @@ func formatEntrySize(entry *data.SnapshotBrowserEntry, color tcell.Color) (strin
 	case entry.EntryInfo == nil:
 		return "—", theme.Colors.Layout.Table.ZeroSize
 	case entry.EntryInfo.IsDir():
-		return "", color
+		items := folderItems(entry.EntryInfo.Size())
+		return fmt.Sprintf("%d %s", items, uiutil.Plural(items, "item", "items")), color
 	}
 	return uiutil.StableLengthHumanizedBytes(uint64(max(entry.EntryInfo.Size(), 0))), color
+}
+
+// folderItems returns the number of direct entries of a folder from its size: on ZFS, the size of a directory is
+// its number of entries, plus two for "." and "..". So it needs no listing of the folder.
+func folderItems(size int64) int {
+	return int(max(size-2, 0))
 }
 
 // formatEntryModified returns the modification time of the selected file or folder in the snapshot, i.e. which
@@ -198,9 +208,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) sortEntries(entries []*data.Sna
 	return sortSnapshotEntries(entries, column, inverted, snapshotBrowser.changesOf)
 }
 
-// entrySize is the size of the selected file in the snapshot for sorting, -1 if unknown.
+// entrySize is the size of the selected file in the snapshot for sorting (the number of items of a folder, see
+// folderItems), -1 if unknown.
 func entrySize(entry *data.SnapshotBrowserEntry) int64 {
-	if entry.EntryInfo == nil || entry.EntryInfo.IsDir() {
+	if entry.EntryInfo == nil {
 		return -1
 	}
 	return entry.EntryInfo.Size()

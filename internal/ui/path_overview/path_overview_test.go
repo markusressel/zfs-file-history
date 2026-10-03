@@ -35,7 +35,7 @@ func file(size int64, modified int) os.FileInfo {
 }
 
 func folder(modified int) os.FileInfo {
-	return testutil.Folder(time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC))
+	return testutil.Folder(5, time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC))
 }
 
 // versions returns the versions in s1..s5 (nil: not in the snapshot), in reverse order: summarize sorts them.
