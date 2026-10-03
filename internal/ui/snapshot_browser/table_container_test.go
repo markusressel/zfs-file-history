@@ -6,8 +6,12 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -81,4 +85,30 @@ func TestHoldsColumn(t *testing.T) {
 	entries := []*data.SnapshotBrowserEntry{newEntry("two", 2), newEntry("none", 0), newEntry("one", 1)}
 	createSnapshotBrowserTableSortFunction(entries, columnHolds, false)
 	assert.Equal(t, []string{"none", "one", "two"}, snapshotNames(entries))
+}
+
+// Written is the space written since the previous snapshot: dimmed for empty snapshots, sorted largest first.
+func TestWrittenColumn(t *testing.T) {
+	newEntry := func(name string, written uint64) *data.SnapshotBrowserEntry {
+		return &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: name, Properties: zfs.SnapshotProperties{Written: written}}}
+	}
+	snapshotBrowser := &SnapshotBrowserComponent{}
+
+	empty := snapshotBrowser.createSnapshotBrowserTableCells(0, []*table.Column{columnWritten}, newEntry("a", 0))[0]
+	written := snapshotBrowser.createSnapshotBrowserTableCells(0, []*table.Column{columnWritten}, newEntry("b", 3*1024*1024))[0]
+	assert.Equal(t, uiutil.StableLengthHumanizedBytes(0), empty.Text)
+	assert.Equal(t, uiutil.StableLengthHumanizedBytes(3*1024*1024), written.Text)
+	foreground := func(cell *tview.TableCell) tcell.Color {
+		color, _, _ := cell.Style.Decompose()
+		return color
+	}
+	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.EmptySnapshot, foreground(empty))
+	assert.NotEqual(t, theme.Colors.SnapshotBrowser.Table.EmptySnapshot, foreground(written))
+
+	// beyond the range of int, where subtracting would overflow
+	entries := []*data.SnapshotBrowserEntry{newEntry("small", 1), newEntry("none", 0), newEntry("huge", math.MaxUint64), newEntry("big", 1<<40)}
+	createSnapshotBrowserTableSortFunction(entries, columnWritten, false)
+	assert.Equal(t, []string{"huge", "big", "small", "none"}, snapshotNames(entries))
+	createSnapshotBrowserTableSortFunction(entries, columnWritten, true)
+	assert.Equal(t, []string{"none", "small", "big", "huge"}, snapshotNames(entries))
 }

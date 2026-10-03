@@ -53,6 +53,8 @@ type SnapshotBrowserColors struct {
 
 type SnapshotBrowserTableColors struct {
 	State SnapshotBrowserTableStatusColors
+	// EmptySnapshot is the "Written" of snapshots in which nothing changed, dimmed so the others stand out
+	EmptySnapshot tcell.Color
 }
 
 type SnapshotBrowserTableStatusColors struct {

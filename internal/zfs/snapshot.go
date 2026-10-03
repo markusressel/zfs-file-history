@@ -491,6 +491,24 @@ func (s *Snapshot) GetReferenced() uint64 {
 	return referenced
 }
 
+// GetWritten returns the space written to the dataset between the previous snapshot and this one.
+func (s *Snapshot) GetWritten() uint64 {
+	if s.rawGolibzfsData == nil {
+		return 0
+	}
+	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropWritten)
+	if err != nil {
+		logging.Error("Could not get written property for %s: %s", s.FullName, err.Error())
+		return 0
+	}
+	written, err := strconv.ParseUint(prop.Value, 10, 64)
+	if err != nil {
+		logging.Error("Could not parse written property for %s: %s", s.FullName, err.Error())
+		return 0
+	}
+	return written
+}
+
 func (s *Snapshot) GetRatio() float64 {
 	if s.rawGolibzfsData == nil {
 		return 0
@@ -544,9 +562,12 @@ func (s *Snapshot) GetHolds() uint64 {
 }
 
 type SnapshotProperties struct {
-	CreationDate     time.Time
-	Used             uint64
-	Referenced       uint64
+	CreationDate time.Time
+	Used         uint64
+	Referenced   uint64
+	// Written is the space written to the dataset between the previous snapshot and this one ("written"):
+	// 0 for a snapshot in which nothing changed. Deleting data does not count, see Used for that.
+	Written          uint64
 	CompressionRatio float64
 	Clones           uint64
 	// Holds is the number of holds ("userrefs"). A held snapshot cannot be destroyed.
@@ -558,6 +579,7 @@ func (s *Snapshot) FetchDetails() {
 		CreationDate:     s.GetCreationDate(),
 		Used:             s.GetUsed(),
 		Referenced:       s.GetReferenced(),
+		Written:          s.GetWritten(),
 		CompressionRatio: s.GetRatio(),
 		Clones:           s.GetClones(),
 		Holds:            s.GetHolds(),

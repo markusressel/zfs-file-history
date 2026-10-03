@@ -65,6 +65,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Used)
 		case columnRefer:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Referenced)
+		case columnWritten:
+			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Written)
+			if entry.Snapshot.Properties.Written == 0 {
+				// nothing changed in this snapshot
+				cellColor = theme.Colors.SnapshotBrowser.Table.EmptySnapshot
+			}
 		case columnRatio:
 			ratio := entry.Snapshot.Properties.CompressionRatio
 			cellText = fmt.Sprintf("%.2fx", ratio)
@@ -143,6 +149,9 @@ func createSnapshotBrowserTableSortFunction(entries []*data.SnapshotBrowserEntry
 			result = int(b.Snapshot.Properties.Used - a.Snapshot.Properties.Used)
 		case columnRefer:
 			result = int(b.Snapshot.Properties.Referenced - a.Snapshot.Properties.Referenced)
+		case columnWritten:
+			// the largest first, like the other sizes
+			result = cmp.Compare(b.Snapshot.Properties.Written, a.Snapshot.Properties.Written)
 		case columnRatio:
 			ratioA := a.Snapshot.Properties.CompressionRatio
 			ratioB := b.Snapshot.Properties.CompressionRatio

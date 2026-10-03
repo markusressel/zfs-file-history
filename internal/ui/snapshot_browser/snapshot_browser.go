@@ -108,8 +108,16 @@ var (
 		Alignment: tview.AlignCenter,
 	}
 
+	// columnWritten is the space written since the previous snapshot: 0 for snapshots in which nothing changed
+	columnWritten = &table.Column{
+		Id:        8,
+		Key:       "written",
+		Title:     "Written",
+		Alignment: tview.AlignCenter,
+	}
+
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed, columnRefer, columnRatio, columnClones, columnHolds,
+		columnName, columnDate, columnDiff, columnUsed, columnWritten, columnRefer, columnRatio, columnClones, columnHolds,
 	}
 
 	initialActiveTableColumns = []*table.Column{
@@ -117,6 +125,7 @@ var (
 		columnDiff,
 		columnDate,
 		columnUsed,
+		columnWritten,
 		columnHolds,
 	}
 )
