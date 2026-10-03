@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
@@ -53,14 +54,14 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	path := filepath.Join(ds.root, "notes.txt")
 	file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}
 	var overlay *FileHistoryOverlay
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		overlay = NewFileHistoryOverlay(app, file, nil)
 		ShowDialogOnPages(app, pages, overlay, nil)
 	})
 
 	screenLines := func() []string {
 		var lines []string
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			app.ForceDraw()
 			cells, width, height := screen.GetContents()
 			for y := 0; y < height; y++ {
@@ -104,12 +105,12 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	assert.Contains(t, lines[row(lines, "Presence")], "│ ", "divider left of the metadata")
 
 	var sizes []int64
-	onUiThread(t, app, func() { sizes = overlay.sizes })
+	testutil.OnUiThread(t, app, func() { sizes = overlay.sizes })
 	assert.Equal(t, []int64{4, 8}, sizes, "d1 and d2, oldest first")
 
 	// the boundary between the versions and the changes can be dragged
 	var boundary, leftWidth int
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		boundary, _, _, _ = overlay.rightLayoutContainer.GetRect()
 		_, _, leftWidth, _ = overlay.tableContainer.GetLayout().GetRect()
 	})
@@ -120,7 +121,7 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	screen.InjectMouse(boundary+15, 20, tcell.ButtonNone, tcell.ModNone)
 	require.Eventually(t, func() bool {
 		width := 0
-		onUiThread(t, app, func() { _, _, width, _ = overlay.tableContainer.GetLayout().GetRect() })
+		testutil.OnUiThread(t, app, func() { _, _, width, _ = overlay.tableContainer.GetLayout().GetRect() })
 		return width >= leftWidth+10
 	}, 3*time.Second, 10*time.Millisecond, "versions wider")
 }
@@ -149,7 +150,7 @@ func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
 			path := filepath.Join(ds.root, "notes.txt")
 			file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}
 			var overlay *FileHistoryOverlay
-			onUiThread(t, app, func() {
+			testutil.OnUiThread(t, app, func() {
 				overlay = NewFileHistoryOverlay(app, file, nil).SelectSnapshot(ds.snapshot(snapshot))
 				ShowDialogOnPages(app, pages, overlay, nil)
 			})
@@ -157,7 +158,7 @@ func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
 			var versions []string
 			var selected, current string
 			require.Eventually(t, func() bool {
-				onUiThread(t, app, func() {
+				testutil.OnUiThread(t, app, func() {
 					versions = nil
 					for _, entry := range overlay.historyEntries {
 						versions = append(versions, entry.Snapshot.Name)

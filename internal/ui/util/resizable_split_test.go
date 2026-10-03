@@ -90,3 +90,67 @@ func TestResizableSplit_Disabled(t *testing.T) {
 	assert.Equal(t, 50, width(left))
 	assert.False(t, split.dragging)
 }
+
+// One pane above the other: the boundary is a row, dragged up and down.
+func TestResizableSplit_Vertical(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 30)
+	top := tview.NewBox().SetBorder(true)
+	bottom := tview.NewBox().SetBorder(true)
+	split := NewVerticalResizableSplit(tview.NewApplication(), top, bottom, 1, 2)
+	split.SetRect(0, 0, 40, 30)
+	split.Draw(screen)
+	height := func(box *tview.Box) int {
+		_, _, _, h := box.GetRect()
+		return h
+	}
+	at := func(action tview.MouseAction, y int, buttons tcell.ButtonMask) (tview.MouseAction, *tcell.EventMouse) {
+		return split.MouseCapture(action, tcell.NewEventMouse(20, y, buttons, tcell.ModNone))
+	}
+	require.Equal(t, 10, height(top))
+
+	// the columns of the boundary row are not the boundary
+	_, event := at(tview.MouseLeftDown, 5, tcell.Button1)
+	assert.NotNil(t, event)
+
+	// hovered: the boundary rows are highlighted across the whole width
+	_, event = at(tview.MouseMove, 10, tcell.ButtonNone)
+	assert.Nil(t, event)
+	split.Draw(screen)
+	for _, x := range []int{0, 20, 39} {
+		_, _, style, _ := screen.GetContent(x, 10)
+		foreground, _, _ := style.Decompose()
+		assert.Equal(t, theme.Primary, foreground, "column %d", x)
+	}
+
+	// dragged down, and not below the minimum height of the bottom pane
+	_, event = at(tview.MouseLeftDown, 10, tcell.Button1)
+	assert.Nil(t, event)
+	time.Sleep(splitResizeInterval)
+	at(tview.MouseMove, 20, tcell.Button1)
+	split.Draw(screen)
+	assert.Equal(t, 20, height(top))
+	assert.Equal(t, 10, height(bottom))
+	time.Sleep(splitResizeInterval)
+	at(tview.MouseMove, 29, tcell.Button1)
+	split.Draw(screen)
+	assert.Equal(t, 30-splitMinPaneHeight, height(top))
+	at(tview.MouseLeftUp, 29, tcell.ButtonNone)
+	assert.False(t, split.dragging)
+}
+
+// Regression: dropping right after a move that was skipped by the throttling lost the final position.
+func TestResizableSplit_DropAppliesSkippedMove(t *testing.T) {
+	split, screen, left, _ := newTestSplit(t)
+
+	mouse(split, tview.MouseLeftDown, 50, tcell.Button1)
+	// within splitResizeInterval of the click: skipped for now
+	mouse(split, tview.MouseMove, 70, tcell.Button1)
+	split.Draw(screen)
+	require.Equal(t, 50, width(left))
+
+	mouse(split, tview.MouseLeftUp, 70, tcell.ButtonNone)
+	split.Draw(screen)
+	assert.Equal(t, 70, width(left), "applied when dropped")
+}

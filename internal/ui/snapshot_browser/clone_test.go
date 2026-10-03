@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -14,39 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// onUiThread runs f on the UI thread and waits for it, failing the test instead of hanging on a deadlock.
-func onUiThread(t *testing.T, app *tview.Application, f func()) {
-	done := make(chan struct{})
-	go func() {
-		app.QueueUpdate(f)
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for the UI thread (deadlock?)")
-	}
-}
-
 type cloneCall struct {
 	snapshot   string
 	target     string
 	onUiThread bool
-}
-
-// isOnUiThread returns whether it is called on the UI thread (a queued update cannot complete meanwhile).
-func isOnUiThread(app *tview.Application) bool {
-	done := make(chan struct{})
-	go func() {
-		app.QueueUpdate(func() {})
-		close(done)
-	}()
-	select {
-	case <-done:
-		return false
-	case <-time.After(200 * time.Millisecond):
-		return true
-	}
 }
 
 func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Application, []cloneCall, func(name string) bool) {
@@ -55,7 +27,7 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 	var app *tview.Application
 	original := cloneSnapshot
 	cloneSnapshot = func(snapshot *zfs.Snapshot, targetName string) error {
-		call := cloneCall{snapshot: snapshot.FullName, target: targetName, onUiThread: isOnUiThread(app)}
+		call := cloneCall{snapshot: snapshot.FullName, target: targetName, onUiThread: testutil.IsOnUiThread(app)}
 		mu.Lock()
 		calls = append(calls, call)
 		mu.Unlock()
@@ -72,14 +44,14 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 	t.Cleanup(app.Stop)
 
 	entry := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "daily-1", FullName: "pool/data@daily-1"}}
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.tableContainer.SetData([]*data.SnapshotBrowserEntry{entry})
 		browser.tableContainer.Select(entry)
 	})
 
 	hasDialog := func(name string) bool {
 		has := false
-		onUiThread(t, app, func() { has = browser.container.Pages.HasPage(name) })
+		testutil.OnUiThread(t, app, func() { has = browser.container.Pages.HasPage(name) })
 		return has
 	}
 	press := func(key tcell.Key, r rune) { screen.InjectKey(key, r, tcell.ModNone) }

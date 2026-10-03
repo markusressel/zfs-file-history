@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 // There is no separate key for the current folder (it used to be H).
 func TestFileBrowser_HistoryKey(t *testing.T) {
 	ft := newFileBrowserTest(t, "")
-	onUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
+	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
 	ft.waitFor("directory loaded", func(s fileBrowserState) bool { return s.footer == "4 entries" })
 
 	requested := make(chan *data.FileBrowserEntry, 10)
@@ -35,7 +36,7 @@ func TestFileBrowser_HistoryKey(t *testing.T) {
 
 	// a data row: the selected entry
 	var selected string
-	onUiThread(t, ft.app, func() {
+	testutil.OnUiThread(t, ft.app, func() {
 		ft.fileBrowser.tableContainer.SelectFirstIfExists()
 		selected = ft.fileBrowser.GetSelection().GetRealPath()
 	})
@@ -44,14 +45,14 @@ func TestFileBrowser_HistoryKey(t *testing.T) {
 	assert.Equal(t, selected, entry.GetRealPath())
 
 	// the header row: the folder that is shown
-	onUiThread(t, ft.app, func() { ft.fileBrowser.tableContainer.SelectHeader() })
+	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.tableContainer.SelectHeader() })
 	entry = historyOf('h')
 	require.NotNil(t, entry)
 	assert.Equal(t, data.Directory, entry.Type)
 	assert.Equal(t, ft.dir, entry.GetRealPath())
 
 	var shortcuts []string
-	onUiThread(t, ft.app, func() {
+	testutil.OnUiThread(t, ft.app, func() {
 		for _, shortcut := range ft.fileBrowser.GetShortcutMap() {
 			shortcuts = append(shortcuts, shortcut.KeyCombo[0]+" "+shortcut.Name)
 		}

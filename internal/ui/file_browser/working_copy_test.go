@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/folder_listing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ func TestFileBrowser_WorkingCopyListing(t *testing.T) {
 			loaded <- e.Path
 		}
 	})
-	onUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
+	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
 	select {
 	case path := <-loaded:
 		assert.Equal(t, ft.dir, path)
@@ -30,7 +31,7 @@ func TestFileBrowser_WorkingCopyListing(t *testing.T) {
 
 	var path string
 	var listing folder_listing.Listing
-	onUiThread(t, ft.app, func() { path, listing = ft.fileBrowser.WorkingCopyListing() })
+	testutil.OnUiThread(t, ft.app, func() { path, listing = ft.fileBrowser.WorkingCopyListing() })
 	assert.Equal(t, ft.dir, path)
 	var names []string
 	for name := range listing.Entries {

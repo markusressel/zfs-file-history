@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
@@ -97,7 +98,7 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 	go func() { _ = pt.app.Run() }()
 	t.Cleanup(pt.app.Stop)
 
-	onUiThread(t, pt.app, func() {
+	testutil.OnUiThread(t, pt.app, func() {
 		pt.dialog = NewDatasetPropertiesDialog(pt.app, "pool/data", newTestProperties(), isRoot, func() {
 			pt.mu.Lock()
 			defer pt.mu.Unlock()
@@ -126,7 +127,7 @@ func (pt *propertiesTest) press(key tcell.Key, r rune) {
 
 func (pt *propertiesTest) hasPage(name string) bool {
 	shown := false
-	onUiThread(pt.t, pt.app, func() { shown = pt.pages.HasPage(name) })
+	testutil.OnUiThread(pt.t, pt.app, func() { shown = pt.pages.HasPage(name) })
 	return shown
 }
 
@@ -136,7 +137,7 @@ func (pt *propertiesTest) waitFor(message string, condition func() bool) {
 
 // selectProperty selects the property with the given name in the table.
 func (pt *propertiesTest) selectProperty(name string) {
-	onUiThread(pt.t, pt.app, func() {
+	testutil.OnUiThread(pt.t, pt.app, func() {
 		for _, property := range pt.dialog.table.GetEntries() {
 			if property.Name == name {
 				pt.dialog.table.Select(property)
@@ -147,7 +148,7 @@ func (pt *propertiesTest) selectProperty(name string) {
 
 func (pt *propertiesTest) value(name string) string {
 	value := ""
-	onUiThread(pt.t, pt.app, func() {
+	testutil.OnUiThread(pt.t, pt.app, func() {
 		for _, property := range pt.dialog.table.GetAllEntries() {
 			if property.Name == name {
 				value = property.Value + " (" + property.Source + ")"
@@ -159,7 +160,7 @@ func (pt *propertiesTest) value(name string) string {
 
 func (pt *propertiesTest) details() string {
 	text := ""
-	onUiThread(pt.t, pt.app, func() { text = pt.dialog.details.GetText(true) })
+	testutil.OnUiThread(pt.t, pt.app, func() { text = pt.dialog.details.GetText(true) })
 	return text
 }
 
@@ -328,7 +329,7 @@ func TestDatasetPropertiesDialog_EscClosesUnlessFiltering(t *testing.T) {
 	pt.press(tcell.KeyRune, 'c')
 	pt.waitFor("filtered", func() bool {
 		count := 0
-		onUiThread(t, pt.app, func() { count = len(pt.dialog.table.GetEntries()) })
+		testutil.OnUiThread(t, pt.app, func() { count = len(pt.dialog.table.GetEntries()) })
 		return count == 2 // canmount, compression
 	})
 	pt.press(tcell.KeyEscape, 0)
@@ -347,7 +348,7 @@ func (pt *propertiesTest) typeText(text string) {
 
 func (pt *propertiesTest) screenText() string {
 	var text strings.Builder
-	onUiThread(pt.t, pt.app, func() {
+	testutil.OnUiThread(pt.t, pt.app, func() {
 		pt.app.ForceDraw()
 		cells, width, height := pt.screen.GetContents()
 		for y := 0; y < height; y++ {
@@ -364,7 +365,7 @@ func (pt *propertiesTest) screenText() string {
 
 func (pt *propertiesTest) selectedName() string {
 	name := ""
-	onUiThread(pt.t, pt.app, func() {
+	testutil.OnUiThread(pt.t, pt.app, func() {
 		if selected := pt.dialog.table.GetSelectedEntry(); selected != nil {
 			name = selected.Name
 		}

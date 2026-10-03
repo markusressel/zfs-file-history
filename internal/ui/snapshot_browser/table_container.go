@@ -149,27 +149,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) formatFolderChanges(snapshot *z
 	if counts.Total() == 0 {
 		return txwidgets.Span(dim, "=")
 	}
-	return formatCounts(counts)
-}
-
-// formatCounts returns e.g. "+2 −1 ~4" in the colors of the diff states, leaving out zeros.
-func formatCounts(counts folder_listing.Counts) string {
-	colors := theme.Colors.FileBrowser.Table.State
-	var parts []string
-	for _, part := range []struct {
-		count  int
-		symbol string
-		color  tcell.Color
-	}{
-		{counts.Added, "+", colors.Added},
-		{counts.Deleted, "−", colors.Deleted},
-		{counts.Modified, "~", colors.Modified},
-	} {
-		if part.count > 0 {
-			parts = append(parts, txwidgets.Span(part.color, "%s%d", part.symbol, part.count))
-		}
-	}
-	return strings.Join(parts, " ")
+	return uiutil.FormatChangeCounts(counts.Added, counts.Deleted, counts.Modified)
 }
 
 // heldMarker is shown in front of the names of held snapshots, like in the action dialog.

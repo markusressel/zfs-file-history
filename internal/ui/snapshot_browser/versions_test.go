@@ -7,6 +7,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
@@ -70,10 +71,10 @@ func TestOnlyChanges(t *testing.T) {
 	}
 	shown := func() []string {
 		var names []string
-		onUiThread(t, app, func() { names = snapshotNames(browser.tableContainer.GetEntries()) })
+		testutil.OnUiThread(t, app, func() { names = snapshotNames(browser.tableContainer.GetEntries()) })
 		return names
 	}
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.UseColumnLayout(FilesLayout)
 		browser.currentFileEntry = &data.FileBrowserEntry{Name: "a.txt", RealFile: &data.RealFile{Name: "a.txt", Path: "/pool/a.txt"}}
 		browser.tableContainer.SetData(entries)
@@ -81,17 +82,17 @@ func TestOnlyChanges(t *testing.T) {
 	})
 
 	// while the versions are determined, all are shown
-	onUiThread(t, app, func() { browser.toggleOnlyChanges() })
+	testutil.OnUiThread(t, app, func() { browser.toggleOnlyChanges() })
 	assert.ElementsMatch(t, []string{"s1", "s2", "s3"}, shown())
 	assert.True(t, store.Toggle(FilesLayout.stateKey+".onlyChanges", false), "remembered for the page")
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.setEntryVersions(&entryVersionStarts{path: "/pool/a.txt", newVersion: map[string]bool{"s1": true, "s2": false, "s3": true}})
 	})
 	assert.ElementsMatch(t, []string{"s1", "s3"}, shown())
 	var footer string
 	var shortcut string
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		footer = browser.tableContainer.GetFooter()
 		shortcut = browser.onlyChangesShortcut().Name
 	})
@@ -99,12 +100,12 @@ func TestOnlyChanges(t *testing.T) {
 	assert.Equal(t, "All snapshots", shortcut)
 
 	// back to all
-	onUiThread(t, app, func() { browser.toggleOnlyChanges() })
+	testutil.OnUiThread(t, app, func() { browser.toggleOnlyChanges() })
 	assert.ElementsMatch(t, []string{"s1", "s2", "s3"}, shown())
 	assert.False(t, store.Toggle(FilesLayout.stateKey+".onlyChanges", true))
 
 	// the setting is loaded with the layout of the page, the other page has its own
-	onUiThread(t, app, func() { browser.toggleOnlyChanges() })
+	testutil.OnUiThread(t, app, func() { browser.toggleOnlyChanges() })
 	restored := NewSnapshotBrowser(app)
 	restored.UseColumnLayout(FilesLayout)
 	assert.True(t, restored.onlyChanges)
@@ -116,7 +117,7 @@ func TestOnlyChanges(t *testing.T) {
 // The key toggles it.
 func TestOnlyChangesKey(t *testing.T) {
 	browser, app := startBrowser(t)
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.tableContainer.SetData([]*data.SnapshotBrowserEntry{{Snapshot: &zfs.Snapshot{Name: "s1"}}})
 		browser.tableContainer.SelectFirstIfExists()
 		app.SetFocus(browser.tableContainer.GetLayout())
@@ -124,7 +125,7 @@ func TestOnlyChangesKey(t *testing.T) {
 	app.QueueEvent(tcell.NewEventKey(tcell.KeyRune, 'v', tcell.ModNone))
 	require.Eventually(t, func() bool {
 		var onlyChanges bool
-		onUiThread(t, app, func() { onlyChanges = browser.onlyChanges })
+		testutil.OnUiThread(t, app, func() { onlyChanges = browser.onlyChanges })
 		return onlyChanges
 	}, 2*time.Second, 10*time.Millisecond)
 }

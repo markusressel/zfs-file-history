@@ -241,14 +241,6 @@ func (c *ScrollbarComponent) SetInputCapture(inputCapture func(event *tcell.Even
 	c.inputCapture = inputCapture
 }
 
-func (c *ScrollbarComponent) scrollUp() {
-	c.scroll(-1)
-}
-
-func (c *ScrollbarComponent) scrollDown() {
-	c.scroll(+1)
-}
-
 // scroll moves the scrollbar to the specified position
 func (c *ScrollbarComponent) scroll(amount int) {
 	oldPosition := c.GetPosition()

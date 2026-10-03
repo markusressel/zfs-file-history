@@ -2,9 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"time"
 	"zfs-file-history/internal/data"
-	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
@@ -12,7 +10,6 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
-	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
@@ -20,42 +17,19 @@ import (
 	"github.com/rivo/tview"
 )
 
-type dragType int
-
-const (
-	dragNone dragType = iota
-	dragVertical
-	dragHorizontal
-)
-
-type boundaryType int
-
-const (
-	boundaryNone boundaryType = iota
-	boundaryVertical
-	boundaryHorizontal
-)
-
+// MainPage is the files page: the file browser with the path overview below it, next to the snapshots of the path.
 type MainPage struct {
-	application     *tview.Application
-	pages           *tview.Pages
-	header          *ApplicationHeaderComponent
-	shortcutMap     *shortcut_helper.ShortcutMapComponent
+	basePage
 	fileBrowser     *file_browser.FileBrowserComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
 	// pathOverview is below the file browser, in leftLayout
 	pathOverview *path_overview.PathOverviewComponent
 	layout       *tview.Flex
-	windowLayout *tview.Flex
-	leftLayout   *tview.Flex
+	// split separates the file browser (with the overview) and the snapshots
+	split      *uiutil.ResizableSplit
+	leftLayout *tview.Flex
 
 	wasInitialized bool
-
-	isDragging      bool
-	dragType        dragType
-	hoveredBoundary boundaryType
-	lastDragRedraw  time.Time
-	dragTimer       *time.Timer
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
@@ -68,18 +42,17 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	snapshotBrowser.RequireFolderChanges()
 
 	mainPage := &MainPage{
-		application:     application,
+		basePage:        basePage{application: application, name: Main},
 		fileBrowser:     fileBrowser,
 		snapshotBrowser: snapshotBrowser,
 		pathOverview:    pathOverview,
 	}
-
-	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
-		switch event := event.(type) {
-		case snapshot_browser.StatusMessageEvent:
-			mainPage.showStatusMessage(event.Message)
-		}
-	})
+	mainPage.focusableComponents = func() []FocusableUiComponent {
+		return []FocusableUiComponent{fileBrowser, snapshotBrowser}
+	}
+	mainPage.pageShortcuts = func() []shortcut_helper.ShortcutEntry {
+		return []shortcut_helper.ShortcutEntry{mainPage.overviewShortcut()}
+	}
 
 	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
 		switch e := event.(type) {
@@ -99,6 +72,13 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			}
 		case file_browser.RequestFileHistoryEvent:
 			mainPage.showHistory(e.FileEntry, nil)
+		case file_browser.RequestFocusEvent:
+			application.SetFocus(e.Layout)
+		case file_browser.SnapshotCreatedEvent:
+			// emitted on the UI thread, after the snapshot was created in the background
+			snapshotBrowser.SelectLatestOnNextLoad()
+			snapshotBrowser.Refresh(true)
+			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", e.SnapshotName)))
 		}
 	})
 
@@ -106,6 +86,8 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	snapshotBrowser.SetHistoryTarget(fileBrowser.HistoryEntry)
 	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
 		switch e := event.(type) {
+		case snapshot_browser.StatusMessageEvent:
+			mainPage.showStatusMessage(e.Message)
 		case snapshot_browser.RequestHistoryEvent:
 			mainPage.showHistory(e.Entry, e.Snapshot.Snapshot)
 		case snapshot_browser.FolderChangesLoaded:
@@ -141,34 +123,18 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	})
 
 	mainPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		key := event.Key()
-		if (key == tcell.KeyTab || key == tcell.KeyBacktab) && event.Modifiers()&tcell.ModCtrl == 0 {
-			mainPage.CycleFocus(key == tcell.KeyBacktab || event.Modifiers()&tcell.ModShift != 0)
+		if mainPage.handleFocusKeys(event) {
 			return nil
 		}
-		if key == tcell.KeyRune && event.Rune() == 'o' && !uiutil.IsTextInputActive(application.GetFocus()) {
+		if event.Key() == tcell.KeyRune && event.Rune() == 'o' && !uiutil.IsTextInputActive(application.GetFocus()) {
 			mainPage.toggleOverview()
 			return nil
 		}
-		switch key {
-		case tcell.KeyF5:
+		if event.Key() == tcell.KeyF5 {
 			zfs.RefreshZfsData()
 			fileBrowser.Refresh(false)
-		default:
 		}
 		return event
-	})
-
-	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
-		switch e := event.(type) {
-		case file_browser.RequestFocusEvent:
-			application.SetFocus(e.Layout)
-		case file_browser.SnapshotCreatedEvent:
-			// emitted on the UI thread, after the snapshot was created in the background
-			snapshotBrowser.SelectLatestOnNextLoad()
-			snapshotBrowser.Refresh(true)
-			mainPage.showStatusMessage(status_message.NewSuccessStatusMessage(fmt.Sprintf("Snapshot '%s' created.", e.SnapshotName)))
-		}
 	})
 
 	return mainPage
@@ -177,109 +143,18 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 func (mainPage *MainPage) createLayout() *tview.Flex {
 	mainPageLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	header := NewApplicationHeader(mainPage.application)
-	mainPageLayout.AddItem(header.layout, 1, 0, false)
-
-	windowLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
-	//dialog := createFileBrowserActionDialog()
+	mainPage.header = NewApplicationHeader(mainPage.application)
+	mainPageLayout.AddItem(mainPage.header.layout, 1, 0, false)
 
 	// the overview below the file browser describes its folder and selected entry
-	leftLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+	mainPage.leftLayout = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(mainPage.fileBrowser.GetLayout(), 0, 1, true).
 		AddItem(mainPage.pathOverview.GetLayout(), path_overview.Height, 0, false)
-	windowLayout.AddItem(leftLayout, 0, 2, true)
-	// the dataset info is shown on the dataset page only, the snapshots use the whole height here
-	windowLayout.AddItem(mainPage.snapshotBrowser.GetLayout(), 0, 1, false)
-
-	mainPageLayout.AddItem(windowLayout, 0, 1, true)
-
-	mainPage.windowLayout = windowLayout
-	mainPage.leftLayout = leftLayout
 	mainPage.applyOverviewVisibility()
-
-	// Set mouse capture on the top-level layout to capture drags anywhere on the screen
-	mainPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		if mainPage.pages != nil {
-			frontPage, _ := mainPage.pages.GetFrontPage()
-			if frontPage != string(Main) {
-				// Reset any active hover/drag states
-				mainPage.isDragging = false
-				mainPage.dragType = dragNone
-				mainPage.hoveredBoundary = boundaryNone
-				return tview.MouseConsumed, nil
-			}
-		}
-
-		mouseX, mouseY := event.Position()
-		buttons := event.Buttons()
-
-		sbX, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-		winX, _, winW, _ := windowLayout.GetRect()
-
-		// 1. If currently dragging
-		if mainPage.isDragging {
-			if buttons == tcell.ButtonNone || action == tview.MouseLeftUp {
-				mainPage.isDragging = false
-				mainPage.dragType = dragNone
-				mainPage.hoveredBoundary = boundaryNone
-				if mainPage.dragTimer != nil {
-					mainPage.dragTimer.Stop()
-					mainPage.dragTimer = nil
-				}
-				mainPage.updateBorderHighlights()
-				return tview.MouseConsumed, nil
-			}
-
-			// Rate limit updates to 30ms to prevent redraw flooding/input lag
-			now := time.Now()
-			if now.Sub(mainPage.lastDragRedraw) > 30*time.Millisecond {
-				mainPage.lastDragRedraw = now
-				if mainPage.dragTimer != nil {
-					mainPage.dragTimer.Stop()
-					mainPage.dragTimer = nil
-				}
-				mainPage.applyResize(mouseX, winX, winW)
-				return tview.MouseConsumed, nil
-			} else {
-				// Schedule a trailing redraw for the final drag position
-				if mainPage.dragTimer != nil {
-					mainPage.dragTimer.Stop()
-				}
-				mainPage.dragTimer = time.AfterFunc(30*time.Millisecond, func() {
-					mainPage.application.QueueUpdateDraw(func() {
-						mainPage.applyResize(mouseX, winX, winW)
-					})
-				})
-				return action, nil // consume event for children but do not trigger immediate screen redraw
-			}
-		}
-
-		// 2. Not dragging: detect hovering the boundary between the file browser and the snapshots
-		isOnVertical := mouseY >= sbY && mouseY < sbY+sbH && (mouseX == sbX || mouseX == sbX-1)
-
-		newHover := boundaryNone
-		if isOnVertical {
-			newHover = boundaryVertical
-		}
-
-		if newHover != mainPage.hoveredBoundary {
-			mainPage.hoveredBoundary = newHover
-			mainPage.updateBorderHighlights()
-			return tview.MouseConsumed, nil
-		}
-
-		// 3. Initiate dragging
-		if buttons&tcell.Button1 != 0 && action == tview.MouseLeftDown && isOnVertical {
-			mainPage.isDragging = true
-			mainPage.dragType = dragVertical
-			mainPage.lastDragRedraw = time.Now()
-			return tview.MouseConsumed, nil
-		}
-
-		return action, event
-	})
-
-	mainPage.header = header
+	// the dataset info is shown on the dataset page only, the snapshots use the whole height here
+	mainPage.split = mainPage.newSplit(mainPage.leftLayout, mainPage.snapshotBrowser.GetLayout(), 2, 1, false)
+	mainPageLayout.AddItem(mainPage.split, 0, 1, true)
+	captureSplitDrags(mainPageLayout, mainPage.split)
 
 	// hidden with ? (see shortcut_helper.ToggleShortcuts)
 	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application).SetCollapsible()
@@ -298,56 +173,6 @@ func (mainPage *MainPage) Init(path string) {
 	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SelectFirstEntryIfExists()
-}
-
-// focusableComponents returns the components that can be focused, in focus cycle order.
-func (mainPage *MainPage) focusableComponents() []FocusableUiComponent {
-	return []FocusableUiComponent{
-		mainPage.fileBrowser,
-		mainPage.snapshotBrowser,
-	}
-}
-
-// refreshShortcutMap shows the shortcuts of the focused component (or the browser, if none has focus),
-// e.g. after the page was switched to.
-func (mainPage *MainPage) refreshShortcutMap() {
-	for _, component := range mainPage.focusableComponents() {
-		if component.HasFocus() {
-			mainPage.updateShortcutMap(component)
-			return
-		}
-	}
-	mainPage.updateShortcutMap(mainPage.fileBrowser)
-}
-
-func (mainPage *MainPage) CycleFocus(reversed bool) {
-	components := mainPage.focusableComponents()
-
-	currentIndex := -1
-	for i, component := range components {
-		if component.HasFocus() {
-			currentIndex = i
-			break
-		}
-	}
-
-	var nextIndex int
-	if currentIndex == -1 {
-		nextIndex = 0
-		logging.Warning("Unexpected focus state")
-	} else if reversed {
-		nextIndex = (currentIndex - 1 + len(components)) % len(components)
-	} else {
-		nextIndex = (currentIndex + 1) % len(components)
-	}
-
-	nextFocusedComponent := components[nextIndex]
-	nextFocusedComponent.Focus()
-	mainPage.updateShortcutMap(nextFocusedComponent)
-}
-
-func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
-	mainPage.header.SetStatus(status)
 }
 
 // showHistory opens the file or folder history of entry. If snapshot is set, the version that was current in it is
@@ -403,63 +228,4 @@ func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
 		name = "Show overview"
 	}
 	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Group: shortcut_helper.GroupView}
-}
-
-func (mainPage *MainPage) setShortcutMap(shortcutEntries []shortcut_helper.ShortcutEntry) {
-	mainPage.shortcutMap.SetEntries(shortcutEntries)
-}
-
-func (mainPage *MainPage) clearShortcutMap() {
-	mainPage.shortcutMap.Clear()
-}
-
-func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
-	if c, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
-		shortcutMap := c.GetShortcutMap()
-
-		globalShortcutMapEntries := globalShortcuts()
-
-		shortcutMap = append(shortcutMap, mainPage.overviewShortcut())
-		shortcutMap = append(shortcutMap, globalShortcutMapEntries...)
-		mainPage.setShortcutMap(shortcutMap)
-	} else {
-		mainPage.clearShortcutMap()
-	}
-}
-
-func (mainPage *MainPage) updateBorderHighlights() {
-	// Redraw logic is handled by drawBoundaryHighlights based on the hoveredBoundary/isDragging states.
-}
-
-// applyResize moves the boundary between the file browser and the snapshots to mouseX.
-func (mainPage *MainPage) applyResize(mouseX, winX, winW int) {
-	if mainPage.dragType != dragVertical {
-		return
-	}
-	minWidth := 10
-	newLeftWidth := max(minWidth, min(mouseX-winX, winW-minWidth))
-	mainPage.windowLayout.ResizeItem(mainPage.leftLayout, 0, newLeftWidth)
-	mainPage.windowLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, winW-newLeftWidth)
-}
-
-func (mainPage *MainPage) SetPages(pages *tview.Pages) {
-	mainPage.pages = pages
-}
-
-// drawBoundaryHighlights highlights the pane boundary that is hovered or dragged.
-// Called after each draw while this page is in front (see CreateUi).
-func (mainPage *MainPage) drawBoundaryHighlights(screen tcell.Screen) {
-	if mainPage.hoveredBoundary != boundaryVertical && !(mainPage.isDragging && mainPage.dragType == dragVertical) {
-		return
-	}
-	sbX, sbY, sbW, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-	if sbW <= 0 || sbH <= 0 {
-		return
-	}
-	for y := sbY; y < sbY+sbH; y++ {
-		for _, x := range []int{sbX - 1, sbX} {
-			primary, combining, style, _ := screen.GetContent(x, y)
-			screen.SetContent(x, y, primary, combining, style.Foreground(theme.Primary))
-		}
-	}
 }

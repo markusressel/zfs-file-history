@@ -6,6 +6,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/zfs"
 
@@ -44,14 +45,14 @@ func useTestState(t *testing.T) *state.Store {
 func TestFolderHistoryOverlay_ModeIsRemembered(t *testing.T) {
 	store := useTestState(t)
 	ft := newFolderHistoryTest(t)
-	onUiThread(t, ft.app, func() { assert.Equal(t, diffModePredecessor, ft.overlay.mode, "the default") })
+	testutil.OnUiThread(t, ft.app, func() { assert.Equal(t, diffModePredecessor, ft.overlay.mode, "the default") })
 
 	ft.press(tcell.KeyRune, 'd')
 	ft.waitFor("saved", func() bool { return store.Toggle(toggleFolderHistoryCompareNow, false) })
 
 	// a new overlay starts in the remembered mode
 	var mode diffMode
-	onUiThread(t, ft.app, func() {
+	testutil.OnUiThread(t, ft.app, func() {
 		mode = NewFolderHistoryOverlay(ft.app, filepath.Join(ft.ds.root, "docs"), nil).mode
 	})
 	assert.Equal(t, diffModeWorkingCopy, mode)
@@ -92,7 +93,7 @@ func TestFolderHistoryOverlay_ColumnsAreEditableAndSaved(t *testing.T) {
 
 	// a new overlay uses the saved columns
 	var columns []*table.Column
-	onUiThread(t, ft.app, func() {
+	testutil.OnUiThread(t, ft.app, func() {
 		columns = NewFolderHistoryOverlay(ft.app, filepath.Join(ft.ds.root, "docs"), nil).changes.GetColumnSpec()
 	})
 	assert.Equal(t, []*table.Column{changeColumnName, changeColumnSize, changeColumnModified}, columns)

@@ -253,17 +253,12 @@ func (overview *PathOverviewComponent) folderNamePart() textPart {
 	return part
 }
 
-// formatCounts returns e.g. "+2 −1 ~4", counts above zero in the colors of the diff states.
+// formatCounts returns e.g. "+2 −1 ~4" (see uiutil.FormatChangeCounts), "=" (dimmed) without differences.
 func formatCounts(counts diff_state.Counts) string {
-	colors := theme.Colors.FileBrowser.Table.State
-	part := func(format string, count int, color tcell.Color) string {
-		if count == 0 {
-			color = theme.Colors.ShortcutMap.Name
-		}
-		return txwidgets.Span(color, format, count)
+	if text := uiutil.FormatChangeCounts(counts.Added, counts.Deleted, counts.Modified); text != "" {
+		return text
 	}
-	return part("+%d", counts.Added, colors.Added) + " " + part("−%d", counts.Deleted, colors.Deleted) + " " +
-		part("~%d", counts.Modified, colors.Modified)
+	return txwidgets.Span(theme.Colors.ShortcutMap.Name, "=")
 }
 
 // historyParts describes a history, e.g. "5 versions", "last changed 3 days ago", "in 40 of 48 snapshots".

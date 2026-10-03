@@ -2,7 +2,6 @@ package path_overview
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -10,34 +9,15 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/folder_listing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// fileInfo is a file or folder as returned by os.Lstat.
-type fileInfo struct {
-	size    int64
-	modTime time.Time
-	dir     bool
-}
-
-func (f fileInfo) Name() string       { return "x" }
-func (f fileInfo) Size() int64        { return f.size }
-func (f fileInfo) ModTime() time.Time { return f.modTime }
-func (f fileInfo) IsDir() bool        { return f.dir }
-func (f fileInfo) Sys() any           { return nil }
-func (f fileInfo) Mode() fs.FileMode {
-	if f.dir {
-		return fs.ModeDir | 0o755
-	}
-	return 0o644
-}
 
 var (
 	dataset   = &zfs.Dataset{Path: "/pool/home"}
@@ -51,11 +31,11 @@ func snapshot(name string, day int) *zfs.Snapshot {
 }
 
 func file(size int64, modified int) os.FileInfo {
-	return fileInfo{size: size, modTime: time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC)}
+	return testutil.File(size, time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC))
 }
 
 func folder(modified int) os.FileInfo {
-	return fileInfo{size: 4096, modTime: time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC), dir: true}
+	return testutil.Folder(time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC))
 }
 
 // versions returns the versions in s1..s5 (nil: not in the snapshot), in reverse order: summarize sorts them.
@@ -117,14 +97,9 @@ func TestSparklineValues(t *testing.T) {
 func plainText(parts []textPart) []string {
 	var result []string
 	for _, part := range parts {
-		result = append(result, stripTags(part.text()))
+		result = append(result, testutil.StripTags(part.text()))
 	}
 	return result
-}
-
-func stripTags(text string) string {
-	view := tview.NewTextView().SetDynamicColors(true).SetText(text)
-	return view.GetText(true)
 }
 
 func TestHistoryParts(t *testing.T) {
@@ -168,7 +143,7 @@ func TestFitParts(t *testing.T) {
 		{15, "…me/markus/docs"},
 		{5, "…docs"},
 	} {
-		line := stripTags(fitParts(parts, test.width))
+		line := testutil.StripTags(fitParts(parts, test.width))
 		assert.Equal(t, test.expected, line, "width %d", test.width)
 		assert.LessOrEqual(t, textWidth(line), test.width, "width %d", test.width)
 	}

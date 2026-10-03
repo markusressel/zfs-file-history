@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/zfs"
 
@@ -157,7 +158,7 @@ func newPermissionsEditTest(t *testing.T, permissions *zfs.DatasetPermissions) *
 	go func() { _ = et.app.Run() }()
 	t.Cleanup(et.app.Stop)
 
-	onUiThread(t, et.app, func() {
+	testutil.OnUiThread(t, et.app, func() {
 		et.dialog = NewDatasetPermissionsDialog(et.app, permissions, func() {
 			et.mu.Lock()
 			defer et.mu.Unlock()
@@ -173,15 +174,9 @@ func (et *permissionsEditTest) press(key tcell.Key, r rune) {
 	et.screen.InjectKey(key, r, tcell.ModNone)
 }
 
-func (et *permissionsEditTest) typeText(text string) {
-	for _, r := range text {
-		et.press(tcell.KeyRune, r)
-	}
-}
-
 func (et *permissionsEditTest) hasPage(name string) bool {
 	shown := false
-	onUiThread(et.t, et.app, func() { shown = et.pages.HasPage(name) })
+	testutil.OnUiThread(et.t, et.app, func() { shown = et.pages.HasPage(name) })
 	return shown
 }
 
@@ -191,7 +186,7 @@ func (et *permissionsEditTest) waitFor(message string, condition func() bool) {
 
 func (et *permissionsEditTest) screenText() string {
 	var text strings.Builder
-	onUiThread(et.t, et.app, func() {
+	testutil.OnUiThread(et.t, et.app, func() {
 		et.app.ForceDraw()
 		cells, width, height := et.screen.GetContents()
 		for y := 0; y < height; y++ {
@@ -208,13 +203,13 @@ func (et *permissionsEditTest) screenText() string {
 
 func (et *permissionsEditTest) summaryText() string {
 	var text string
-	onUiThread(et.t, et.app, func() { text = et.dialog.summary.GetText(true) })
+	testutil.OnUiThread(et.t, et.app, func() { text = et.dialog.summary.GetText(true) })
 	return text
 }
 
 // toggleDestroy selects the destroy row and toggles it.
 func (et *permissionsEditTest) toggleDestroy() {
-	onUiThread(et.t, et.app, func() { et.dialog.table.Select(2, 0) })
+	testutil.OnUiThread(et.t, et.app, func() { et.dialog.table.Select(2, 0) })
 	et.press(tcell.KeyRune, ' ')
 	et.waitFor("toggled", func() bool { return strings.Contains(et.summaryText(), "1 change") })
 }
@@ -246,7 +241,7 @@ func TestDatasetPermissionsDialog_Apply(t *testing.T) {
 
 	// the dialog shows the reloaded delegations, without pending changes
 	var destroyRow string
-	onUiThread(t, et.app, func() { destroyRow = tableRows(et.dialog)[2] })
+	testutil.OnUiThread(t, et.app, func() { destroyRow = tableRows(et.dialog)[2] })
 	assert.Equal(t, "destroy|d|✓|user alice (this dataset)", destroyRow)
 	assert.Equal(t, "What user alice may do on this dataset and its children:", et.summaryText())
 }

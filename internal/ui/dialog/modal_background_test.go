@@ -3,6 +3,7 @@ package dialog
 import (
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -24,7 +25,7 @@ func TestModal_HidesThePageBehind(t *testing.T) {
 
 	var dialogX, dialogY, dialogWidth, dialogHeight int
 	var lines []string
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		d := NewDatasetPropertiesDialog(app, "pool/data", newTestProperties(), false, nil)
 		ShowDialogOnPages(app, pages, d, nil)
 		app.ForceDraw()

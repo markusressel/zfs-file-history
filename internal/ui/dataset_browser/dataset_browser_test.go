@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
@@ -114,20 +115,6 @@ func setListDatasets(t *testing.T, f func() ([]*zfs.DatasetListEntry, error)) {
 	t.Cleanup(func() { listDatasets = original })
 }
 
-// onUiThread runs f on the UI thread and waits for it, failing the test instead of hanging on a deadlock.
-func onUiThread(t *testing.T, app *tview.Application, f func()) {
-	done := make(chan struct{})
-	go func() {
-		app.QueueUpdate(f)
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for the UI thread (deadlock?)")
-	}
-}
-
 // newBrowserApp creates a browser as the root of a running application.
 // The root is set before the event loop starts, like in CreateUi, to avoid racing with the first draw.
 func newBrowserApp(t *testing.T) (*tview.Application, *DatasetBrowserComponent, tcell.SimulationScreen) {
@@ -172,7 +159,7 @@ func TestDatasetBrowser_RefreshLoadsAndSelects(t *testing.T) {
 		}
 	})
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		// this test selects unmounted datasets, which are hidden by default
 		browser.ToggleHideUnmounted()
 		browser.SetPath("/home/user/documents", false)
@@ -182,7 +169,7 @@ func TestDatasetBrowser_RefreshLoadsAndSelects(t *testing.T) {
 	assert.Eventually(t, func() bool { return len(events.get()) == 1 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"/home"}, events.get())
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		assert.Len(t, browser.tableContainer.GetEntries(), 3)
 		require.NotNil(t, browser.tableContainer.GetSelectedEntry())
 		assert.Equal(t, "rpool/home", browser.tableContainer.GetSelectedEntry().Name)
@@ -204,10 +191,10 @@ func TestDatasetBrowser_RefreshLoadsAndSelects(t *testing.T) {
 	}
 	mu.Unlock()
 
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	assert.Eventually(t, func() bool { return len(events.get()) == 3 }, 2*time.Second, 10*time.Millisecond)
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		assert.Len(t, browser.tableContainer.GetEntries(), 4)
 		assert.Equal(t, "rpool/legacy", browser.tableContainer.GetSelectedEntry().Name)
 	})
@@ -234,17 +221,17 @@ func TestDatasetBrowser_RefreshErrorKeepsEntries(t *testing.T) {
 		}
 	})
 
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	assert.Eventually(t, func() bool {
 		count := 0
-		onUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
+		testutil.OnUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
 		return count == 1
 	}, 2*time.Second, 10*time.Millisecond)
 
 	mu.Lock()
 	fail = true
 	mu.Unlock()
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 
 	select {
 	case e := <-statusEvents:
@@ -252,7 +239,7 @@ func TestDatasetBrowser_RefreshErrorKeepsEntries(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected an error status event")
 	}
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		assert.Len(t, browser.tableContainer.GetEntries(), 1)
 	})
 }
@@ -277,16 +264,16 @@ func TestDatasetBrowser_StaleLoadIsDiscarded(t *testing.T) {
 
 	app, browser, _ := newBrowserApp(t)
 
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	select {
 	case <-firstStarted:
 	case <-time.After(2 * time.Second):
 		t.Fatal("first load did not start")
 	}
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	assert.Eventually(t, func() bool {
 		name := ""
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			if entries := browser.tableContainer.GetEntries(); len(entries) == 1 {
 				name = entries[0].Name
 			}
@@ -296,7 +283,7 @@ func TestDatasetBrowser_StaleLoadIsDiscarded(t *testing.T) {
 
 	close(release)
 	time.Sleep(100 * time.Millisecond)
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		assert.Equal(t, "fresh", browser.tableContainer.GetEntries()[0].Name)
 	})
 }
@@ -312,10 +299,10 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 
 	app, browser, screen := newBrowserApp(t)
 
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	entryNames := func() []string {
 		var result []string
-		onUiThread(t, app, func() { result = names(browser.tableContainer.GetEntries()) })
+		testutil.OnUiThread(t, app, func() { result = names(browser.tableContainer.GetEntries()) })
 		return result
 	}
 	// default: sorted by name, ascending
@@ -326,17 +313,17 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 	pressKey := func(key tcell.Key) {
 		screen.InjectKey(key, 0, tcell.ModNone)
 		// wait until the event loop processed the key
-		onUiThread(t, app, func() {})
+		testutil.OnUiThread(t, app, func() {})
 		time.Sleep(20 * time.Millisecond)
 	}
 
 	// on a data row, right and enter are consumed by the browser and don't change the sort order
-	onUiThread(t, app, func() { browser.tableContainer.SelectFirstIfExists() })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectFirstIfExists() })
 	pressKey(tcell.KeyRight)
 	pressKey(tcell.KeyEnter)
 	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
 
-	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 
 	// right: next column (used), keeping the direction (ascending)
 	pressKey(tcell.KeyRight)
@@ -407,11 +394,11 @@ func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
 	pressKey := func(r rune) {
 		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
 		// wait until the event loop processed the key
-		onUiThread(t, app, func() {})
+		testutil.OnUiThread(t, app, func() {})
 		time.Sleep(20 * time.Millisecond)
 	}
 	state := func() (visible []string, selected string, status string, hiding bool, shortcut string) {
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			visible = names(browser.tableContainer.GetEntries())
 			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
 				selected = entry.Name
@@ -431,7 +418,7 @@ func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
 	assert.True(t, hiding, "unmounted datasets are hidden by default")
 	assert.Equal(t, "Loading datasets...", status)
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.SetPath("/home/user", false)
 		browser.Refresh(false)
 	})
@@ -441,6 +428,7 @@ func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 
 	visible, selected, status, hiding, shortcut := state()
+	assert.True(t, hiding)
 	assert.ElementsMatch(t, []string{"rpool/ROOT", "rpool/home"}, visible)
 	assert.Equal(t, "rpool/home", selected)
 	assert.Equal(t, "2 of 4 datasets · 2 unmounted hidden", status)
@@ -456,7 +444,7 @@ func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
 	assert.Equal(t, "Hide unmounted", shortcut)
 
 	// select an unmounted dataset, then hide: the selection falls back to a visible dataset
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		for _, entry := range browser.tableContainer.GetEntries() {
 			if entry.Name == "rpool/legacy" {
 				browser.tableContainer.Select(entry)
@@ -474,14 +462,14 @@ func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
 	mu.Lock()
 	datasets = append(datasets, &zfs.DatasetListEntry{Name: "rpool/new", MountPath: "/new"}, &zfs.DatasetListEntry{Name: "rpool/new-unmounted"})
 	mu.Unlock()
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	assert.Eventually(t, func() bool {
 		visible, _, status, _, _ := state()
 		return len(visible) == 3 && status == "3 of 6 datasets · 3 unmounted hidden"
 	}, 2*time.Second, 10*time.Millisecond)
 
 	// toggling on the header row keeps the header row selected (for sorting)
-	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 	pressKey('u')
 	visible, selected, status, hiding, _ = state()
 	assert.False(t, hiding)
@@ -522,7 +510,7 @@ func TestDatasetBrowser_Filter(t *testing.T) {
 		screen.InjectKey(key, r, tcell.ModNone)
 	}
 	state := func() (visible []string, selected string, footer string, hiding bool) {
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			visible = names(browser.tableContainer.GetEntries())
 			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
 				selected = entry.Name
@@ -539,7 +527,7 @@ func TestDatasetBrowser_Filter(t *testing.T) {
 		}, 2*time.Second, 10*time.Millisecond, "expected footer %q", expected)
 	}
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.SetPath("/home", false)
 		browser.Refresh(false)
 	})
@@ -585,24 +573,24 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 	})
 
 	app, browser, screen := newBrowserApp(t)
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.Refresh(false)
 		browser.Focus()
 	})
 	assert.Eventually(t, func() bool {
 		var count int
-		onUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
+		testutil.OnUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
 		return count == 2
 	}, 2*time.Second, 10*time.Millisecond)
 
 	pressKey := func(key tcell.Key) {
 		screen.InjectKey(key, 0, tcell.ModNone)
-		onUiThread(t, app, func() {})
+		testutil.OnUiThread(t, app, func() {})
 		time.Sleep(20 * time.Millisecond)
 	}
 	dialogOpen := func() bool {
 		var open bool
-		onUiThread(t, app, func() { open = browser.layout.HasPage(string(dialog.ColumnSelectionDialogPage)) })
+		testutil.OnUiThread(t, app, func() { open = browser.layout.HasPage(string(dialog.ColumnSelectionDialogPage)) })
 		return open
 	}
 
@@ -612,12 +600,12 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 	// the first active column (name) is selected; removing it applies immediately
 	pressKey(tcell.KeyDelete)
 	var columns []*table.Column
-	onUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
+	testutil.OnUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
 	assert.Equal(t, tableColumns[1:], columns)
 
 	pressKey(tcell.KeyEscape)
 	assert.False(t, dialogOpen())
-	onUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
+	testutil.OnUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
 	assert.Equal(t, tableColumns[1:], columns)
 }
 
@@ -639,10 +627,10 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 	})
 
 	app, browser, screen := newBrowserApp(t)
-	onUiThread(t, app, func() { browser.Focus() })
+	testutil.OnUiThread(t, app, func() { browser.Focus() })
 	pressKey := func(key tcell.Key, r rune) {
 		screen.InjectKey(key, r, tcell.ModNone)
-		onUiThread(t, app, func() {})
+		testutil.OnUiThread(t, app, func() {})
 		time.Sleep(20 * time.Millisecond)
 	}
 
@@ -663,7 +651,7 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 	pressKey(tcell.KeyRune, 'r')
 	pressKey(tcell.KeyEscape, 0)
 	var columns []*table.Column
-	onUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
+	testutil.OnUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
 	assert.Equal(t, tableColumns, columns)
 	_, saved := store.TableLayout("datasetBrowser")
 	assert.False(t, saved)
@@ -682,9 +670,9 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	})
 
 	app, browser, screen := newBrowserApp(t)
-	onUiThread(t, app, func() { browser.Focus() })
+	testutil.OnUiThread(t, app, func() { browser.Focus() })
 	var hiding, tree bool
-	onUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
+	testutil.OnUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
 	// defaults without a saved state
 	require.True(t, hiding)
 	require.True(t, tree)
@@ -692,7 +680,7 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	screen.InjectKey(tcell.KeyRune, 'u', tcell.ModNone)
 	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
 	assert.Eventually(t, func() bool {
-		onUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
+		testutil.OnUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
 		return !hiding && !tree
 	}, 2*time.Second, 10*time.Millisecond)
 	require.NoError(t, store.Flush())

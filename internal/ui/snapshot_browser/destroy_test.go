@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -66,7 +67,7 @@ func newDestroyTest(t *testing.T) *destroyTest {
 	listHolds = func(names []string, recursive bool) ([]zfs.Hold, error) {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
-		dt.holdsListed = append(dt.holdsListed, holdCall{names, recursive, isOnUiThread(dt.app)})
+		dt.holdsListed = append(dt.holdsListed, holdCall{names, recursive, testutil.IsOnUiThread(dt.app)})
 		var result []zfs.Hold
 		for _, h := range dt.holds {
 			for _, name := range names {
@@ -81,18 +82,18 @@ func newDestroyTest(t *testing.T) *destroyTest {
 	holdSnapshots = func(names []string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
-		dt.holdCalls = append(dt.holdCalls, holdCall{snapshots: names, onUiThread: isOnUiThread(dt.app)})
+		dt.holdCalls = append(dt.holdCalls, holdCall{snapshots: names, onUiThread: testutil.IsOnUiThread(dt.app)})
 		return nil
 	}
 	releaseSnapshots = func(names []string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
-		dt.releaseCalls = append(dt.releaseCalls, holdCall{snapshots: names, onUiThread: isOnUiThread(dt.app)})
+		dt.releaseCalls = append(dt.releaseCalls, holdCall{snapshots: names, onUiThread: testutil.IsOnUiThread(dt.app)})
 		return nil
 	}
 	previewDestroySnapshots = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) (*zfs.DestroyPreview, error) {
 		dt.mu.Lock()
-		dt.previews = append(dt.previews, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, isOnUiThread(dt.app)})
+		dt.previews = append(dt.previews, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, testutil.IsOnUiThread(dt.app)})
 		err := dt.previewError
 		dt.mu.Unlock()
 		if err != nil {
@@ -107,7 +108,7 @@ func newDestroyTest(t *testing.T) *destroyTest {
 	destroySnapshots = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
-		dt.destroys = append(dt.destroys, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, isOnUiThread(dt.app)})
+		dt.destroys = append(dt.destroys, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, testutil.IsOnUiThread(dt.app)})
 		return nil
 	}
 
@@ -124,7 +125,7 @@ func newDestroyTest(t *testing.T) *destroyTest {
 		{Snapshot: &zfs.Snapshot{Name: "daily-2", FullName: "pool/data@daily-2", Path: "/pool/data/.zfs/snapshot/daily-2"}},
 	}
 	daily1 := dt.entries[0]
-	onUiThread(t, dt.app, func() {
+	testutil.OnUiThread(t, dt.app, func() {
 		// SetData sorts the given slice in place
 		dt.browser.tableContainer.SetData(dt.entries)
 		dt.browser.tableContainer.Select(daily1)
@@ -138,7 +139,7 @@ func (dt *destroyTest) press(key tcell.Key, r rune) {
 
 func (dt *destroyTest) hasDialog(name string) bool {
 	has := false
-	onUiThread(dt.t, dt.app, func() { has = dt.browser.container.Pages.HasPage(name) })
+	testutil.OnUiThread(dt.t, dt.app, func() { has = dt.browser.container.Pages.HasPage(name) })
 	return has
 }
 
@@ -154,7 +155,7 @@ func (dt *destroyTest) calls() (previews []destroyCall, destroys []destroyCall) 
 
 func (dt *destroyTest) screenText() string {
 	var text strings.Builder
-	onUiThread(dt.t, dt.app, func() {
+	testutil.OnUiThread(dt.t, dt.app, func() {
 		cells, width, height := dt.screen.GetContents()
 		for y := 0; y < height; y++ {
 			for x := 0; x < width; x++ {
@@ -170,13 +171,13 @@ func (dt *destroyTest) screenText() string {
 
 // selectAll selects both snapshots with the space key.
 func (dt *destroyTest) selectAll() {
-	onUiThread(dt.t, dt.app, func() { dt.browser.tableContainer.SelectFirstIfExists() })
+	testutil.OnUiThread(dt.t, dt.app, func() { dt.browser.tableContainer.SelectFirstIfExists() })
 	dt.press(tcell.KeyRune, ' ')
 	dt.press(tcell.KeyDown, 0)
 	dt.press(tcell.KeyRune, ' ')
 	require.Eventually(dt.t, func() bool {
 		count := 0
-		onUiThread(dt.t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
+		testutil.OnUiThread(dt.t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
 		return count == 2
 	}, 2*time.Second, 10*time.Millisecond)
 }
@@ -301,7 +302,7 @@ func TestSnapshotBrowser_DestroyMultiSelection(t *testing.T) {
 	assert.ElementsMatch(t, previews[0].snapshots, destroys[0].snapshots, "exactly the previewed snapshots are destroyed")
 	require.Eventually(t, func() bool {
 		count := -1
-		onUiThread(t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
+		testutil.OnUiThread(t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
 		return count == 0
 	}, 2*time.Second, 10*time.Millisecond, "the multi selection is cleared")
 }

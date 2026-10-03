@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -116,7 +117,7 @@ func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copy
 			dt.retried++
 		}
 	}
-	onUiThread(t, dt.app, func() {
+	testutil.OnUiThread(t, dt.app, func() {
 		ShowDialogOnPages(dt.app, dt.pages, NewErrorDialogWithRetry(dt.app, "Release Failed", newMissingRelease(), retry), nil)
 		// updates outside of input events are not drawn automatically
 		dt.app.ForceDraw()
@@ -144,7 +145,7 @@ func (dt *permissionsDialogTest) choose(option rune) {
 
 func (dt *permissionsDialogTest) hasPage(name string) bool {
 	shown := false
-	onUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage(name) })
+	testutil.OnUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage(name) })
 	return shown
 }
 
@@ -167,7 +168,7 @@ func (dt *permissionsDialogTest) counts() (verified int, retried int) {
 
 func (dt *permissionsDialogTest) screenText() string {
 	var text strings.Builder
-	onUiThread(dt.t, dt.app, func() {
+	testutil.OnUiThread(dt.t, dt.app, func() {
 		cells, width, height := dt.screen.GetContents()
 		for y := 0; y < height; y++ {
 			for x := 0; x < width; x++ {

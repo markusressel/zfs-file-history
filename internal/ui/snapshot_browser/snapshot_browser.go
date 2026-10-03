@@ -15,7 +15,6 @@ import (
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
-	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
@@ -429,12 +428,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateTableEntries() {
 	snapshotBrowser.startAsyncDiffCalculation()
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) cancelDiffCalculation() {
-	if snapshotBrowser.diffLoader != nil {
-		snapshotBrowser.diffLoader.Cancel()
-	}
-}
-
 func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 	snapshots := snapshotBrowser.currentSnapshots
 	fileEntry := snapshotBrowser.currentFileEntry
@@ -664,12 +657,6 @@ func snapshotMatchesFilter(entry *data.SnapshotBrowserEntry, filterText string) 
 	return table.MatchesGlob(entry.Snapshot.Name, filterText)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) clear() {
-	snapshotBrowser.path = ""
-	snapshotBrowser.currentSnapshots = []*zfs.Snapshot{}
-	snapshotBrowser.updateCurrentSnapshotEntries(false)
-}
-
 func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(selection *data.SnapshotBrowserEntry) {
 	if snapshotBrowser.hostDataset == nil {
 		return
@@ -764,10 +751,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetCurrentSnapshots() []*zfs.Sn
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectHeader() {
 	snapshotBrowser.tableContainer.SelectHeader()
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) selectFirstIfExists() {
-	snapshotBrowser.tableContainer.SelectFirstIfExists()
 }
 
 // SetHistoryTarget enables opening the history of a file or folder at the selected snapshot (h, and in the action
@@ -1136,12 +1119,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 
 	latestEntry := sortedEntries[0]
 	snapshotBrowser.tableContainer.Select(latestEntry)
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) showStatusMessage(message *status_message.StatusMessage) {
-	snapshotBrowser.emit(StatusMessageEvent{
-		Message: message,
-	})
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) emit(event Event) {

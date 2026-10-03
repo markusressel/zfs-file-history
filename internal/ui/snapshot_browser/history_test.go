@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 // historyRequests sets a history target and collects the RequestHistoryEvents of the browser.
 func historyRequests(dt *destroyTest, target *data.FileBrowserEntry) chan RequestHistoryEvent {
 	requests := make(chan RequestHistoryEvent, 10)
-	onUiThread(dt.t, dt.app, func() {
+	testutil.OnUiThread(dt.t, dt.app, func() {
 		dt.browser.SetHistoryTarget(func() *data.FileBrowserEntry { return target })
 		dt.browser.Events.Subscribe(func(event Event) {
 			if e, ok := event.(RequestHistoryEvent); ok {
@@ -61,7 +62,7 @@ func TestSnapshotBrowser_HistoryAtSnapshot(t *testing.T) {
 	assert.Equal(t, "daily-1", request.Snapshot.Snapshot.Name)
 
 	var shortcuts []string
-	onUiThread(t, dt.app, func() {
+	testutil.OnUiThread(t, dt.app, func() {
 		for _, shortcut := range dt.browser.GetShortcutMap() {
 			shortcuts = append(shortcuts, shortcut.KeyCombo[0]+" "+shortcut.Name)
 		}
@@ -79,7 +80,7 @@ func TestSnapshotBrowser_NoHistoryWithoutTarget(t *testing.T) {
 	assert.NotContains(t, dt.screenText(), "History of")
 
 	var shortcuts []string
-	onUiThread(t, dt.app, func() {
+	testutil.OnUiThread(t, dt.app, func() {
 		for _, shortcut := range dt.browser.GetShortcutMap() {
 			shortcuts = append(shortcuts, shortcut.Name)
 		}

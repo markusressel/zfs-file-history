@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 
@@ -23,21 +24,21 @@ func TestApplicationHeader_TimedStatusIsCleared(t *testing.T) {
 
 	statusText := func() string {
 		var text string
-		onUiThreadT(t, app, func() { text = header.statusTextView.GetText(true) })
+		testutil.OnUiThread(t, app, func() { text = header.statusTextView.GetText(true) })
 		return text
 	}
 
 	timed := status_message.NewSuccessStatusMessage("created")
 	timed.Duration = 30 * time.Millisecond
-	onUiThreadT(t, app, func() { header.SetStatus(timed) })
+	testutil.OnUiThread(t, app, func() { header.SetStatus(timed) })
 	assert.Equal(t, "created", statusText())
 	assert.Eventually(t, func() bool { return statusText() == "" }, 2*time.Second, 10*time.Millisecond)
 
 	// a newer message is not cleared by the timer of an older one
-	onUiThreadT(t, app, func() { header.SetStatus(timed) })
+	testutil.OnUiThread(t, app, func() { header.SetStatus(timed) })
 	permanent := status_message.NewErrorStatusMessage("failed")
 	permanent.Duration = 0
-	onUiThreadT(t, app, func() { header.SetStatus(permanent) })
+	testutil.OnUiThread(t, app, func() { header.SetStatus(permanent) })
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, "failed", statusText())
 }

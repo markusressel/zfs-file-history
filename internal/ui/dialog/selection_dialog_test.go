@@ -6,6 +6,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -199,7 +200,7 @@ func TestSelectionDialog_StopLoadingRestoresOptionText(t *testing.T) {
 
 	optionCellText := func() string {
 		text := ""
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			for row := 0; row < d.optionTable.GetRowCount(); row++ {
 				if cell := d.optionTable.GetCell(row, 1); cell != nil && cell.GetReference() == option {
 					text = cell.Text
@@ -211,11 +212,11 @@ func TestSelectionDialog_StopLoadingRestoresOptionText(t *testing.T) {
 	originalText := optionCellText()
 	assert.NotEmpty(t, originalText)
 
-	onUiThread(t, app, func() { d.ShowLoading(option) })
+	testutil.OnUiThread(t, app, func() { d.ShowLoading(option) })
 	// the spinner appends a frame to the option text
 	assert.Eventually(t, func() bool { return optionCellText() != originalText }, 2*time.Second, 10*time.Millisecond)
 
-	onUiThread(t, app, func() { d.StopLoading() })
+	testutil.OnUiThread(t, app, func() { d.StopLoading() })
 	assert.Equal(t, originalText, optionCellText())
 
 	// no late spinner frame overwrites the restored text
@@ -223,9 +224,9 @@ func TestSelectionDialog_StopLoadingRestoresOptionText(t *testing.T) {
 	assert.Equal(t, originalText, optionCellText())
 
 	// loading can be started again, e.g. for another action
-	onUiThread(t, app, func() { d.ShowLoading(option) })
+	testutil.OnUiThread(t, app, func() { d.ShowLoading(option) })
 	assert.Eventually(t, func() bool { return optionCellText() != originalText }, 2*time.Second, 10*time.Millisecond)
-	onUiThread(t, app, func() { d.StopLoading() })
+	testutil.OnUiThread(t, app, func() { d.StopLoading() })
 	assert.Equal(t, originalText, optionCellText())
 }
 
@@ -257,16 +258,16 @@ func TestSelectionDialog_RetryFunc(t *testing.T) {
 	}
 	isShown := func() bool {
 		shown := false
-		onUiThread(t, app, func() { shown = pages.HasPage("Actions") })
+		testutil.OnUiThread(t, app, func() { shown = pages.HasPage("Actions") })
 		return shown
 	}
 
-	onUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
+	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
 	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
 	require.Eventually(t, func() bool { return runCount() == 1 && !isShown() }, 2*time.Second, 10*time.Millisecond)
 
 	// the dialog is shown again and runs the option again, then closes like the first time
-	onUiThread(t, app, func() { d.RetryFunc(options[0])() })
+	testutil.OnUiThread(t, app, func() { d.RetryFunc(options[0])() })
 	require.Eventually(t, func() bool { return runCount() == 2 && !isShown() }, 2*time.Second, 10*time.Millisecond)
 	mu.Lock()
 	assert.Equal(t, []DialogActionId{7, 7}, runs)
