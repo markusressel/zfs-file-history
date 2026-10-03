@@ -92,7 +92,7 @@ var (
 	columnDiff = &table.Column{
 		Id:        2,
 		Key:       "diff",
-		Title:     "Diff",
+		Title:     "vs now",
 		Alignment: tview.AlignCenter,
 	}
 	columnUsed = &table.Column{
@@ -156,19 +156,26 @@ var (
 	columnVsNow = &table.Column{
 		Id:        11,
 		Key:       "folderVsNow",
-		Title:     "vs now",
+		Title:     "Folder vs now",
 		Alignment: tview.AlignLeft,
 	}
 	// columnChanges is the number of entries of the folder that changed since the previous snapshot
 	columnChanges = &table.Column{
 		Id:        12,
 		Key:       "folderChanges",
-		Title:     "Changes",
+		Title:     "Folder changes",
+		Alignment: tview.AlignLeft,
+	}
+	// columnChange is what happened to the selected entry since the previous snapshot, see data.VersionChanges
+	columnChange = &table.Column{
+		Id:        13,
+		Key:       "entryChange",
+		Title:     "Change",
 		Alignment: tview.AlignLeft,
 	}
 
 	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnSize, columnModified, columnVsNow, columnChanges,
+		columnName, columnDate, columnDiff, columnChange, columnSize, columnModified, columnVsNow, columnChanges,
 		columnUsed, columnWritten, columnRefer, columnRatio, columnClones, columnHolds,
 	}
 )
@@ -183,7 +190,7 @@ var (
 	// FilesLayout is the layout on the files page: about the path that is shown
 	FilesLayout = ColumnLayout{
 		stateKey: "snapshotBrowser.files",
-		columns:  []*table.Column{columnName, columnDiff, columnDate, columnSize, columnModified, columnChanges, columnHolds},
+		columns:  []*table.Column{columnName, columnDate, columnDiff, columnChange, columnSize, columnModified, columnHolds},
 	}
 	// DatasetsLayout is the layout on the dataset page: about the whole dataset
 	DatasetsLayout = ColumnLayout{
@@ -598,7 +605,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 		}
 		var versions *entryVersionStarts
 		if filePath != "" {
-			versions = &entryVersionStarts{path: filePath, newVersion: data.NewVersions(entryVersions)}
+			versions = &entryVersionStarts{path: filePath, changes: data.VersionChanges(entryVersions)}
 		}
 		snapshotBrowser.application.QueueUpdateDraw(func() {
 			if snapshotBrowser.diffLoader.IsCurrentSequence(seq) {

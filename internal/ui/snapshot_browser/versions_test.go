@@ -44,7 +44,9 @@ func TestChangedInSnapshot(t *testing.T) {
 	// the selected entry: unknown until its versions are determined
 	browser.currentFileEntry = &data.FileBrowserEntry{Name: "a.txt", RealFile: &data.RealFile{Name: "a.txt", Path: "/pool/docs/a.txt"}}
 	assert.Equal(t, [2]bool{false, false}, check(s1))
-	browser.entryVersions = &entryVersionStarts{path: "/pool/docs/a.txt", newVersion: map[string]bool{"s1": false, "s2": true}}
+	browser.entryVersions = &entryVersionStarts{path: "/pool/docs/a.txt", changes: map[string]data.VersionChange{
+		"s1": {Kind: data.VersionUnchanged}, "s2": {Kind: data.VersionModified, SizeDelta: 5},
+	}}
 	assert.Equal(t, [2]bool{false, true}, check(s1))
 	assert.Equal(t, [2]bool{true, true}, check(s2))
 	// versions of another entry do not count
@@ -89,7 +91,9 @@ func TestOnlyChanges(t *testing.T) {
 	assert.True(t, store.Toggle(FilesLayout.stateKey+".onlyChanges", false), "remembered for the page")
 
 	testutil.OnUiThread(t, app, func() {
-		browser.setEntryVersions(&entryVersionStarts{path: "/pool/a.txt", newVersion: map[string]bool{"s1": true, "s2": false, "s3": true}})
+		browser.setEntryVersions(&entryVersionStarts{path: "/pool/a.txt", changes: map[string]data.VersionChange{
+			"s1": {Kind: data.VersionInitial}, "s2": {Kind: data.VersionUnchanged}, "s3": {Kind: data.VersionDeleted},
+		}})
 	})
 	assert.ElementsMatch(t, []string{"s1", "s3"}, shown())
 	var footer string
@@ -142,4 +146,55 @@ func TestDiffColumnWhileLoading(t *testing.T) {
 	assert.Equal(t, "", text(&data.SnapshotBrowserEntry{Snapshot: snapshot, DiffState: diff_state.Unknown, IsLoading: true}))
 	assert.Equal(t, "?", text(&data.SnapshotBrowserEntry{Snapshot: snapshot, DiffState: diff_state.Unknown}))
 	assert.Equal(t, "≠", text(&data.SnapshotBrowserEntry{Snapshot: snapshot, DiffState: diff_state.Modified, IsLoading: true}))
+}
+
+// The Change column: what happened to the selected entry since the previous snapshot.
+func TestChangeColumn(t *testing.T) {
+	browser := NewSnapshotBrowser(nil)
+	file := &data.FileBrowserEntry{Name: "a.txt", Type: data.File, RealFile: &data.RealFile{Name: "a.txt", Path: "/pool/a.txt"}}
+	browser.currentFileEntry = file
+	browser.entryVersions = &entryVersionStarts{path: "/pool/a.txt", changes: map[string]data.VersionChange{
+		"initial":   {Kind: data.VersionInitial},
+		"created":   {Kind: data.VersionCreated, SizeDelta: 10},
+		"same":      {Kind: data.VersionUnchanged},
+		"grown":     {Kind: data.VersionModified, SizeDelta: 1536},
+		"shrunk":    {Kind: data.VersionModified, SizeDelta: -2048},
+		"touched":   {Kind: data.VersionModified},
+		"deleted":   {Kind: data.VersionDeleted, SizeDelta: -10},
+		"something": {Kind: data.VersionUnchanged},
+	}}
+	text := func(name string) string {
+		return testutil.StripTags(browser.formatEntryChange(&zfs.Snapshot{Name: name}))
+	}
+	assert.Equal(t, "initial", text("initial"))
+	assert.Equal(t, "+", text("created"))
+	assert.Equal(t, "", text("same"))
+	assert.Equal(t, "≠ +1.5 KiB", text("grown"))
+	assert.Equal(t, "≠ -2.0 KiB", text("shrunk"))
+	assert.Equal(t, "≠", text("touched"), "same size, e.g. only the modification time")
+	assert.Equal(t, "−", text("deleted"))
+	assert.Equal(t, "", text("unknown"), "not determined yet")
+
+	// a folder: the change of the number of items
+	browser.currentFileEntry = &data.FileBrowserEntry{Name: "docs", Type: data.Directory, RealFile: &data.RealFile{Name: "docs", Path: "/pool/a.txt"}}
+	assert.Equal(t, "≠ -2048 items", text("shrunk"))
+	browser.entryVersions.changes["one"] = data.VersionChange{Kind: data.VersionModified, SizeDelta: 1}
+	assert.Equal(t, "≠ +1 item", text("one"))
+	browser.currentFileEntry = file
+
+	// sorted by how much changed, the largest first; unchanged and unknown last
+	var entries []*data.SnapshotBrowserEntry
+	for _, name := range []string{"same", "unknown", "grown", "created", "shrunk", "initial"} {
+		entries = append(entries, &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: name}})
+	}
+	browser.sortEntries(entries, columnChange, false)
+	assert.Equal(t, []string{"shrunk", "grown", "created", "initial", "same", "unknown"}, snapshotNames(entries))
+}
+
+// The headers say what is compared: the selected entry with now, the folder only where it says so.
+func TestColumnTitles(t *testing.T) {
+	assert.Equal(t, "vs now", columnDiff.Title)
+	assert.Equal(t, "Change", columnChange.Title)
+	assert.Equal(t, "Folder vs now", columnVsNow.Title)
+	assert.Equal(t, "Folder changes", columnChanges.Title)
 }
