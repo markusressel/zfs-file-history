@@ -49,7 +49,7 @@
   (`zfs allow`) you have on each dataset, e.g. `sdmh-----` for snapshot, destroy, mount and hold. `p` shows the
   details: who grants each permission and all delegations of the dataset and its parents. There you can also grant
   permissions to yourself or revoke them, for the dataset and its children (`zfs allow` / `zfs unallow`); the changes
-  are applied with `sudo` if needed. The dataset info box lists your permissions as well.
+  are applied with `sudo` if needed. The dataset info box of the dataset overview lists your permissions as well.
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like

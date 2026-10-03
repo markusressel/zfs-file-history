@@ -5,7 +5,6 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
-	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/shortcut_helper"
@@ -41,11 +40,9 @@ type MainPage struct {
 	header          *ApplicationHeaderComponent
 	shortcutMap     *shortcut_helper.ShortcutMapComponent
 	fileBrowser     *file_browser.FileBrowserComponent
-	datasetInfo     *dataset_info.DatasetInfoComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
 	layout          *tview.Flex
 	windowLayout    *tview.Flex
-	infoLayout      *tview.Flex
 
 	wasInitialized bool
 
@@ -57,8 +54,6 @@ type MainPage struct {
 }
 
 func NewMainPage(application *tview.Application, path string) *MainPage {
-
-	datasetInfo := dataset_info.NewDatasetInfo(application)
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
@@ -66,7 +61,6 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	mainPage := &MainPage{
 		application:     application,
 		fileBrowser:     fileBrowser,
-		datasetInfo:     datasetInfo,
 		snapshotBrowser: snapshotBrowser,
 	}
 
@@ -80,7 +74,6 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
 		switch e := event.(type) {
 		case file_browser.PathChangedEvent:
-			datasetInfo.SetPath(e.NewPath)
 			snapshotBrowser.SetPath(e.NewPath, false)
 		case file_browser.FileBrowserStatusEvent:
 			mainPage.showStatusMessage(e.Message)
@@ -119,7 +112,6 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			mainPage.Init(path)
 		} else {
 			currentPath := fileBrowser.GetPath()
-			mainPage.datasetInfo.SetPath(currentPath)
 			mainPage.snapshotBrowser.SetPath(currentPath, true)
 		}
 	})
@@ -164,16 +156,12 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	//dialog := createFileBrowserActionDialog()
 
 	windowLayout.AddItem(mainPage.fileBrowser.GetLayout(), 0, 2, true)
-
-	infoLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-	infoLayout.AddItem(mainPage.datasetInfo.GetLayout(), 0, 1, false)
-	infoLayout.AddItem(mainPage.snapshotBrowser.GetLayout(), 0, 2, false)
-	windowLayout.AddItem(infoLayout, 0, 1, false)
+	// the dataset info is shown on the dataset page only, the snapshots use the whole height here
+	windowLayout.AddItem(mainPage.snapshotBrowser.GetLayout(), 0, 1, false)
 
 	mainPageLayout.AddItem(windowLayout, 0, 1, true)
 
 	mainPage.windowLayout = windowLayout
-	mainPage.infoLayout = infoLayout
 
 	// Set mouse capture on the top-level layout to capture drags anywhere on the screen
 	mainPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
@@ -191,8 +179,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 		mouseX, mouseY := event.Position()
 		buttons := event.Buttons()
 
-		diX, diY, diW, diH := mainPage.datasetInfo.GetLayout().GetRect()
-		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+		sbX, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
 		winX, _, winW, _ := windowLayout.GetRect()
 
 		// 1. If currently dragging
@@ -217,7 +204,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 					mainPage.dragTimer.Stop()
 					mainPage.dragTimer = nil
 				}
-				mainPage.applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH)
+				mainPage.applyResize(mouseX, winX, winW)
 				return tview.MouseConsumed, nil
 			} else {
 				// Schedule a trailing redraw for the final drag position
@@ -226,32 +213,18 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 				}
 				mainPage.dragTimer = time.AfterFunc(30*time.Millisecond, func() {
 					mainPage.application.QueueUpdateDraw(func() {
-						mainPage.applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH)
+						mainPage.applyResize(mouseX, winX, winW)
 					})
 				})
 				return action, nil // consume event for children but do not trigger immediate screen redraw
 			}
 		}
 
-		// 2. Not dragging: detect hover boundaries
-		isOnVertical := false
-		if mouseY >= diY && mouseY < sbY+sbH {
-			if mouseX == diX || mouseX == diX-1 {
-				isOnVertical = true
-			}
-		}
-
-		isOnHorizontal := false
-		if mouseX >= diX && mouseX < diX+diW {
-			if mouseY == sbY || mouseY == sbY-1 {
-				isOnHorizontal = true
-			}
-		}
+		// 2. Not dragging: detect hovering the boundary between the file browser and the snapshots
+		isOnVertical := mouseY >= sbY && mouseY < sbY+sbH && (mouseX == sbX || mouseX == sbX-1)
 
 		newHover := boundaryNone
-		if isOnHorizontal {
-			newHover = boundaryHorizontal
-		} else if isOnVertical {
+		if isOnVertical {
 			newHover = boundaryVertical
 		}
 
@@ -262,18 +235,11 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 		}
 
 		// 3. Initiate dragging
-		if buttons&tcell.Button1 != 0 && action == tview.MouseLeftDown {
-			if isOnHorizontal {
-				mainPage.isDragging = true
-				mainPage.dragType = dragHorizontal
-				mainPage.lastDragRedraw = time.Now()
-				return tview.MouseConsumed, nil
-			} else if isOnVertical {
-				mainPage.isDragging = true
-				mainPage.dragType = dragVertical
-				mainPage.lastDragRedraw = time.Now()
-				return tview.MouseConsumed, nil
-			}
+		if buttons&tcell.Button1 != 0 && action == tview.MouseLeftDown && isOnVertical {
+			mainPage.isDragging = true
+			mainPage.dragType = dragVertical
+			mainPage.lastDragRedraw = time.Now()
+			return tview.MouseConsumed, nil
 		}
 
 		return action, event
@@ -294,7 +260,6 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 func (mainPage *MainPage) Init(path string) {
 	mainPage.wasInitialized = true
-	mainPage.datasetInfo.SetPath(path)
 	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SelectFirstEntryIfExists()
@@ -304,7 +269,6 @@ func (mainPage *MainPage) Init(path string) {
 func (mainPage *MainPage) focusableComponents() []FocusableUiComponent {
 	return []FocusableUiComponent{
 		mainPage.fileBrowser,
-		mainPage.datasetInfo,
 		mainPage.snapshotBrowser,
 	}
 }
@@ -398,37 +362,15 @@ func (mainPage *MainPage) updateBorderHighlights() {
 	// Redraw logic is handled by drawBoundaryHighlights based on the hoveredBoundary/isDragging states.
 }
 
-func (mainPage *MainPage) applyResize(mouseX, mouseY, winX, winW, diY, diH, sbY, sbH int) {
-	if mainPage.dragType == dragVertical {
-		newLeftWidth := mouseX - winX
-		minWidth := 10
-		if newLeftWidth < minWidth {
-			newLeftWidth = minWidth
-		}
-		if newLeftWidth > winW-minWidth {
-			newLeftWidth = winW - minWidth
-		}
-		newRightWidth := winW - newLeftWidth
-
-		mainPage.windowLayout.ResizeItem(mainPage.fileBrowser.GetLayout(), 0, newLeftWidth)
-		mainPage.windowLayout.ResizeItem(mainPage.infoLayout, 0, newRightWidth)
-	} else if mainPage.dragType == dragHorizontal {
-		infoH := diH + sbH
-		infoY := diY
-		newTopHeight := mouseY - infoY
-		minTopHeight := 4
-		minBottomHeight := 5
-		if newTopHeight < minTopHeight {
-			newTopHeight = minTopHeight
-		}
-		if newTopHeight > infoH-minBottomHeight {
-			newTopHeight = infoH - minBottomHeight
-		}
-		newBottomHeight := infoH - newTopHeight
-
-		mainPage.infoLayout.ResizeItem(mainPage.datasetInfo.GetLayout(), 0, newTopHeight)
-		mainPage.infoLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, newBottomHeight)
+// applyResize moves the boundary between the file browser and the snapshots to mouseX.
+func (mainPage *MainPage) applyResize(mouseX, winX, winW int) {
+	if mainPage.dragType != dragVertical {
+		return
 	}
+	minWidth := 10
+	newLeftWidth := max(minWidth, min(mouseX-winX, winW-minWidth))
+	mainPage.windowLayout.ResizeItem(mainPage.fileBrowser.GetLayout(), 0, newLeftWidth)
+	mainPage.windowLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, winW-newLeftWidth)
 }
 
 func (mainPage *MainPage) SetPages(pages *tview.Pages) {
@@ -438,38 +380,17 @@ func (mainPage *MainPage) SetPages(pages *tview.Pages) {
 // drawBoundaryHighlights highlights the pane boundary that is hovered or dragged.
 // Called after each draw while this page is in front (see CreateUi).
 func (mainPage *MainPage) drawBoundaryHighlights(screen tcell.Screen) {
-	// Highlight vertical boundary adjacent line segment
-	if mainPage.hoveredBoundary == boundaryVertical || (mainPage.isDragging && mainPage.dragType == dragVertical) {
-		_, diY, _, _ := mainPage.datasetInfo.GetLayout().GetRect()
-		diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
-		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-
-		if diW > 0 && sbH > 0 {
-			highlightColor := theme.Primary
-			for y := diY; y < sbY+sbH; y++ {
-				for _, x := range []int{diX - 1, diX} {
-					primary, combining, style, _ := screen.GetContent(x, y)
-					newStyle := style.Foreground(highlightColor)
-					screen.SetContent(x, y, primary, combining, newStyle)
-				}
-			}
-		}
+	if mainPage.hoveredBoundary != boundaryVertical && !(mainPage.isDragging && mainPage.dragType == dragVertical) {
+		return
 	}
-
-	// Highlight horizontal boundary adjacent line segment
-	if mainPage.hoveredBoundary == boundaryHorizontal || (mainPage.isDragging && mainPage.dragType == dragHorizontal) {
-		diX, _, diW, _ := mainPage.datasetInfo.GetLayout().GetRect()
-		_, sbY, _, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
-
-		if diW > 0 && sbH > 0 {
-			highlightColor := theme.Primary
-			for x := diX; x < diX+diW; x++ {
-				for _, y := range []int{sbY - 1, sbY} {
-					primary, combining, style, _ := screen.GetContent(x, y)
-					newStyle := style.Foreground(highlightColor)
-					screen.SetContent(x, y, primary, combining, newStyle)
-				}
-			}
+	sbX, sbY, sbW, sbH := mainPage.snapshotBrowser.GetLayout().GetRect()
+	if sbW <= 0 || sbH <= 0 {
+		return
+	}
+	for y := sbY; y < sbY+sbH; y++ {
+		for _, x := range []int{sbX - 1, sbX} {
+			primary, combining, style, _ := screen.GetContent(x, y)
+			screen.SetContent(x, y, primary, combining, style.Foreground(theme.Primary))
 		}
 	}
 }

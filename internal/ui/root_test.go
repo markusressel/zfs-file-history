@@ -149,8 +149,7 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 		return loaded
 	})
 
-	// focus the snapshot browser and start typing a filter
-	press(tcell.KeyTab, 0)
+	// focus the snapshot browser (next to the file browser) and start typing a filter
 	press(tcell.KeyTab, 0)
 	waitFor("snapshot browser focused", func() bool {
 		focused := false
@@ -277,4 +276,14 @@ func TestRelativeTimesKeyInDialogs(t *testing.T) {
 	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
 	time.Sleep(100 * time.Millisecond)
 	assert.True(t, util.IsRelativeTimes())
+}
+
+// The dataset info is only shown on the dataset page: on the main page, Tab goes from the file browser straight
+// to the snapshots, which use the whole height of the right column.
+func TestMainPageHasNoDatasetInfo(t *testing.T) {
+	app, mainPage, _ := createUi(t.TempDir(), true)
+	assert.Equal(t, []FocusableUiComponent{mainPage.fileBrowser, mainPage.snapshotBrowser}, mainPage.focusableComponents())
+	assert.Equal(t, 2, mainPage.windowLayout.GetItemCount())
+	assert.Same(t, mainPage.snapshotBrowser.GetLayout(), mainPage.windowLayout.GetItem(1))
+	app.Stop()
 }
