@@ -32,7 +32,10 @@
   since when it is unchanged), and one of the size of the selected file (its number of versions and last change).
   The snapshot selected in the snapshot list is highlighted in them. `o` hides it to make room for the files, and
   shows it again (remembered between runs).
-* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. `h` in the snapshot
+* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. Snapshots in which a
+  new version of the selected file or folder starts are bright, the ones holding the same as the previous snapshot
+  are dimmed (without a selected entry: the snapshots in which the folder changed, or data was written to the
+  dataset). `v` shows only the snapshots with changes, like the histories (remembered per screen). `h` in the snapshot
   list (or its action menu) opens the history of the selected file or folder at that snapshot.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
 * 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the

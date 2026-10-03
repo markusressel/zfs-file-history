@@ -1,7 +1,6 @@
 package path_overview
 
 import (
-	"os"
 	"slices"
 	"strings"
 	"zfs-file-history/internal/data"
@@ -50,7 +49,7 @@ func summarize(versions []data.PathVersion) *pathHistory {
 			}
 			continue
 		}
-		if !isDifferent(sorted[i-1].Info, version.Info) {
+		if !data.InfoDiffers(sorted[i-1].Info, version.Info) {
 			continue
 		}
 		history.changed[i] = true
@@ -61,18 +60,6 @@ func summarize(versions []data.PathVersion) *pathHistory {
 		}
 	}
 	return history
-}
-
-// isDifferent returns whether two versions of a path differ (nil: the path does not exist), judged by their
-// metadata like the diff states. For folders, the modification time changes when entries are added or removed.
-func isDifferent(a os.FileInfo, b os.FileInfo) bool {
-	if a == nil || b == nil {
-		return (a == nil) != (b == nil)
-	}
-	return a.IsDir() != b.IsDir() ||
-		a.Mode() != b.Mode() ||
-		a.Size() != b.Size() ||
-		!a.ModTime().Equal(b.ModTime())
 }
 
 // indexOf returns the index of the version in the given snapshot, or -1.

@@ -113,7 +113,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateFolderChanges() {
 					return
 				}
 				snapshotBrowser.folderChanges = result
-				snapshotBrowser.tableContainer.RenderCells()
+				snapshotBrowser.changesUpdated()
 				snapshotBrowser.emit(FolderChangesLoaded{FolderPath: result.folderPath, BySnapshot: result.bySnapshot})
 			})
 		}()

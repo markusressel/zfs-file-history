@@ -57,6 +57,8 @@ var (
 					SnapshotOnly: tcell.ColorGreen,
 					Equal:        tcell.ColorGray,
 				},
+				Changed:   tcell.ColorWhite,
+				Unchanged: tcell.ColorGray,
 			},
 		},
 		List: ListColors{

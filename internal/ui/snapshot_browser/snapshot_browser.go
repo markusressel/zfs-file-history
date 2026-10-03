@@ -63,6 +63,13 @@ type SnapshotBrowserComponent struct {
 	folderChanges          *folderChanges
 	folderChangesDebouncer *uiutil.Debouncer
 	cancelFolderChanges    func()
+
+	// where new versions of the selected entry start, see versions.go
+	entryVersions *entryVersionStarts
+	// onlyChanges hides the snapshots in which nothing changed (v)
+	onlyChanges bool
+	// layoutStateKey is where the columns of the page are saved, see UseColumnLayout
+	layoutStateKey string
 }
 
 type snapshotLoadResult struct {
@@ -201,6 +208,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) UseColumnLayout(layout ColumnLa
 	}
 	snapshotBrowser.tableContainer.SetActiveColumns(layout.columns)
 	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, layout.stateKey, tableColumns)
+	snapshotBrowser.layoutStateKey = layout.stateKey
+	snapshotBrowser.loadOnlyChanges()
 }
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
@@ -209,6 +218,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		application:            application,
 		currentSnapshots:       []*zfs.Snapshot{},
 		selectedSnapshotMemory: uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
+		layoutStateKey:         legacyLayoutStateKey,
 	}
 	snapshotBrowser.folderChangesDebouncer = uiutil.NewDebouncer(application, folderChangesDelay)
 
@@ -285,6 +295,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 				} else {
 					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
 				}
+				return nil
+			} else if key == tcell.KeyRune && event.Rune() == 'v' {
+				snapshotBrowser.toggleOnlyChanges()
 				return nil
 			} else if key == tcell.KeyRune && event.Rune() == 'h' && !snapshotBrowser.HasMultiSelection() {
 				if target := snapshotBrowser.getHistoryTarget(); target != nil {
@@ -590,8 +603,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			dataset := entriesToProcess[0].Snapshot.ParentDataset
 			loaded.DatasetName, loaded.DatasetPath = dataset.GetName(), dataset.Path
 		}
+		var versions *entryVersionStarts
+		if filePath != "" {
+			versions = &entryVersionStarts{path: filePath, newVersion: data.NewVersions(entryVersions)}
+		}
 		snapshotBrowser.application.QueueUpdateDraw(func() {
 			if snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
+				snapshotBrowser.setEntryVersions(versions)
 				snapshotBrowser.emit(loaded)
 			}
 		})
@@ -625,7 +643,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateTitleAndFooter() {
 	snapshotBrowser.tableContainer.SetFooter(formatFooter(
 		len(snapshotBrowser.tableContainer.GetEntries()),
 		len(snapshotBrowser.tableContainer.GetAllEntries()),
-		snapshotBrowser.tableContainer.IsFilterActive(),
+		snapshotBrowser.tableContainer.IsFiltered(),
 	))
 }
 
@@ -1143,6 +1161,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 		uiutil.TableComponentShortcutMove,
 		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
+		snapshotBrowser.onlyChangesShortcut(),
 	}
 
 	if snapshotBrowser.GetSelection() != nil {

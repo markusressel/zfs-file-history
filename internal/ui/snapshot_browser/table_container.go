@@ -35,7 +35,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 	for _, column := range columns {
 		cellText := "N/A"
 		cellAlign := tview.AlignLeft
-		cellColor := determineBaseTextColor(entry)
+		cellColor := snapshotBrowser.rowColor(entry)
 		switch column {
 		case columnDate:
 			cellText = uiutil.FormatTime(entry.Snapshot.Properties.CreationDate)
@@ -206,19 +206,6 @@ func determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
 		fallthrough
 	default:
 		return theme.Colors.SnapshotBrowser.Table.State.Unknown
-	}
-}
-
-func determineBaseTextColor(entry *data.SnapshotBrowserEntry) tcell.Color {
-	switch entry.DiffState {
-	case diff_state.Deleted:
-		fallthrough
-	case diff_state.Added:
-		fallthrough
-	case diff_state.Modified:
-		return tcell.ColorWhite
-	default:
-		return tcell.ColorGray
 	}
 }
 
