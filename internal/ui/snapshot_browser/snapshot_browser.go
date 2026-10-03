@@ -10,6 +10,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
@@ -53,6 +54,15 @@ type SnapshotBrowserComponent struct {
 	selectLatestOnNextLoad bool
 
 	diffLoader *uiutil.DebouncedLoader
+
+	// the folder compared with its snapshots, see folder_changes.go
+	workingCopyPath        string
+	workingCopy            folder_listing.Listing
+	folderChangesRequired  bool
+	folderChangesInput     *folderChangesInput
+	folderChanges          *folderChanges
+	folderChangesDebouncer *uiutil.Debouncer
+	cancelFolderChanges    func()
 }
 
 type snapshotLoadResult struct {
@@ -120,19 +130,78 @@ var (
 		Alignment: tview.AlignCenter,
 	}
 
-	tableColumns = []*table.Column{
-		columnName, columnDate, columnDiff, columnUsed, columnWritten, columnRefer, columnRatio, columnClones, columnHolds,
+	// the columns about the selected entry and the folder of the browser (rather than the whole dataset)
+
+	// columnSize is the size of the selected entry in the snapshot
+	columnSize = &table.Column{
+		Id:        9,
+		Key:       "entrySize",
+		Title:     "Size",
+		Alignment: tview.AlignRight,
+	}
+	// columnModified is the modification time of the selected entry in the snapshot: which version it holds
+	columnModified = &table.Column{
+		Id:        10,
+		Key:       "entryModified",
+		Title:     "Modified",
+		Alignment: tview.AlignLeft,
+	}
+	// columnVsNow is the number of entries of the folder that differ between the snapshot and now
+	columnVsNow = &table.Column{
+		Id:        11,
+		Key:       "folderVsNow",
+		Title:     "vs now",
+		Alignment: tview.AlignLeft,
+	}
+	// columnChanges is the number of entries of the folder that changed since the previous snapshot
+	columnChanges = &table.Column{
+		Id:        12,
+		Key:       "folderChanges",
+		Title:     "Changes",
+		Alignment: tview.AlignLeft,
 	}
 
-	initialActiveTableColumns = []*table.Column{
-		columnName,
-		columnDiff,
-		columnDate,
-		columnUsed,
-		columnWritten,
-		columnHolds,
+	tableColumns = []*table.Column{
+		columnName, columnDate, columnDiff, columnSize, columnModified, columnVsNow, columnChanges,
+		columnUsed, columnWritten, columnRefer, columnRatio, columnClones, columnHolds,
 	}
 )
+
+// ColumnLayout is where the snapshot browser of a page saves its columns, and its default columns.
+type ColumnLayout struct {
+	stateKey string
+	columns  []*table.Column
+}
+
+var (
+	// FilesLayout is the layout on the files page: about the path that is shown
+	FilesLayout = ColumnLayout{
+		stateKey: "snapshotBrowser.files",
+		columns:  []*table.Column{columnName, columnDiff, columnDate, columnSize, columnModified, columnChanges, columnHolds},
+	}
+	// DatasetsLayout is the layout on the dataset page: about the whole dataset
+	DatasetsLayout = ColumnLayout{
+		stateKey: "snapshotBrowser.datasets",
+		columns:  []*table.Column{columnName, columnDate, columnUsed, columnWritten, columnRefer, columnHolds},
+	}
+)
+
+// legacyLayoutStateKey is where both pages saved their (shared) layout before they had their own.
+const legacyLayoutStateKey = "snapshotBrowser"
+
+// UseColumnLayout shows the columns of the layout, or the ones saved for it, and saves the changes. A layout saved
+// before the pages had their own is taken over once. Must be called on the UI thread, once.
+func (snapshotBrowser *SnapshotBrowserComponent) UseColumnLayout(layout ColumnLayout) {
+	if store := state.Current; store != nil {
+		if _, saved := store.TableLayout(layout.stateKey); !saved {
+			if legacy, ok := store.TableLayout(legacyLayoutStateKey); ok {
+				store.SetTableLayout(layout.stateKey, legacy)
+			}
+		}
+	}
+	snapshotBrowser.tableContainer.SetActiveColumns(layout.columns)
+	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, layout.stateKey, tableColumns)
+}
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
 	snapshotBrowser := &SnapshotBrowserComponent{
@@ -141,6 +210,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		currentSnapshots:       []*zfs.Snapshot{},
 		selectedSnapshotMemory: uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
 	}
+	snapshotBrowser.folderChangesDebouncer = uiutil.NewDebouncer(application, folderChangesDelay)
 
 	snapshotBrowser.diffLoader = uiutil.NewDebouncedLoader(application, func() {
 		currentSelection := snapshotBrowser.GetSelection()
@@ -235,9 +305,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 	snapshotBrowser.tableContainer.SetFilterFunc(snapshotMatchesFilter)
 	snapshotBrowser.tableContainer.SetFilterChangedCallback(snapshotBrowser.updateTitleAndFooter)
 	snapshotBrowser.tableContainer.SetColumnSpec(tableColumns, columnDate, true)
-	snapshotBrowser.tableContainer.SetActiveColumns(initialActiveTableColumns)
-	// shared by the snapshot browsers of the main and the dataset page
-	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, "snapshotBrowser", tableColumns)
+	// until the page sets its own, see UseColumnLayout
+	snapshotBrowser.tableContainer.SetActiveColumns(FilesLayout.columns)
+	// the folder changes are only computed while they are shown
+	snapshotBrowser.tableContainer.SetColumnLayoutChangedCallback(func(table.ColumnLayout) { snapshotBrowser.updateFolderChanges() })
 	snapshotBrowser.tableContainer.SetSelectionChangedCallback(func(entry *data.SnapshotBrowserEntry) {
 		if snapshotBrowser.isRestoringSelection {
 			return
@@ -357,6 +428,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 	folderPath := snapshotBrowser.path
 	// before the cells are rendered below
 	snapshotBrowser.updateSizeScales(snapshots)
+	// does nothing if the folder, its snapshots and its entries are the same as before
+	snapshotBrowser.updateFolderChanges()
 
 	if len(snapshots) == 0 {
 		snapshotBrowser.tableContainer.SetData([]*data.SnapshotBrowserEntry{})
@@ -439,6 +512,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 		type diffResult struct {
 			entry *data.SnapshotBrowserEntry
 			state diff_state.DiffState
+			// info is the selected entry in the snapshot, nil if it does not contain it
+			info os.FileInfo
 		}
 		var batch []diffResult
 		lastDrawTime := time.Now()
@@ -456,6 +531,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 				}
 				for _, res := range batchCopy {
 					res.entry.DiffState = res.state
+					res.entry.HasEntryInfo = filePath != ""
+					res.entry.EntryInfo = res.info
 					res.entry.IsLoading = false
 					snapshotBrowser.tableContainer.UpdateEntry(res.entry)
 				}
@@ -478,8 +555,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			}
 
 			diffState := diff_state.Unknown
+			var info os.FileInfo
 			if filePath != "" {
-				var info os.FileInfo
 				diffState, info = entry.Snapshot.DiffStateAndInfo(filePath)
 				entryVersions = append(entryVersions, data.PathVersion{Snapshot: entry.Snapshot, Info: info})
 			}
@@ -491,7 +568,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 				folderVersions = append(folderVersions, data.PathVersion{Snapshot: entry.Snapshot, Info: folderInfo})
 			}
 
-			batch = append(batch, diffResult{entry: entry, state: diffState})
+			batch = append(batch, diffResult{entry: entry, state: diffState, info: info})
 
 			now := time.Now()
 			isLast := i == len(entriesToProcess)-1

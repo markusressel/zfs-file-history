@@ -118,3 +118,45 @@ func TestNewEntry(t *testing.T) {
 	// the same as in a listing, so entries made from file infos (e.g. of the file browser) compare equal
 	assert.Equal(t, Read(root).Entries["file"], NewEntry("file", info))
 }
+
+func TestCompareSnapshots(t *testing.T) {
+	root := t.TempDir()
+	dataset := &zfs.Dataset{Path: root, HiddenZfsPath: filepath.Join(root, ".zfs")}
+	write := func(path string, content string) {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		require.NoError(t, os.Chtimes(path, fileTime, fileTime))
+	}
+	// s1: no folder, s2: a, s3: a b, s4: a b(changed); now: b(changed) c
+	files := map[string]map[string]string{
+		"s2": {"a": "a"},
+		"s3": {"a": "a", "b": "b"},
+		"s4": {"a": "a", "b": "bb"},
+	}
+	var snapshots []*zfs.Snapshot
+	for _, name := range []string{"s4", "s1", "s3", "s2"} { // in any order
+		base := filepath.Join(root, ".zfs", "snapshot", name)
+		day := map[string]int{"s1": 1, "s2": 2, "s3": 3, "s4": 4}[name]
+		snapshots = append(snapshots, &zfs.Snapshot{Name: name, Path: base, ParentDataset: dataset,
+			Properties: zfs.SnapshotProperties{CreationDate: fileTime.AddDate(0, 0, day)}})
+		require.NoError(t, os.MkdirAll(base, 0o755))
+		for file, content := range files[name] {
+			write(filepath.Join(base, "docs", file), content)
+		}
+	}
+	workingCopy := Listing{Exists: true, Entries: map[string]Entry{
+		"b": {Name: "b", Type: File, Size: 2, Mode: 0o644, ModTime: fileTime},
+		"c": {Name: "c", Type: File, Size: 1, Mode: 0o644, ModTime: fileTime},
+	}}
+
+	changes, err := CompareSnapshots(context.Background(), filepath.Join(root, "docs"), snapshots, workingCopy)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]SnapshotChanges{
+		"s1": {Exists: false, Initial: true},
+		// created: all its entries are added
+		"s2": {Exists: true, VsNow: Counts{Added: 2, Deleted: 1}, VsPrevious: Counts{Added: 1}},
+		"s3": {Exists: true, VsNow: Counts{Added: 1, Deleted: 1, Modified: 1}, VsPrevious: Counts{Added: 1}},
+		"s4": {Exists: true, VsNow: Counts{Added: 1, Deleted: 1}, VsPrevious: Counts{Modified: 1}},
+	}, changes)
+	assert.Equal(t, 2, changes["s4"].VsNow.Total())
+}

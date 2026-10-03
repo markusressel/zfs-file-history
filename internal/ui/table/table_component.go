@@ -519,6 +519,12 @@ func (c *RowSelectionTable[T]) toggleSortDirection() {
 	c.notifyColumnLayoutChanged()
 }
 
+// RenderCells renders all cells again, e.g. after data they show changed outside of the entries.
+// Must be called on the UI thread.
+func (c *RowSelectionTable[T]) RenderCells() {
+	c.updateTableContents()
+}
+
 func (c *RowSelectionTable[T]) updateTableContents() {
 
 	table := c.table

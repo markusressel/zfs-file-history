@@ -2,6 +2,7 @@ package snapshot_browser
 
 import (
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/ui/status_message"
 )
 
@@ -43,3 +44,12 @@ type PathVersionsLoaded struct {
 }
 
 func (e PathVersionsLoaded) isSnapshotBrowserEvent() {}
+
+// FolderChangesLoaded is emitted on the UI thread once the folder of the browser was compared with each of its
+// snapshots: with now and with the previous snapshot, by snapshot name.
+type FolderChangesLoaded struct {
+	FolderPath string
+	BySnapshot map[string]folder_listing.SnapshotChanges
+}
+
+func (e FolderChangesLoaded) isSnapshotBrowserEvent() {}

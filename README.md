@@ -63,6 +63,11 @@
   them to make room in small terminals, and shows them again (remembered between runs).
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
+* 🗃️ **Snapshot columns per screen:** On the files screen, the snapshot list is about the path you look at: `Size`
+  and `Modified` of the selected entry in each snapshot (which version it holds), and the changes of the folder since
+  the previous snapshot (`Changes`, e.g. `+3 −1 ~2`) or compared with now (`vs now`). On the datasets screen, it is
+  about the whole dataset: `Used`, `Written`, `Refer`. All columns can be shown on both screens (`F2`), each screen
+  remembers its own.
 * 📏 **Written:** The `Written` column of the snapshot list shows how much was written between a snapshot and its
   predecessor (`zfs get written`): `0 B` (dimmed) for snapshots in which nothing changed. `Used` and `Written` are
   colored by how big they are compared to the other snapshots (logarithmically, so outliers do not hide the rest).

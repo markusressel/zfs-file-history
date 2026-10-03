@@ -61,7 +61,10 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
-	pathOverview := path_overview.NewPathOverview(application, fileBrowser.DiffCounts)
+	pathOverview := path_overview.NewPathOverview(fileBrowser.DiffCounts)
+	// about the path that is shown; the overview shows how the folder differs from now
+	snapshotBrowser.UseColumnLayout(snapshot_browser.FilesLayout)
+	snapshotBrowser.RequireFolderChanges()
 
 	mainPage := &MainPage{
 		application:     application,
@@ -80,7 +83,8 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
 		switch e := event.(type) {
 		case file_browser.EntriesLoadedEvent:
-			pathOverview.SetWorkingCopy(fileBrowser.WorkingCopyListing())
+			// so the snapshot browser need not read the folder again to compare it with its snapshots
+			snapshotBrowser.SetWorkingCopy(fileBrowser.WorkingCopyListing())
 		case file_browser.PathChangedEvent:
 			pathOverview.SetFolder(e.NewPath)
 			snapshotBrowser.SetPath(e.NewPath, false)
@@ -103,6 +107,8 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		switch e := event.(type) {
 		case snapshot_browser.RequestHistoryEvent:
 			mainPage.showHistory(e.Entry, e.Snapshot.Snapshot)
+		case snapshot_browser.FolderChangesLoaded:
+			pathOverview.SetFolderChanges(e.FolderPath, e.BySnapshot)
 		case snapshot_browser.PathVersionsLoaded:
 			pathOverview.SetVersions(e.DatasetName, e.DatasetPath, e.FolderPath, e.Folder, e.Entry, e.EntryVersions)
 		case snapshot_browser.SelectedSnapshotChanged:

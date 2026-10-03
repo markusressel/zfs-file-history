@@ -198,3 +198,63 @@ func CountChanges(changes []*Change) (added int, deleted int, modified int) {
 	}
 	return added, deleted, modified
 }
+
+// Counts is the number of added, deleted and modified entries between two listings.
+type Counts struct {
+	Added    int
+	Deleted  int
+	Modified int
+}
+
+// CountsOf counts the changes by their kind.
+func CountsOf(changes []*Change) Counts {
+	var counts Counts
+	counts.Added, counts.Deleted, counts.Modified = CountChanges(changes)
+	return counts
+}
+
+// Total is the number of changed entries.
+func (c Counts) Total() int {
+	return c.Added + c.Deleted + c.Modified
+}
+
+// SnapshotChanges is a folder in a snapshot, compared with now and with the previous snapshot.
+type SnapshotChanges struct {
+	// Exists is false if the snapshot does not contain the folder; the counts are zero then
+	Exists bool
+	// VsNow are the entries that differ between the snapshot and now
+	VsNow Counts
+	// Initial is true for the oldest snapshot: there is no previous one to compare with
+	Initial bool
+	// VsPrevious are the entries that changed since the previous snapshot (the folder did not exist in it: all
+	// entries are added)
+	VsPrevious Counts
+}
+
+// CompareSnapshots reads the folder at folderPath in all snapshots (in any order) and compares it with workingCopy
+// (the folder as it is now) and with the previous snapshot. Only the counts are kept, not the listings, by snapshot
+// name. Accesses the file system, so it must not run on the UI thread.
+func CompareSnapshots(ctx context.Context, folderPath string, snapshots []*zfs.Snapshot, workingCopy Listing) (map[string]SnapshotChanges, error) {
+	sorted := slices.Clone(snapshots)
+	slices.SortStableFunc(sorted, func(a, b *zfs.Snapshot) int {
+		return a.Properties.CreationDate.Compare(b.Properties.CreationDate)
+	})
+	listings, err := ReadInSnapshots(ctx, folderPath, sorted)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]SnapshotChanges, len(sorted))
+	previous := Missing()
+	for i, listing := range listings {
+		changes := SnapshotChanges{Exists: listing.Exists, Initial: i == 0}
+		if listing.Exists {
+			changes.VsNow = CountsOf(Compare(listing, workingCopy))
+			if !changes.Initial {
+				changes.VsPrevious = CountsOf(Compare(previous, listing))
+			}
+		}
+		result[sorted[i].Name] = changes
+		previous = listing
+	}
+	return result, nil
+}

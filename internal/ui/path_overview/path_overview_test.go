@@ -1,7 +1,6 @@
 package path_overview
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -200,7 +199,7 @@ func render(t *testing.T, overview *PathOverviewComponent, width int) ([]string,
 func TestPathOverview_Draw(t *testing.T) {
 	uiutil.InitTimeFormat()
 	counts := diff_state.Counts{Added: 2, Deleted: 1, Modified: 4, Equal: 12}
-	overview := NewPathOverview(tview.NewApplication(), func() diff_state.Counts { return counts })
+	overview := NewPathOverview(func() diff_state.Counts { return counts })
 	folderPath := "/pool/home/markus/docs"
 	entry := &data.FileBrowserEntry{Name: "report.pdf", Type: data.File, RealFile: &data.RealFile{Name: "report.pdf", Path: folderPath + "/report.pdf"}}
 	overview.SetFolder(folderPath)
@@ -288,87 +287,22 @@ func TestSameAsNowSince(t *testing.T) {
 	}
 }
 
-// The folder is read in all snapshots in the background once it stayed the same for a moment, and compared with
-// its entries as they are now; a change of the entries computes the distances again.
-func TestPathOverview_Distances(t *testing.T) {
+// The distances come from the folder changes of the snapshot browser: the entries that differ from now.
+func TestPathOverview_SetFolderChanges(t *testing.T) {
 	folderPath := "/pool/home/markus/docs"
-	entry := func(name string, size int64) folder_listing.Entry {
-		return folder_listing.Entry{Name: name, Type: folder_listing.File, Size: size, Mode: 0o644, ModTime: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)}
-	}
-	listing := func(entries ...folder_listing.Entry) folder_listing.Listing {
-		result := folder_listing.Listing{Exists: true, Entries: map[string]folder_listing.Entry{}}
-		for _, e := range entries {
-			result.Entries[e.Name] = e
-		}
-		return result
-	}
-	// a.txt in all snapshots, b.txt since s3, grown in s5; s1 does not contain the folder
-	inSnapshots := map[string]folder_listing.Listing{
-		"s1": folder_listing.Missing(),
-		"s2": listing(entry("a.txt", 1)),
-		"s3": listing(entry("a.txt", 1), entry("b.txt", 1)),
-		"s4": listing(entry("a.txt", 1), entry("b.txt", 1)),
-		"s5": listing(entry("a.txt", 1), entry("b.txt", 2)),
-	}
-	reads := make(chan string, 10)
-	original := readListings
-	t.Cleanup(func() { readListings = original })
-	readListings = func(ctx context.Context, path string, snapshots []*zfs.Snapshot) ([]folder_listing.Listing, error) {
-		reads <- path
-		result := make([]folder_listing.Listing, len(snapshots))
-		for i, snapshot := range snapshots {
-			result[i] = inSnapshots[snapshot.Name]
-		}
-		return result, nil
-	}
-
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-	overview := NewPathOverview(app, func() diff_state.Counts { return diff_state.Counts{} })
-	app.SetRoot(overview.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
-	onUiThread := func(f func()) {
-		done := make(chan struct{})
-		app.QueueUpdate(func() { f(); close(done) })
-		<-done
-	}
-	distances := func() map[string]int {
-		var result map[string]int
-		onUiThread(func() {
-			if d := overview.currentDistances(); d != nil {
-				result = d.byName
-			}
-		})
-		return result
-	}
-
-	folderVersions := versions(nil, folder(1), folder(2), folder(2), folder(2))
-	onUiThread(func() {
-		overview.SetFolder(folderPath)
-		overview.SetVersions("pool/home", "/pool/home", folderPath, folderVersions, nil, nil)
-		// now: b.txt grew again
-		overview.SetWorkingCopy(folderPath, listing(entry("a.txt", 1), entry("b.txt", 3)))
+	overview := NewPathOverview(func() diff_state.Counts { return diff_state.Counts{} })
+	overview.SetFolder(folderPath)
+	overview.SetFolderChanges(folderPath, map[string]folder_listing.SnapshotChanges{
+		"s1": {Exists: false, Initial: true},
+		"s2": {Exists: true, VsNow: folder_listing.Counts{Added: 1, Modified: 2}, VsPrevious: folder_listing.Counts{Added: 3}},
+		"s3": {Exists: true},
 	})
-	assert.Eventually(t, func() bool { return distances() != nil }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, map[string]int{"s2": 1, "s3": 1, "s4": 1, "s5": 1}, distances(), "s1 does not contain the folder")
-	assert.Equal(t, folderPath, <-reads)
+	require.NotNil(t, overview.currentDistances())
+	assert.Equal(t, map[string]int{"s2": 3, "s3": 0}, overview.currentDistances().byName, "s1 does not contain the folder")
 
-	// the same entries again (e.g. a reload for another snapshot): nothing is read
-	onUiThread(func() { overview.SetWorkingCopy(folderPath, listing(entry("a.txt", 1), entry("b.txt", 3))) })
-	time.Sleep(2 * distanceDelay)
-	assert.Empty(t, reads)
-
-	// b.txt was changed back to its size in s5: computed again
-	onUiThread(func() { overview.SetWorkingCopy(folderPath, listing(entry("a.txt", 1), entry("b.txt", 2))) })
-	assert.Eventually(t, func() bool { return distances()["s5"] == 0 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, map[string]int{"s2": 1, "s3": 1, "s4": 1, "s5": 0}, distances())
-
-	// another folder: not computed until its entries are known
-	onUiThread(func() { overview.SetFolder("/pool/home/markus/other") })
-	assert.Nil(t, distances())
-	time.Sleep(2 * distanceDelay)
-	assert.Len(t, reads, 1, "only the change above was read")
+	// of another folder: not shown
+	overview.SetFolder("/pool/home/markus/other")
+	assert.Nil(t, overview.currentDistances())
 }
 
 // The distance graph ends with "→ now", unless the graph needs the space: then the graph comes first.
@@ -382,7 +316,7 @@ func TestPathOverview_NowMarker(t *testing.T) {
 		distances[snapshot.Name] = 40 - i
 	}
 	folderPath := "/pool/home/docs"
-	overview := NewPathOverview(tview.NewApplication(), func() diff_state.Counts { return diff_state.Counts{} })
+	overview := NewPathOverview(func() diff_state.Counts { return diff_state.Counts{} })
 	overview.SetFolder(folderPath)
 	overview.SetVersions("pool/home", "/pool/home", folderPath, many, nil, nil)
 	overview.distances = &folderDistances{folderPath: folderPath, byName: distances}

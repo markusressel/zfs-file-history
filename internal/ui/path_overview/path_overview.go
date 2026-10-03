@@ -5,7 +5,6 @@ import (
 	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
-	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -25,13 +24,11 @@ const (
 
 // PathOverviewComponent shows the folder of the file browser and its selected entry across the snapshots:
 // how the folder compares to the selected snapshot, how much it differs from now in each snapshot, and how the
-// selected entry changed. The selected snapshot is highlighted in the sparklines. The versions come from the
-// snapshot browser (see snapshot_browser.PathVersionsLoaded) and the entries of the folder from the file browser;
-// only the folder in the snapshots is read here, in the background (see distances.go).
-// All methods run on the UI thread.
+// selected entry changed. The selected snapshot is highlighted in the sparklines. Everything comes from the
+// snapshot browser (see snapshot_browser.PathVersionsLoaded and FolderChangesLoaded) and the file browser, the
+// overview reads nothing itself. All methods run on the UI thread.
 type PathOverviewComponent struct {
-	application *tview.Application
-	view        *overviewView
+	view *overviewView
 	// diffCounts returns the states of the entries of the folder compared to the selected snapshot
 	diffCounts func() diff_state.Counts
 
@@ -48,24 +45,14 @@ type PathOverviewComponent struct {
 	entryHistory      *pathHistory
 	hasLoadedVersions bool
 
-	// the folder as it is now and its snapshots, compared in the background (see scheduleDistances)
-	workingCopyPath   string
-	workingCopy       folder_listing.Listing
-	snapshotsPath     string
-	snapshots         []*zfs.Snapshot
-	distances         *folderDistances
-	distanceDebouncer *uiutil.Debouncer
-	cancelDistances   func()
+	// how the folder differs from now in each snapshot, see SetFolderChanges
+	distances *folderDistances
 }
 
 // NewPathOverview creates the overview. diffCounts returns the states of the entries of the folder compared to
 // the selected snapshot; it is called while drawing.
-func NewPathOverview(application *tview.Application, diffCounts func() diff_state.Counts) *PathOverviewComponent {
-	overview := &PathOverviewComponent{
-		application:       application,
-		diffCounts:        diffCounts,
-		distanceDebouncer: uiutil.NewDebouncer(application, distanceDelay),
-	}
+func NewPathOverview(diffCounts func() diff_state.Counts) *PathOverviewComponent {
+	overview := &PathOverviewComponent{diffCounts: diffCounts}
 	overview.view = &overviewView{Box: tview.NewBox(), overview: overview}
 	overview.view.SetBorder(true)
 	overview.view.SetBorderPadding(0, 0, 1, 1)
@@ -92,11 +79,7 @@ func (overview *PathOverviewComponent) GetLayout() tview.Primitive {
 
 // SetFolder sets the folder that is shown in the file browser.
 func (overview *PathOverviewComponent) SetFolder(path string) {
-	if path == overview.folderPath {
-		return
-	}
 	overview.folderPath = path
-	overview.scheduleDistances()
 }
 
 // SetEntry sets the selected entry of the file browser (nil: none, e.g. the header row).
@@ -116,11 +99,6 @@ func (overview *PathOverviewComponent) SetVersions(datasetName string, datasetPa
 	overview.datasetPath = datasetPath
 	overview.loadedFolderPath = folderPath
 	overview.folderHistory = summarize(folder)
-	snapshots := make([]*zfs.Snapshot, len(overview.folderHistory.versions))
-	for i, version := range overview.folderHistory.versions {
-		snapshots[i] = version.Snapshot
-	}
-	overview.setSnapshots(folderPath, snapshots)
 	overview.loadedEntryPath = ""
 	overview.entryHistory = nil
 	if entry != nil {
