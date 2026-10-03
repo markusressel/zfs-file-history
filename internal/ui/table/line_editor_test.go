@@ -93,6 +93,44 @@ func TestLineEditor_Words(t *testing.T) {
 	assert.Equal(t, 0, e.cursor)
 }
 
+// ctrl+Backspace and ctrl+Delete delete whole words, like in most editors and shells. Alt works the same, as
+// legacy terminals send alt+Backspace (ESC DEL) where they cannot report ctrl.
+func TestLineEditor_DeleteWords(t *testing.T) {
+	tests := []struct {
+		name           string
+		key            tcell.Key
+		modifiers      tcell.ModMask
+		cursor         int
+		expectedText   string
+		expectedCursor int
+	}{
+		{"ctrl+Backspace at the end", tcell.KeyBackspace, tcell.ModCtrl, 19, "zfs-auto-snap_", 14},
+		{"ctrl+Backspace after a separator", tcell.KeyBackspace, tcell.ModCtrl, 14, "zfs-auto-daily", 9},
+		{"ctrl+Backspace inside a word", tcell.KeyBackspace, tcell.ModCtrl, 11, "zfs-auto-ap_daily", 9},
+		{"ctrl+Backspace at the start", tcell.KeyBackspace, tcell.ModCtrl, 0, "zfs-auto-snap_daily", 0},
+		{"ctrl+Backspace2", tcell.KeyBackspace2, tcell.ModCtrl, 19, "zfs-auto-snap_", 14},
+		{"alt+Backspace", tcell.KeyBackspace, tcell.ModAlt, 19, "zfs-auto-snap_", 14},
+		{"ctrl+Delete at the start", tcell.KeyDelete, tcell.ModCtrl, 0, "-auto-snap_daily", 0},
+		{"ctrl+Delete before a separator", tcell.KeyDelete, tcell.ModCtrl, 3, "zfs-snap_daily", 3},
+		{"ctrl+Delete inside a word", tcell.KeyDelete, tcell.ModCtrl, 10, "zfs-auto-s_daily", 10},
+		{"ctrl+Delete at the end", tcell.KeyDelete, tcell.ModCtrl, 19, "zfs-auto-snap_daily", 19},
+		{"alt+Delete", tcell.KeyDelete, tcell.ModAlt, 0, "-auto-snap_daily", 0},
+		// without modifiers: a single character
+		{"Backspace", tcell.KeyBackspace, tcell.ModNone, 19, "zfs-auto-snap_dail", 18},
+		{"Delete", tcell.KeyDelete, tcell.ModNone, 0, "fs-auto-snap_daily", 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e := &lineEditor{}
+			e.Reset("zfs-auto-snap_daily")
+			e.cursor = test.cursor
+			require.True(t, e.HandleKey(tcell.NewEventKey(test.key, 0, test.modifiers)))
+			assert.Equal(t, test.expectedText, e.Text())
+			assert.Equal(t, test.expectedCursor, e.cursor)
+		})
+	}
+}
+
 func TestLineEditor_MultiByteRunes(t *testing.T) {
 	e := &lineEditor{}
 	typeRunes(e, "äöü")

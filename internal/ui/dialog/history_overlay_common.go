@@ -3,6 +3,7 @@ package dialog
 import (
 	"fmt"
 	"os"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/table"
@@ -105,4 +106,24 @@ func openColumnDialog[T table.RowSelectionTableEntry](application *tview.Applica
 		return
 	}
 	ShowDialogOnPages(application, pages, NewTableColumnSelectionDialog(application, title, allColumns, tableContainer), nil)
+}
+
+// versionAt returns the version that was current in the snapshot created at: the newest of versions created at or
+// before it, or the oldest version if all are newer. The histories only list the snapshots in which something
+// changed, so a snapshot in between shows the version of the last change before it. nil if versions is empty.
+func versionAt[T any](versions []*T, created func(*T) time.Time, at time.Time) *T {
+	var current, oldest *T
+	for _, version := range versions {
+		date := created(version)
+		if oldest == nil || date.Before(created(oldest)) {
+			oldest = version
+		}
+		if !date.After(at) && (current == nil || date.After(created(current))) {
+			current = version
+		}
+	}
+	if current == nil {
+		return oldest
+	}
+	return current
 }

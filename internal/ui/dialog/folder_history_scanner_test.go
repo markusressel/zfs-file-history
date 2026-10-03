@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/stretchr/testify/assert"
@@ -51,14 +52,25 @@ func (f *fakeDataset) addSnapshot(name string, created time.Time, files map[stri
 	return snapshot
 }
 
+// snapshot returns the snapshot with the given name.
+func (f *fakeDataset) snapshot(name string) *zfs.Snapshot {
+	for _, snapshot := range f.snapshots {
+		if snapshot.Name == name {
+			return snapshot
+		}
+	}
+	f.t.Fatalf("no snapshot %q", name)
+	return nil
+}
+
 var fileTime = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
 func day(n int) time.Time {
 	return time.Date(2026, 10, n, 0, 0, 0, 0, time.UTC)
 }
 
-func changeSummary(changes []*folderChange) map[string]folderChangeKind {
-	result := map[string]folderChangeKind{}
+func changeSummary(changes []*folder_listing.Change) map[string]folder_listing.ChangeKind {
+	result := map[string]folder_listing.ChangeKind{}
 	for _, change := range changes {
 		result[change.Name] = change.Kind
 	}
@@ -92,13 +104,13 @@ func TestScanFolderHistory(t *testing.T) {
 	}
 	assert.Equal(t, []string{"d5", "d4", "d2"}, changedNames, "newest first, only snapshots with changes")
 
-	assert.Equal(t, map[string]folderChangeKind{"a.txt": folderChangeDeleted}, changeSummary(history.Changed[0].Changes))
-	assert.Equal(t, map[string]folderChangeKind{"b.txt": folderChangeModified, "c.txt": folderChangeAdded}, changeSummary(history.Changed[1].Changes))
-	assert.Equal(t, map[string]folderChangeKind{"a.txt": folderChangeAdded, "b.txt": folderChangeAdded}, changeSummary(history.Changed[2].Changes))
+	assert.Equal(t, map[string]folder_listing.ChangeKind{"a.txt": folder_listing.Deleted}, changeSummary(history.Changed[0].Changes))
+	assert.Equal(t, map[string]folder_listing.ChangeKind{"b.txt": folder_listing.Modified, "c.txt": folder_listing.Added}, changeSummary(history.Changed[1].Changes))
+	assert.Equal(t, map[string]folder_listing.ChangeKind{"a.txt": folder_listing.Added, "b.txt": folder_listing.Added}, changeSummary(history.Changed[2].Changes))
 
 	assert.True(t, history.WorkingCopy.Exists)
 	assert.Len(t, history.WorkingCopy.Entries, 1)
-	assert.Equal(t, int64(3), history.Changed[0].Listing.totalSize(), "b.txt and c.txt")
+	assert.Equal(t, int64(3), history.Changed[0].Listing.TotalSize(), "b.txt and c.txt")
 }
 
 func TestScanFolderHistory_FolderDeletedAndCanceled(t *testing.T) {
@@ -110,69 +122,11 @@ func TestScanFolderHistory_FolderDeletedAndCanceled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, folderVersionInitial, history.All[0].State, "in the oldest snapshot")
 	assert.Equal(t, folderVersionDeleted, history.Changed[0].State)
-	assert.Equal(t, map[string]folderChangeKind{"a.txt": folderChangeDeleted}, changeSummary(history.Changed[0].Changes))
+	assert.Equal(t, map[string]folder_listing.ChangeKind{"a.txt": folder_listing.Deleted}, changeSummary(history.Changed[0].Changes))
 	assert.False(t, history.WorkingCopy.Exists)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = scanFolderHistory(ctx, filepath.Join(ds.root, "docs"), ds.snapshots)
 	assert.ErrorIs(t, err, context.Canceled)
-}
-
-func TestCompareFolderListings(t *testing.T) {
-	file := func(name string, size int64, modTime time.Time) folderEntry {
-		return folderEntry{Name: name, Type: folderEntryFile, Size: size, Mode: 0o644, ModTime: modTime}
-	}
-	before := folderListing{Exists: true, Entries: map[string]folderEntry{
-		"same":    file("same", 1, fileTime),
-		"size":    file("size", 1, fileTime),
-		"time":    file("time", 1, fileTime),
-		"gone":    file("gone", 1, fileTime),
-		"type":    file("type", 1, fileTime),
-		"subdir":  {Name: "subdir", Type: folderEntryDirectory, Size: 4096, ModTime: fileTime},
-		"subdir2": {Name: "subdir2", Type: folderEntryDirectory, Size: 4096, ModTime: fileTime},
-	}}
-	after := folderListing{Exists: true, Entries: map[string]folderEntry{
-		"same":    file("same", 1, fileTime),
-		"size":    file("size", 2, fileTime),
-		"time":    file("time", 1, fileTime.Add(time.Second)),
-		"new":     file("new", 1, fileTime),
-		"type":    {Name: "type", Type: folderEntryLink, Mode: os.ModeSymlink, ModTime: fileTime},
-		"subdir":  {Name: "subdir", Type: folderEntryDirectory, Size: 8192, ModTime: fileTime}, // size of directories is ignored
-		"subdir2": {Name: "subdir2", Type: folderEntryDirectory, Size: 4096, ModTime: fileTime.Add(time.Hour)},
-	}}
-
-	changes := compareFolderListings(before, after)
-
-	var names []string
-	for _, change := range changes {
-		names = append(names, change.Name)
-	}
-	assert.Equal(t, []string{"gone", "new", "size", "subdir2", "time", "type"}, names, "sorted by name")
-	assert.Equal(t, map[string]folderChangeKind{
-		"gone": folderChangeDeleted, "new": folderChangeAdded, "size": folderChangeModified,
-		"subdir2": folderChangeModified, "time": folderChangeModified, "type": folderChangeModified,
-	}, changeSummary(changes))
-	added, deleted, modified := countChanges(changes)
-	assert.Equal(t, []int{1, 1, 4}, []int{added, deleted, modified})
-	assert.Nil(t, changes[0].After)
-	assert.Nil(t, changes[1].Before)
-}
-
-func TestReadFolderListing(t *testing.T) {
-	root := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("abc"), 0o644))
-	require.NoError(t, os.Mkdir(filepath.Join(root, "dir"), 0o755))
-	require.NoError(t, os.Symlink("file", filepath.Join(root, "link")))
-
-	listing := readFolderListing(root)
-
-	assert.True(t, listing.Exists)
-	assert.Equal(t, folderEntryFile, listing.Entries["file"].Type)
-	assert.Equal(t, int64(3), listing.Entries["file"].Size)
-	assert.Equal(t, folderEntryDirectory, listing.Entries["dir"].Type)
-	assert.Equal(t, folderEntryLink, listing.Entries["link"].Type, "links are not followed")
-	assert.Equal(t, int64(3), listing.totalSize())
-
-	assert.False(t, readFolderListing(filepath.Join(root, "missing")).Exists)
 }

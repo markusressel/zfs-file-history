@@ -133,6 +133,8 @@ type DatasetBrowserComponent struct {
 	// allEntries are all datasets of the last load, including the ones hidden by hideUnmounted.
 	// Only accessed on the UI thread.
 	allEntries []*zfs.DatasetListEntry
+	// sizeScales color the size columns, see updateSizeScales
+	sizeScales map[*table.Column]uiutil.MagnitudeScale
 	// hideUnmounted hides datasets that are not mounted. Only accessed on the UI thread.
 	hideUnmounted bool
 	// treeView shows the datasets as a tree instead of a flat list. Only accessed on the UI thread.
@@ -190,6 +192,29 @@ func (datasetBrowser *DatasetBrowserComponent) createTable(application *tview.Ap
 }
 
 // toTableCells runs on the UI thread and must only use the pre-fetched listing values.
+// coloredSizeColumns are the size columns that are colored by how big their sizes are (see updateSizeScales), with
+// the size of an entry. Not the available space: it is mostly the free space of the pool, the same for all datasets.
+var coloredSizeColumns = map[*table.Column]func(entry *zfs.DatasetListEntry) uint64{
+	columnUsed:                 func(entry *zfs.DatasetListEntry) uint64 { return entry.Used },
+	columnUsedBySnapshots:      func(entry *zfs.DatasetListEntry) uint64 { return entry.UsedBySnapshots },
+	columnUsedByDataset:        func(entry *zfs.DatasetListEntry) uint64 { return entry.UsedByDataset },
+	columnUsedByChildren:       func(entry *zfs.DatasetListEntry) uint64 { return entry.UsedByChildren },
+	columnUsedByRefreservation: func(entry *zfs.DatasetListEntry) uint64 { return entry.UsedByRefreservation },
+}
+
+// updateSizeScales computes the scales of the size columns from all datasets (also the hidden ones, so hiding or
+// collapsing does not change the colors). Runs on the UI thread, before the cells are rendered.
+func (datasetBrowser *DatasetBrowserComponent) updateSizeScales() {
+	datasetBrowser.sizeScales = map[*table.Column]uiutil.MagnitudeScale{}
+	for column, size := range coloredSizeColumns {
+		sizes := make([]uint64, len(datasetBrowser.allEntries))
+		for i, entry := range datasetBrowser.allEntries {
+			sizes[i] = size(entry)
+		}
+		datasetBrowser.sizeScales[column] = uiutil.NewMagnitudeScale(sizes)
+	}
+}
+
 func (datasetBrowser *DatasetBrowserComponent) toTableCells(row int, columns []*table.Column, entry *zfs.DatasetListEntry) (cells []*tview.TableCell) {
 	for _, column := range columns {
 		var text string
@@ -205,20 +230,10 @@ func (datasetBrowser *DatasetBrowserComponent) toTableCells(row int, columns []*
 					text += txwidgets.Span(theme.Colors.Layout.Table.TreeCollapsedIndicator, " ▸ +%d", row.hiddenCount)
 				}
 			}
-		case columnUsed:
-			text = uiutil.StableLengthHumanizedBytes(entry.Used)
-			alignment = tview.AlignRight
-		case columnUsedBySnapshots:
-			text = uiutil.StableLengthHumanizedBytes(entry.UsedBySnapshots)
-			alignment = tview.AlignRight
-		case columnUsedByDataset:
-			text = uiutil.StableLengthHumanizedBytes(entry.UsedByDataset)
-			alignment = tview.AlignRight
-		case columnUsedByChildren:
-			text = uiutil.StableLengthHumanizedBytes(entry.UsedByChildren)
-			alignment = tview.AlignRight
-		case columnUsedByRefreservation:
-			text = uiutil.StableLengthHumanizedBytes(entry.UsedByRefreservation)
+		case columnUsed, columnUsedBySnapshots, columnUsedByDataset, columnUsedByChildren, columnUsedByRefreservation:
+			size := coloredSizeColumns[column](entry)
+			text = uiutil.StableLengthHumanizedBytes(size)
+			color = datasetBrowser.sizeScales[column].SizeColor(size, color)
 			alignment = tview.AlignRight
 		case columnAvail:
 			text = uiutil.StableLengthHumanizedBytes(entry.Available)
@@ -599,6 +614,7 @@ func (datasetBrowser *DatasetBrowserComponent) updateEntries() {
 		previousName = previous.Name
 	}
 
+	datasetBrowser.updateSizeScales()
 	datasetBrowser.tableContainer.SetData(filterEntries(datasetBrowser.allEntries, datasetBrowser.hideUnmounted))
 	datasetBrowser.updateStatus()
 

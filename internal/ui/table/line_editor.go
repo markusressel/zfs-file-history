@@ -50,18 +50,22 @@ func (e *lineEditor) HandleKey(event *tcell.EventKey) bool {
 	case tcell.KeyEnd, tcell.KeyCtrlE:
 		e.cursor = len(e.text)
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		if e.cursor > 0 {
+		if wordJump {
+			// ctrl+Backspace (or alt+Backspace): the word before the cursor
+			e.deletePreviousWord()
+		} else if e.cursor > 0 {
 			e.text = append(e.text[:e.cursor-1], e.text[e.cursor:]...)
 			e.cursor--
 		}
 	case tcell.KeyDelete:
-		if e.cursor < len(e.text) {
+		if wordJump {
+			// ctrl+Delete (or alt+Delete): the word after the cursor
+			e.text = append(e.text[:e.cursor], e.text[e.nextWordEnd():]...)
+		} else if e.cursor < len(e.text) {
 			e.text = append(e.text[:e.cursor], e.text[e.cursor+1:]...)
 		}
 	case tcell.KeyCtrlW:
-		start := e.previousWordStart()
-		e.text = append(e.text[:start], e.text[e.cursor:]...)
-		e.cursor = start
+		e.deletePreviousWord()
 	case tcell.KeyCtrlU:
 		e.text = e.text[e.cursor:]
 		e.cursor = 0
@@ -71,6 +75,13 @@ func (e *lineEditor) HandleKey(event *tcell.EventKey) bool {
 		return false
 	}
 	return true
+}
+
+// deletePreviousWord deletes the word before the cursor, including the separators between it and the cursor.
+func (e *lineEditor) deletePreviousWord() {
+	start := e.previousWordStart()
+	e.text = append(e.text[:start], e.text[e.cursor:]...)
+	e.cursor = start
 }
 
 // previousWordStart returns the start of the word before the cursor (skipping separators in between).

@@ -12,6 +12,7 @@ import (
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
@@ -198,18 +199,13 @@ func (fileBrowser *FileBrowserComponent) setupTable() {
 			case key == tcell.KeyDelete:
 				openDeleteDialogOnCurrentSelection(fileBrowser)
 				return nil
-			case event.Rune() == 'h':
-				selection := fileBrowser.GetSelection()
-				if selection != nil && (selection.Type == data.File || selection.Type == data.Directory) {
-					fileBrowser.emit(RequestFileHistoryEvent{FileEntry: selection})
-					return nil
-				}
 			}
 		}
-		if event.Rune() == 'H' {
-			// the history of the folder that is shown, also on the header row or if it is empty
-			fileBrowser.emit(RequestFileHistoryEvent{FileEntry: fileBrowser.currentFolderEntry()})
-			return nil
+		if key == tcell.KeyRune && event.Rune() == 'h' {
+			if entry := fileBrowser.HistoryEntry(); entry != nil {
+				fileBrowser.emit(RequestFileHistoryEvent{FileEntry: entry})
+				return nil
+			}
 		}
 		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
 			fileBrowser.goUp()
@@ -733,6 +729,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 
 				fileBrowser.startAsyncDiffCalculation()
 
+				fileBrowser.emit(EntriesLoadedEvent{Path: path})
 				fileBrowser.emit(SelectedTableEntryChangedEvent{fileBrowser.GetSelection()})
 			}
 		})
@@ -1074,6 +1071,47 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 }
 
 // currentFolderEntry returns the folder that is shown, as an entry (e.g. for its history).
+// WorkingCopyListing returns the folder whose entries are shown, and its entries as they are now (from the file
+// infos the entries were loaded with, so it reads nothing). Entries that only exist in the selected snapshot are
+// not part of it.
+func (fileBrowser *FileBrowserComponent) WorkingCopyListing() (string, folder_listing.Listing) {
+	listing := folder_listing.Listing{Exists: true, Entries: map[string]folder_listing.Entry{}}
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+		if entry.HasReal() && entry.RealFile.Stat != nil {
+			listing.Entries[entry.Name] = folder_listing.NewEntry(entry.Name, entry.RealFile.Stat)
+		}
+	}
+	return fileBrowser.entriesPath, listing
+}
+
+// DiffCounts counts the entries of the folder (including the ones hidden by the filter) by their state compared to
+// the selected snapshot. Entries whose state is still being determined count as unknown.
+func (fileBrowser *FileBrowserComponent) DiffCounts() diff_state.Counts {
+	var counts diff_state.Counts
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+		if entry.IsLoading {
+			counts.Add(diff_state.Unknown)
+		} else {
+			counts.Add(entry.DiffState)
+		}
+	}
+	return counts
+}
+
+// HistoryEntry returns the entry whose history h shows: the selected file or folder, or the folder that is shown
+// while the header row is selected or the folder is empty. nil if the selection has no history (e.g. a symlink).
+func (fileBrowser *FileBrowserComponent) HistoryEntry() *data.FileBrowserEntry {
+	selection := fileBrowser.GetSelection()
+	switch {
+	case selection == nil:
+		return fileBrowser.currentFolderEntry()
+	case selection.Type == data.File || selection.Type == data.Directory:
+		return selection
+	default:
+		return nil
+	}
+}
+
 func (fileBrowser *FileBrowserComponent) currentFolderEntry() *data.FileBrowserEntry {
 	path := fileBrowser.path
 	entry := &data.FileBrowserEntry{Name: filepath.Base(path), Type: data.Directory}
@@ -1086,7 +1124,6 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		uiutil.TableComponentShortcutMove,
 		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
-		{KeyCombo: []string{"H"}, Name: "Folder history"},
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {
@@ -1111,6 +1148,8 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		}
 	} else {
 		shortcutMap = append(shortcutMap,
+			// on the header row or in an empty folder: the folder that is shown
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "Folder history"},
 			uiutil.TableComponentShortcutFlipColumnDirection,
 			uiutil.TableComponentShortcutCycleSortColumnLeft,
 			uiutil.TableComponentShortcutCycleSortColumnRight,

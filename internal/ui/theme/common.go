@@ -91,8 +91,12 @@ type Color struct {
 	List            ListColors
 	Layout          LayoutColors
 	ShortcutMap     ShortcutMapColors
-	Permissions     PermissionColors
-	Properties      PropertyColors
+	Sparkline       SparklineColors
+	// Magnitude colors values by how big they are (see GradientStop), from the lowest to the highest stop: the
+	// sparklines and the size columns of the snapshot list, so warm means big everywhere
+	Magnitude   []GradientStop
+	Permissions PermissionColors
+	Properties  PropertyColors
 }
 
 // PropertyColors are used in the table of ZFS properties.
@@ -144,6 +148,26 @@ type LayoutTableColors struct {
 	TreeLines tcell.Color
 	// TreeCollapsedIndicator is the "▸ +N" behind collapsed entries of tree views
 	TreeCollapsedIndicator tcell.Color
+	// ZeroSize is the color of sizes of 0 in size columns (e.g. "Written" of snapshots in which nothing changed),
+	// dimmed so the others stand out; the others are colored with Colors.Magnitude
+	ZeroSize tcell.Color
+}
+
+// SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the
+// histories.
+type SparklineColors struct {
+	// Graph is the color of the sparklines without Color.Magnitude stops
+	Graph tcell.Color
+	// Selected and SelectedBackground mark the selected value, e.g. the snapshot selected in a list
+	Selected           tcell.Color
+	SelectedBackground tcell.Color
+}
+
+// GradientStop is a color of a gradient: values at Position (0: zero, 1: the highest value of the graph) have this
+// color, values between two stops a mix of both.
+type GradientStop struct {
+	Position float64
+	Color    tcell.Color
 }
 
 type ShortcutMapColors struct {

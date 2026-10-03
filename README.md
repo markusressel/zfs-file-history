@@ -23,21 +23,28 @@
 * 🩹 **Graceful Diff Fallbacks:** Diff views automatically fall back to `/dev/null` when files are missing on either
   side (e.g. deleted locally or missing in a snapshot), showing clean addition/deletion diffs instead of CLI execution
   errors.
-* 📂 **Folder history:** `h` on a folder (or `H` for the current one) shows a timeline of the snapshots in which its
-  content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed entries of
-  each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole folder from
-  a snapshot, or open the history of an entry (`h`).
-* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
+* 📂 **Folder history:** `h` on a folder (or on the header row for the current one) shows a timeline of the snapshots
+  in which its content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed
+  entries of each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole
+  folder from a snapshot, or open the history of an entry (`h`).
+* 🧭 **Overview:** Below the file browser, the current folder compared to the selected snapshot (`+2 −1 ~4`), a
+  sparkline of how many of its entries differ from now in each snapshot (to see how far back you have to go, and
+  since when it is unchanged), and one of the size of the selected file (its number of versions and last change).
+  The snapshot selected in the snapshot list is highlighted in them.
+* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. `h` in the snapshot
+  list (or its action menu) opens the history of the selected file or folder at that snapshot.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
 * 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the
   file and folder history and the dataset properties.
   The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
   see [State](#state)), `r` in the column dialog resets them.
 * 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
+  The filter is edited like a shell prompt: `ctrl+←`/`ctrl+→` jump and `ctrl+Backspace`/`ctrl+Delete` delete whole
+  words, `ctrl+w`/`ctrl+u`/`ctrl+k` work as well.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree (`-`/`+`, `*` for all, like htop) or as a flat
   list (`t`), unmounted datasets are hidden by default (`u`). Both choices are remembered between runs. The used
   space is broken down into snapshots, the dataset itself, its children and its refreservation (sortable, to find the
-  datasets whose snapshots use the most space).
+  datasets whose snapshots use the most space), colored by how big it is compared to the other datasets.
 * ⚙️ **Dataset properties:** `e` in the dataset overview shows all ZFS properties of a dataset (`zfs get all`) with
   their source, filterable and sortable. Change them (`zfs set`), add user properties (`module:property`, `a`), or
   reset local values to the inherited or default ones and remove user properties (`zfs inherit`); with `sudo` if
@@ -46,7 +53,7 @@
   (`zfs allow`) you have on each dataset, e.g. `sdmh-----` for snapshot, destroy, mount and hold. `p` shows the
   details: who grants each permission and all delegations of the dataset and its parents. There you can also grant
   permissions to yourself or revoke them, for the dataset and its children (`zfs allow` / `zfs unallow`); the changes
-  are applied with `sudo` if needed. The dataset info box lists your permissions as well.
+  are applied with `sudo` if needed. The dataset info box of the dataset overview lists your permissions as well.
 * ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like
@@ -56,10 +63,22 @@
   them to make room in small terminals, and shows them again (remembered between runs).
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
+* 🗃️ **Snapshot columns per screen:** On the files screen, the snapshot list is about the path you look at: `Size`
+  and `Modified` of the selected entry in each snapshot (which version it holds), and the changes of the folder since
+  the previous snapshot (`Changes`, e.g. `+3 −1 ~2`) or compared with now (`vs now`). On the datasets screen, it is
+  about the whole dataset: `Used`, `Written`, `Refer`. All columns can be shown on both screens (`F2`), each screen
+  remembers its own.
+* 📏 **Written:** The `Written` column of the snapshot list shows how much was written between a snapshot and its
+  predecessor (`zfs get written`): `0 B` (dimmed) for snapshots in which nothing changed. `Used` and `Written` are
+  colored by how big they are compared to the other snapshots (logarithmically, so outliers do not hide the rest).
+  Deleting files writes
+  nothing; the snapshot right before a big deletion stands out in `Used` instead, as it is the only one still holding
+  the deleted data.
 * 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
 * 🔒 **Snapshot holds:** Hold snapshots (`zfs hold`, tag `zfs-file-history`) to protect them from being destroyed,
   e.g. by automatic pruning while you investigate, and release them again. Only holds with this tag are ever
-  released, holds of other tools (e.g. replication) stay untouched. The `Holds` column shows the number of holds.
+  released, holds of other tools (e.g. replication) stay untouched. Held snapshots have a 🔒 in front of their name,
+  the `Holds` column shows the number of holds.
 
 # How to use
 

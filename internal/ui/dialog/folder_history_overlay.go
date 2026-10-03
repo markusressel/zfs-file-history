@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/shortcut_helper"
@@ -16,6 +17,7 @@ import (
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -24,7 +26,8 @@ import (
 const (
 	FolderHistoryOverlayPage uiutil.Page = "FolderHistoryOverlay"
 
-	// folderHistorySparklineLines: items, size, and the marker of the selected snapshot
+	// folderHistorySparklineLines: items, a spacer (so the sparklines are distinguishable) and size; the selected
+	// snapshot is highlighted in the sparklines
 	folderHistorySparklineLines = 3
 	// folderHistoryHeaderLines is the height above both tables: the mode and the sparklines on the left, the details
 	// of the selected change on the right, so the tables line up
@@ -66,7 +69,7 @@ type FolderHistoryOverlay struct {
 	modeView    *tview.TextView
 	sparklines  *tview.Box
 	timeline    *table.RowSelectionTable[folderVersion]
-	changes     *table.RowSelectionTable[folderChange]
+	changes     *table.RowSelectionTable[folder_listing.Change]
 	details     *tview.TextView
 	shortcuts   *shortcut_helper.ShortcutMapComponent
 	// split separates the timeline and the changes, its boundary can be dragged with the mouse
@@ -76,6 +79,9 @@ type FolderHistoryOverlay struct {
 	history  *folderHistory
 	selected *folderVersion
 	mode     diffMode
+	// initialSnapshot is the snapshot whose version is selected once the history is loaded (nil: the newest),
+	// see SelectSnapshot
+	initialSnapshot *zfs.Snapshot
 }
 
 // NewFolderHistoryOverlay creates the overlay for the folder at folderPath and starts scanning its history in the
@@ -149,15 +155,15 @@ func (o *FolderHistoryOverlay) createLayout() {
 	})
 	o.timeline.SetInputCapture(o.captureTimelineInput)
 
-	o.changes = table.NewTableContainer[folderChange](o.application, o.toChangeCells, sortChanges)
+	o.changes = table.NewTableContainer[folder_listing.Change](o.application, o.toChangeCells, sortChanges)
 	o.changes.SetColumnSpec(changeColumns, changeColumnName, false)
 	o.changes.SetActiveColumns(changeColumns)
 	o.changes.BindColumnLayout(state.Current, stateKeyFolderHistoryChanges, changeColumns)
-	o.changes.SetFilterFunc(func(change *folderChange, filterText string) bool {
+	o.changes.SetFilterFunc(func(change *folder_listing.Change, filterText string) bool {
 		return table.MatchesGlob(change.Name, filterText)
 	})
 	o.changes.SetFilterChangedCallback(o.updateChangesFooter)
-	o.changes.SetSelectionChangedCallback(func(*folderChange) { o.updateDetails() })
+	o.changes.SetSelectionChangedCallback(func(*folder_listing.Change) { o.updateDetails() })
 	o.changes.SetInputCapture(o.captureChangesInput)
 
 	o.details = tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetWordWrap(true)
@@ -235,9 +241,24 @@ func (o *FolderHistoryOverlay) setHistory(history *folderHistory) {
 		o.updateChanges()
 		return
 	}
-	o.timeline.SelectFirstIfExists()
+	if o.initialSnapshot != nil {
+		o.timeline.Select(versionAt(history.Changed, folderVersionCreation, o.initialSnapshot.Properties.CreationDate))
+	} else {
+		o.timeline.SelectFirstIfExists()
+	}
 	o.selected = o.timeline.GetSelectedEntry()
 	o.updateChanges()
+}
+
+// SelectSnapshot selects the version of the folder that was current in the snapshot once the history is loaded,
+// instead of the newest one. Must be called before the overlay is shown, on the UI thread.
+func (o *FolderHistoryOverlay) SelectSnapshot(snapshot *zfs.Snapshot) *FolderHistoryOverlay {
+	o.initialSnapshot = snapshot
+	return o
+}
+
+func folderVersionCreation(version *folderVersion) time.Time {
+	return version.Snapshot.Properties.CreationDate
 }
 
 func sortTimeline(versions []*folderVersion, column *table.Column, inverted bool) []*folderVersion {
@@ -284,7 +305,7 @@ func formatVersionChanges(version *folderVersion) string {
 	case folderVersionDeleted:
 		return txwidgets.Span(colors.Deleted, "folder deleted")
 	}
-	added, deleted, modified := countChanges(version.Changes)
+	added, deleted, modified := folder_listing.CountChanges(version.Changes)
 	var parts []string
 	if added > 0 {
 		parts = append(parts, txwidgets.Span(colors.Added, "+%d", added))
@@ -311,7 +332,7 @@ func (o *FolderHistoryOverlay) drawSparklines(screen tcell.Screen, x, y, width, 
 		items[i], sizes[i] = -1, -1
 		if version.Listing.Exists {
 			items[i] = int64(len(version.Listing.Entries))
-			sizes[i] = version.Listing.totalSize()
+			sizes[i] = version.Listing.TotalSize()
 		}
 	}
 
@@ -319,7 +340,7 @@ func (o *FolderHistoryOverlay) drawSparklines(screen tcell.Screen, x, y, width, 
 	var itemsValue, sizeValue string
 	if o.selected != nil && o.selected.Listing.Exists {
 		itemsValue = fmt.Sprintf("%d", len(o.selected.Listing.Entries))
-		sizeValue = strings.TrimSpace(uiutil.HumanizedBytes(uint64(max(o.selected.Listing.totalSize(), 0))))
+		sizeValue = strings.TrimSpace(uiutil.HumanizedBytes(uint64(max(o.selected.Listing.TotalSize(), 0))))
 	}
 	valueWidth := max(len(itemsValue), len(sizeValue), 8) + 1
 	chartWidth := width - labelWidth - valueWidth
@@ -328,33 +349,28 @@ func (o *FolderHistoryOverlay) drawSparklines(screen tcell.Screen, x, y, width, 
 	}
 
 	label := theme.Colors.ShortcutMap.Name
-	bars := theme.Colors.Layout.Table.Accent
-	drawLine := func(row int, name string, values []int64, value string) int {
+	selected := -1
+	if o.selected != nil {
+		selected = o.selected.Index
+	}
+	drawLine := func(row int, name string, values []int64, value string) {
 		tview.Print(screen, name, x, y+row, labelWidth, tview.AlignLeft, label)
-		line, column := sparkline(values, chartWidth)
-		tview.Print(screen, string(line), x+labelWidth, y+row, chartWidth, tview.AlignLeft, bars)
-		tview.Print(screen, value, x+labelWidth+len(line)+1, y+row, valueWidth, tview.AlignLeft, label)
-		if o.selected == nil {
-			return -1
-		}
-		return column(o.selected.Index)
+		graphWidth := uiutil.DrawSparkline(screen, x+labelWidth, y+row, chartWidth, values, selected)
+		tview.Print(screen, value, x+labelWidth+graphWidth+1, y+row, valueWidth, tview.AlignLeft, label)
 	}
 	drawLine(0, "Items", items, itemsValue)
-	markerColumn := drawLine(1, "Size", sizes, sizeValue)
-	if markerColumn >= 0 {
-		tview.Print(screen, "▲", x+labelWidth+markerColumn, y+2, 1, tview.AlignLeft, theme.Colors.Layout.Table.Accent)
-	}
+	drawLine(2, "Size", sizes, sizeValue)
 	return x, y, width, height
 }
 
 // currentChanges returns the changed entries of the selected snapshot: compared to the previous snapshot, or the
 // changes since the snapshot (until the working copy).
-func (o *FolderHistoryOverlay) currentChanges() []*folderChange {
+func (o *FolderHistoryOverlay) currentChanges() []*folder_listing.Change {
 	if o.selected == nil || o.history == nil {
 		return nil
 	}
 	if o.mode == diffModeWorkingCopy {
-		return compareFolderListings(o.selected.Listing, o.history.WorkingCopy)
+		return folder_listing.Compare(o.selected.Listing, o.history.WorkingCopy)
 	}
 	return o.selected.Changes
 }
@@ -380,7 +396,7 @@ func (o *FolderHistoryOverlay) updateChangesFooter() {
 		o.changes.SetFooter(fmt.Sprintf("%d of %d changes", len(o.changes.GetEntries()), len(changes)))
 		return
 	}
-	added, deleted, modified := countChanges(changes)
+	added, deleted, modified := folder_listing.CountChanges(changes)
 	o.changes.SetFooter(formatChangeCounts(added, deleted, modified))
 }
 
@@ -398,7 +414,7 @@ func formatChangeCounts(added int, deleted int, modified int) string {
 		part(modified, "modified", colors.Modified)
 }
 
-func sortChanges(changes []*folderChange, column *table.Column, inverted bool) []*folderChange {
+func sortChanges(changes []*folder_listing.Change, column *table.Column, inverted bool) []*folder_listing.Change {
 	sort.SliceStable(changes, func(i, j int) bool {
 		a, b := changes[i], changes[j]
 		result := 0
@@ -422,28 +438,28 @@ func sortChanges(changes []*folderChange, column *table.Column, inverted bool) [
 }
 
 // newestEntry returns the newer state of the changed entry (or the older one, if it was deleted).
-func newestEntry(change *folderChange) *folderEntry {
+func newestEntry(change *folder_listing.Change) *folder_listing.Entry {
 	if change.After != nil {
 		return change.After
 	}
 	return change.Before
 }
 
-func changeSize(change *folderChange) int64 {
+func changeSize(change *folder_listing.Change) int64 {
 	return newestEntry(change).Size
 }
 
-func changeModTime(change *folderChange) time.Time {
+func changeModTime(change *folder_listing.Change) time.Time {
 	return newestEntry(change).ModTime
 }
 
 // changeKindLabel describes how an entry changed, depending on the mode.
-func (o *FolderHistoryOverlay) changeKindLabel(kind folderChangeKind) (symbol string, label string, color tcell.Color) {
+func (o *FolderHistoryOverlay) changeKindLabel(kind folder_listing.ChangeKind) (symbol string, label string, color tcell.Color) {
 	colors := theme.Colors.FileBrowser.Table.State
 	switch kind {
-	case folderChangeAdded:
+	case folder_listing.Added:
 		symbol, label, color = "+", "added", colors.Added
-	case folderChangeDeleted:
+	case folder_listing.Deleted:
 		symbol, label, color = "−", "deleted", colors.Deleted
 	default:
 		symbol, label, color = "~", "modified", colors.Modified
@@ -454,7 +470,7 @@ func (o *FolderHistoryOverlay) changeKindLabel(kind folderChangeKind) (symbol st
 	return symbol, label, color
 }
 
-func (o *FolderHistoryOverlay) toChangeCells(row int, columns []*table.Column, change *folderChange) []*tview.TableCell {
+func (o *FolderHistoryOverlay) toChangeCells(row int, columns []*table.Column, change *folder_listing.Change) []*tview.TableCell {
 	symbol, _, color := o.changeKindLabel(change.Kind)
 	var cells []*tview.TableCell
 	for _, column := range columns {
@@ -477,25 +493,25 @@ func (o *FolderHistoryOverlay) toChangeCells(row int, columns []*table.Column, c
 }
 
 // displayName shows directories with a trailing slash and links with an arrow.
-func displayName(entry *folderEntry) string {
+func displayName(entry *folder_listing.Entry) string {
 	switch entry.Type {
-	case folderEntryDirectory:
+	case folder_listing.Directory:
 		return entry.Name + "/"
-	case folderEntryLink:
+	case folder_listing.Link:
 		return entry.Name + " →"
 	}
 	return entry.Name
 }
 
 // formatChangeSize shows the size of files, e.g. "1.2 KiB → 3.4 KiB" if it changed.
-func formatChangeSize(change *folderChange) string {
-	format := func(entry *folderEntry) string {
-		if entry.Type != folderEntryFile {
+func formatChangeSize(change *folder_listing.Change) string {
+	format := func(entry *folder_listing.Entry) string {
+		if entry.Type != folder_listing.File {
 			return ""
 		}
 		return strings.TrimSpace(uiutil.HumanizedBytes(uint64(max(entry.Size, 0))))
 	}
-	if change.Kind == folderChangeModified && change.Before.Type == folderEntryFile && change.After.Type == folderEntryFile &&
+	if change.Kind == folder_listing.Modified && change.Before.Type == folder_listing.File && change.After.Type == folder_listing.File &&
 		change.Before.Size != change.After.Size {
 		return format(change.Before) + " → " + format(change.After)
 	}
@@ -503,7 +519,7 @@ func formatChangeSize(change *folderChange) string {
 }
 
 // snapshotSide returns the entry as it is in the selected snapshot, nil if it is not in the snapshot.
-func (o *FolderHistoryOverlay) snapshotSide(change *folderChange) *folderEntry {
+func (o *FolderHistoryOverlay) snapshotSide(change *folder_listing.Change) *folder_listing.Entry {
 	if o.mode == diffModeWorkingCopy {
 		// compared from the snapshot to the working copy
 		return change.Before
@@ -530,7 +546,7 @@ func (o *FolderHistoryOverlay) updateDetails() {
 	} else {
 		actions = append(actions, "not in "+o.selected.Snapshot.Name+", nothing to restore")
 	}
-	if entry := newestEntry(change); entry.Type == folderEntryFile || entry.Type == folderEntryDirectory {
+	if entry := newestEntry(change); entry.Type == folder_listing.File || entry.Type == folder_listing.Directory {
 		actions = append(actions, "h: its history")
 	}
 	o.details.SetText(txwidgets.Span(color, "%s %s", displayName(newestEntry(change)), label) + "\n" +
@@ -550,18 +566,18 @@ func drawLeftDivider(screen tcell.Screen, x, y, width, height int) (int, int, in
 }
 
 // describeChange tells the size and modification time of the entry, before → after if it was modified.
-func describeChange(change *folderChange) string {
-	describe := func(entry *folderEntry) string {
+func describeChange(change *folder_listing.Change) string {
+	describe := func(entry *folder_listing.Entry) string {
 		modified := entry.ModTime.Format(theme.Style.Format.DateTime)
-		if entry.Type != folderEntryFile {
+		if entry.Type != folder_listing.File {
 			return "modified " + modified
 		}
 		return strings.TrimSpace(uiutil.HumanizedBytes(uint64(max(entry.Size, 0)))) + ", modified " + modified
 	}
 	switch change.Kind {
-	case folderChangeAdded:
+	case folder_listing.Added:
 		return describe(change.After)
-	case folderChangeDeleted:
+	case folder_listing.Deleted:
 		return "was " + describe(change.Before)
 	}
 	return describe(change.Before) + " → " + describe(change.After)
@@ -682,11 +698,11 @@ func (o *FolderHistoryOverlay) restoreEntry() {
 	o.restore(entry.Name, filepath.Join(o.folderPath, entry.Name), toEntryType(entry.Type))
 }
 
-func toEntryType(entryType folderEntryType) data.FileBrowserEntryType {
+func toEntryType(entryType folder_listing.EntryType) data.FileBrowserEntryType {
 	switch entryType {
-	case folderEntryDirectory:
+	case folder_listing.Directory:
 		return data.Directory
-	case folderEntryLink:
+	case folder_listing.Link:
 		return data.Link
 	}
 	return data.File
@@ -735,7 +751,7 @@ func (o *FolderHistoryOverlay) restore(name string, realPath string, entryType d
 func (o *FolderHistoryOverlay) reloadWorkingCopy() {
 	folderPath := o.folderPath
 	go func() {
-		listing := readFolderListing(folderPath)
+		listing := folder_listing.Read(folderPath)
 		o.application.QueueUpdateDraw(func() {
 			if o.history == nil {
 				return
@@ -756,9 +772,9 @@ func (o *FolderHistoryOverlay) openEntryHistory() {
 	entry := newestEntry(change)
 	path := filepath.Join(o.folderPath, entry.Name)
 	switch entry.Type {
-	case folderEntryDirectory:
+	case folder_listing.Directory:
 		ShowDialogOnPages(o.application, o.pages, NewFolderHistoryOverlay(o.application, path, o.cachedEntries), nil)
-	case folderEntryFile:
+	case folder_listing.File:
 		file := &data.FileBrowserEntry{Name: entry.Name, Type: data.File}
 		if stat, err := os.Lstat(path); err == nil {
 			file.RealFile = &data.RealFile{Name: entry.Name, Path: path, Stat: stat}

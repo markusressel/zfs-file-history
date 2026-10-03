@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
@@ -16,25 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestSparkline(t *testing.T) {
-	line, column := sparkline([]int64{0, 1, 2, 3, 4, 5, 6, 7}, 20)
-	assert.Equal(t, "▁▂▃▄▅▆▇█", string(line))
-	assert.Equal(t, 3, column(3))
-
-	// gaps for missing values, an all-zero line
-	line, _ = sparkline([]int64{-1, 0, 0}, 10)
-	assert.Equal(t, " ▁▁", string(line))
-
-	// more values than columns: the maximum of each column
-	line, column = sparkline([]int64{1, 8, 1, 1, 1, 1, 1, 8}, 4)
-	assert.Equal(t, "█▁▁█", string(line))
-	assert.Equal(t, 0, column(1))
-	assert.Equal(t, 3, column(7))
-
-	line, _ = sparkline(nil, 10)
-	assert.Empty(t, line)
-}
 
 // folderHistoryTest shows the folder history of "docs" in a fake dataset, in a running application.
 type folderHistoryTest struct {
@@ -53,7 +35,8 @@ type folderHistoryTest struct {
 //	d3: b.txt (bigger), c/    (a.txt deleted, b.txt modified, c/ added)
 //
 // and a working copy with only c/: b.txt was deleted since d3.
-func newFolderHistoryTest(t *testing.T) *folderHistoryTest {
+// configure is applied to the overlay before it is shown, e.g. to select a snapshot.
+func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overlay *FolderHistoryOverlay)) *folderHistoryTest {
 	ds := newFakeDataset(t)
 	ds.addSnapshot("d1", day(1), map[string]string{"docs/a.txt": "a", "docs/b.txt": "b"})
 	ds.addSnapshot("d2", day(2), map[string]string{"docs/a.txt": "a", "docs/b.txt": "b"})
@@ -86,6 +69,9 @@ func newFolderHistoryTest(t *testing.T) *folderHistoryTest {
 
 	onUiThread(t, ft.app, func() {
 		ft.overlay = NewFolderHistoryOverlay(ft.app, filepath.Join(ds.root, "docs"), nil)
+		for _, f := range configure {
+			f(ds, ft.overlay)
+		}
 		ShowDialogOnPages(ft.app, ft.pages, ft.overlay, nil)
 	})
 	ft.waitFor("history loaded", func() bool {
@@ -170,11 +156,36 @@ func TestFolderHistoryOverlay_Timeline(t *testing.T) {
 	ft.waitFor("timeline, sparklines and footer", func() bool {
 		text := ft.screenText()
 		return strings.Contains(text, "+1 −1 ~1") && strings.Contains(text, "initial (2)") &&
-			strings.Contains(text, "Items") && strings.Contains(text, "▲") &&
+			strings.Contains(text, "Items") &&
 			strings.Contains(text, "1 added · 1 deleted · 1 modified") && strings.Contains(text, "2 of 3 snapshots")
 	})
 	// b.txt grew from "b" to "bbbb"
 	assert.Contains(t, ft.screenText(), "1 B → 4 B")
+
+	// the selected snapshot is highlighted in both sparklines, which are not next to each other
+	itemsRow, itemsHighlighted := sparklineRow(t, ft.app, ft.screen, "Items")
+	sizeRow, sizeHighlighted := sparklineRow(t, ft.app, ft.screen, "Size")
+	assert.True(t, itemsHighlighted)
+	assert.True(t, sizeHighlighted)
+	assert.Equal(t, itemsRow+2, sizeRow, "a spacer between the sparklines")
+}
+
+// Opened from the snapshot browser: the version that was current in the snapshot is selected. d2 did not change
+// anything, so it shows the version of d1.
+func TestFolderHistoryOverlay_SelectSnapshot(t *testing.T) {
+	for snapshot, expected := range map[string]string{"d1": "d1", "d2": "d1", "d3": "d3"} {
+		t.Run(snapshot, func(t *testing.T) {
+			ft := newFolderHistoryTest(t, func(ds *fakeDataset, overlay *FolderHistoryOverlay) {
+				overlay.SelectSnapshot(ds.snapshot(snapshot))
+			})
+			var selected string
+			onUiThread(t, ft.app, func() {
+				selected = ft.overlay.timeline.GetSelectedEntry().Snapshot.Name
+				assert.Same(t, ft.overlay.timeline.GetSelectedEntry(), ft.overlay.selected)
+			})
+			assert.Equal(t, expected, selected)
+		})
+	}
 }
 
 func TestFolderHistoryOverlay_ModeSinceSnapshot(t *testing.T) {
@@ -271,16 +282,16 @@ func TestFormatChangeCounts(t *testing.T) {
 }
 
 func TestDescribeChange(t *testing.T) {
-	before := &folderEntry{Name: "b.txt", Type: folderEntryFile, Size: 1, ModTime: fileTime}
-	after := &folderEntry{Name: "b.txt", Type: folderEntryFile, Size: 4096, ModTime: fileTime.Add(time.Hour)}
-	dir := &folderEntry{Name: "c", Type: folderEntryDirectory, ModTime: fileTime}
+	before := &folder_listing.Entry{Name: "b.txt", Type: folder_listing.File, Size: 1, ModTime: fileTime}
+	after := &folder_listing.Entry{Name: "b.txt", Type: folder_listing.File, Size: 4096, ModTime: fileTime.Add(time.Hour)}
+	dir := &folder_listing.Entry{Name: "c", Type: folder_listing.Directory, ModTime: fileTime}
 	modified := fileTime.Format(theme.Style.Format.DateTime)
 	later := fileTime.Add(time.Hour).Format(theme.Style.Format.DateTime)
 
 	assert.Equal(t, "1 B, modified "+modified+" → 4.0 KiB, modified "+later,
-		describeChange(&folderChange{Kind: folderChangeModified, Before: before, After: after}))
-	assert.Equal(t, "was 1 B, modified "+modified, describeChange(&folderChange{Kind: folderChangeDeleted, Before: before}))
-	assert.Equal(t, "modified "+modified, describeChange(&folderChange{Kind: folderChangeAdded, After: dir}), "no size for folders")
+		describeChange(&folder_listing.Change{Kind: folder_listing.Modified, Before: before, After: after}))
+	assert.Equal(t, "was 1 B, modified "+modified, describeChange(&folder_listing.Change{Kind: folder_listing.Deleted, Before: before}))
+	assert.Equal(t, "modified "+modified, describeChange(&folder_listing.Change{Kind: folder_listing.Added, After: dir}), "no size for folders")
 }
 
 func TestFolderHistoryOverlay_DetailsAboveChanges(t *testing.T) {

@@ -91,6 +91,7 @@ var (
 				// a lighter variant of Secondary, readable on the dark background
 				TreeLines:              tcell.ColorIsRGB | tcell.ColorValid | 0x7D8A96,
 				TreeCollapsedIndicator: Primary,
+				ZeroSize:               tcell.ColorDarkGray,
 			},
 		},
 		ShortcutMap: ShortcutMapColors{
@@ -100,6 +101,17 @@ var (
 			GlobalKeyCombo:     tcell.ColorIsRGB | tcell.ColorValid | 0x9AA5B1,
 			Name:               tcell.ColorLightGray,
 			Separator:          Secondary,
+		},
+		Sparkline: SparklineColors{
+			Graph:              Accent,
+			Selected:           Primary,
+			SelectedBackground: Secondary,
+		},
+		// calm for small values, warm for large ones
+		Magnitude: []GradientStop{
+			{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x7D8A96},
+			{Position: 0.5, Color: Accent},
+			{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
 		},
 		Permissions: PermissionColors{
 			Granted: tcell.ColorGreen,

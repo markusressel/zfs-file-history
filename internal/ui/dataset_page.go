@@ -41,6 +41,8 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
+	// about the whole dataset
+	snapshotBrowser.UseColumnLayout(snapshot_browser.DatasetsLayout)
 
 	datasetBrowser := dataset_browser.NewDatasetBrowser(application)
 
