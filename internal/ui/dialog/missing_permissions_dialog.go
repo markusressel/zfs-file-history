@@ -52,6 +52,10 @@ func NewMissingPermissionsDialog(application *tview.Application, missing *zfs.Mi
 	}
 
 	onComplete := func(d *SelectionDialog, option *DialogOption, err error) {
+		if err == nil && (option.Id == MissingPermissionsDialogGrantActionId || option.Id == MissingPermissionsDialogRetryActionId) {
+			// verified to be in effect: the displayed permissions are outdated (e.g. the Perms column)
+			zfs.PermissionsChanged.Emit(struct{}{})
+		}
 		var stillMissing *zfs.MissingPermissionsError
 		var failedGrant *grantError
 		switch {

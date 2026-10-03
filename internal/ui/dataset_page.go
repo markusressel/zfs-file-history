@@ -107,6 +107,12 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 		}
 	})
 
+	// e.g. granted in the missing permissions dialog, which can be shown on any page
+	uiutil.SubscribeUI(zfs.PermissionsChanged, application, func(_ struct{}) {
+		datasetBrowser.ReloadPermissions()
+		datasetInfo.RefreshQuietly()
+	})
+
 	datasetPage.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if datasetPage.handleFocusKeys(event) {
 			return nil

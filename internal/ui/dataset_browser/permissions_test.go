@@ -272,3 +272,29 @@ func TestDatasetBrowser_PropertiesDialog(t *testing.T) {
 	defer mu.Unlock()
 	assert.Equal(t, []string{"rpool/a", "rpool/broken"}, read)
 }
+
+// After permissions were granted (e.g. in the missing permissions dialog), the column is read again without a reload
+// of the dataset list; the previous values are shown meanwhile.
+func TestDatasetBrowser_ReloadPermissions(t *testing.T) {
+	granted := map[string][]zfs.Permission{"rpool/a": {zfs.PermissionSnapshot}}
+	stub := stubPermissions(t, granted)
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
+	})
+	app, browser, _ := newBrowserApp(t)
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--------" }, 2*time.Second, 10*time.Millisecond)
+
+	// granted: hold
+	stub.mu.Lock()
+	granted["rpool/a"] = []zfs.Permission{zfs.PermissionSnapshot, zfs.PermissionHold}
+	stub.block = make(chan struct{})
+	block := stub.block
+	stub.mu.Unlock()
+	testutil.OnUiThread(t, app, func() { browser.ReloadPermissions() })
+	require.Eventually(t, func() bool { return len(stub.readDatasets()) == 2 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "s--------", permissionCell(t, browser, "rpool/a"), "the previous value while reading")
+
+	close(block)
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--h-----" }, 2*time.Second, 10*time.Millisecond)
+}

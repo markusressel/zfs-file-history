@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -67,6 +69,8 @@ type permissionsDialogTest struct {
 	retried       int
 	// onUiThread records whether grantPermissions / verifyPermissions were called on the UI thread
 	onUiThread bool
+	// permissionsChanged counts zfs.PermissionsChanged
+	permissionsChanged atomic.Int32
 }
 
 // newPermissionsDialogTest shows the dialog for newMissingRelease, with a retry function if withRetry is set.
@@ -74,9 +78,14 @@ type permissionsDialogTest struct {
 func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copyErr error, verifyResults ...error) *permissionsDialogTest {
 	dt := &permissionsDialogTest{t: t, verifyResults: verifyResults}
 	originalGrant, originalCopy, originalVerify := grantPermissions, copyToClipboard, verifyPermissions
+	originalPermissionsChanged := zfs.PermissionsChanged
 	t.Cleanup(func() {
 		grantPermissions, copyToClipboard, verifyPermissions = originalGrant, originalCopy, originalVerify
+		zfs.PermissionsChanged = originalPermissionsChanged
 	})
+	// an emitter of this test, so its listener does not outlive it
+	zfs.PermissionsChanged = util.NewEmitter[struct{}]()
+	zfs.PermissionsChanged.Subscribe(func(struct{}) { dt.permissionsChanged.Add(1) })
 	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
 		dt.recordUiThread()
 		dt.mu.Lock()
@@ -195,6 +204,7 @@ func TestMissingPermissionsDialog_GrantVerifiesAndRetries(t *testing.T) {
 	verified, _ := dt.counts()
 	assert.Equal(t, 1, verified, "the permissions are verified before the retry")
 	assert.False(t, dt.hasPage("SuccessDialog"), "the retried operation shows its own result")
+	assert.Equal(t, int32(1), dt.permissionsChanged.Load(), "the displayed permissions are read again")
 
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
@@ -233,6 +243,7 @@ func TestMissingPermissionsDialog_StillMissingAfterGrant(t *testing.T) {
 	assert.NotContains(t, dt.screenText(), "release on pool/data")
 	_, retried := dt.counts()
 	assert.Zero(t, retried)
+	assert.Zero(t, dt.permissionsChanged.Load(), "not in effect yet")
 
 	// granting again works and retries
 	dt.choose('1')
@@ -240,6 +251,7 @@ func TestMissingPermissionsDialog_StillMissingAfterGrant(t *testing.T) {
 		_, retried := dt.counts()
 		return retried == 1
 	}, 3*time.Second, 10*time.Millisecond)
+	assert.Equal(t, int32(1), dt.permissionsChanged.Load())
 }
 
 func TestMissingPermissionsDialog_GrantFails(t *testing.T) {
@@ -252,6 +264,7 @@ func TestMissingPermissionsDialog_GrantFails(t *testing.T) {
 	verified, retried := dt.counts()
 	assert.Zero(t, verified)
 	assert.Zero(t, retried)
+	assert.Zero(t, dt.permissionsChanged.Load())
 }
 
 func TestMissingPermissionsDialog_CopyThenRetry(t *testing.T) {
@@ -277,6 +290,7 @@ func TestMissingPermissionsDialog_CopyThenRetry(t *testing.T) {
 	dt.waitForText("Reason: the permissions are still missing")
 	_, retried := dt.counts()
 	assert.Zero(t, retried)
+	assert.Zero(t, dt.permissionsChanged.Load(), "copying changes nothing")
 
 	// retry after the command was run
 	dt.choose('3')
@@ -284,6 +298,7 @@ func TestMissingPermissionsDialog_CopyThenRetry(t *testing.T) {
 		_, retried := dt.counts()
 		return retried == 1
 	}, 3*time.Second, 10*time.Millisecond)
+	assert.Equal(t, int32(1), dt.permissionsChanged.Load(), "granted outside, verified here")
 }
 
 func TestMissingPermissionsDialog_CopyFailsShowsCommand(t *testing.T) {

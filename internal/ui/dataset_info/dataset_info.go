@@ -103,6 +103,12 @@ func (datasetInfo *DatasetInfoComponent) Refresh() {
 	datasetInfo.load(false)
 }
 
+// RefreshQuietly reloads the currently requested dataset, showing the old values while loading (e.g. after its
+// permissions changed).
+func (datasetInfo *DatasetInfoComponent) RefreshQuietly() {
+	datasetInfo.load(true)
+}
+
 // load starts loading the currently requested dataset in the background.
 // Must be called on the UI thread.
 func (datasetInfo *DatasetInfoComponent) load(quietly bool) {
