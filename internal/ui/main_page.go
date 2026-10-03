@@ -90,20 +90,16 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 				mainPage.updateShortcutMap(fileBrowser)
 			}
 		case file_browser.RequestFileHistoryEvent:
-			var overlay dialog.Dialog
-			if e.FileEntry.Type == data.Directory {
-				overlay = dialog.NewFolderHistoryOverlay(mainPage.application, e.FileEntry.GetRealPath(), mainPage.snapshotBrowser.GetAllEntries())
-			} else {
-				overlay = dialog.NewFileHistoryOverlay(mainPage.application, e.FileEntry, mainPage.snapshotBrowser.GetAllEntries())
-			}
-			dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
-				mainPage.fileBrowser.Refresh(false)
-			})
+			mainPage.showHistory(e.FileEntry, nil)
 		}
 	})
 
+	// the snapshot browser opens the history of what h opens in the file browser, at the selected snapshot
+	snapshotBrowser.SetHistoryTarget(fileBrowser.HistoryEntry)
 	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
 		switch e := event.(type) {
+		case snapshot_browser.RequestHistoryEvent:
+			mainPage.showHistory(e.Entry, e.Snapshot.Snapshot)
 		case snapshot_browser.SelectedSnapshotChanged:
 			fileBrowser.SetSelectedSnapshot(e.Snapshot)
 			if snapshotBrowser.HasFocus() {
@@ -353,6 +349,28 @@ func (mainPage *MainPage) CycleFocus(reversed bool) {
 
 func (mainPage *MainPage) showStatusMessage(status *status_message.StatusMessage) {
 	mainPage.header.SetStatus(status)
+}
+
+// showHistory opens the file or folder history of entry. If snapshot is set, the version that was current in it is
+// selected, otherwise the newest one.
+func (mainPage *MainPage) showHistory(entry *data.FileBrowserEntry, snapshot *zfs.Snapshot) {
+	var overlay dialog.Dialog
+	if entry.Type == data.Directory {
+		folderHistory := dialog.NewFolderHistoryOverlay(mainPage.application, entry.GetRealPath(), mainPage.snapshotBrowser.GetAllEntries())
+		if snapshot != nil {
+			folderHistory.SelectSnapshot(snapshot)
+		}
+		overlay = folderHistory
+	} else {
+		fileHistory := dialog.NewFileHistoryOverlay(mainPage.application, entry, mainPage.snapshotBrowser.GetAllEntries())
+		if snapshot != nil {
+			fileHistory.SelectSnapshot(snapshot)
+		}
+		overlay = fileHistory
+	}
+	dialog.ShowDialogOnPages(mainPage.application, mainPage.pages, overlay, func() {
+		mainPage.fileBrowser.Refresh(false)
+	})
 }
 
 func (mainPage *MainPage) setShortcutMap(shortcutEntries []shortcut_helper.ShortcutEntry) {

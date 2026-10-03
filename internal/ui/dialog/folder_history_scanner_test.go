@@ -51,6 +51,17 @@ func (f *fakeDataset) addSnapshot(name string, created time.Time, files map[stri
 	return snapshot
 }
 
+// snapshot returns the snapshot with the given name.
+func (f *fakeDataset) snapshot(name string) *zfs.Snapshot {
+	for _, snapshot := range f.snapshots {
+		if snapshot.Name == name {
+			return snapshot
+		}
+	}
+	f.t.Fatalf("no snapshot %q", name)
+	return nil
+}
+
 var fileTime = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
 func day(n int) time.Time {

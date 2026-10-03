@@ -18,15 +18,26 @@ const (
 	SnapshotDialogCloneSnapshotActionId
 	SnapshotDialogHoldSnapshotActionId
 	SnapshotDialogReleaseSnapshotActionId
+	SnapshotDialogShowHistoryActionId
 )
 
+// NewSnapshotActionDialog creates the dialog with the actions for a snapshot. historyTarget is the file or folder
+// whose history can be opened at the snapshot ("": no history action).
 func NewSnapshotActionDialog(
 	application *tview.Application,
 	snapshot *data.SnapshotBrowserEntry,
+	historyTarget string,
 	asyncWork func(d *SelectionDialog, action DialogActionId) error,
 	onComplete func(d *SelectionDialog, option *DialogOption, err error),
 ) *SelectionDialog {
-	dialogOptions := []*DialogOption{
+	var dialogOptions []*DialogOption
+	if historyTarget != "" {
+		dialogOptions = append(dialogOptions, &DialogOption{
+			Id:   SnapshotDialogShowHistoryActionId,
+			Name: fmt.Sprintf("🕘 History of '%s' at this snapshot", historyTarget),
+		})
+	}
+	dialogOptions = append(dialogOptions, []*DialogOption{
 		{
 			Id:   SnapshotDialogCreateSnapshotActionId,
 			Name: "📸 Create Snapshot",
@@ -39,7 +50,7 @@ func NewSnapshotActionDialog(
 			Id:   SnapshotDialogHoldSnapshotActionId,
 			Name: fmt.Sprintf("🔒 Hold '%s' (protect from destruction)", snapshot.Snapshot.Name),
 		},
-	}
+	}...)
 	if snapshot.Snapshot.Properties.Holds > 0 {
 		dialogOptions = append(dialogOptions, &DialogOption{
 			Id:   SnapshotDialogReleaseSnapshotActionId,

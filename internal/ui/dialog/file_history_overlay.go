@@ -68,7 +68,10 @@ type FileHistoryOverlay struct {
 	// sparkline. Only accessed on the UI thread.
 	sizes []int64
 
-	currentSelection     *data.SnapshotBrowserEntry
+	currentSelection *data.SnapshotBrowserEntry
+	// initialSnapshot is the snapshot whose version is selected once the history is loaded (nil: the newest),
+	// see SelectSnapshot
+	initialSnapshot      *zfs.Snapshot
 	currentDiffMode      diffMode
 	diffLoader           *uiutil.DebouncedLoader
 	currentRawDiff       string
@@ -215,6 +218,17 @@ func (o *FileHistoryOverlay) createHistoryTable() *table.RowSelectionTable[data.
 		o.updateDiff()
 	})
 	return t
+}
+
+// SelectSnapshot selects the version of the file that was current in the snapshot once the history is loaded,
+// instead of the newest one. Must be called before the overlay is shown, on the UI thread.
+func (o *FileHistoryOverlay) SelectSnapshot(snapshot *zfs.Snapshot) *FileHistoryOverlay {
+	o.initialSnapshot = snapshot
+	return o
+}
+
+func snapshotEntryCreation(entry *data.SnapshotBrowserEntry) time.Time {
+	return entry.Snapshot.Properties.CreationDate
 }
 
 func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) []*tview.TableCell {
@@ -509,8 +523,12 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 			o.sizes = sizes
 			o.tableContainer.SetData(history)
 			if len(history) > 0 {
-				o.tableContainer.SelectFirstIfExists()
-				o.currentSelection = history[0]
+				selected := history[0]
+				if o.initialSnapshot != nil {
+					selected = versionAt(history, snapshotEntryCreation, o.initialSnapshot.Properties.CreationDate)
+				}
+				o.tableContainer.Select(selected)
+				o.currentSelection = selected
 				o.updateDiff()
 			} else {
 				o.loadingView.Stop()

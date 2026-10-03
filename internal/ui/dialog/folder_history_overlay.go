@@ -16,6 +16,7 @@ import (
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -76,6 +77,9 @@ type FolderHistoryOverlay struct {
 	history  *folderHistory
 	selected *folderVersion
 	mode     diffMode
+	// initialSnapshot is the snapshot whose version is selected once the history is loaded (nil: the newest),
+	// see SelectSnapshot
+	initialSnapshot *zfs.Snapshot
 }
 
 // NewFolderHistoryOverlay creates the overlay for the folder at folderPath and starts scanning its history in the
@@ -235,9 +239,24 @@ func (o *FolderHistoryOverlay) setHistory(history *folderHistory) {
 		o.updateChanges()
 		return
 	}
-	o.timeline.SelectFirstIfExists()
+	if o.initialSnapshot != nil {
+		o.timeline.Select(versionAt(history.Changed, folderVersionCreation, o.initialSnapshot.Properties.CreationDate))
+	} else {
+		o.timeline.SelectFirstIfExists()
+	}
 	o.selected = o.timeline.GetSelectedEntry()
 	o.updateChanges()
+}
+
+// SelectSnapshot selects the version of the folder that was current in the snapshot once the history is loaded,
+// instead of the newest one. Must be called before the overlay is shown, on the UI thread.
+func (o *FolderHistoryOverlay) SelectSnapshot(snapshot *zfs.Snapshot) *FolderHistoryOverlay {
+	o.initialSnapshot = snapshot
+	return o
+}
+
+func folderVersionCreation(version *folderVersion) time.Time {
+	return version.Snapshot.Properties.CreationDate
 }
 
 func sortTimeline(versions []*folderVersion, column *table.Column, inverted bool) []*folderVersion {

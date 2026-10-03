@@ -20,3 +20,11 @@ type StatusMessageEvent struct {
 }
 
 func (e StatusMessageEvent) isSnapshotBrowserEvent() {}
+
+// RequestHistoryEvent asks for the history of a file or folder, at the version that was current in a snapshot.
+type RequestHistoryEvent struct {
+	Entry    *data.FileBrowserEntry
+	Snapshot *data.SnapshotBrowserEntry
+}
+
+func (e RequestHistoryEvent) isSnapshotBrowserEvent() {}

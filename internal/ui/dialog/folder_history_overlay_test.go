@@ -53,7 +53,8 @@ type folderHistoryTest struct {
 //	d3: b.txt (bigger), c/    (a.txt deleted, b.txt modified, c/ added)
 //
 // and a working copy with only c/: b.txt was deleted since d3.
-func newFolderHistoryTest(t *testing.T) *folderHistoryTest {
+// configure is applied to the overlay before it is shown, e.g. to select a snapshot.
+func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overlay *FolderHistoryOverlay)) *folderHistoryTest {
 	ds := newFakeDataset(t)
 	ds.addSnapshot("d1", day(1), map[string]string{"docs/a.txt": "a", "docs/b.txt": "b"})
 	ds.addSnapshot("d2", day(2), map[string]string{"docs/a.txt": "a", "docs/b.txt": "b"})
@@ -86,6 +87,9 @@ func newFolderHistoryTest(t *testing.T) *folderHistoryTest {
 
 	onUiThread(t, ft.app, func() {
 		ft.overlay = NewFolderHistoryOverlay(ft.app, filepath.Join(ds.root, "docs"), nil)
+		for _, f := range configure {
+			f(ds, ft.overlay)
+		}
 		ShowDialogOnPages(ft.app, ft.pages, ft.overlay, nil)
 	})
 	ft.waitFor("history loaded", func() bool {
@@ -175,6 +179,24 @@ func TestFolderHistoryOverlay_Timeline(t *testing.T) {
 	})
 	// b.txt grew from "b" to "bbbb"
 	assert.Contains(t, ft.screenText(), "1 B → 4 B")
+}
+
+// Opened from the snapshot browser: the version that was current in the snapshot is selected. d2 did not change
+// anything, so it shows the version of d1.
+func TestFolderHistoryOverlay_SelectSnapshot(t *testing.T) {
+	for snapshot, expected := range map[string]string{"d1": "d1", "d2": "d1", "d3": "d3"} {
+		t.Run(snapshot, func(t *testing.T) {
+			ft := newFolderHistoryTest(t, func(ds *fakeDataset, overlay *FolderHistoryOverlay) {
+				overlay.SelectSnapshot(ds.snapshot(snapshot))
+			})
+			var selected string
+			onUiThread(t, ft.app, func() {
+				selected = ft.overlay.timeline.GetSelectedEntry().Snapshot.Name
+				assert.Same(t, ft.overlay.timeline.GetSelectedEntry(), ft.overlay.selected)
+			})
+			assert.Equal(t, expected, selected)
+		})
+	}
 }
 
 func TestFolderHistoryOverlay_ModeSinceSnapshot(t *testing.T) {

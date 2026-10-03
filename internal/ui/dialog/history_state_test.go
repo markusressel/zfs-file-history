@@ -110,3 +110,17 @@ func TestDatasetPropertiesDialog_ColumnsAreEditable(t *testing.T) {
 		return ok
 	}, 3*time.Second, 10*time.Millisecond)
 }
+
+func TestVersionAt(t *testing.T) {
+	type version struct{ created time.Time }
+	created := func(v *version) time.Time { return v.created }
+	d1, d3, d5 := &version{day(1)}, &version{day(3)}, &version{day(5)}
+	versions := []*version{d5, d3, d1} // newest first, like the histories
+
+	assert.Same(t, d3, versionAt(versions, created, day(3)), "the snapshot itself")
+	assert.Same(t, d3, versionAt(versions, created, day(4)), "the last change before it")
+	assert.Same(t, d5, versionAt(versions, created, day(9)))
+	assert.Same(t, d1, versionAt(versions, created, day(0)), "older than all versions: the oldest")
+	assert.Same(t, d1, versionAt([]*version{d1, d5, d3}, created, day(2)), "independent of the order")
+	assert.Nil(t, versionAt([]*version{}, created, day(1)))
+}

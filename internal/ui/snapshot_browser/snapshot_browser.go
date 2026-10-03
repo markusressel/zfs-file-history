@@ -37,6 +37,9 @@ type SnapshotBrowserComponent struct {
 	hostDataset      *zfs.Dataset
 	currentSnapshots []*zfs.Snapshot
 	currentFileEntry *data.FileBrowserEntry
+	// historyTarget returns the file or folder whose history can be opened at the selected snapshot (h), or nil.
+	// Not set on pages without a file browser.
+	historyTarget func() *data.FileBrowserEntry
 
 	selectedSnapshotMemory *uiutil.SelectionMemory[data.SnapshotBrowserEntry]
 
@@ -199,6 +202,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
 				}
 				return nil
+			} else if key == tcell.KeyRune && event.Rune() == 'h' && !snapshotBrowser.HasMultiSelection() {
+				if target := snapshotBrowser.getHistoryTarget(); target != nil {
+					snapshotBrowser.emit(RequestHistoryEvent{Entry: target, Snapshot: snapshotBrowser.GetSelection()})
+					return nil
+				}
 			} else if event.Rune() == 'd' || key == tcell.KeyDelete {
 				currentSelection := snapshotBrowser.GetSelection()
 				if currentSelection != nil {
@@ -609,9 +617,29 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectFirstIfExists() {
 	snapshotBrowser.tableContainer.SelectFirstIfExists()
 }
 
+// SetHistoryTarget enables opening the history of a file or folder at the selected snapshot (h, and in the action
+// dialog), see RequestHistoryEvent. target returns the file or folder, or nil if there is none.
+func (snapshotBrowser *SnapshotBrowserComponent) SetHistoryTarget(target func() *data.FileBrowserEntry) {
+	snapshotBrowser.historyTarget = target
+}
+
+// getHistoryTarget returns the file or folder whose history can be opened at the selected snapshot, or nil.
+func (snapshotBrowser *SnapshotBrowserComponent) getHistoryTarget() *data.FileBrowserEntry {
+	if snapshotBrowser.historyTarget == nil {
+		return nil
+	}
+	return snapshotBrowser.historyTarget()
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *data.SnapshotBrowserEntry) {
 	if snapshotBrowser.GetSelection() == nil {
 		return
+	}
+	// captured now, the selection of the file browser may change while the dialog is open
+	historyTarget := snapshotBrowser.getHistoryTarget()
+	historyTargetName := ""
+	if historyTarget != nil {
+		historyTargetName = historyTarget.Name
 	}
 
 	var createdName string
@@ -663,6 +691,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 
 		// Handle downstream states depending on what succeeded
 		switch option.Id {
+		case dialog.SnapshotDialogShowHistoryActionId:
+			snapshotBrowser.emit(RequestHistoryEvent{Entry: historyTarget, Snapshot: selection})
+			return
 		case dialog.SnapshotDialogCloneSnapshotActionId:
 			// asks for the name first, the clone itself is created afterwards
 			snapshotBrowser.openCloneDialog(selection)
@@ -682,7 +713,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		snapshotBrowser.Refresh(true)
 	}
 
-	actionDialog := dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection, asyncWork, onComplete)
+	actionDialog := dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection, historyTargetName, asyncWork, onComplete)
 	snapshotBrowser.showDialog(actionDialog, nil)
 }
 
@@ -984,6 +1015,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 			uiutil.TableComponentShortcutActions,
 			uiutil.TableComponentShortcutDelete,
 		)
+		if snapshotBrowser.getHistoryTarget() != nil && !snapshotBrowser.HasMultiSelection() {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History at snapshot"})
+		}
 	} else {
 		shortcutMap = append(shortcutMap,
 			uiutil.TableComponentShortcutFlipColumnDirection,

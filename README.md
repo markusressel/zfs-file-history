@@ -27,7 +27,8 @@
   in which its content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed
   entries of each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole
   folder from a snapshot, or open the history of an entry (`h`).
-* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
+* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. `h` in the snapshot
+  list (or its action menu) opens the history of the selected file or folder at that snapshot.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
 * 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the
   file and folder history and the dataset properties.

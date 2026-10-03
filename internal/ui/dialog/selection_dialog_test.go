@@ -124,8 +124,16 @@ func TestNewSnapshotActionDialog(t *testing.T) {
 		},
 	}
 
-	d := NewSnapshotActionDialog(app, snapshot, nil, nil)
+	d := NewSnapshotActionDialog(app, snapshot, "", nil, nil)
 	assert.Equal(t, "SnapshotActionDialog", d.GetName())
+	for _, option := range d.options {
+		assert.NotEqual(t, SnapshotDialogShowHistoryActionId, option.Id, "no history without a file or folder")
+	}
+
+	// with a file or folder: its history at the snapshot, as the first action
+	d = NewSnapshotActionDialog(app, snapshot, "notes.txt", nil, nil)
+	assert.Equal(t, SnapshotDialogShowHistoryActionId, d.options[0].Id)
+	assert.Contains(t, d.options[0].Name, "'notes.txt'")
 }
 
 func TestNewMultiSnapshotActionDialog(t *testing.T) {

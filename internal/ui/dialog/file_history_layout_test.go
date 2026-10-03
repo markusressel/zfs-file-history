@@ -123,3 +123,56 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 		return width >= leftWidth+10
 	}, 3*time.Second, 10*time.Millisecond, "versions wider")
 }
+
+// Opened from the snapshot browser: the version of the file that was current in the snapshot is selected. The
+// history only lists the snapshots in which the file changed, so d2 shows the version of d1.
+func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
+	for snapshot, expected := range map[string]string{"d1": "d1", "d2": "d1", "d3": "d3"} {
+		t.Run(snapshot, func(t *testing.T) {
+			ds := newFakeDataset(t)
+			ds.addSnapshot("d1", day(1), map[string]string{"notes.txt": "one\n"})
+			ds.addSnapshot("d2", day(2), map[string]string{"notes.txt": "one\n"})
+			ds.addSnapshot("d3", day(3), map[string]string{"notes.txt": "one\ntwo\n"})
+			ds.writeFile(ds.root, "notes.txt", "one\ntwo\n", fileTime)
+			original := findSnapshotsOfPath
+			t.Cleanup(func() { findSnapshotsOfPath = original })
+			findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
+
+			app := tview.NewApplication()
+			app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+			pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
+			app.SetRoot(pages, true)
+			go func() { _ = app.Run() }()
+			t.Cleanup(app.Stop)
+
+			path := filepath.Join(ds.root, "notes.txt")
+			file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}
+			var overlay *FileHistoryOverlay
+			onUiThread(t, app, func() {
+				overlay = NewFileHistoryOverlay(app, file, nil).SelectSnapshot(ds.snapshot(snapshot))
+				ShowDialogOnPages(app, pages, overlay, nil)
+			})
+
+			var versions []string
+			var selected, current string
+			require.Eventually(t, func() bool {
+				onUiThread(t, app, func() {
+					versions = nil
+					for _, entry := range overlay.historyEntries {
+						versions = append(versions, entry.Snapshot.Name)
+					}
+					if entry := overlay.tableContainer.GetSelectedEntry(); entry != nil {
+						selected = entry.Snapshot.Name
+					}
+					if overlay.currentSelection != nil {
+						current = overlay.currentSelection.Snapshot.Name
+					}
+				})
+				return len(versions) > 0
+			}, 3*time.Second, 10*time.Millisecond, "history loaded")
+			assert.Equal(t, []string{"d3", "d1"}, versions, "d2 did not change the file")
+			assert.Equal(t, expected, selected)
+			assert.Equal(t, expected, current)
+		})
+	}
+}

@@ -201,7 +201,7 @@ func (fileBrowser *FileBrowserComponent) setupTable() {
 			}
 		}
 		if key == tcell.KeyRune && event.Rune() == 'h' {
-			if entry := fileBrowser.historyEntry(); entry != nil {
+			if entry := fileBrowser.HistoryEntry(); entry != nil {
 				fileBrowser.emit(RequestFileHistoryEvent{FileEntry: entry})
 				return nil
 			}
@@ -1069,9 +1069,9 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 }
 
 // currentFolderEntry returns the folder that is shown, as an entry (e.g. for its history).
-// historyEntry returns the entry whose history h shows: the selected file or folder, or the folder that is shown
+// HistoryEntry returns the entry whose history h shows: the selected file or folder, or the folder that is shown
 // while the header row is selected or the folder is empty. nil if the selection has no history (e.g. a symlink).
-func (fileBrowser *FileBrowserComponent) historyEntry() *data.FileBrowserEntry {
+func (fileBrowser *FileBrowserComponent) HistoryEntry() *data.FileBrowserEntry {
 	selection := fileBrowser.GetSelection()
 	switch {
 	case selection == nil:
