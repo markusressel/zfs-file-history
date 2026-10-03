@@ -16,8 +16,10 @@ import (
 
 const (
 	// Height is the height of the overview, including its border: a text line and a graph line for the folder and
-	// for the selected entry, so the graphs are never next to each other.
-	Height = 6
+	// for the selected entry (so the graphs are never next to each other), separated by a divider.
+	Height = 7
+	// dividerRow is the row of the divider between the folder and the selected entry, within the border
+	dividerRow = 2
 	// labelWidth is the width of the labels in front of the lines ("Folder", "Selected")
 	labelWidth = 10
 )
@@ -71,6 +73,23 @@ func (view *overviewView) Draw(screen tcell.Screen) {
 	view.DrawForSubclass(screen, view)
 	x, y, width, height := view.GetInnerRect()
 	view.overview.draw(screen, x, y, width, height)
+	if height > dividerRow {
+		view.drawDivider(screen, y+dividerRow)
+	}
+}
+
+// drawDivider draws a horizontal line across the overview at row y, joined to its border ("├───┤").
+func (view *overviewView) drawDivider(screen tcell.Screen, y int) {
+	x, _, width, _ := view.GetRect()
+	if width < 2 {
+		return
+	}
+	style := tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(theme.Colors.Layout.Border)
+	screen.SetContent(x, y, tview.BoxDrawingsLightVerticalAndRight, nil, style)
+	for column := x + 1; column < x+width-1; column++ {
+		screen.SetContent(column, y, tview.BoxDrawingsLightHorizontal, nil, style)
+	}
+	screen.SetContent(x+width-1, y, tview.BoxDrawingsLightVerticalAndLeft, nil, style)
 }
 
 func (overview *PathOverviewComponent) GetLayout() tview.Primitive {
@@ -119,6 +138,8 @@ func (overview *PathOverviewComponent) draw(screen tcell.Screen, x int, y int, w
 	}{
 		{"Folder", func(y int) { printFitted(screen, overview.folderParts(), x+labelWidth, y, textWidth) }},
 		{"", func(y int) { overview.drawDistanceGraph(screen, x, y, width) }},
+		// the divider, see overviewView.drawDivider
+		{"", func(int) {}},
 		{"Selected", func(y int) { printFitted(screen, overview.entryParts(), x+labelWidth, y, textWidth) }},
 		{"", func(y int) {
 			if overview.entry != nil {

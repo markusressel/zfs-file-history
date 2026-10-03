@@ -30,7 +30,8 @@
 * 🧭 **Overview:** Below the file browser, the current folder compared to the selected snapshot (`+2 −1 ~4`), a
   sparkline of how many of its entries differ from now in each snapshot (to see how far back you have to go, and
   since when it is unchanged), and one of the size of the selected file (its number of versions and last change).
-  The snapshot selected in the snapshot list is highlighted in them.
+  The snapshot selected in the snapshot list is highlighted in them. `o` hides it to make room for the files, and
+  shows it again (remembered between runs).
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. `h` in the snapshot
   list (or its action menu) opens the history of the selected file or folder at that snapshot.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
@@ -161,7 +162,7 @@ in [zfs-file-history.yaml](/zfs-file-history.yaml).
 
 Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
 (the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview, the
-comparison mode of the file and folder history, relative times and hidden shortcuts)
+comparison mode of the file and folder history, relative times, hidden shortcuts and the hidden overview)
 in a state file:
 
 * `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`

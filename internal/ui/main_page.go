@@ -5,6 +5,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/path_overview"
@@ -145,6 +146,10 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			mainPage.CycleFocus(key == tcell.KeyBacktab || event.Modifiers()&tcell.ModShift != 0)
 			return nil
 		}
+		if key == tcell.KeyRune && event.Rune() == 'o' && !uiutil.IsTextInputActive(application.GetFocus()) {
+			mainPage.toggleOverview()
+			return nil
+		}
 		switch key {
 		case tcell.KeyF5:
 			zfs.RefreshZfsData()
@@ -190,6 +195,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	mainPage.windowLayout = windowLayout
 	mainPage.leftLayout = leftLayout
+	mainPage.applyOverviewVisibility()
 
 	// Set mouse capture on the top-level layout to capture drags anywhere on the screen
 	mainPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
@@ -366,6 +372,39 @@ func (mainPage *MainPage) showHistory(entry *data.FileBrowserEntry, snapshot *zf
 	})
 }
 
+// toggleHideOverview is the key of the setting in state.Current.
+const toggleHideOverview = "filesPage.hideOverview"
+
+// isOverviewHidden returns whether the path overview below the file browser is hidden, to make room.
+func (mainPage *MainPage) isOverviewHidden() bool {
+	return state.Current.Toggle(toggleHideOverview, false)
+}
+
+// toggleOverview hides or shows the path overview, and remembers the setting. Must be called on the UI thread.
+func (mainPage *MainPage) toggleOverview() {
+	state.Current.SetToggle(toggleHideOverview, !mainPage.isOverviewHidden())
+	mainPage.applyOverviewVisibility()
+	mainPage.refreshShortcutMap()
+}
+
+// applyOverviewVisibility sizes the path overview: hidden, it takes no space.
+func (mainPage *MainPage) applyOverviewVisibility() {
+	height := path_overview.Height
+	if mainPage.isOverviewHidden() {
+		height = 0
+	}
+	mainPage.leftLayout.ResizeItem(mainPage.pathOverview.GetLayout(), height, 0)
+}
+
+// overviewShortcut is the shortcut that hides or shows the path overview.
+func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
+	name := "Hide overview"
+	if mainPage.isOverviewHidden() {
+		name = "Show overview"
+	}
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Group: shortcut_helper.GroupView}
+}
+
 func (mainPage *MainPage) setShortcutMap(shortcutEntries []shortcut_helper.ShortcutEntry) {
 	mainPage.shortcutMap.SetEntries(shortcutEntries)
 }
@@ -380,6 +419,7 @@ func (mainPage *MainPage) updateShortcutMap(component FocusableUiComponent) {
 
 		globalShortcutMapEntries := globalShortcuts()
 
+		shortcutMap = append(shortcutMap, mainPage.overviewShortcut())
 		shortcutMap = append(shortcutMap, globalShortcutMapEntries...)
 		mainPage.setShortcutMap(shortcutMap)
 	} else {

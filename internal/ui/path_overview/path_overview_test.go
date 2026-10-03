@@ -210,7 +210,7 @@ func TestPathOverview_Draw(t *testing.T) {
 	lines, _ := render(t, overview, 120)
 	assert.Contains(t, lines[1], "Folder    /pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged")
 	assert.Contains(t, lines[2], "…")
-	assert.Contains(t, lines[3], "Selected  report.pdf · …")
+	assert.Contains(t, lines[4], "Selected  report.pdf · …")
 
 	overview.SetVersions("pool/home", "/pool/home", folderPath,
 		versions(folder(1), folder(1), folder(2), folder(2), folder(3)),
@@ -229,18 +229,20 @@ func TestPathOverview_Draw(t *testing.T) {
 	assert.Contains(t, lines[1], "Folder    pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged · same as now since s4")
 	// the graphs have their own lines, one dot column per snapshot: s1..s5
 	assert.Contains(t, lines[2], "  differs ⣷⣄⡀ → now")
-	assert.Contains(t, lines[3], "Selected  report.pdf · 3 versions · last changed ")
-	assert.Contains(t, lines[4], "  size    ⢀⣤⡇")
+	assert.Contains(t, lines[4], "Selected  report.pdf · 3 versions · last changed ")
+	assert.Contains(t, lines[5], "  size    ⢀⣤⡇")
 
 	// the selected snapshot (s3, in the second cell) is highlighted in both graphs
 	graphX := 2 + labelWidth
-	for _, y := range []int{3, 5} {
+	for _, y := range []int{2, 5} {
 		for i := 0; i < 3; i++ {
-			_, _, style, _ := screen.GetContent(graphX+i, y-1)
+			_, _, style, _ := screen.GetContent(graphX+i, y)
 			_, background, _ := style.Decompose()
-			assert.Equal(t, i == 1, background == theme.Colors.Sparkline.SelectedBackground, "row %d, cell %d", y-1, i)
+			assert.Equal(t, i == 1, background == theme.Colors.Sparkline.SelectedBackground, "row %d, cell %d", y, i)
 		}
 	}
+	// a divider between the folder and the selected entry, joined to the border
+	assert.Equal(t, "├"+strings.Repeat("─", 118)+"┤", lines[3])
 
 	// narrow: nothing is cut off, the least important parts are left out
 	lines, _ = render(t, overview, 50)
@@ -248,7 +250,7 @@ func TestPathOverview_Draw(t *testing.T) {
 		t.Log(line)
 	}
 	assert.Contains(t, lines[1], "Folder    …/home/markus/docs · vs s3: +2 −1 ~4 │")
-	assert.Contains(t, lines[3], "Selected  report.pdf · 3 versions")
+	assert.Contains(t, lines[4], "Selected  report.pdf · 3 versions")
 
 	// moving to another folder: loading again
 	overview.SetFolder("/pool/home/markus/other")
@@ -257,7 +259,7 @@ func TestPathOverview_Draw(t *testing.T) {
 	lines, _ = render(t, overview, 120)
 	assert.Contains(t, lines[1], "/pool/home/markus/other · select a snapshot to compare")
 	assert.Contains(t, lines[2], "…")
-	assert.Contains(t, lines[3], "select a file or folder to see its history")
+	assert.Contains(t, lines[4], "select a file or folder to see its history")
 }
 
 func TestSameAsNowSince(t *testing.T) {

@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/path_overview"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/util"
@@ -290,4 +293,53 @@ func TestMainPageHasNoDatasetInfo(t *testing.T) {
 	assert.Same(t, mainPage.fileBrowser.GetLayout(), mainPage.leftLayout.GetItem(0))
 	assert.Same(t, mainPage.pathOverview.GetLayout(), mainPage.leftLayout.GetItem(1))
 	app.Stop()
+}
+
+// o hides the overview below the file browser (making room for the files) and shows it again; the setting is
+// remembered. While typing a filter, it is typed.
+func TestOverviewKey(t *testing.T) {
+	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
+	state.Current = store
+	t.Cleanup(func() {
+		_ = store.Flush()
+		state.Current = nil
+	})
+	app, mainPage, _ := createUi(t.TempDir(), true)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	screen.SetSize(150, 40)
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+
+	overviewHeight := func() int {
+		var height int
+		onUiThreadT(t, app, func() {
+			app.ForceDraw()
+			_, _, _, height = mainPage.pathOverview.GetLayout().GetRect()
+		})
+		return height
+	}
+	shortcut := func() string {
+		var name string
+		onUiThreadT(t, app, func() { name = mainPage.overviewShortcut().Name })
+		return name
+	}
+	require.Equal(t, path_overview.Height, overviewHeight())
+	assert.Equal(t, "Hide overview", shortcut())
+
+	screen.InjectKey(tcell.KeyRune, 'o', tcell.ModNone)
+	assert.Eventually(t, func() bool { return overviewHeight() == 0 }, 2*time.Second, 10*time.Millisecond)
+	assert.True(t, store.Toggle(toggleHideOverview, false), "remembered")
+	assert.Equal(t, "Show overview", shortcut())
+
+	screen.InjectKey(tcell.KeyRune, 'o', tcell.ModNone)
+	assert.Eventually(t, func() bool { return overviewHeight() == path_overview.Height }, 2*time.Second, 10*time.Millisecond)
+
+	// typed into a filter instead
+	onUiThreadT(t, app, func() { app.SetFocus(mainPage.fileBrowser.GetLayout()) })
+	screen.InjectKey(tcell.KeyCtrlF, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyRune, 'o', tcell.ModNone)
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, path_overview.Height, overviewHeight())
+	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
 }
