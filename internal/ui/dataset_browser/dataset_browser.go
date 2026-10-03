@@ -133,6 +133,8 @@ type DatasetBrowserComponent struct {
 	// allEntries are all datasets of the last load, including the ones hidden by hideUnmounted.
 	// Only accessed on the UI thread.
 	allEntries []*zfs.DatasetListEntry
+	// dialogPages are the pages dialogs are shown on, see SetDialogPages
+	dialogPages *tview.Pages
 	// sizeScales color the size columns, see updateSizeScales
 	sizeScales map[*table.Column]uiutil.MagnitudeScale
 	// hideUnmounted hides datasets that are not mounted. Only accessed on the UI thread.
@@ -662,6 +664,12 @@ func findEntryToSelect(entries []*zfs.DatasetListEntry, previousName string, pat
 	}
 
 	return entries[0]
+}
+
+// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
+// whole screen, not only the area of this component. Without them, they are shown on its own layout.
+func (datasetBrowser *DatasetBrowserComponent) SetDialogPages(pages *tview.Pages) {
+	datasetBrowser.dialogPages = pages
 }
 
 func (datasetBrowser *DatasetBrowserComponent) GetPath() string {

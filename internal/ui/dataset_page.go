@@ -156,3 +156,10 @@ func (datasetPage *DatasetPage) Init(path string) {
 	datasetPage.datasetBrowser.SetPath(path, false)
 	datasetPage.datasetBrowser.Refresh(false)
 }
+
+// SetPages sets the pages of the application, on which the dialogs of the components are shown as well.
+func (datasetPage *DatasetPage) SetPages(pages *tview.Pages) {
+	datasetPage.basePage.SetPages(pages)
+	datasetPage.datasetBrowser.SetDialogPages(pages)
+	datasetPage.snapshotBrowser.SetDialogPages(pages)
+}
