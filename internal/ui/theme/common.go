@@ -150,10 +150,20 @@ type LayoutTableColors struct {
 // SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the
 // histories.
 type SparklineColors struct {
+	// Graph is the color of the sparklines without a Gradient
 	Graph tcell.Color
+	// Gradient colors the values by their height (see GradientStop), from the lowest to the highest stop
 	// Selected and SelectedBackground mark the selected value, e.g. the snapshot selected in a list
 	Selected           tcell.Color
 	SelectedBackground tcell.Color
+	Gradient           []GradientStop
+}
+
+// GradientStop is a color of a gradient: values at Position (0: zero, 1: the highest value of the graph) have this
+// color, values between two stops a mix of both.
+type GradientStop struct {
+	Position float64
+	Color    tcell.Color
 }
 
 type ShortcutMapColors struct {

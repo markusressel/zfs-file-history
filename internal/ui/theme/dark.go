@@ -105,6 +105,12 @@ var (
 			Graph:              Accent,
 			Selected:           Primary,
 			SelectedBackground: Secondary,
+			// calm for small values, warm for large ones
+			Gradient: []GradientStop{
+				{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x7D8A96},
+				{Position: 0.5, Color: Accent},
+				{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
+			},
 		},
 		Permissions: PermissionColors{
 			Granted: tcell.ColorGreen,
