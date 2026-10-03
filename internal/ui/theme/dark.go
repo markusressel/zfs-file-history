@@ -57,7 +57,6 @@ var (
 					SnapshotOnly: tcell.ColorGreen,
 					Equal:        tcell.ColorGray,
 				},
-				ZeroSize: tcell.ColorDarkGray,
 			},
 		},
 		List: ListColors{
@@ -92,6 +91,7 @@ var (
 				// a lighter variant of Secondary, readable on the dark background
 				TreeLines:              tcell.ColorIsRGB | tcell.ColorValid | 0x7D8A96,
 				TreeCollapsedIndicator: Primary,
+				ZeroSize:               tcell.ColorDarkGray,
 			},
 		},
 		ShortcutMap: ShortcutMapColors{

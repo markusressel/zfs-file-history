@@ -53,9 +53,6 @@ type SnapshotBrowserColors struct {
 
 type SnapshotBrowserTableColors struct {
 	State SnapshotBrowserTableStatusColors
-	// ZeroSize is the color of sizes of 0 (e.g. "Written" of snapshots in which nothing changed), dimmed so the
-	// others stand out
-	ZeroSize tcell.Color
 }
 
 type SnapshotBrowserTableStatusColors struct {
@@ -151,6 +148,9 @@ type LayoutTableColors struct {
 	TreeLines tcell.Color
 	// TreeCollapsedIndicator is the "▸ +N" behind collapsed entries of tree views
 	TreeCollapsedIndicator tcell.Color
+	// ZeroSize is the color of sizes of 0 in size columns (e.g. "Written" of snapshots in which nothing changed),
+	// dimmed so the others stand out; the others are colored with Colors.Magnitude
+	ZeroSize tcell.Color
 }
 
 // SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the

@@ -103,8 +103,8 @@ func TestWrittenColumn(t *testing.T) {
 		color, _, _ := cell.Style.Decompose()
 		return color
 	}
-	assert.Equal(t, theme.Colors.SnapshotBrowser.Table.ZeroSize, foreground(empty))
-	assert.NotEqual(t, theme.Colors.SnapshotBrowser.Table.ZeroSize, foreground(written))
+	assert.Equal(t, theme.Colors.Layout.Table.ZeroSize, foreground(empty))
+	assert.NotEqual(t, theme.Colors.Layout.Table.ZeroSize, foreground(written))
 
 	// beyond the range of int, where subtracting would overflow
 	entries := []*data.SnapshotBrowserEntry{newEntry("small", 1), newEntry("none", 0), newEntry("huge", math.MaxUint64), newEntry("big", 1<<40)}
@@ -130,7 +130,7 @@ func TestSizeColors(t *testing.T) {
 		return foreground
 	}
 	stops := theme.Colors.Magnitude
-	zero := theme.Colors.SnapshotBrowser.Table.ZeroSize
+	zero := theme.Colors.Layout.Table.ZeroSize
 	assert.Equal(t, stops[0].Color, color(snapshots[0], columnUsed))
 	assert.Equal(t, stops[len(stops)-1].Color, color(snapshots[1], columnUsed))
 	assert.Equal(t, zero, color(snapshots[2], columnUsed))

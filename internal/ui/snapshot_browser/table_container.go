@@ -64,12 +64,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			}
 		case columnUsed:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Used)
-			cellColor = sizeColor(entry.Snapshot.Properties.Used, snapshotBrowser.usedScale, cellColor)
+			cellColor = snapshotBrowser.usedScale.SizeColor(entry.Snapshot.Properties.Used, cellColor)
 		case columnRefer:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Referenced)
 		case columnWritten:
 			cellText = uiutil.StableLengthHumanizedBytes(entry.Snapshot.Properties.Written)
-			cellColor = sizeColor(entry.Snapshot.Properties.Written, snapshotBrowser.writtenScale, cellColor)
+			cellColor = snapshotBrowser.writtenScale.SizeColor(entry.Snapshot.Properties.Written, cellColor)
 		case columnRatio:
 			ratio := entry.Snapshot.Properties.CompressionRatio
 			cellText = fmt.Sprintf("%.2fx", ratio)
@@ -103,15 +103,6 @@ func formatName(snapshot *zfs.Snapshot) string {
 		return heldMarker + snapshot.Name
 	}
 	return snapshot.Name
-}
-
-// sizeColor returns the color of a size: dimmed for 0 (e.g. a snapshot in which nothing changed), otherwise by how
-// big it is compared to the other snapshots (see theme.Colors.Magnitude).
-func sizeColor(size uint64, scale uiutil.MagnitudeScale, fallback tcell.Color) tcell.Color {
-	if size == 0 {
-		return theme.Colors.SnapshotBrowser.Table.ZeroSize
-	}
-	return scale.MagnitudeColor(size, fallback)
 }
 
 // formatHolds returns the text of the holds column, empty without holds, so held snapshots stand out.

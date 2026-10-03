@@ -44,7 +44,7 @@
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree (`-`/`+`, `*` for all, like htop) or as a flat
   list (`t`), unmounted datasets are hidden by default (`u`). Both choices are remembered between runs. The used
   space is broken down into snapshots, the dataset itself, its children and its refreservation (sortable, to find the
-  datasets whose snapshots use the most space).
+  datasets whose snapshots use the most space), colored by how big it is compared to the other datasets.
 * ⚙️ **Dataset properties:** `e` in the dataset overview shows all ZFS properties of a dataset (`zfs get all`) with
   their source, filterable and sortable. Change them (`zfs set`), add user properties (`module:property`, `a`), or
   reset local values to the inherited or default ones and remove user properties (`zfs inherit`); with `sudo` if

@@ -10,6 +10,7 @@ import (
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
@@ -703,4 +704,36 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	assert.False(t, restored.IsTreeView())
 	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"u"}, Name: "Hide unmounted", Group: shortcut_helper.GroupView})
 	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"t"}, Name: "Tree view", Group: shortcut_helper.GroupView})
+}
+
+// The size columns are colored by how big their sizes are compared to all datasets, 0 dimmed. The available space
+// is not colored: it is mostly the same for all datasets of a pool.
+func TestDatasetBrowser_SizeColors(t *testing.T) {
+	browser := NewDatasetBrowser(tview.NewApplication())
+	// without the permissions column, so no permissions are read in the background (and outlive the test)
+	var columns []*table.Column
+	for _, column := range tableColumns {
+		if column != columnPermissions {
+			columns = append(columns, column)
+		}
+	}
+	browser.tableContainer.SetActiveColumns(columns)
+	small := &zfs.DatasetListEntry{Name: "pool/small", MountPath: "/small", Mountpoint: "/small", Used: 1 << 10, UsedBySnapshots: 0, Available: 1 << 40}
+	large := &zfs.DatasetListEntry{Name: "pool/large", MountPath: "/large", Mountpoint: "/large", Used: 1 << 30, UsedBySnapshots: 1 << 20, Available: 1 << 40}
+	// the largest snapshots, but not mounted: hidden by default, still part of the scale
+	hidden := &zfs.DatasetListEntry{Name: "pool/hidden", Mountpoint: "legacy", Used: 1 << 20, UsedBySnapshots: 1 << 30}
+	browser.onDatasetsLoaded([]*zfs.DatasetListEntry{small, large, hidden})
+	require.True(t, browser.IsHidingUnmounted())
+
+	color := func(entry *zfs.DatasetListEntry, column *table.Column) tcell.Color {
+		cell := browser.toTableCells(0, []*table.Column{column}, entry)[0]
+		foreground, _, _ := cell.Style.Decompose()
+		return foreground
+	}
+	stops := theme.Colors.Magnitude
+	assert.Equal(t, stops[0].Color, color(small, columnUsed))
+	assert.Equal(t, stops[len(stops)-1].Color, color(large, columnUsed))
+	assert.Equal(t, theme.Colors.Layout.Table.ZeroSize, color(small, columnUsedBySnapshots))
+	assert.Equal(t, stops[0].Color, color(large, columnUsedBySnapshots), "the hidden dataset has the larger snapshots")
+	assert.NotContains(t, []tcell.Color{stops[0].Color, stops[len(stops)-1].Color, theme.Colors.Layout.Table.ZeroSize}, color(large, columnAvail))
 }

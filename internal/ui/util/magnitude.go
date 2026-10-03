@@ -39,6 +39,14 @@ func (scale MagnitudeScale) Position(size uint64) float64 {
 	return min(max(position, 0), 1)
 }
 
+// SizeColor returns the color of a size in a size column: dimmed for 0, otherwise by how big it is on the scale.
+func (scale MagnitudeScale) SizeColor(size uint64, fallback tcell.Color) tcell.Color {
+	if size == 0 {
+		return theme.Colors.Layout.Table.ZeroSize
+	}
+	return scale.MagnitudeColor(size, fallback)
+}
+
 // MagnitudeColor returns the color of a size on the scale, see theme.Colors.Magnitude.
 func (scale MagnitudeScale) MagnitudeColor(size uint64, fallback tcell.Color) tcell.Color {
 	return GradientColor(theme.Colors.Magnitude, scale.Position(size), fallback)
