@@ -326,8 +326,8 @@ func TestFolderHistoryOverlay_DividerBetweenSparklinesAndDetails(t *testing.T) {
 		detailsX, detailsHeight = x, height
 		innerX, _, _, _ = ft.overlay.details.GetInnerRect()
 		for row := y; row < y+height; row++ {
-			character, _, _, _ := ft.screen.GetContent(x, row)
-			column = append(column, character)
+			character, _, _ := ft.screen.Get(x, row)
+			column = append(column, []rune(character)[0])
 		}
 	})
 	require.Equal(t, folderHistoryHeaderLines, detailsHeight)

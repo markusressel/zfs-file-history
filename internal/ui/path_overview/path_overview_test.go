@@ -211,7 +211,7 @@ func TestPathOverview_Draw(t *testing.T) {
 	graphX := 2 + labelWidth
 	for _, y := range []int{2, 5} {
 		for i := 0; i < 3; i++ {
-			_, _, style, _ := screen.GetContent(graphX+i, y)
+			_, style, _ := screen.Get(graphX+i, y)
 			_, background, _ := style.Decompose()
 			assert.Equal(t, i == 1, background == theme.Colors.Sparkline.SelectedBackground, "row %d, cell %d", y, i)
 		}

@@ -188,8 +188,8 @@ func (s *ResizableSplit) Draw(screen tcell.Screen) {
 	x, y, width, height := s.GetRect()
 	first, second := s.boundary()
 	highlight := func(column int, row int) {
-		mainc, combc, style, _ := screen.GetContent(column, row)
-		screen.SetContent(column, row, mainc, combc, style.Foreground(theme.Primary))
+		str, style, _ := screen.Get(column, row)
+		screen.Put(column, row, str, style.Foreground(theme.Primary))
 	}
 	for _, line := range []int{first, second} {
 		if s.vertical {

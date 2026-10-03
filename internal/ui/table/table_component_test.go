@@ -169,8 +169,9 @@ func findText(screen tcell.SimulationScreen, text string) (int, int, bool) {
 	for y := 0; y < height; y++ {
 		var line []rune
 		for x := 0; x < width; x++ {
-			primary, _, _, _ := screen.GetContent(x, y)
-			line = append(line, primary)
+			// one rune per cell, so the index in line is the column
+			str, _, _ := screen.Get(x, y)
+			line = append(line, []rune(str)[0])
 		}
 		if index := strings.Index(string(line), text); index >= 0 {
 			return len([]rune(string(line)[:index])), y, true
@@ -180,7 +181,7 @@ func findText(screen tcell.SimulationScreen, text string) (int, int, bool) {
 }
 
 func backgroundAt(screen tcell.SimulationScreen, x, y int) tcell.Color {
-	_, _, style, _ := screen.GetContent(x, y)
+	_, style, _ := screen.Get(x, y)
 	_, background, _ := style.Decompose()
 	return background
 }
@@ -226,7 +227,7 @@ func TestSortColumnHeaderHighlightRendering(t *testing.T) {
 }
 
 func isBoldAt(screen tcell.SimulationScreen, x, y int) bool {
-	_, _, style, _ := screen.GetContent(x, y)
+	_, style, _ := screen.Get(x, y)
 	_, _, attributes := style.Decompose()
 	return attributes&tcell.AttrBold != 0
 }
@@ -552,8 +553,8 @@ func drawFilterFooter(t *testing.T, table *RowSelectionTable[namedEntry]) filter
 	result := filterFooter{cursor: -1}
 	var line strings.Builder
 	for x := 0; x < 40; x++ {
-		primary, _, style, _ := screen.GetContent(x, 7)
-		line.WriteRune(primary)
+		str, style, _ := screen.Get(x, 7)
+		line.WriteString(str)
 		_, _, attributes := style.Decompose()
 		if attributes&tcell.AttrReverse != 0 {
 			result.cursor = x
@@ -577,8 +578,8 @@ func TestFilter_FooterAndCountsDoNotOverlap(t *testing.T) {
 
 	var line strings.Builder
 	for x := 0; x < 40; x++ {
-		primary, _, _, _ := screen.GetContent(x, 7)
-		line.WriteRune(primary)
+		str, _, _ := screen.Get(x, 7)
+		line.WriteString(str)
 	}
 	assert.Equal(t, "└ Filter: daily ──────── 2 of 4 things ┘", line.String())
 }

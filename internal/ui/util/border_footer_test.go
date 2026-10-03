@@ -38,8 +38,8 @@ func screenLine(screen tcell.SimulationScreen, y int) string {
 	width, _ := screen.Size()
 	var line strings.Builder
 	for x := 0; x < width; x++ {
-		primary, _, _, _ := screen.GetContent(x, y)
-		line.WriteRune(primary)
+		str, _, _ := screen.Get(x, y)
+		line.WriteString(str)
 	}
 	return line.String()
 }
@@ -125,7 +125,7 @@ func TestBorderFooter_StyleTagsAndEmptyText(t *testing.T) {
 	assert.Equal(t, bottomBorder(20, " red text "), bottom)
 	x := strings.Index(bottom, "red")
 	x = len([]rune(bottom[:x]))
-	_, _, style, _ := screen.GetContent(x, 3)
+	_, style, _ := screen.Get(x, 3)
 	foreground, _, _ := style.Decompose()
 	assert.Equal(t, tcell.NewHexColor(0xff0000), foreground)
 }

@@ -151,8 +151,8 @@ func renderToScreen(t *testing.T, e *lineEditor) (string, int) {
 	var text strings.Builder
 	cursor := -1
 	for x := 0; x < 40; x++ {
-		primary, _, style, _ := screen.GetContent(x, 0)
-		text.WriteRune(primary)
+		str, style, _ := screen.Get(x, 0)
+		text.WriteString(str)
 		_, _, attributes := style.Decompose()
 		if attributes&tcell.AttrReverse != 0 {
 			require.Equal(t, -1, cursor, "only one cell must be reversed")
@@ -206,8 +206,8 @@ func renderWindowToScreen(t *testing.T, e *lineEditor, maxWidth int) (string, in
 	var text strings.Builder
 	cursor := -1
 	for x := 0; x < maxWidth; x++ {
-		primary, _, style, _ := screen.GetContent(x, 0)
-		text.WriteRune(primary)
+		str, style, _ := screen.Get(x, 0)
+		text.WriteString(str)
 		_, _, attributes := style.Decompose()
 		if attributes&tcell.AttrReverse != 0 {
 			cursor = x

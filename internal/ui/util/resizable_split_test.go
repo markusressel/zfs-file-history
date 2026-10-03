@@ -64,7 +64,7 @@ func TestResizableSplit_Drag(t *testing.T) {
 func TestResizableSplit_HoverHighlight(t *testing.T) {
 	split, screen, _, _ := newTestSplit(t)
 	boundaryColor := func() tcell.Color {
-		_, _, style, _ := screen.GetContent(50, 5)
+		_, style, _ := screen.Get(50, 5)
 		foreground, _, _ := style.Decompose()
 		return foreground
 	}
@@ -119,7 +119,7 @@ func TestResizableSplit_Vertical(t *testing.T) {
 	assert.Nil(t, event)
 	split.Draw(screen)
 	for _, x := range []int{0, 20, 39} {
-		_, _, style, _ := screen.GetContent(x, 10)
+		_, style, _ := screen.Get(x, 10)
 		foreground, _, _ := style.Decompose()
 		assert.Equal(t, theme.Primary, foreground, "column %d", x)
 	}
