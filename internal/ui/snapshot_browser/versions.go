@@ -10,11 +10,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// entryVersionStarts tells for the snapshots (by name) whether a new version of the selected entry starts in them, see
-// data.NewVersions.
+// entryVersionStarts tells for the snapshots (by name) what happened to the selected entry in them, compared to the
+// previous snapshot (see data.VersionChanges): where new versions start.
 type entryVersionStarts struct {
-	path       string
-	newVersion map[string]bool
+	path    string
+	changes map[string]data.VersionChange
 }
 
 // changedInSnapshot returns whether something changed in the snapshot compared to the previous one, for what is
@@ -22,13 +22,9 @@ type entryVersionStarts struct {
 // changed (if they are compared, see folder_changes.go); otherwise data was written to the dataset. known is false
 // while it is determined. Must be called on the UI thread.
 func (snapshotBrowser *SnapshotBrowserComponent) changedInSnapshot(snapshot *zfs.Snapshot) (changed bool, known bool) {
-	if fileEntry := snapshotBrowser.currentFileEntry; fileEntry != nil {
-		versions := snapshotBrowser.entryVersions
-		if versions == nil || versions.path != fileEntry.GetRealPath() {
-			return false, false
-		}
-		changed, known = versions.newVersion[snapshot.Name]
-		return changed, known
+	if snapshotBrowser.currentFileEntry != nil {
+		change, known := snapshotBrowser.entryChangeOf(snapshot)
+		return change.IsNewVersion(), known
 	}
 	if changes, ok := snapshotBrowser.changesOf(snapshot); ok {
 		return changes.Exists && (changes.Initial || changes.VsPrevious.Total() > 0), true
@@ -44,6 +40,17 @@ func (snapshotBrowser *SnapshotBrowserComponent) rowColor(entry *data.SnapshotBr
 		return theme.Colors.SnapshotBrowser.Table.Changed
 	}
 	return theme.Colors.SnapshotBrowser.Table.Unchanged
+}
+
+// entryChangeOf returns what happened to the selected entry in the snapshot, false while it is determined (or
+// without a selected entry). Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) entryChangeOf(snapshot *zfs.Snapshot) (data.VersionChange, bool) {
+	fileEntry, versions := snapshotBrowser.currentFileEntry, snapshotBrowser.entryVersions
+	if fileEntry == nil || versions == nil || versions.path != fileEntry.GetRealPath() {
+		return data.VersionChange{}, false
+	}
+	change, ok := versions.changes[snapshot.Name]
+	return change, ok
 }
 
 // setEntryVersions sets where new versions of the selected entry start, and updates the rows. Runs on the UI thread.

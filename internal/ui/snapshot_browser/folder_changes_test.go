@@ -187,7 +187,7 @@ func TestSortByFolderChanges(t *testing.T) {
 	for _, name := range []string{"few", "missing", "many", "none"} {
 		entries = append(entries, &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: name}})
 	}
-	sortSnapshotEntries(entries, columnChanges, true, changesOf)
+	sortSnapshotEntries(entries, columnChanges, true, sortLookups{folderChanges: changesOf})
 	assert.Equal(t, []string{"many", "few", "none", "missing"}, snapshotNames(entries))
 }
 
@@ -211,7 +211,7 @@ func TestUseColumnLayout(t *testing.T) {
 	files.UseColumnLayout(FilesLayout)
 	datasets := NewSnapshotBrowser(tview.NewApplication())
 	datasets.UseColumnLayout(DatasetsLayout)
-	assert.Equal(t, "name,diff,creation,entrySize,entryModified,folderChanges,holds", keys(files))
+	assert.Equal(t, "name,creation,diff,entryChange,entrySize,entryModified,holds", keys(files))
 	assert.Equal(t, "name,creation,used,written,referenced,holds", keys(datasets))
 
 	// a change on one page does not change the other

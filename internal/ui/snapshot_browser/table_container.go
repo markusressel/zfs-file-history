@@ -68,6 +68,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 					cellColor = tcell.ColorGray
 				}
 			}
+		case columnChange:
+			cellText = snapshotBrowser.formatEntryChange(entry.Snapshot)
 		case columnSize:
 			cellText, cellColor = formatEntrySize(entry, cellColor)
 		case columnModified:
@@ -124,6 +126,45 @@ func formatEntrySize(entry *data.SnapshotBrowserEntry, color tcell.Color) (strin
 // its number of entries, plus two for "." and "..". So it needs no listing of the folder.
 func folderItems(size int64) int {
 	return int(max(size-2, 0))
+}
+
+// formatEntryChange returns what happened to the selected entry in the snapshot, compared to the previous one, in
+// the colors of the diff states: "+" created, "−" deleted, "≠ +1.2 KiB" modified (with the change of its size, or of
+// the number of items of a folder), "initial" in the oldest snapshot, empty if it is unchanged or not known yet.
+func (snapshotBrowser *SnapshotBrowserComponent) formatEntryChange(snapshot *zfs.Snapshot) string {
+	change, ok := snapshotBrowser.entryChangeOf(snapshot)
+	if !ok {
+		return ""
+	}
+	colors := theme.Colors.FileBrowser.Table.State
+	switch change.Kind {
+	case data.VersionInitial:
+		return txwidgets.Span(theme.Colors.Layout.Table.ZeroSize, "initial")
+	case data.VersionCreated:
+		return txwidgets.Span(colors.Added, "+")
+	case data.VersionDeleted:
+		return txwidgets.Span(colors.Deleted, "−")
+	case data.VersionModified:
+		text := "≠"
+		if change.SizeDelta != 0 {
+			text += " " + snapshotBrowser.formatSizeDelta(change.SizeDelta)
+		}
+		return txwidgets.Span(colors.Modified, "%s", text)
+	}
+	return ""
+}
+
+// formatSizeDelta returns a change of the size of the selected entry, e.g. "+1.2 KiB", or "-3 items" for a folder.
+func (snapshotBrowser *SnapshotBrowserComponent) formatSizeDelta(delta int64) string {
+	sign := "+"
+	if delta < 0 {
+		sign = "-"
+	}
+	magnitude := uint64(max(delta, -delta))
+	if fileEntry := snapshotBrowser.currentFileEntry; fileEntry != nil && fileEntry.Type == data.Directory {
+		return fmt.Sprintf("%s%d %s", sign, magnitude, uiutil.Plural(int(magnitude), "item", "items"))
+	}
+	return sign + strings.TrimSpace(uiutil.HumanizedBytes(magnitude))
 }
 
 // formatEntryModified returns the modification time of the selected file or folder in the snapshot, i.e. which
@@ -200,12 +241,37 @@ func determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
 }
 
 func createSnapshotBrowserTableSortFunction(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.SnapshotBrowserEntry {
-	return sortSnapshotEntries(entries, columnToSortBy, inverted, nil)
+	return sortSnapshotEntries(entries, columnToSortBy, inverted, sortLookups{})
 }
 
-// sortEntries sorts the entries of the table, also by the folder changes.
+// sortEntries sorts the entries of the table, also by the changes of the folder and the selected entry.
 func (snapshotBrowser *SnapshotBrowserComponent) sortEntries(entries []*data.SnapshotBrowserEntry, column *table.Column, inverted bool) []*data.SnapshotBrowserEntry {
-	return sortSnapshotEntries(entries, column, inverted, snapshotBrowser.changesOf)
+	return sortSnapshotEntries(entries, column, inverted, sortLookups{
+		folderChanges: snapshotBrowser.changesOf,
+		entryChange:   snapshotBrowser.entryChangeOf,
+	})
+}
+
+// sortLookups return what the snapshots are sorted by that is not part of the entries (nil: unknown).
+type sortLookups struct {
+	folderChanges func(*zfs.Snapshot) (folder_listing.SnapshotChanges, bool)
+	entryChange   func(*zfs.Snapshot) (data.VersionChange, bool)
+}
+
+// entryChangeWeight orders the changes of the selected entry for sorting: unknown first, then unchanged, then by
+// how much the size changed (created, deleted and modified alike, the oldest snapshot as the smallest change).
+func (lookups sortLookups) entryChangeWeight(entry *data.SnapshotBrowserEntry) int64 {
+	if lookups.entryChange == nil {
+		return -1
+	}
+	change, ok := lookups.entryChange(entry.Snapshot)
+	switch {
+	case !ok:
+		return -1
+	case !change.IsNewVersion():
+		return 0
+	}
+	return 1 + max(change.SizeDelta, -change.SizeDelta)
 }
 
 // entrySize is the size of the selected file in the snapshot for sorting (the number of items of a folder, see
@@ -226,13 +292,13 @@ func entryModified(entry *data.SnapshotBrowserEntry) time.Time {
 }
 
 // sortSnapshotEntries sorts the entries by the column. changesOf returns the folder changes of a snapshot (nil: unknown).
-func sortSnapshotEntries(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool, changesOf func(*zfs.Snapshot) (folder_listing.SnapshotChanges, bool)) []*data.SnapshotBrowserEntry {
+func sortSnapshotEntries(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool, lookups sortLookups) []*data.SnapshotBrowserEntry {
 	// changesTotal is the number of changed entries of the folder for sorting, -1 if unknown
 	changesTotal := func(entry *data.SnapshotBrowserEntry, vsNow bool) int {
-		if changesOf == nil {
+		if lookups.folderChanges == nil {
 			return -1
 		}
-		changes, ok := changesOf(entry.Snapshot)
+		changes, ok := lookups.folderChanges(entry.Snapshot)
 		if !ok || !changes.Exists {
 			return -1
 		}
@@ -257,6 +323,9 @@ func sortSnapshotEntries(entries []*data.SnapshotBrowserEntry, columnToSortBy *t
 			result = int(b.Snapshot.Properties.Used - a.Snapshot.Properties.Used)
 		case columnRefer:
 			result = int(b.Snapshot.Properties.Referenced - a.Snapshot.Properties.Referenced)
+		case columnChange:
+			// the largest changes first, like the sizes
+			result = cmp.Compare(lookups.entryChangeWeight(b), lookups.entryChangeWeight(a))
 		case columnSize:
 			result = cmp.Compare(entrySize(b), entrySize(a))
 		case columnModified:

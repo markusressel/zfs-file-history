@@ -26,9 +26,37 @@ func InfoDiffers(a os.FileInfo, b os.FileInfo) bool {
 		!a.ModTime().Equal(b.ModTime())
 }
 
-// NewVersions returns for each snapshot (by name) whether a new version of the path starts in it: it was created,
-// changed or deleted compared to the previous snapshot, or it is in the oldest snapshot. versions may be in any order.
-func NewVersions(versions []PathVersion) map[string]bool {
+// VersionChangeKind is what happened to a path in a snapshot, compared to the previous snapshot.
+type VersionChangeKind int
+
+const (
+	// VersionUnchanged: the same as in the previous snapshot (or in neither of them)
+	VersionUnchanged VersionChangeKind = iota
+	// VersionInitial: in the oldest snapshot, there is no previous one to compare with
+	VersionInitial
+	// VersionCreated: in the snapshot, but not in the previous one
+	VersionCreated
+	// VersionDeleted: in the previous snapshot, but not in this one
+	VersionDeleted
+	// VersionModified: in both, but different
+	VersionModified
+)
+
+// VersionChange is what happened to a path in a snapshot, compared to the previous snapshot.
+type VersionChange struct {
+	Kind VersionChangeKind
+	// SizeDelta is the change of the size (for folders on ZFS: of the number of items, see os.FileInfo.Size)
+	SizeDelta int64
+}
+
+// IsNewVersion returns whether a new version of the path starts in the snapshot.
+func (change VersionChange) IsNewVersion() bool {
+	return change.Kind != VersionUnchanged
+}
+
+// VersionChanges returns for each snapshot (by name) what happened to the path compared to the previous snapshot.
+// versions may be in any order.
+func VersionChanges(versions []PathVersion) map[string]VersionChange {
 	sorted := slices.Clone(versions)
 	slices.SortStableFunc(sorted, func(a, b PathVersion) int {
 		if result := a.Snapshot.Properties.CreationDate.Compare(b.Snapshot.Properties.CreationDate); result != 0 {
@@ -36,11 +64,25 @@ func NewVersions(versions []PathVersion) map[string]bool {
 		}
 		return strings.Compare(a.Snapshot.Name, b.Snapshot.Name)
 	})
-	result := make(map[string]bool, len(sorted))
+	result := make(map[string]VersionChange, len(sorted))
 	var previous os.FileInfo
-	for _, version := range sorted {
-		result[version.Snapshot.Name] = InfoDiffers(previous, version.Info)
-		previous = version.Info
+	for i, version := range sorted {
+		current := version.Info
+		var change VersionChange
+		switch {
+		case !InfoDiffers(previous, current):
+			change.Kind = VersionUnchanged
+		case i == 0:
+			change.Kind = VersionInitial
+		case previous == nil:
+			change = VersionChange{Kind: VersionCreated, SizeDelta: current.Size()}
+		case current == nil:
+			change = VersionChange{Kind: VersionDeleted, SizeDelta: -previous.Size()}
+		default:
+			change = VersionChange{Kind: VersionModified, SizeDelta: current.Size() - previous.Size()}
+		}
+		result[version.Snapshot.Name] = change
+		previous = current
 	}
 	return result
 }
