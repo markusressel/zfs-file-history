@@ -198,18 +198,13 @@ func (fileBrowser *FileBrowserComponent) setupTable() {
 			case key == tcell.KeyDelete:
 				openDeleteDialogOnCurrentSelection(fileBrowser)
 				return nil
-			case event.Rune() == 'h':
-				selection := fileBrowser.GetSelection()
-				if selection != nil && (selection.Type == data.File || selection.Type == data.Directory) {
-					fileBrowser.emit(RequestFileHistoryEvent{FileEntry: selection})
-					return nil
-				}
 			}
 		}
-		if event.Rune() == 'H' {
-			// the history of the folder that is shown, also on the header row or if it is empty
-			fileBrowser.emit(RequestFileHistoryEvent{FileEntry: fileBrowser.currentFolderEntry()})
-			return nil
+		if key == tcell.KeyRune && event.Rune() == 'h' {
+			if entry := fileBrowser.historyEntry(); entry != nil {
+				fileBrowser.emit(RequestFileHistoryEvent{FileEntry: entry})
+				return nil
+			}
 		}
 		if key == tcell.KeyLeft && (fileBrowser.tableContainer.GetSelectedEntry() != nil || fileBrowser.isEmpty()) {
 			fileBrowser.goUp()
@@ -1074,6 +1069,20 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 }
 
 // currentFolderEntry returns the folder that is shown, as an entry (e.g. for its history).
+// historyEntry returns the entry whose history h shows: the selected file or folder, or the folder that is shown
+// while the header row is selected or the folder is empty. nil if the selection has no history (e.g. a symlink).
+func (fileBrowser *FileBrowserComponent) historyEntry() *data.FileBrowserEntry {
+	selection := fileBrowser.GetSelection()
+	switch {
+	case selection == nil:
+		return fileBrowser.currentFolderEntry()
+	case selection.Type == data.File || selection.Type == data.Directory:
+		return selection
+	default:
+		return nil
+	}
+}
+
 func (fileBrowser *FileBrowserComponent) currentFolderEntry() *data.FileBrowserEntry {
 	path := fileBrowser.path
 	entry := &data.FileBrowserEntry{Name: filepath.Base(path), Type: data.Directory}
@@ -1086,7 +1095,6 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		uiutil.TableComponentShortcutMove,
 		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
-		{KeyCombo: []string{"H"}, Name: "Folder history"},
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {
@@ -1111,6 +1119,8 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		}
 	} else {
 		shortcutMap = append(shortcutMap,
+			// on the header row or in an empty folder: the folder that is shown
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "Folder history"},
 			uiutil.TableComponentShortcutFlipColumnDirection,
 			uiutil.TableComponentShortcutCycleSortColumnLeft,
 			uiutil.TableComponentShortcutCycleSortColumnRight,

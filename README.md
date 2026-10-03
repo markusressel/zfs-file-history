@@ -23,10 +23,10 @@
 * 🩹 **Graceful Diff Fallbacks:** Diff views automatically fall back to `/dev/null` when files are missing on either
   side (e.g. deleted locally or missing in a snapshot), showing clean addition/deletion diffs instead of CLI execution
   errors.
-* 📂 **Folder history:** `h` on a folder (or `H` for the current one) shows a timeline of the snapshots in which its
-  content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed entries of
-  each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole folder from
-  a snapshot, or open the history of an entry (`h`).
+* 📂 **Folder history:** `h` on a folder (or on the header row for the current one) shows a timeline of the snapshots
+  in which its content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed
+  entries of each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole
+  folder from a snapshot, or open the history of an entry (`h`).
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
 * 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the
@@ -34,6 +34,8 @@
   The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
   see [State](#state)), `r` in the column dialog resets them.
 * 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
+  The filter is edited like a shell prompt: `ctrl+←`/`ctrl+→` jump and `ctrl+Backspace`/`ctrl+Delete` delete whole
+  words, `ctrl+w`/`ctrl+u`/`ctrl+k` work as well.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree (`-`/`+`, `*` for all, like htop) or as a flat
   list (`t`), unmounted datasets are hidden by default (`u`). Both choices are remembered between runs. The used
   space is broken down into snapshots, the dataset itself, its children and its refreservation (sortable, to find the

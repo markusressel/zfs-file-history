@@ -178,3 +178,26 @@ func TestFileBrowser_FilterOnDirectoryChange(t *testing.T) {
 		assert.Equal(t, []string{"x.txt"}, s.visible)
 	})
 }
+
+// ctrl+Backspace and ctrl+Delete edit the filter word by word while typing, instead of triggering the file browser's
+// shortcuts (Delete opens the delete dialog).
+func TestFileBrowser_FilterDeleteWords(t *testing.T) {
+	ft := newFileBrowserTest(t, "")
+	ft.openWithTxtFilter()
+
+	ft.screen.InjectKey(tcell.KeyBackspace2, 0, tcell.ModCtrl)
+	ft.waitFor("word before the cursor deleted", func(s fileBrowserState) bool { return s.filter == "*." })
+
+	ft.screen.InjectKey(tcell.KeyHome, 0, tcell.ModNone)
+	for _, r := range "sub" {
+		ft.pressKey(tcell.KeyRune, r)
+	}
+	ft.waitFor("typed at the start", func(s fileBrowserState) bool { return s.filter == "sub*." })
+	ft.pressKey(tcell.KeyHome, 0)
+	ft.screen.InjectKey(tcell.KeyDelete, 0, tcell.ModCtrl)
+	s := ft.waitFor("word after the cursor deleted", func(s fileBrowserState) bool { return s.filter == "*." })
+	assert.Equal(t, "0 of 4 entries", s.footer)
+	for _, name := range []string{"a.txt", "b.txt", "c.log"} {
+		assert.FileExists(t, filepath.Join(ft.dir, name))
+	}
+}
