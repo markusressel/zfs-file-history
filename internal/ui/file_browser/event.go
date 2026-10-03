@@ -47,3 +47,10 @@ type RequestFileHistoryEvent struct {
 }
 
 func (RequestFileHistoryEvent) isFileBrowserEvent() {}
+
+// EntriesLoadedEvent is emitted when the entries of the folder at Path were (re)loaded, e.g. after a change on disk.
+type EntriesLoadedEvent struct {
+	Path string
+}
+
+func (EntriesLoadedEvent) isFileBrowserEvent() {}

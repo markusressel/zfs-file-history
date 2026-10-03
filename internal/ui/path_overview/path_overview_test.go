@@ -1,6 +1,8 @@
 package path_overview
 
 import (
+	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -8,6 +10,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -197,7 +200,7 @@ func render(t *testing.T, overview *PathOverviewComponent, width int) ([]string,
 func TestPathOverview_Draw(t *testing.T) {
 	uiutil.InitTimeFormat()
 	counts := diff_state.Counts{Added: 2, Deleted: 1, Modified: 4, Equal: 12}
-	overview := NewPathOverview(func() diff_state.Counts { return counts })
+	overview := NewPathOverview(tview.NewApplication(), func() diff_state.Counts { return counts })
 	folderPath := "/pool/home/markus/docs"
 	entry := &data.FileBrowserEntry{Name: "report.pdf", Type: data.File, RealFile: &data.RealFile{Name: "report.pdf", Path: folderPath + "/report.pdf"}}
 	overview.SetFolder(folderPath)
@@ -213,15 +216,20 @@ func TestPathOverview_Draw(t *testing.T) {
 	overview.SetVersions("pool/home", "/pool/home", folderPath,
 		versions(folder(1), folder(1), folder(2), folder(2), folder(3)),
 		entry, versions(nil, file(10, 1), file(20, 2), file(20, 2), file(40, 3)))
+	// the distances are computed in the background (see TestPathOverview_Distances)
+	lines, _ = render(t, overview, 120)
+	assert.Contains(t, lines[2], "…")
+	// 3 entries differ from now in s1, 2 in s2, 1 in s3, none in s4 and s5
+	overview.distances = &folderDistances{folderPath: folderPath, byName: map[string]int{"s1": 3, "s2": 2, "s3": 1, "s4": 0, "s5": 0}}
+
 	lines, screen := render(t, overview, 120)
 	for _, line := range lines {
 		t.Log(line)
 	}
 	assert.Contains(t, lines[0], "Overview")
-	// less important parts are left out to fit (here "12 unchanged" and the time of the last change)
-	assert.Contains(t, lines[1], "Folder    pool/home/markus/docs · vs s3: +2 −1 ~4 · entries added/removed in 2 of 5 snapshots")
+	assert.Contains(t, lines[1], "Folder    pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged · same as now since s4")
 	// the graphs have their own lines, one dot column per snapshot: s1..s5
-	assert.Contains(t, lines[2], "  changes ⣀⣇⡇")
+	assert.Contains(t, lines[2], "  differs ⣷⣄⡀ → now")
 	assert.Contains(t, lines[3], "Selected  report.pdf · 3 versions · last changed ")
 	assert.Contains(t, lines[4], "  size    ⢀⣤⡇")
 
@@ -251,4 +259,139 @@ func TestPathOverview_Draw(t *testing.T) {
 	assert.Contains(t, lines[1], "/pool/home/markus/other · select a snapshot to compare")
 	assert.Contains(t, lines[2], "…")
 	assert.Contains(t, lines[3], "select a file or folder to see its history")
+}
+
+func TestSameAsNowSince(t *testing.T) {
+	history := summarize(versions(folder(1), folder(1), folder(1), folder(1), folder(1)))
+	name := func(snapshot *zfs.Snapshot) string {
+		if snapshot == nil {
+			return ""
+		}
+		return snapshot.Name
+	}
+	for _, test := range []struct {
+		values []int64
+		since  string
+		always bool
+	}{
+		{[]int64{3, 2, 1, 0, 0}, "s4", false},
+		{[]int64{0, 0, 0, 0, 0}, "s1", true},
+		{[]int64{0, 0, 0, 0, 1}, "", false},
+		// changed back: only the last run of zeros counts
+		{[]int64{0, 1, 0, 2, 0}, "s5", false},
+		// the folder is not in the newest snapshot
+		{[]int64{0, 0, 0, 0, -1}, "", false},
+	} {
+		since, always := sameAsNowSince(history, test.values)
+		assert.Equal(t, test.since, name(since), "%v", test.values)
+		assert.Equal(t, test.always, always, "%v", test.values)
+	}
+}
+
+// The folder is read in all snapshots in the background once it stayed the same for a moment, and compared with
+// its entries as they are now; a change of the entries computes the distances again.
+func TestPathOverview_Distances(t *testing.T) {
+	folderPath := "/pool/home/markus/docs"
+	entry := func(name string, size int64) folder_listing.Entry {
+		return folder_listing.Entry{Name: name, Type: folder_listing.File, Size: size, Mode: 0o644, ModTime: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)}
+	}
+	listing := func(entries ...folder_listing.Entry) folder_listing.Listing {
+		result := folder_listing.Listing{Exists: true, Entries: map[string]folder_listing.Entry{}}
+		for _, e := range entries {
+			result.Entries[e.Name] = e
+		}
+		return result
+	}
+	// a.txt in all snapshots, b.txt since s3, grown in s5; s1 does not contain the folder
+	inSnapshots := map[string]folder_listing.Listing{
+		"s1": folder_listing.Missing(),
+		"s2": listing(entry("a.txt", 1)),
+		"s3": listing(entry("a.txt", 1), entry("b.txt", 1)),
+		"s4": listing(entry("a.txt", 1), entry("b.txt", 1)),
+		"s5": listing(entry("a.txt", 1), entry("b.txt", 2)),
+	}
+	reads := make(chan string, 10)
+	original := readListings
+	t.Cleanup(func() { readListings = original })
+	readListings = func(ctx context.Context, path string, snapshots []*zfs.Snapshot) ([]folder_listing.Listing, error) {
+		reads <- path
+		result := make([]folder_listing.Listing, len(snapshots))
+		for i, snapshot := range snapshots {
+			result[i] = inSnapshots[snapshot.Name]
+		}
+		return result, nil
+	}
+
+	app := tview.NewApplication()
+	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	overview := NewPathOverview(app, func() diff_state.Counts { return diff_state.Counts{} })
+	app.SetRoot(overview.GetLayout(), true)
+	go func() { _ = app.Run() }()
+	t.Cleanup(app.Stop)
+	onUiThread := func(f func()) {
+		done := make(chan struct{})
+		app.QueueUpdate(func() { f(); close(done) })
+		<-done
+	}
+	distances := func() map[string]int {
+		var result map[string]int
+		onUiThread(func() {
+			if d := overview.currentDistances(); d != nil {
+				result = d.byName
+			}
+		})
+		return result
+	}
+
+	folderVersions := versions(nil, folder(1), folder(2), folder(2), folder(2))
+	onUiThread(func() {
+		overview.SetFolder(folderPath)
+		overview.SetVersions("pool/home", "/pool/home", folderPath, folderVersions, nil, nil)
+		// now: b.txt grew again
+		overview.SetWorkingCopy(folderPath, listing(entry("a.txt", 1), entry("b.txt", 3)))
+	})
+	assert.Eventually(t, func() bool { return distances() != nil }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, map[string]int{"s2": 1, "s3": 1, "s4": 1, "s5": 1}, distances(), "s1 does not contain the folder")
+	assert.Equal(t, folderPath, <-reads)
+
+	// the same entries again (e.g. a reload for another snapshot): nothing is read
+	onUiThread(func() { overview.SetWorkingCopy(folderPath, listing(entry("a.txt", 1), entry("b.txt", 3))) })
+	time.Sleep(2 * distanceDelay)
+	assert.Empty(t, reads)
+
+	// b.txt was changed back to its size in s5: computed again
+	onUiThread(func() { overview.SetWorkingCopy(folderPath, listing(entry("a.txt", 1), entry("b.txt", 2))) })
+	assert.Eventually(t, func() bool { return distances()["s5"] == 0 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, map[string]int{"s2": 1, "s3": 1, "s4": 1, "s5": 0}, distances())
+
+	// another folder: not computed until its entries are known
+	onUiThread(func() { overview.SetFolder("/pool/home/markus/other") })
+	assert.Nil(t, distances())
+	time.Sleep(2 * distanceDelay)
+	assert.Len(t, reads, 1, "only the change above was read")
+}
+
+// The distance graph ends with "→ now", unless the graph needs the space: then the graph comes first.
+func TestPathOverview_NowMarker(t *testing.T) {
+	var many []data.PathVersion
+	distances := map[string]int{}
+	for i := 0; i < 40; i++ {
+		snapshot := &zfs.Snapshot{Name: fmt.Sprintf("s%02d", i), ParentDataset: dataset,
+			Properties: zfs.SnapshotProperties{CreationDate: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i)}}
+		many = append(many, data.PathVersion{Snapshot: snapshot, Info: folder(1)})
+		distances[snapshot.Name] = 40 - i
+	}
+	folderPath := "/pool/home/docs"
+	overview := NewPathOverview(tview.NewApplication(), func() diff_state.Counts { return diff_state.Counts{} })
+	overview.SetFolder(folderPath)
+	overview.SetVersions("pool/home", "/pool/home", folderPath, many, nil, nil)
+	overview.distances = &folderDistances{folderPath: folderPath, byName: distances}
+
+	// 40 snapshots: 20 cells, and room for the marker
+	lines, _ := render(t, overview, 60)
+	assert.Contains(t, lines[2], " → now")
+	// only room for 16 cells after the label: the graph uses all of it (merging snapshots), no marker
+	lines, _ = render(t, overview, 2+labelWidth+16+2)
+	assert.NotContains(t, lines[2], "now")
+	assert.Contains(t, lines[2], "differs")
 }

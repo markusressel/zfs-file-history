@@ -12,6 +12,7 @@ import (
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
@@ -728,6 +729,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 
 				fileBrowser.startAsyncDiffCalculation()
 
+				fileBrowser.emit(EntriesLoadedEvent{Path: path})
 				fileBrowser.emit(SelectedTableEntryChangedEvent{fileBrowser.GetSelection()})
 			}
 		})
@@ -1069,6 +1071,19 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 }
 
 // currentFolderEntry returns the folder that is shown, as an entry (e.g. for its history).
+// WorkingCopyListing returns the folder whose entries are shown, and its entries as they are now (from the file
+// infos the entries were loaded with, so it reads nothing). Entries that only exist in the selected snapshot are
+// not part of it.
+func (fileBrowser *FileBrowserComponent) WorkingCopyListing() (string, folder_listing.Listing) {
+	listing := folder_listing.Listing{Exists: true, Entries: map[string]folder_listing.Entry{}}
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+		if entry.HasReal() && entry.RealFile.Stat != nil {
+			listing.Entries[entry.Name] = folder_listing.NewEntry(entry.Name, entry.RealFile.Stat)
+		}
+	}
+	return fileBrowser.entriesPath, listing
+}
+
 // DiffCounts counts the entries of the folder (including the ones hidden by the filter) by their state compared to
 // the selected snapshot. Entries whose state is still being determined count as unknown.
 func (fileBrowser *FileBrowserComponent) DiffCounts() diff_state.Counts {

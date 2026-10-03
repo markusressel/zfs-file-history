@@ -27,9 +27,10 @@
   in which its content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed
   entries of each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole
   folder from a snapshot, or open the history of an entry (`h`).
-* 🧭 **Overview:** Below the file browser, the current folder compared to the selected snapshot (`+2 −1 ~4`), and
-  sparklines of the snapshots in which entries were added to or removed from it, and of the size of the selected
-  file (its number of versions and last change). The snapshot selected in the snapshot list is highlighted in them.
+* 🧭 **Overview:** Below the file browser, the current folder compared to the selected snapshot (`+2 −1 ~4`), a
+  sparkline of how many of its entries differ from now in each snapshot (to see how far back you have to go, and
+  since when it is unchanged), and one of the size of the selected file (its number of versions and last change).
+  The snapshot selected in the snapshot list is highlighted in them.
 * 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. `h` in the snapshot
   list (or its action menu) opens the history of the selected file or folder at that snapshot.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.

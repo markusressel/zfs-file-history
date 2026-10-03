@@ -5,6 +5,7 @@ import (
 	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -23,11 +24,14 @@ const (
 )
 
 // PathOverviewComponent shows the folder of the file browser and its selected entry across the snapshots:
-// how the folder compares to the selected snapshot, and in which snapshots the folder and the entry changed.
-// The selected snapshot is highlighted in the sparklines. The versions come from the snapshot browser
-// (see snapshot_browser.PathVersionsLoaded), so the overview reads nothing itself. All methods run on the UI thread.
+// how the folder compares to the selected snapshot, how much it differs from now in each snapshot, and how the
+// selected entry changed. The selected snapshot is highlighted in the sparklines. The versions come from the
+// snapshot browser (see snapshot_browser.PathVersionsLoaded) and the entries of the folder from the file browser;
+// only the folder in the snapshots is read here, in the background (see distances.go).
+// All methods run on the UI thread.
 type PathOverviewComponent struct {
-	view *overviewView
+	application *tview.Application
+	view        *overviewView
 	// diffCounts returns the states of the entries of the folder compared to the selected snapshot
 	diffCounts func() diff_state.Counts
 
@@ -43,12 +47,25 @@ type PathOverviewComponent struct {
 	loadedEntryPath   string
 	entryHistory      *pathHistory
 	hasLoadedVersions bool
+
+	// the folder as it is now and its snapshots, compared in the background (see scheduleDistances)
+	workingCopyPath   string
+	workingCopy       folder_listing.Listing
+	snapshotsPath     string
+	snapshots         []*zfs.Snapshot
+	distances         *folderDistances
+	distanceDebouncer *uiutil.Debouncer
+	cancelDistances   func()
 }
 
 // NewPathOverview creates the overview. diffCounts returns the states of the entries of the folder compared to
 // the selected snapshot; it is called while drawing.
-func NewPathOverview(diffCounts func() diff_state.Counts) *PathOverviewComponent {
-	overview := &PathOverviewComponent{diffCounts: diffCounts}
+func NewPathOverview(application *tview.Application, diffCounts func() diff_state.Counts) *PathOverviewComponent {
+	overview := &PathOverviewComponent{
+		application:       application,
+		diffCounts:        diffCounts,
+		distanceDebouncer: uiutil.NewDebouncer(application, distanceDelay),
+	}
 	overview.view = &overviewView{Box: tview.NewBox(), overview: overview}
 	overview.view.SetBorder(true)
 	overview.view.SetBorderPadding(0, 0, 1, 1)
@@ -75,7 +92,11 @@ func (overview *PathOverviewComponent) GetLayout() tview.Primitive {
 
 // SetFolder sets the folder that is shown in the file browser.
 func (overview *PathOverviewComponent) SetFolder(path string) {
+	if path == overview.folderPath {
+		return
+	}
 	overview.folderPath = path
+	overview.scheduleDistances()
 }
 
 // SetEntry sets the selected entry of the file browser (nil: none, e.g. the header row).
@@ -95,6 +116,11 @@ func (overview *PathOverviewComponent) SetVersions(datasetName string, datasetPa
 	overview.datasetPath = datasetPath
 	overview.loadedFolderPath = folderPath
 	overview.folderHistory = summarize(folder)
+	snapshots := make([]*zfs.Snapshot, len(overview.folderHistory.versions))
+	for i, version := range overview.folderHistory.versions {
+		snapshots[i] = version.Snapshot
+	}
+	overview.setSnapshots(folderPath, snapshots)
 	overview.loadedEntryPath = ""
 	overview.entryHistory = nil
 	if entry != nil {
@@ -114,7 +140,7 @@ func (overview *PathOverviewComponent) draw(screen tcell.Screen, x int, y int, w
 		draw  func(y int)
 	}{
 		{"Folder", func(y int) { printFitted(screen, overview.folderParts(), x+labelWidth, y, textWidth) }},
-		{"", func(y int) { overview.drawGraph(screen, x, y, width, overview.currentFolderHistory(), true) }},
+		{"", func(y int) { overview.drawDistanceGraph(screen, x, y, width) }},
 		{"Selected", func(y int) { printFitted(screen, overview.entryParts(), x+labelWidth, y, textWidth) }},
 		{"", func(y int) {
 			if overview.entry != nil {
@@ -145,11 +171,53 @@ func (overview *PathOverviewComponent) folderParts() []textPart {
 		}
 		parts = append(parts, textPart{styled: txwidgets.Span(dim, "%d unchanged", counts.Equal), priority: 5})
 	}
-	if history := overview.currentFolderHistory(); history != nil {
-		parts = append(parts, historyParts(history, true)...)
-	}
-	return parts
+	return append(parts, overview.distanceParts()...)
 }
+
+// distanceParts describes since when the folder is the same as now.
+func (overview *PathOverviewComponent) distanceParts() []textPart {
+	history, distances := overview.currentFolderHistory(), overview.currentDistances()
+	if history == nil || distances == nil {
+		return nil
+	}
+	dim := func(format string, args ...any) []textPart {
+		return []textPart{{styled: txwidgets.Span(theme.Colors.ShortcutMap.Name, format, args...), priority: 3}}
+	}
+	since, always := sameAsNowSince(history, distanceValues(history, distances))
+	switch {
+	case always:
+		return dim("same as now in all snapshots")
+	case since != nil:
+		return dim("same as now since %s", since.Name)
+	case history.present > 0:
+		return dim("differs from now in the newest snapshot")
+	}
+	return nil
+}
+
+// drawDistanceGraph draws how many entries of the folder differ from now in each snapshot.
+func (overview *PathOverviewComponent) drawDistanceGraph(screen tcell.Screen, x int, y int, width int) {
+	dim := theme.Colors.ShortcutMap.Name
+	history, distances := overview.currentFolderHistory(), overview.currentDistances()
+	if history == nil || distances == nil {
+		tview.Print(screen, "…", x+labelWidth, y, width-labelWidth, tview.AlignLeft, dim)
+		return
+	}
+	if len(history.versions) == 0 {
+		return
+	}
+	tview.Print(screen, "  differs", x, y, labelWidth, tview.AlignLeft, dim)
+	// the timeline runs from the oldest snapshot towards now, which the marker behind it makes explicit. The graph
+	// comes first: the marker is left out if the graph needs the space (two snapshots per cell)
+	values := distanceValues(history, distances)
+	drawn := uiutil.DrawSparkline(screen, x+labelWidth, y, width-labelWidth, values, history.indexOf(overview.selectedSnapshot))
+	if remaining := width - labelWidth - drawn; remaining >= textWidth(nowMarker) {
+		tview.Print(screen, nowMarker, x+labelWidth+drawn, y, remaining, tview.AlignLeft, dim)
+	}
+}
+
+// nowMarker is shown behind the distance graph: its timeline ends now.
+const nowMarker = " → now"
 
 // entryParts returns the text about the selected entry: its name and its history.
 func (overview *PathOverviewComponent) entryParts() []textPart {

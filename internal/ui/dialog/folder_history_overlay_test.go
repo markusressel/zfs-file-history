@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
@@ -281,16 +282,16 @@ func TestFormatChangeCounts(t *testing.T) {
 }
 
 func TestDescribeChange(t *testing.T) {
-	before := &folderEntry{Name: "b.txt", Type: folderEntryFile, Size: 1, ModTime: fileTime}
-	after := &folderEntry{Name: "b.txt", Type: folderEntryFile, Size: 4096, ModTime: fileTime.Add(time.Hour)}
-	dir := &folderEntry{Name: "c", Type: folderEntryDirectory, ModTime: fileTime}
+	before := &folder_listing.Entry{Name: "b.txt", Type: folder_listing.File, Size: 1, ModTime: fileTime}
+	after := &folder_listing.Entry{Name: "b.txt", Type: folder_listing.File, Size: 4096, ModTime: fileTime.Add(time.Hour)}
+	dir := &folder_listing.Entry{Name: "c", Type: folder_listing.Directory, ModTime: fileTime}
 	modified := fileTime.Format(theme.Style.Format.DateTime)
 	later := fileTime.Add(time.Hour).Format(theme.Style.Format.DateTime)
 
 	assert.Equal(t, "1 B, modified "+modified+" → 4.0 KiB, modified "+later,
-		describeChange(&folderChange{Kind: folderChangeModified, Before: before, After: after}))
-	assert.Equal(t, "was 1 B, modified "+modified, describeChange(&folderChange{Kind: folderChangeDeleted, Before: before}))
-	assert.Equal(t, "modified "+modified, describeChange(&folderChange{Kind: folderChangeAdded, After: dir}), "no size for folders")
+		describeChange(&folder_listing.Change{Kind: folder_listing.Modified, Before: before, After: after}))
+	assert.Equal(t, "was 1 B, modified "+modified, describeChange(&folder_listing.Change{Kind: folder_listing.Deleted, Before: before}))
+	assert.Equal(t, "modified "+modified, describeChange(&folder_listing.Change{Kind: folder_listing.Added, After: dir}), "no size for folders")
 }
 
 func TestFolderHistoryOverlay_DetailsAboveChanges(t *testing.T) {

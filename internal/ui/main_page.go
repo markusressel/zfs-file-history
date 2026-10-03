@@ -61,7 +61,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
-	pathOverview := path_overview.NewPathOverview(fileBrowser.DiffCounts)
+	pathOverview := path_overview.NewPathOverview(application, fileBrowser.DiffCounts)
 
 	mainPage := &MainPage{
 		application:     application,
@@ -79,6 +79,8 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 
 	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
 		switch e := event.(type) {
+		case file_browser.EntriesLoadedEvent:
+			pathOverview.SetWorkingCopy(fileBrowser.WorkingCopyListing())
 		case file_browser.PathChangedEvent:
 			pathOverview.SetFolder(e.NewPath)
 			snapshotBrowser.SetPath(e.NewPath, false)
