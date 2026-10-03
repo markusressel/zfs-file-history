@@ -2,7 +2,6 @@ package snapshot_browser
 
 import (
 	"context"
-	"io/fs"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -72,7 +72,7 @@ func TestSnapshotBrowser_FolderChanges(t *testing.T) {
 	browser, app := startBrowser(t)
 	loaded := make(chan FolderChangesLoaded, 10)
 	snapshots := []*zfs.Snapshot{{Name: "s1"}, {Name: "s2"}}
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.Events.Subscribe(func(event Event) {
 			if e, ok := event.(FolderChangesLoaded); ok {
 				loaded <- e
@@ -95,10 +95,10 @@ func TestSnapshotBrowser_FolderChanges(t *testing.T) {
 	assert.Equal(t, 1, read, "without the entries of a file browser, the folder is read as it is now")
 
 	var cells []string
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		for _, snapshot := range snapshots {
 			for _, column := range []*table.Column{columnVsNow, columnChanges} {
-				cells = append(cells, stripTags(browser.formatFolderChanges(snapshot, column == columnVsNow)))
+				cells = append(cells, testutil.StripTags(browser.formatFolderChanges(snapshot, column == columnVsNow)))
 			}
 		}
 	})
@@ -106,13 +106,13 @@ func TestSnapshotBrowser_FolderChanges(t *testing.T) {
 
 	// the entries of the file browser: compared again, without reading the folder
 	now := folder_listing.Listing{Exists: true, Entries: map[string]folder_listing.Entry{"a": {Name: "a"}}}
-	onUiThread(t, app, func() { browser.SetWorkingCopy("/pool/docs", now) })
+	testutil.OnUiThread(t, app, func() { browser.SetWorkingCopy("/pool/docs", now) })
 	require.Eventually(t, func() bool { compared, _ := stub.counts(); return compared == 2 }, 3*time.Second, 10*time.Millisecond)
 	_, read = stub.counts()
 	assert.Equal(t, 1, read)
 
 	// nothing changed (e.g. another entry was selected): not compared again
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.SetWorkingCopy("/pool/docs", now)
 		browser.updateFolderChanges()
 	})
@@ -125,7 +125,7 @@ func TestSnapshotBrowser_FolderChanges(t *testing.T) {
 func TestSnapshotBrowser_FolderChangesOnlyWhenWanted(t *testing.T) {
 	stub := stubFolderChanges(t, nil)
 	browser, app := startBrowser(t)
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.tableContainer.SetActiveColumns(DatasetsLayout.columns)
 		browser.path = "/pool/docs"
 		browser.currentSnapshots = []*zfs.Snapshot{{Name: "s1"}}
@@ -136,35 +136,17 @@ func TestSnapshotBrowser_FolderChangesOnlyWhenWanted(t *testing.T) {
 	assert.Zero(t, compared)
 
 	// a listener needs them
-	onUiThread(t, app, func() { browser.RequireFolderChanges() })
+	testutil.OnUiThread(t, app, func() { browser.RequireFolderChanges() })
 	require.Eventually(t, func() bool { compared, _ := stub.counts(); return compared == 1 }, 3*time.Second, 10*time.Millisecond)
 }
-
-func stripTags(text string) string {
-	return tview.NewTextView().SetDynamicColors(true).SetText(text).GetText(true)
-}
-
-// fileInfo is a file as returned by os.Lstat.
-type fileInfo struct {
-	size    int64
-	modTime time.Time
-	dir     bool
-}
-
-func (f fileInfo) Name() string       { return "x" }
-func (f fileInfo) Size() int64        { return f.size }
-func (f fileInfo) Mode() fs.FileMode  { return 0o644 }
-func (f fileInfo) ModTime() time.Time { return f.modTime }
-func (f fileInfo) IsDir() bool        { return f.dir }
-func (f fileInfo) Sys() any           { return nil }
 
 // Size and Modified are the selected entry in the snapshot: which version it holds.
 func TestEntryColumns(t *testing.T) {
 	uiutil.InitTimeFormat()
 	modified := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	file := &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: fileInfo{size: 2048, modTime: modified}}
+	file := &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: testutil.File(2048, modified)}
 	missing := &data.SnapshotBrowserEntry{HasEntryInfo: true}
-	folder := &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: fileInfo{modTime: modified, dir: true}}
+	folder := &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: testutil.Folder(19, modified)}
 	none := &data.SnapshotBrowserEntry{}
 
 	text := func(format func(*data.SnapshotBrowserEntry, tcell.Color) (string, tcell.Color), entry *data.SnapshotBrowserEntry) string {
@@ -173,7 +155,8 @@ func TestEntryColumns(t *testing.T) {
 	}
 	assert.Equal(t, uiutil.StableLengthHumanizedBytes(2048), text(formatEntrySize, file))
 	assert.Equal(t, "—", text(formatEntrySize, missing), "not in the snapshot")
-	assert.Equal(t, "", text(formatEntrySize, folder), "the size of a folder says nothing")
+	assert.Equal(t, "19 items", text(formatEntrySize, folder), "the number of items of a folder, from its size on ZFS")
+	assert.Equal(t, "1 item", text(formatEntrySize, &data.SnapshotBrowserEntry{HasEntryInfo: true, EntryInfo: testutil.Folder(1, modified)}))
 	assert.Equal(t, "", text(formatEntrySize, none), "no selected entry")
 	assert.Equal(t, uiutil.FormatTime(modified), text(formatEntryModified, file))
 	assert.Equal(t, uiutil.FormatTime(modified), text(formatEntryModified, folder))
@@ -182,8 +165,8 @@ func TestEntryColumns(t *testing.T) {
 	// sorted by size, the largest first; unknown last
 	entries := []*data.SnapshotBrowserEntry{
 		{Snapshot: &zfs.Snapshot{Name: "missing"}, HasEntryInfo: true},
-		{Snapshot: &zfs.Snapshot{Name: "small"}, HasEntryInfo: true, EntryInfo: fileInfo{size: 1}},
-		{Snapshot: &zfs.Snapshot{Name: "big"}, HasEntryInfo: true, EntryInfo: fileInfo{size: 9}},
+		{Snapshot: &zfs.Snapshot{Name: "small"}, HasEntryInfo: true, EntryInfo: testutil.File(1, time.Time{})},
+		{Snapshot: &zfs.Snapshot{Name: "big"}, HasEntryInfo: true, EntryInfo: testutil.File(9, time.Time{})},
 	}
 	createSnapshotBrowserTableSortFunction(entries, columnSize, false)
 	assert.Equal(t, []string{"big", "small", "missing"}, snapshotNames(entries))

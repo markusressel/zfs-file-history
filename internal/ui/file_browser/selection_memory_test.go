@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -40,7 +41,7 @@ func TestFileBrowser_RemembersSelectionWhenEnteringADirectoryAgain(t *testing.T)
 		index    int
 	}
 	getState := func() (s state) {
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			s.path = fileBrowser.GetPath()
 			entries := fileBrowser.tableContainer.GetEntries()
 			s.count = len(entries)
@@ -68,7 +69,7 @@ func TestFileBrowser_RemembersSelectionWhenEnteringADirectoryAgain(t *testing.T)
 		screen.InjectKey(key, 0, tcell.ModNone)
 	}
 
-	onUiThread(t, app, func() { fileBrowser.SetPath(child, true) })
+	testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(child, true) })
 	waitFor("child loaded", func(s state) bool { return s.path == child && s.count == 20 && s.index == 0 })
 
 	// select the entry at index 10, which is larger than the number of entries in the parent directory

@@ -2,7 +2,6 @@ package path_overview
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -10,34 +9,15 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/folder_listing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// fileInfo is a file or folder as returned by os.Lstat.
-type fileInfo struct {
-	size    int64
-	modTime time.Time
-	dir     bool
-}
-
-func (f fileInfo) Name() string       { return "x" }
-func (f fileInfo) Size() int64        { return f.size }
-func (f fileInfo) ModTime() time.Time { return f.modTime }
-func (f fileInfo) IsDir() bool        { return f.dir }
-func (f fileInfo) Sys() any           { return nil }
-func (f fileInfo) Mode() fs.FileMode {
-	if f.dir {
-		return fs.ModeDir | 0o755
-	}
-	return 0o644
-}
 
 var (
 	dataset   = &zfs.Dataset{Path: "/pool/home"}
@@ -51,11 +31,11 @@ func snapshot(name string, day int) *zfs.Snapshot {
 }
 
 func file(size int64, modified int) os.FileInfo {
-	return fileInfo{size: size, modTime: time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC)}
+	return testutil.File(size, time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC))
 }
 
 func folder(modified int) os.FileInfo {
-	return fileInfo{size: 4096, modTime: time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC), dir: true}
+	return testutil.Folder(5, time.Date(2026, 9, modified, 0, 0, 0, 0, time.UTC))
 }
 
 // versions returns the versions in s1..s5 (nil: not in the snapshot), in reverse order: summarize sorts them.
@@ -117,14 +97,9 @@ func TestSparklineValues(t *testing.T) {
 func plainText(parts []textPart) []string {
 	var result []string
 	for _, part := range parts {
-		result = append(result, stripTags(part.text()))
+		result = append(result, testutil.StripTags(part.text()))
 	}
 	return result
-}
-
-func stripTags(text string) string {
-	view := tview.NewTextView().SetDynamicColors(true).SetText(text)
-	return view.GetText(true)
 }
 
 func TestHistoryParts(t *testing.T) {
@@ -168,7 +143,7 @@ func TestFitParts(t *testing.T) {
 		{15, "…me/markus/docs"},
 		{5, "…docs"},
 	} {
-		line := stripTags(fitParts(parts, test.width))
+		line := testutil.StripTags(fitParts(parts, test.width))
 		assert.Equal(t, test.expected, line, "width %d", test.width)
 		assert.LessOrEqual(t, textWidth(line), test.width, "width %d", test.width)
 	}
@@ -210,7 +185,7 @@ func TestPathOverview_Draw(t *testing.T) {
 	lines, _ := render(t, overview, 120)
 	assert.Contains(t, lines[1], "Folder    /pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged")
 	assert.Contains(t, lines[2], "…")
-	assert.Contains(t, lines[3], "Selected  report.pdf · …")
+	assert.Contains(t, lines[4], "Selected  report.pdf · …")
 
 	overview.SetVersions("pool/home", "/pool/home", folderPath,
 		versions(folder(1), folder(1), folder(2), folder(2), folder(3)),
@@ -229,18 +204,20 @@ func TestPathOverview_Draw(t *testing.T) {
 	assert.Contains(t, lines[1], "Folder    pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged · same as now since s4")
 	// the graphs have their own lines, one dot column per snapshot: s1..s5
 	assert.Contains(t, lines[2], "  differs ⣷⣄⡀ → now")
-	assert.Contains(t, lines[3], "Selected  report.pdf · 3 versions · last changed ")
-	assert.Contains(t, lines[4], "  size    ⢀⣤⡇")
+	assert.Contains(t, lines[4], "Selected  report.pdf · 3 versions · last changed ")
+	assert.Contains(t, lines[5], "  size    ⢀⣤⡇")
 
 	// the selected snapshot (s3, in the second cell) is highlighted in both graphs
 	graphX := 2 + labelWidth
-	for _, y := range []int{3, 5} {
+	for _, y := range []int{2, 5} {
 		for i := 0; i < 3; i++ {
-			_, _, style, _ := screen.GetContent(graphX+i, y-1)
+			_, style, _ := screen.Get(graphX+i, y)
 			_, background, _ := style.Decompose()
-			assert.Equal(t, i == 1, background == theme.Colors.Sparkline.SelectedBackground, "row %d, cell %d", y-1, i)
+			assert.Equal(t, i == 1, background == theme.Colors.Sparkline.SelectedBackground, "row %d, cell %d", y, i)
 		}
 	}
+	// a divider between the folder and the selected entry, joined to the border
+	assert.Equal(t, "├"+strings.Repeat("─", 118)+"┤", lines[3])
 
 	// narrow: nothing is cut off, the least important parts are left out
 	lines, _ = render(t, overview, 50)
@@ -248,7 +225,7 @@ func TestPathOverview_Draw(t *testing.T) {
 		t.Log(line)
 	}
 	assert.Contains(t, lines[1], "Folder    …/home/markus/docs · vs s3: +2 −1 ~4 │")
-	assert.Contains(t, lines[3], "Selected  report.pdf · 3 versions")
+	assert.Contains(t, lines[4], "Selected  report.pdf · 3 versions")
 
 	// moving to another folder: loading again
 	overview.SetFolder("/pool/home/markus/other")
@@ -257,7 +234,7 @@ func TestPathOverview_Draw(t *testing.T) {
 	lines, _ = render(t, overview, 120)
 	assert.Contains(t, lines[1], "/pool/home/markus/other · select a snapshot to compare")
 	assert.Contains(t, lines[2], "…")
-	assert.Contains(t, lines[3], "select a file or folder to see its history")
+	assert.Contains(t, lines[4], "select a file or folder to see its history")
 }
 
 func TestSameAsNowSince(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -48,20 +49,6 @@ func TestCreateModal_Clamping(t *testing.T) {
 	assert.Equal(t, 66, w)
 }
 
-// onUiThread runs f on the UI thread and waits for it, failing the test instead of hanging on a deadlock.
-func onUiThread(t *testing.T, app *tview.Application, f func()) {
-	done := make(chan struct{})
-	go func() {
-		app.QueueUpdate(f)
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for the UI thread (deadlock?)")
-	}
-}
-
 func TestShowDialogOnPages(t *testing.T) {
 	app := tview.NewApplication()
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -82,7 +69,7 @@ func TestShowDialogOnPages(t *testing.T) {
 		onClosedCalls.Add(1)
 	}
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		ShowDialogOnPages(app, pages, d, onClosed)
 		assert.True(t, pages.HasPage("test-dialog"))
 		assert.True(t, d.GetLayout().HasFocus())
@@ -95,11 +82,11 @@ func TestShowDialogOnPages(t *testing.T) {
 	// closing removes the dialog on the UI thread and calls onClosed
 	assert.Eventually(t, func() bool {
 		removed := false
-		onUiThread(t, app, func() { removed = !pages.HasPage("test-dialog") })
+		testutil.OnUiThread(t, app, func() { removed = !pages.HasPage("test-dialog") })
 		return removed
 	}, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, callsAfterOpen+1, onClosedCalls.Load())
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		assert.False(t, d.GetLayout().HasFocus())
 	})
 }

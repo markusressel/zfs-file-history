@@ -16,8 +16,10 @@ import (
 
 const (
 	// Height is the height of the overview, including its border: a text line and a graph line for the folder and
-	// for the selected entry, so the graphs are never next to each other.
-	Height = 6
+	// for the selected entry (so the graphs are never next to each other), separated by a divider.
+	Height = 7
+	// dividerRow is the row of the divider between the folder and the selected entry, within the border
+	dividerRow = 2
 	// labelWidth is the width of the labels in front of the lines ("Folder", "Selected")
 	labelWidth = 10
 )
@@ -71,6 +73,23 @@ func (view *overviewView) Draw(screen tcell.Screen) {
 	view.DrawForSubclass(screen, view)
 	x, y, width, height := view.GetInnerRect()
 	view.overview.draw(screen, x, y, width, height)
+	if height > dividerRow {
+		view.drawDivider(screen, y+dividerRow)
+	}
+}
+
+// drawDivider draws a horizontal line across the overview at row y, joined to its border ("├───┤").
+func (view *overviewView) drawDivider(screen tcell.Screen, y int) {
+	x, _, width, _ := view.GetRect()
+	if width < 2 {
+		return
+	}
+	style := tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(theme.Colors.Layout.Border)
+	screen.SetContent(x, y, tview.BoxDrawingsLightVerticalAndRight, nil, style)
+	for column := x + 1; column < x+width-1; column++ {
+		screen.SetContent(column, y, tview.BoxDrawingsLightHorizontal, nil, style)
+	}
+	screen.SetContent(x+width-1, y, tview.BoxDrawingsLightVerticalAndLeft, nil, style)
 }
 
 func (overview *PathOverviewComponent) GetLayout() tview.Primitive {
@@ -119,6 +138,8 @@ func (overview *PathOverviewComponent) draw(screen tcell.Screen, x int, y int, w
 	}{
 		{"Folder", func(y int) { printFitted(screen, overview.folderParts(), x+labelWidth, y, textWidth) }},
 		{"", func(y int) { overview.drawDistanceGraph(screen, x, y, width) }},
+		// the divider, see overviewView.drawDivider
+		{"", func(int) {}},
 		{"Selected", func(y int) { printFitted(screen, overview.entryParts(), x+labelWidth, y, textWidth) }},
 		{"", func(y int) {
 			if overview.entry != nil {
@@ -232,17 +253,12 @@ func (overview *PathOverviewComponent) folderNamePart() textPart {
 	return part
 }
 
-// formatCounts returns e.g. "+2 −1 ~4", counts above zero in the colors of the diff states.
+// formatCounts returns e.g. "+2 −1 ~4" (see uiutil.FormatChangeCounts), "=" (dimmed) without differences.
 func formatCounts(counts diff_state.Counts) string {
-	colors := theme.Colors.FileBrowser.Table.State
-	part := func(format string, count int, color tcell.Color) string {
-		if count == 0 {
-			color = theme.Colors.ShortcutMap.Name
-		}
-		return txwidgets.Span(color, format, count)
+	if text := uiutil.FormatChangeCounts(counts.Added, counts.Deleted, counts.Modified); text != "" {
+		return text
 	}
-	return part("+%d", counts.Added, colors.Added) + " " + part("−%d", counts.Deleted, colors.Deleted) + " " +
-		part("~%d", counts.Modified, colors.Modified)
+	return txwidgets.Span(theme.Colors.ShortcutMap.Name, "=")
 }
 
 // historyParts describes a history, e.g. "5 versions", "last changed 3 days ago", "in 40 of 48 snapshots".

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/zfs"
 
@@ -85,7 +86,7 @@ func TestFormatPermissionMask(t *testing.T) {
 // permissionCell returns the text of the permissions column of the dataset.
 func permissionCell(t *testing.T, browser *DatasetBrowserComponent, name string) string {
 	var text string
-	onUiThread(t, browser.application, func() {
+	testutil.OnUiThread(t, browser.application, func() {
 		entry := findByName(browser.tableContainer.GetEntries(), name)
 		if entry == nil {
 			return
@@ -109,14 +110,14 @@ func TestDatasetBrowser_LoadsPermissionsOfDisplayedDatasets(t *testing.T) {
 	})
 	app, browser, _ := newBrowserApp(t)
 
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 
 	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s-m------" }, 2*time.Second, 10*time.Millisecond)
 	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/b") == "?" }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"rpool/a", "rpool/b"}, stub.readDatasets(), "hidden (unmounted) datasets are not read")
 
 	// showing the unmounted datasets reads only the new ones
-	onUiThread(t, app, func() { browser.ToggleHideUnmounted() })
+	testutil.OnUiThread(t, app, func() { browser.ToggleHideUnmounted() })
 	require.Eventually(t, func() bool { return len(stub.readDatasets()) == 3 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/hidden"}, stub.readDatasets())
 
@@ -125,7 +126,7 @@ func TestDatasetBrowser_LoadsPermissionsOfDisplayedDatasets(t *testing.T) {
 	stub.block = make(chan struct{})
 	block := stub.block
 	stub.mu.Unlock()
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	require.Eventually(t, func() bool { return len(stub.readDatasets()) > 3 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, "s-m------", permissionCell(t, browser, "rpool/a"))
 	close(block)
@@ -140,20 +141,20 @@ func TestDatasetBrowser_PermissionsAreOnlyLoadedForTheColumn(t *testing.T) {
 	app, browser, _ := newBrowserApp(t)
 
 	withoutPermissions := []*table.Column{columnName, columnUsed}
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.tableContainer.SetActiveColumns(withoutPermissions)
 		browser.Refresh(false)
 	})
 	require.Eventually(t, func() bool {
 		count := 0
-		onUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
+		testutil.OnUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
 		return count == 1
 	}, 2*time.Second, 10*time.Millisecond)
 	time.Sleep(50 * time.Millisecond)
 	assert.Empty(t, stub.readDatasets())
 
 	// adding the column (F2) loads them
-	onUiThread(t, app, func() { browser.tableContainer.SetActiveColumns(append(withoutPermissions, columnPermissions)) })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.SetActiveColumns(append(withoutPermissions, columnPermissions)) })
 	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--------" }, 2*time.Second, 10*time.Millisecond)
 }
 
@@ -167,7 +168,7 @@ func TestDatasetBrowser_RootReadsNoPermissions(t *testing.T) {
 	})
 	app, browser, _ := newBrowserApp(t)
 
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 
 	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "sdmhrcnbf" }, 2*time.Second, 10*time.Millisecond)
 	assert.Empty(t, stub.readDatasets())
@@ -179,7 +180,7 @@ func TestDatasetBrowser_PermissionsDialog(t *testing.T) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
 	})
 	app, browser, screen := newBrowserApp(t)
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.Refresh(false)
 		browser.Focus()
 	})
@@ -189,14 +190,14 @@ func TestDatasetBrowser_PermissionsDialog(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		shown := false
-		onUiThread(t, app, func() { shown = browser.layout.HasPage("DatasetPermissionsDialog") })
+		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage("DatasetPermissionsDialog") })
 		return shown
 	}, 2*time.Second, 10*time.Millisecond)
 
 	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
 	require.Eventually(t, func() bool {
 		shown := true
-		onUiThread(t, app, func() { shown = browser.layout.HasPage("DatasetPermissionsDialog") })
+		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage("DatasetPermissionsDialog") })
 		return !shown
 	}, 2*time.Second, 10*time.Millisecond)
 }
@@ -207,7 +208,7 @@ func TestDatasetBrowser_PermissionsDialogError(t *testing.T) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
 	})
 	app, browser, screen := newBrowserApp(t)
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.Refresh(false)
 		browser.Focus()
 	})
@@ -217,7 +218,7 @@ func TestDatasetBrowser_PermissionsDialogError(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		shown := false
-		onUiThread(t, app, func() { shown = browser.layout.HasPage("ErrorDialog") })
+		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage("ErrorDialog") })
 		return shown
 	}, 2*time.Second, 10*time.Millisecond)
 }
@@ -240,34 +241,60 @@ func TestDatasetBrowser_PropertiesDialog(t *testing.T) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}, {Name: "rpool/broken", MountPath: "/b"}}, nil
 	})
 	app, browser, screen := newBrowserApp(t)
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.Refresh(false)
 		browser.Focus()
 	})
 	require.Eventually(t, func() bool {
 		count := 0
-		onUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
+		testutil.OnUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
 		return count == 2
 	}, 2*time.Second, 10*time.Millisecond)
 	hasPage := func(name string) func() bool {
 		return func() bool {
 			shown := false
-			onUiThread(t, app, func() { shown = browser.layout.HasPage(name) })
+			testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage(name) })
 			return shown
 		}
 	}
 
-	onUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/a")) })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/a")) })
 	screen.InjectKey(tcell.KeyRune, 'e', tcell.ModNone)
 	require.Eventually(t, hasPage("DatasetPropertiesDialog"), 2*time.Second, 10*time.Millisecond)
 	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
 	require.Eventually(t, func() bool { return !hasPage("DatasetPropertiesDialog")() }, 2*time.Second, 10*time.Millisecond)
 
-	onUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/broken")) })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/broken")) })
 	screen.InjectKey(tcell.KeyRune, 'e', tcell.ModNone)
 	require.Eventually(t, hasPage("ErrorDialog"), 2*time.Second, 10*time.Millisecond)
 
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []string{"rpool/a", "rpool/broken"}, read)
+}
+
+// After permissions were granted (e.g. in the missing permissions dialog), the column is read again without a reload
+// of the dataset list; the previous values are shown meanwhile.
+func TestDatasetBrowser_ReloadPermissions(t *testing.T) {
+	granted := map[string][]zfs.Permission{"rpool/a": {zfs.PermissionSnapshot}}
+	stub := stubPermissions(t, granted)
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
+	})
+	app, browser, _ := newBrowserApp(t)
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--------" }, 2*time.Second, 10*time.Millisecond)
+
+	// granted: hold
+	stub.mu.Lock()
+	granted["rpool/a"] = []zfs.Permission{zfs.PermissionSnapshot, zfs.PermissionHold}
+	stub.block = make(chan struct{})
+	block := stub.block
+	stub.mu.Unlock()
+	testutil.OnUiThread(t, app, func() { browser.ReloadPermissions() })
+	require.Eventually(t, func() bool { return len(stub.readDatasets()) == 2 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "s--------", permissionCell(t, browser, "rpool/a"), "the previous value while reading")
+
+	close(block)
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--h-----" }, 2*time.Second, 10*time.Millisecond)
 }

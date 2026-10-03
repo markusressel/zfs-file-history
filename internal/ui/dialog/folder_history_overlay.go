@@ -305,18 +305,7 @@ func formatVersionChanges(version *folderVersion) string {
 	case folderVersionDeleted:
 		return txwidgets.Span(colors.Deleted, "folder deleted")
 	}
-	added, deleted, modified := folder_listing.CountChanges(version.Changes)
-	var parts []string
-	if added > 0 {
-		parts = append(parts, txwidgets.Span(colors.Added, "+%d", added))
-	}
-	if deleted > 0 {
-		parts = append(parts, txwidgets.Span(colors.Deleted, "−%d", deleted))
-	}
-	if modified > 0 {
-		parts = append(parts, txwidgets.Span(colors.Modified, "~%d", modified))
-	}
-	return strings.Join(parts, " ")
+	return uiutil.FormatChangeCounts(folder_listing.CountChanges(version.Changes))
 }
 
 // drawSparklines draws the number of items and the size of the folder across all snapshots, and marks the selected

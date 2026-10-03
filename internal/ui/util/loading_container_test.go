@@ -28,7 +28,7 @@ func TestLoadingContainer(t *testing.T) {
 	// Set to loading
 	container.SetIsLoading(true)
 	assert.True(t, container.isLoading)
-	pageName, frontPage = container.GetFrontPage()
+	pageName, _ = container.GetFrontPage()
 	assert.Equal(t, LoadingContainerLoadingPage, pageName)
 
 	// Wait a bit to let the loading view ticker run and render frames

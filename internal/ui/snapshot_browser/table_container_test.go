@@ -161,7 +161,7 @@ func TestHeldSnapshotName(t *testing.T) {
 	tableView.Draw(screen)
 	column := func(y int, r rune) int {
 		for x := 0; x < 40; x++ {
-			if char, _, _, _ := screen.GetContent(x, y); char == r {
+			if str, _, _ := screen.Get(x, y); str == string(r) {
 				return x
 			}
 		}

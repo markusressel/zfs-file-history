@@ -1,0 +1,28 @@
+package data
+
+import (
+	"os"
+	"testing"
+	"time"
+	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/zfs"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestNewVersions(t *testing.T) {
+	day := func(n int) time.Time { return time.Date(2026, 10, n, 0, 0, 0, 0, time.UTC) }
+	version := func(name string, created int, info os.FileInfo) PathVersion {
+		return PathVersion{Snapshot: &zfs.Snapshot{Name: name, Properties: zfs.SnapshotProperties{CreationDate: day(created)}}, Info: info}
+	}
+	v1, v2 := testutil.File(1, day(1)), testutil.File(2, day(3))
+	// in any order: s0 without the file, created in s1, the same in s2, changed in s3, the same in s4, deleted in s5
+	versions := []PathVersion{
+		version("s5", 6, nil), version("s3", 4, v2), version("s1", 2, v1),
+		version("s0", 1, nil), version("s4", 5, v2), version("s2", 3, v1),
+	}
+	assert.Equal(t, map[string]bool{"s0": false, "s1": true, "s2": false, "s3": true, "s4": false, "s5": true}, NewVersions(versions))
+
+	// the oldest snapshot contains the file: its first version
+	assert.Equal(t, map[string]bool{"s1": true, "s2": false}, NewVersions([]PathVersion{version("s2", 3, v1), version("s1", 2, v1)}))
+}

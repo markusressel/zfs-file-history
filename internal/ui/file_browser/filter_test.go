@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -30,20 +31,6 @@ func TestFileMatchesFilter(t *testing.T) {
 	assert.True(t, fileMatchesFilter(entry, "*.txt"))
 	assert.True(t, fileMatchesFilter(entry, "report-20??.*"))
 	assert.False(t, fileMatchesFilter(entry, "*.log"))
-}
-
-// onUiThread runs f on the UI thread and waits for it, failing the test instead of hanging on a deadlock.
-func onUiThread(t *testing.T, app *tview.Application, f func()) {
-	done := make(chan struct{})
-	go func() {
-		app.QueueUpdate(f)
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for the UI thread (deadlock?)")
-	}
 }
 
 // fileBrowserTest runs a file browser on a temporary directory with "a.txt", "b.txt", "c.log" and "sub/x.txt".
@@ -89,7 +76,7 @@ func newFileBrowserTest(t *testing.T, filterOnDirectoryChange configuration.File
 }
 
 func (ft *fileBrowserTest) state() (s fileBrowserState) {
-	onUiThread(ft.t, ft.app, func() {
+	testutil.OnUiThread(ft.t, ft.app, func() {
 		for _, entry := range ft.fileBrowser.tableContainer.GetEntries() {
 			s.visible = append(s.visible, entry.Name)
 		}
@@ -116,7 +103,7 @@ func (ft *fileBrowserTest) pressKey(key tcell.Key, r rune) {
 
 // openWithTxtFilter opens the temporary directory and filters it with "*.txt".
 func (ft *fileBrowserTest) openWithTxtFilter() {
-	onUiThread(ft.t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
+	testutil.OnUiThread(ft.t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
 	s := ft.waitFor("directory loaded", func(s fileBrowserState) bool { return s.footer == "4 entries" })
 	assert.Equal(ft.t, []string{"a.txt", "b.txt", "c.log", "sub"}, s.visible)
 
@@ -145,7 +132,7 @@ func TestFileBrowser_Filter(t *testing.T) {
 	}
 
 	// a reload of the same directory keeps the filter
-	onUiThread(t, ft.app, func() { ft.fileBrowser.Refresh(false) })
+	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.Refresh(false) })
 	time.Sleep(200 * time.Millisecond)
 	s := ft.waitFor("filter kept after reload", func(s fileBrowserState) bool { return s.footer == "2 of 4 entries" })
 	assert.Equal(t, "*.txt", s.filter)
@@ -157,7 +144,7 @@ func TestFileBrowser_FilterOnDirectoryChange(t *testing.T) {
 		ft.openWithTxtFilter()
 		ft.pressKey(tcell.KeyEnter, 0)
 
-		onUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.sub, true) })
+		testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.sub, true) })
 		s := ft.waitFor("filter kept in the new directory", func(s fileBrowserState) bool {
 			return s.path == ft.sub && s.footer == "1 of 1 entry"
 		})
@@ -170,7 +157,7 @@ func TestFileBrowser_FilterOnDirectoryChange(t *testing.T) {
 		ft.openWithTxtFilter()
 		ft.pressKey(tcell.KeyEnter, 0)
 
-		onUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.sub, true) })
+		testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.sub, true) })
 		s := ft.waitFor("filter cleared in the new directory", func(s fileBrowserState) bool {
 			return s.path == ft.sub && s.footer == "1 entry"
 		})

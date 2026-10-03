@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -140,7 +141,7 @@ func TestSnapshotBrowser_HoldFromTheMenu(t *testing.T) {
 
 func TestSnapshotBrowser_ReleaseFromTheMenu(t *testing.T) {
 	dt := newDestroyTest(t)
-	onUiThread(t, dt.app, func() {
+	testutil.OnUiThread(t, dt.app, func() {
 		// SetData sorted dt.entries in place
 		for _, entry := range dt.entries {
 			if entry.Snapshot.Name == "daily-1" {
@@ -182,7 +183,7 @@ func TestSnapshotBrowser_HoldMultiSelection(t *testing.T) {
 	dt.mu.Unlock()
 	require.Eventually(t, func() bool {
 		count := -1
-		onUiThread(t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
+		testutil.OnUiThread(t, dt.app, func() { count = len(dt.browser.tableContainer.GetMultiSelection()) })
 		return count == 0
 	}, 2*time.Second, 10*time.Millisecond, "the multi selection is cleared")
 }

@@ -76,6 +76,13 @@ func (datasetBrowser *DatasetBrowserComponent) invalidatePermissions() {
 	}
 }
 
+// ReloadPermissions reads the permissions of the displayed datasets again, e.g. after they were changed. The old
+// ones are shown until then. Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) ReloadPermissions() {
+	datasetBrowser.invalidatePermissions()
+	datasetBrowser.loadPermissions()
+}
+
 // loadPermissions reads the permissions of the displayed datasets that are not loaded yet (or outdated), in the
 // background. Results are applied progressively, with throttled redraws. A new call cancels the previous one.
 // Must be called on the UI thread.

@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/folder_listing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
@@ -67,7 +68,7 @@ func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overl
 	go func() { _ = ft.app.Run() }()
 	t.Cleanup(ft.app.Stop)
 
-	onUiThread(t, ft.app, func() {
+	testutil.OnUiThread(t, ft.app, func() {
 		ft.overlay = NewFolderHistoryOverlay(ft.app, filepath.Join(ds.root, "docs"), nil)
 		for _, f := range configure {
 			f(ds, ft.overlay)
@@ -76,7 +77,7 @@ func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overl
 	})
 	ft.waitFor("history loaded", func() bool {
 		loaded := false
-		onUiThread(t, ft.app, func() { loaded = ft.overlay.history != nil })
+		testutil.OnUiThread(t, ft.app, func() { loaded = ft.overlay.history != nil })
 		return loaded
 	})
 	return ft
@@ -92,7 +93,7 @@ func (ft *folderHistoryTest) press(key tcell.Key, r rune) {
 
 func (ft *folderHistoryTest) screenText() string {
 	var text strings.Builder
-	onUiThread(ft.t, ft.app, func() {
+	testutil.OnUiThread(ft.t, ft.app, func() {
 		ft.app.ForceDraw()
 		cells, width, height := ft.screen.GetContents()
 		for y := 0; y < height; y++ {
@@ -110,7 +111,7 @@ func (ft *folderHistoryTest) screenText() string {
 // changes returns the displayed changes as "<kind> <name>".
 func (ft *folderHistoryTest) changes() []string {
 	var result []string
-	onUiThread(ft.t, ft.app, func() {
+	testutil.OnUiThread(ft.t, ft.app, func() {
 		for _, change := range ft.overlay.changes.GetEntries() {
 			symbol, _, _ := ft.overlay.changeKindLabel(change.Kind)
 			result = append(result, symbol+" "+displayName(newestEntry(change)))
@@ -121,7 +122,7 @@ func (ft *folderHistoryTest) changes() []string {
 
 func (ft *folderHistoryTest) timeline() []string {
 	var result []string
-	onUiThread(ft.t, ft.app, func() {
+	testutil.OnUiThread(ft.t, ft.app, func() {
 		for _, version := range ft.overlay.timeline.GetEntries() {
 			result = append(result, version.Snapshot.Name)
 		}
@@ -131,12 +132,12 @@ func (ft *folderHistoryTest) timeline() []string {
 
 func (ft *folderHistoryTest) hasPage(name string) bool {
 	shown := false
-	onUiThread(ft.t, ft.app, func() { shown = ft.overlay.pages.HasPage(name) })
+	testutil.OnUiThread(ft.t, ft.app, func() { shown = ft.overlay.pages.HasPage(name) })
 	return shown
 }
 
 func (ft *folderHistoryTest) selectChange(name string) {
-	onUiThread(ft.t, ft.app, func() {
+	testutil.OnUiThread(ft.t, ft.app, func() {
 		ft.app.SetFocus(ft.overlay.changes.GetLayout())
 		for _, change := range ft.overlay.changes.GetEntries() {
 			if change.Name == name {
@@ -179,7 +180,7 @@ func TestFolderHistoryOverlay_SelectSnapshot(t *testing.T) {
 				overlay.SelectSnapshot(ds.snapshot(snapshot))
 			})
 			var selected string
-			onUiThread(t, ft.app, func() {
+			testutil.OnUiThread(t, ft.app, func() {
 				selected = ft.overlay.timeline.GetSelectedEntry().Snapshot.Name
 				assert.Same(t, ft.overlay.timeline.GetSelectedEntry(), ft.overlay.selected)
 			})
@@ -252,12 +253,12 @@ func TestFolderHistoryOverlay_RestoreFolderAndEsc(t *testing.T) {
 	// Esc closes the restore dialog only
 	ft.press(tcell.KeyEscape, 0)
 	ft.waitFor("restore dialog closed", func() bool { return !ft.hasPage(string(RestoreFileDialogPage)) })
-	onUiThread(t, ft.app, func() { assert.True(t, ft.pages.HasPage(string(FolderHistoryOverlayPage))) })
+	testutil.OnUiThread(t, ft.app, func() { assert.True(t, ft.pages.HasPage(string(FolderHistoryOverlayPage))) })
 
 	ft.press(tcell.KeyEscape, 0)
 	ft.waitFor("overlay closed", func() bool {
 		shown := true
-		onUiThread(t, ft.app, func() { shown = ft.pages.HasPage(string(FolderHistoryOverlayPage)) })
+		testutil.OnUiThread(t, ft.app, func() { shown = ft.pages.HasPage(string(FolderHistoryOverlayPage)) })
 		return !shown
 	})
 }
@@ -319,14 +320,14 @@ func TestFolderHistoryOverlay_DividerBetweenSparklinesAndDetails(t *testing.T) {
 
 	var detailsX, innerX, detailsHeight int
 	var column []rune
-	onUiThread(t, ft.app, func() {
+	testutil.OnUiThread(t, ft.app, func() {
 		ft.app.ForceDraw()
 		x, y, _, height := ft.overlay.details.GetRect()
 		detailsX, detailsHeight = x, height
 		innerX, _, _, _ = ft.overlay.details.GetInnerRect()
 		for row := y; row < y+height; row++ {
-			character, _, _, _ := ft.screen.GetContent(x, row)
-			column = append(column, character)
+			character, _, _ := ft.screen.Get(x, row)
+			column = append(column, []rune(character)[0])
 		}
 	})
 	require.Equal(t, folderHistoryHeaderLines, detailsHeight)
@@ -339,7 +340,7 @@ func TestFolderHistoryOverlay_DividerBetweenSparklinesAndDetails(t *testing.T) {
 func TestFolderHistoryOverlay_DragBoundary(t *testing.T) {
 	ft := newFolderHistoryTest(t)
 	var boundary, leftWidth int
-	onUiThread(t, ft.app, func() {
+	testutil.OnUiThread(t, ft.app, func() {
 		boundary, _, _, _ = ft.overlay.changes.GetLayout().GetRect()
 		_, _, leftWidth, _ = ft.overlay.timeline.GetLayout().GetRect()
 	})
@@ -353,7 +354,7 @@ func TestFolderHistoryOverlay_DragBoundary(t *testing.T) {
 
 	ft.waitFor("timeline wider", func() bool {
 		width := 0
-		onUiThread(t, ft.app, func() { _, _, width, _ = ft.overlay.timeline.GetLayout().GetRect() })
+		testutil.OnUiThread(t, ft.app, func() { _, _, width, _ = ft.overlay.timeline.GetLayout().GetRect() })
 		return width >= leftWidth+10
 	})
 }
@@ -363,6 +364,6 @@ func TestFolderHistoryOverlay_NoDragWhileADialogIsShown(t *testing.T) {
 	ft.press(tcell.KeyF2, 0)
 	ft.waitFor("column dialog", func() bool { return ft.hasPage(string(ColumnSelectionDialogPage)) })
 	var enabled bool
-	onUiThread(t, ft.app, func() { enabled = ft.overlay.isMainPageInFront() })
+	testutil.OnUiThread(t, ft.app, func() { enabled = ft.overlay.isMainPageInFront() })
 	assert.False(t, enabled)
 }

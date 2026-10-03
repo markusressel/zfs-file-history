@@ -14,7 +14,10 @@ const (
 
 var (
 	DatasetsLoaded = util.NewEmitter[struct{}]()
-	datasetCache   = make(map[string]*golibzfs.Dataset)
+	// PermissionsChanged is emitted once permissions were delegated (and verified) by the application, e.g. in the
+	// missing permissions dialog, so the displayed permissions are read again
+	PermissionsChanged = util.NewEmitter[struct{}]()
+	datasetCache       = make(map[string]*golibzfs.Dataset)
 	// datasetByNameCache holds the libzfs handles opened by OpenDatasetByName, keyed by dataset name
 	datasetByNameCache = make(map[string]*golibzfs.Dataset)
 	cacheMtx           sync.RWMutex

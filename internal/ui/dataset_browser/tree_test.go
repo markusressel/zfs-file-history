@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
@@ -126,7 +127,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 		screen.InjectKey(key, r, tcell.ModNone)
 	}
 	state := func() (visible []string, selected string, tree bool, shortcut string) {
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			visible = names(browser.tableContainer.GetEntries())
 			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
 				selected = entry.Name
@@ -148,7 +149,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 	}
 	screenText := func() string {
 		var text strings.Builder
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			cells, width, height := screen.GetContents()
 			for y := 0; y < height; y++ {
 				for x := 0; x < width; x++ {
@@ -162,7 +163,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 		return text.String()
 	}
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.SetPath("/rpool/var/log", false)
 		browser.Refresh(false)
 	})
@@ -194,7 +195,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond, "the name column shows full names")
 
 	// descending: the flat list reverses the order, the tree keeps parents before their children
-	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 	pressKey(tcell.KeyEnter, 0)
 	waitForOrder("flat, descending", []string{"zpool", "rpool/var/log", "rpool/var", "rpool/home", "rpool"})
 	pressKey(tcell.KeyRune, 't')
@@ -205,7 +206,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 	pressKey(tcell.KeyRune, 't')
 	require.Eventually(t, func() bool {
 		filter := ""
-		onUiThread(t, app, func() { filter = browser.tableContainer.GetFilterText() })
+		testutil.OnUiThread(t, app, func() { filter = browser.tableContainer.GetFilterText() })
 		return filter == "t"
 	}, 2*time.Second, 10*time.Millisecond)
 	_, _, tree, _ = state()
@@ -244,7 +245,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
 	}
 	state := func() (visible []string, selected string, footer string) {
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			visible = names(browser.tableContainer.GetEntries())
 			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
 				selected = entry.Name
@@ -264,7 +265,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	}
 	screenContains := func(text string) bool {
 		var screenText strings.Builder
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			cells, width, height := screen.GetContents()
 			for y := 0; y < height; y++ {
 				for x := 0; x < width; x++ {
@@ -278,7 +279,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 		return strings.Contains(screenText.String(), text)
 	}
 
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.SetPath("/rpool/var", false)
 		browser.Refresh(false)
 	})
@@ -302,7 +303,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	// not in the dark color of the tree lines (selected rows use the selection colors)
 	require.Eventually(t, func() bool {
 		var foreground tcell.Color
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			cells, width, height := screen.GetContents()
 			for i := 0; i < width*height; i++ {
 				if runes := cells[i].Runes; len(runes) > 0 && runes[0] == '▸' {
@@ -328,7 +329,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	waitFor("flat list shows everything", func(visible []string, _ string) bool { return len(visible) == 5 })
 	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
 	waitFor("tree is collapsed again", func(visible []string, _ string) bool { return len(visible) == 3 })
-	onUiThread(t, app, func() { browser.Refresh(false) })
+	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	time.Sleep(100 * time.Millisecond)
 	waitFor("still collapsed after reload", func(visible []string, _ string) bool { return len(visible) == 3 })
 
@@ -362,7 +363,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	waitFor("all expanded", func(visible []string, _ string) bool { return len(visible) == 5 })
 
 	// on the header row, ← and → still change the sort column
-	onUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
+	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 	pressKey(tcell.KeyRight)
 	require.Eventually(t, func() bool { return screenContains("Used ↑") }, 2*time.Second, 10*time.Millisecond)
 }

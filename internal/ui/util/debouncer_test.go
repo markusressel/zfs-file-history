@@ -26,18 +26,18 @@ func TestDebouncer(t *testing.T) {
 	var debouncer *Debouncer
 	onUiThread(func() { debouncer = NewDebouncer(app, delay) })
 
-	// like holding an arrow key: only the last call runs, once the calls pause
+	// like holding an arrow key: only the last call runs, once the calls pause. All calls in one update, so no pause
+	// between them can exceed the delay, however slow the test runs.
 	var calls atomic.Int32
 	var last atomic.Int32
-	for i := 1; i <= 10; i++ {
-		onUiThread(func() {
+	onUiThread(func() {
+		for i := 1; i <= 10; i++ {
 			debouncer.Call(func() {
 				calls.Add(1)
 				last.Store(int32(i))
 			})
-		})
-		time.Sleep(delay / 3)
-	}
+		}
+	})
 	assert.Eventually(t, func() bool { return calls.Load() == 1 }, 2*time.Second, 5*time.Millisecond)
 	time.Sleep(3 * delay)
 	assert.Equal(t, int32(1), calls.Load(), "runs once")

@@ -15,7 +15,6 @@ import (
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
-	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
@@ -63,6 +62,13 @@ type SnapshotBrowserComponent struct {
 	folderChanges          *folderChanges
 	folderChangesDebouncer *uiutil.Debouncer
 	cancelFolderChanges    func()
+
+	// where new versions of the selected entry start, see versions.go
+	entryVersions *entryVersionStarts
+	// onlyChanges hides the snapshots in which nothing changed (v)
+	onlyChanges bool
+	// layoutStateKey is where the columns of the page are saved, see UseColumnLayout
+	layoutStateKey string
 }
 
 type snapshotLoadResult struct {
@@ -201,6 +207,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) UseColumnLayout(layout ColumnLa
 	}
 	snapshotBrowser.tableContainer.SetActiveColumns(layout.columns)
 	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, layout.stateKey, tableColumns)
+	snapshotBrowser.layoutStateKey = layout.stateKey
+	snapshotBrowser.loadOnlyChanges()
 }
 
 func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponent {
@@ -209,6 +217,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		application:            application,
 		currentSnapshots:       []*zfs.Snapshot{},
 		selectedSnapshotMemory: uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
+		layoutStateKey:         legacyLayoutStateKey,
 	}
 	snapshotBrowser.folderChangesDebouncer = uiutil.NewDebouncer(application, folderChangesDelay)
 
@@ -285,6 +294,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 				} else {
 					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
 				}
+				return nil
+			} else if key == tcell.KeyRune && event.Rune() == 'v' {
+				snapshotBrowser.toggleOnlyChanges()
 				return nil
 			} else if key == tcell.KeyRune && event.Rune() == 'h' && !snapshotBrowser.HasMultiSelection() {
 				if target := snapshotBrowser.getHistoryTarget(); target != nil {
@@ -414,12 +426,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateCurrentSnapshotEntries(qu
 
 func (snapshotBrowser *SnapshotBrowserComponent) updateTableEntries() {
 	snapshotBrowser.startAsyncDiffCalculation()
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) cancelDiffCalculation() {
-	if snapshotBrowser.diffLoader != nil {
-		snapshotBrowser.diffLoader.Cancel()
-	}
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
@@ -590,8 +596,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			dataset := entriesToProcess[0].Snapshot.ParentDataset
 			loaded.DatasetName, loaded.DatasetPath = dataset.GetName(), dataset.Path
 		}
+		var versions *entryVersionStarts
+		if filePath != "" {
+			versions = &entryVersionStarts{path: filePath, newVersion: data.NewVersions(entryVersions)}
+		}
 		snapshotBrowser.application.QueueUpdateDraw(func() {
 			if snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
+				snapshotBrowser.setEntryVersions(versions)
 				snapshotBrowser.emit(loaded)
 			}
 		})
@@ -625,7 +636,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateTitleAndFooter() {
 	snapshotBrowser.tableContainer.SetFooter(formatFooter(
 		len(snapshotBrowser.tableContainer.GetEntries()),
 		len(snapshotBrowser.tableContainer.GetAllEntries()),
-		snapshotBrowser.tableContainer.IsFilterActive(),
+		snapshotBrowser.tableContainer.IsFiltered(),
 	))
 }
 
@@ -644,12 +655,6 @@ func formatFooter(matchingCount int, totalCount int, filterActive bool) string {
 // snapshotMatchesFilter matches the snapshot name against the filter as a glob, see table.MatchesGlob.
 func snapshotMatchesFilter(entry *data.SnapshotBrowserEntry, filterText string) bool {
 	return table.MatchesGlob(entry.Snapshot.Name, filterText)
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) clear() {
-	snapshotBrowser.path = ""
-	snapshotBrowser.currentSnapshots = []*zfs.Snapshot{}
-	snapshotBrowser.updateCurrentSnapshotEntries(false)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(selection *data.SnapshotBrowserEntry) {
@@ -746,10 +751,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetCurrentSnapshots() []*zfs.Sn
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectHeader() {
 	snapshotBrowser.tableContainer.SelectHeader()
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) selectFirstIfExists() {
-	snapshotBrowser.tableContainer.SelectFirstIfExists()
 }
 
 // SetHistoryTarget enables opening the history of a file or folder at the selected snapshot (h, and in the action
@@ -1120,12 +1121,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) SelectLatest() {
 	snapshotBrowser.tableContainer.Select(latestEntry)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) showStatusMessage(message *status_message.StatusMessage) {
-	snapshotBrowser.emit(StatusMessageEvent{
-		Message: message,
-	})
-}
-
 func (snapshotBrowser *SnapshotBrowserComponent) emit(event Event) {
 	snapshotBrowser.Events.Emit(event)
 }
@@ -1143,6 +1138,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 		uiutil.TableComponentShortcutMove,
 		uiutil.TableComponentShortcutColumns,
 		uiutil.TableComponentShortcutFilter,
+		snapshotBrowser.onlyChangesShortcut(),
 	}
 
 	if snapshotBrowser.GetSelection() != nil {

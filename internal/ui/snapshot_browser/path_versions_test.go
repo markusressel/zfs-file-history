@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -45,7 +46,7 @@ func TestSnapshotBrowser_PathVersionsLoaded(t *testing.T) {
 
 	loaded := make(chan PathVersionsLoaded, 10)
 	entry := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: filePath}}
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		browser.Events.Subscribe(func(event Event) {
 			if e, ok := event.(PathVersionsLoaded); ok {
 				loaded <- e
@@ -81,7 +82,7 @@ func TestSnapshotBrowser_PathVersionsLoaded(t *testing.T) {
 	}
 
 	// on the header row of the file browser: only the folder
-	onUiThread(t, app, func() { browser.SetFileEntry(nil) })
+	testutil.OnUiThread(t, app, func() { browser.SetFileEntry(nil) })
 	select {
 	case event = <-loaded:
 	case <-time.After(3 * time.Second):

@@ -30,7 +30,7 @@ func TestScrollbar_HasWidgetBackground(t *testing.T) {
 
 		for y := 0; y < test.height; y++ {
 			for x := 0; x < test.width; x++ {
-				_, _, style, _ := screen.GetContent(x, y)
+				_, style, _ := screen.Get(x, y)
 				_, background, _ := style.Decompose()
 				assert.Equal(t, tview.Styles.PrimitiveBackgroundColor, background, "orientation %v at %d,%d", test.orientation, x, y)
 			}

@@ -7,28 +7,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// isOnUiThread returns whether it is called on the UI thread: a queued update can only run once the UI thread
-// is free again, so it cannot complete while the caller blocks the UI thread.
-func isOnUiThread(app *tview.Application) bool {
-	done := make(chan struct{})
-	go func() {
-		app.QueueUpdate(func() {})
-		close(done)
-	}()
-	select {
-	case <-done:
-		return false
-	case <-time.After(200 * time.Millisecond):
-		return true
-	}
-}
 
 type actionDialogTest struct {
 	t           *testing.T
@@ -51,10 +36,10 @@ func newActionDialogTest(t *testing.T) *actionDialogTest {
 	t.Cleanup(app.Stop)
 
 	ft := &actionDialogTest{t: t, app: app, screen: screen, fileBrowser: fileBrowser, dir: dir}
-	onUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })
+	testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })
 	require.Eventually(t, func() bool {
 		selected := ""
-		onUiThread(t, app, func() {
+		testutil.OnUiThread(t, app, func() {
 			if selection := fileBrowser.GetSelection(); selection != nil {
 				selected = selection.Name
 			}
@@ -74,7 +59,7 @@ func (ft *actionDialogTest) selectMenuOption(number rune) {
 
 func (ft *actionDialogTest) hasDialog(name string) bool {
 	has := false
-	onUiThread(ft.t, ft.app, func() {
+	testutil.OnUiThread(ft.t, ft.app, func() {
 		if pages, ok := ft.fileBrowser.GetLayout().(*tview.Pages); ok {
 			has = pages.HasPage(name)
 		}
@@ -110,7 +95,7 @@ func TestFileBrowser_CreateSnapshot(t *testing.T) {
 	events := make(chan receivedEvent, 1)
 	ft.fileBrowser.Events.Subscribe(func(event Event) {
 		if e, ok := event.(SnapshotCreatedEvent); ok {
-			received := receivedEvent{name: e.SnapshotName, onUiThread: isOnUiThread(ft.app)}
+			received := receivedEvent{name: e.SnapshotName, onUiThread: testutil.IsOnUiThread(ft.app)}
 			// listeners update the UI, like the main page does
 			if selection := ft.fileBrowser.GetSelection(); selection != nil {
 				received.selectedName = selection.Name

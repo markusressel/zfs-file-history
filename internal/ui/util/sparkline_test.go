@@ -47,7 +47,8 @@ func TestDrawSparkline(t *testing.T) {
 	drawn := DrawSparkline(screen, 2, 0, 10, []int64{1, 2, 3, 4, -1}, 2)
 	assert.Equal(t, 3, drawn)
 	for i := 0; i < drawn; i++ {
-		r, _, style, _ := screen.GetContent(2+i, 0)
+		str, style, _ := screen.Get(2+i, 0)
+		r := []rune(str)[0]
 		assert.True(t, r >= 0x2800 && r <= 0x28ff, "braille in cell %d", i)
 		foreground, background, _ := style.Decompose()
 		if i == 1 {
@@ -89,7 +90,7 @@ func TestDrawSparkline_Gradient(t *testing.T) {
 	// cells: (0, 0), (5, 5), (0, 10)
 	DrawSparkline(screen, 0, 0, 10, []int64{0, 0, 5, 5, 0, 10}, -1)
 	foreground := func(x int) tcell.Color {
-		_, _, style, _ := screen.GetContent(x, 0)
+		_, style, _ := screen.Get(x, 0)
 		color, _, _ := style.Decompose()
 		return color
 	}

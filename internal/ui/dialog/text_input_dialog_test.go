@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -39,7 +40,7 @@ func newTextInputDialogTest(t *testing.T, initialText string) *textInputDialogTe
 		defer dt.mu.Unlock()
 		dt.submitted = append(dt.submitted, text)
 	})
-	onUiThread(t, dt.app, func() { ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil) })
+	testutil.OnUiThread(t, dt.app, func() { ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil) })
 	return dt
 }
 
@@ -54,12 +55,12 @@ func (dt *textInputDialogTest) typeText(text string) {
 }
 
 func (dt *textInputDialogTest) text() (text string) {
-	onUiThread(dt.t, dt.app, func() { text = dt.dialog.GetText() })
+	testutil.OnUiThread(dt.t, dt.app, func() { text = dt.dialog.GetText() })
 	return text
 }
 
 func (dt *textInputDialogTest) isShown() (shown bool) {
-	onUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage("TextInputTest") })
+	testutil.OnUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage("TextInputTest") })
 	return shown
 }
 
@@ -107,7 +108,7 @@ func TestTextInputDialog_EscCancels(t *testing.T) {
 
 func TestTextInputDialog_Validator(t *testing.T) {
 	dt := newTextInputDialogTest(t, "")
-	onUiThread(t, dt.app, func() {
+	testutil.OnUiThread(t, dt.app, func() {
 		dt.dialog.SetValidator(func(text string) error {
 			if !strings.Contains(text, ":") {
 				return errors.New("needs a colon")
@@ -117,7 +118,7 @@ func TestTextInputDialog_Validator(t *testing.T) {
 	})
 	errorText := func() string {
 		text := ""
-		onUiThread(t, dt.app, func() { text = dt.dialog.errorView.GetText(true) })
+		testutil.OnUiThread(t, dt.app, func() { text = dt.dialog.errorView.GetText(true) })
 		return text
 	}
 

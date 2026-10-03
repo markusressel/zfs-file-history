@@ -30,8 +30,12 @@
 * 🧭 **Overview:** Below the file browser, the current folder compared to the selected snapshot (`+2 −1 ~4`), a
   sparkline of how many of its entries differ from now in each snapshot (to see how far back you have to go, and
   since when it is unchanged), and one of the size of the selected file (its number of versions and last change).
-  The snapshot selected in the snapshot list is highlighted in them.
-* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. `h` in the snapshot
+  The snapshot selected in the snapshot list is highlighted in them. `o` hides it to make room for the files, and
+  shows it again (remembered between runs).
+* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. Snapshots in which a
+  new version of the selected file or folder starts are bright, the ones holding the same as the previous snapshot
+  are dimmed (without a selected entry: the snapshots in which the folder changed, or data was written to the
+  dataset). `v` shows only the snapshots with changes, like the histories (remembered per screen). `h` in the snapshot
   list (or its action menu) opens the history of the selected file or folder at that snapshot.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
 * 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the
@@ -64,7 +68,8 @@
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
 * 🗃️ **Snapshot columns per screen:** On the files screen, the snapshot list is about the path you look at: `Size`
-  and `Modified` of the selected entry in each snapshot (which version it holds), and the changes of the folder since
+  and `Modified` of the selected entry in each snapshot (which version it holds; the number of items for folders), and
+  the changes of the folder since
   the previous snapshot (`Changes`, e.g. `+3 −1 ~2`) or compared with now (`vs now`). On the datasets screen, it is
   about the whole dataset: `Used`, `Written`, `Refer`. All columns can be shown on both screens (`F2`), each screen
   remembers its own.
@@ -131,7 +136,8 @@ sudo zfs allow markus mount,snapshot,destroy,hold,release rpool/HOME/default/mar
 
 If a permission is missing, zfs-file-history tells you which ones are needed on which dataset, shows the matching
 `zfs allow` command and offers to run it for you (it asks for your `sudo` password) or to copy it. Once the
-permissions are in effect, the action you tried is repeated automatically (destroying asks for confirmation again).
+permissions are in effect, the action you tried is repeated automatically (destroying asks for confirmation again),
+and the permissions shown in the dataset overview are updated.
 Destroying snapshots checks the permissions before asking for confirmation, as the dry run of `zfs destroy`
 succeeds without them.
 
@@ -161,7 +167,7 @@ in [zfs-file-history.yaml](/zfs-file-history.yaml).
 
 Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
 (the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview, the
-comparison mode of the file and folder history, relative times and hidden shortcuts)
+comparison mode of the file and folder history, relative times, hidden shortcuts and the hidden overview)
 in a state file:
 
 * `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`

@@ -3,6 +3,7 @@ package dialog
 import (
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -13,7 +14,7 @@ import (
 // braille cell, the selected version (see uiutil.DrawSparkline).
 func sparklineRow(t *testing.T, app *tview.Application, screen tcell.SimulationScreen, label string) (row int, highlighted bool) {
 	row = -1
-	onUiThread(t, app, func() {
+	testutil.OnUiThread(t, app, func() {
 		app.ForceDraw()
 		cells, width, height := screen.GetContents()
 		for y := 0; y < height && row < 0; y++ {

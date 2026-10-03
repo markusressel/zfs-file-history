@@ -53,6 +53,10 @@ type SnapshotBrowserColors struct {
 
 type SnapshotBrowserTableColors struct {
 	State SnapshotBrowserTableStatusColors
+	// Changed is the text of snapshots in which something changed (e.g. a new version of the selected file starts),
+	// Unchanged the text of snapshots that hold the same as the previous one
+	Changed   tcell.Color
+	Unchanged tcell.Color
 }
 
 type SnapshotBrowserTableStatusColors struct {

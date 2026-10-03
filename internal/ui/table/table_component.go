@@ -70,7 +70,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	title string
 
 	// filterMatches enables filtering, see SetFilterFunc
-	filterMatches         func(entry *T, filterText string) bool
+	filterMatches func(entry *T, filterText string) bool
+	// extraFilter hides entries independent of the typed filter, see SetExtraFilter
+	extraFilter           func(entry *T) bool
 	filterText            string
 	isEditingFilter       bool
 	filterEditor          lineEditor
@@ -857,6 +859,42 @@ func (c *RowSelectionTable[T]) IsFilterActive() bool {
 	return c.filterText != ""
 }
 
+// IsFiltered returns whether entries may be hidden, by the typed filter or the extra filter (e.g. for footers like
+// "5 of 300 entries").
+func (c *RowSelectionTable[T]) IsFiltered() bool {
+	return c.IsFilterActive() || c.extraFilter != nil
+}
+
+// SetExtraFilter hides the entries for which shown returns false, in addition to the typed filter (nil: none).
+// The selection is kept if it is still shown. Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetExtraFilter(shown func(entry *T) bool) {
+	c.extraFilter = shown
+	c.refilter()
+}
+
+// RefreshFilter applies the filters again, e.g. after what the extra filter depends on changed.
+// Must be called on the UI thread.
+func (c *RowSelectionTable[T]) RefreshFilter() {
+	shown := c.filterEntries(c.allEntries)
+	if len(shown) == len(c.entries) {
+		current := make(map[*T]bool, len(c.entries))
+		for _, entry := range c.entries {
+			current[entry] = true
+		}
+		unchanged := true
+		for _, entry := range shown {
+			if !current[entry] {
+				unchanged = false
+				break
+			}
+		}
+		if unchanged {
+			return
+		}
+	}
+	c.refilter()
+}
+
 // IsEditingFilter returns whether the filter is currently being typed.
 func (c *RowSelectionTable[T]) IsEditingFilter() bool {
 	return c.isEditingFilter
@@ -877,7 +915,11 @@ func (c *RowSelectionTable[T]) applyFilterText(filterText string) {
 		return
 	}
 	c.filterText = filterText
+	c.refilter()
+}
 
+// refilter shows the entries that match the filters, keeping the selection if it is still shown.
+func (c *RowSelectionTable[T]) refilter() {
 	previousSelection := c.GetSelectedEntry()
 	headerSelected := previousSelection == nil && len(c.entries) > 0
 
@@ -909,14 +951,19 @@ func (c *RowSelectionTable[T]) applyFilterText(filterText string) {
 }
 
 func (c *RowSelectionTable[T]) filterEntries(entries []*T) []*T {
-	if c.filterMatches == nil || c.filterText == "" {
+	textFilter := c.filterMatches != nil && c.filterText != ""
+	if !textFilter && c.extraFilter == nil {
 		return entries
 	}
 	result := make([]*T, 0, len(entries))
 	for _, entry := range entries {
-		if c.filterMatches(entry, c.filterText) {
-			result = append(result, entry)
+		if textFilter && !c.filterMatches(entry, c.filterText) {
+			continue
 		}
+		if c.extraFilter != nil && !c.extraFilter(entry) {
+			continue
+		}
+		result = append(result, entry)
 	}
 	return result
 }
