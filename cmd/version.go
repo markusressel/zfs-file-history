@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"zfs-file-history/cmd/global"
-	"zfs-file-history/internal/logging"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -15,11 +15,11 @@ var versionCmd = &cobra.Command{
 	Long:  `All software has versions. This is zfs-file-history's`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if global.Verbose {
-			logging.Printfln("%s-%s-%s", global.Version, global.Commit, global.Date)
+			pterm.Printfln("%s-%s-%s", global.Version, global.Commit, global.Date)
 		} else if long {
-			logging.Printfln("%s-%s", global.Version, global.Commit)
+			pterm.Printfln("%s-%s", global.Version, global.Commit)
 		} else {
-			logging.Printfln("%s", global.Version)
+			pterm.Printfln("%s", global.Version)
 		}
 	},
 }
