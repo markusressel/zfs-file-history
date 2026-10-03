@@ -7,6 +7,7 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
+	"zfs-file-history/internal/ui/path_overview"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
@@ -41,8 +42,11 @@ type MainPage struct {
 	shortcutMap     *shortcut_helper.ShortcutMapComponent
 	fileBrowser     *file_browser.FileBrowserComponent
 	snapshotBrowser *snapshot_browser.SnapshotBrowserComponent
-	layout          *tview.Flex
-	windowLayout    *tview.Flex
+	// pathOverview is below the file browser, in leftLayout
+	pathOverview *path_overview.PathOverviewComponent
+	layout       *tview.Flex
+	windowLayout *tview.Flex
+	leftLayout   *tview.Flex
 
 	wasInitialized bool
 
@@ -57,11 +61,13 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
+	pathOverview := path_overview.NewPathOverview(fileBrowser.DiffCounts)
 
 	mainPage := &MainPage{
 		application:     application,
 		fileBrowser:     fileBrowser,
 		snapshotBrowser: snapshotBrowser,
+		pathOverview:    pathOverview,
 	}
 
 	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
@@ -74,10 +80,12 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	fileBrowser.Events.Subscribe(func(event file_browser.Event) {
 		switch e := event.(type) {
 		case file_browser.PathChangedEvent:
+			pathOverview.SetFolder(e.NewPath)
 			snapshotBrowser.SetPath(e.NewPath, false)
 		case file_browser.FileBrowserStatusEvent:
 			mainPage.showStatusMessage(e.Message)
 		case file_browser.SelectedTableEntryChangedEvent:
+			pathOverview.SetEntry(e.FileEntry)
 			snapshotBrowser.SetFileEntry(e.FileEntry)
 			if fileBrowser.HasFocus() {
 				mainPage.updateShortcutMap(fileBrowser)
@@ -93,8 +101,15 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 		switch e := event.(type) {
 		case snapshot_browser.RequestHistoryEvent:
 			mainPage.showHistory(e.Entry, e.Snapshot.Snapshot)
+		case snapshot_browser.PathVersionsLoaded:
+			pathOverview.SetVersions(e.DatasetName, e.DatasetPath, e.FolderPath, e.Folder, e.Entry, e.EntryVersions)
 		case snapshot_browser.SelectedSnapshotChanged:
 			fileBrowser.SetSelectedSnapshot(e.Snapshot)
+			if e.Snapshot != nil {
+				pathOverview.SetSelectedSnapshot(e.Snapshot.Snapshot)
+			} else {
+				pathOverview.SetSelectedSnapshot(nil)
+			}
 			if snapshotBrowser.HasFocus() {
 				mainPage.updateShortcutMap(snapshotBrowser)
 			}
@@ -155,13 +170,18 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	windowLayout := tview.NewFlex().SetDirection(tview.FlexColumn)
 	//dialog := createFileBrowserActionDialog()
 
-	windowLayout.AddItem(mainPage.fileBrowser.GetLayout(), 0, 2, true)
+	// the overview below the file browser describes its folder and selected entry
+	leftLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(mainPage.fileBrowser.GetLayout(), 0, 1, true).
+		AddItem(mainPage.pathOverview.GetLayout(), path_overview.Height, 0, false)
+	windowLayout.AddItem(leftLayout, 0, 2, true)
 	// the dataset info is shown on the dataset page only, the snapshots use the whole height here
 	windowLayout.AddItem(mainPage.snapshotBrowser.GetLayout(), 0, 1, false)
 
 	mainPageLayout.AddItem(windowLayout, 0, 1, true)
 
 	mainPage.windowLayout = windowLayout
+	mainPage.leftLayout = leftLayout
 
 	// Set mouse capture on the top-level layout to capture drags anywhere on the screen
 	mainPageLayout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
@@ -260,6 +280,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 func (mainPage *MainPage) Init(path string) {
 	mainPage.wasInitialized = true
+	mainPage.pathOverview.SetFolder(path)
 	mainPage.snapshotBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SetPath(path, false)
 	mainPage.fileBrowser.SelectFirstEntryIfExists()
@@ -369,7 +390,7 @@ func (mainPage *MainPage) applyResize(mouseX, winX, winW int) {
 	}
 	minWidth := 10
 	newLeftWidth := max(minWidth, min(mouseX-winX, winW-minWidth))
-	mainPage.windowLayout.ResizeItem(mainPage.fileBrowser.GetLayout(), 0, newLeftWidth)
+	mainPage.windowLayout.ResizeItem(mainPage.leftLayout, 0, newLeftWidth)
 	mainPage.windowLayout.ResizeItem(mainPage.snapshotBrowser.GetLayout(), 0, winW-newLeftWidth)
 }
 

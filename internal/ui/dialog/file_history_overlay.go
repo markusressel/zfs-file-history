@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// fileHistorySparklineLines: the size, the marker of the selected version, and a spacer
+	// fileHistorySparklineLines: the size and spacers (the selected version is highlighted in the sparkline)
 	fileHistorySparklineLines = 3
 	// fileHistoryHeaderLines is the height above both the versions and the diff: the mode and the sparkline on the
 	// left, the metadata comparison (presence, size, mode, modification time) on the right
@@ -547,7 +547,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 // Runs while drawing, on the UI thread.
 func (o *FileHistoryOverlay) drawSparkline(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
 	fillBackground(screen, x, y, width, height)
-	if len(o.sizes) == 0 || height < 2 {
+	if len(o.sizes) == 0 || height < 1 {
 		return x, y, width, height
 	}
 	selected := -1
@@ -567,13 +567,9 @@ func (o *FileHistoryOverlay) drawSparkline(screen tcell.Screen, x, y, width, hei
 		return x, y, width, height
 	}
 	label := theme.Colors.ShortcutMap.Name
-	line, column := sparkline(o.sizes, chartWidth)
 	tview.Print(screen, "Size", x, y, labelWidth, tview.AlignLeft, label)
-	tview.Print(screen, string(line), x+labelWidth, y, chartWidth, tview.AlignLeft, theme.Colors.Layout.Table.Accent)
-	tview.Print(screen, value, x+labelWidth+len(line)+1, y, valueWidth, tview.AlignLeft, label)
-	if selected >= 0 {
-		tview.Print(screen, "▲", x+labelWidth+column(selected), y+1, 1, tview.AlignLeft, theme.Colors.Layout.Table.Accent)
-	}
+	graphWidth := uiutil.DrawSparkline(screen, x+labelWidth, y, chartWidth, o.sizes, selected)
+	tview.Print(screen, value, x+labelWidth+graphWidth+1, y, valueWidth, tview.AlignLeft, label)
 	return x, y, width, height
 }
 

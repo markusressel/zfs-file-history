@@ -101,6 +101,11 @@ var (
 			Name:               tcell.ColorLightGray,
 			Separator:          Secondary,
 		},
+		Sparkline: SparklineColors{
+			Graph:              Accent,
+			Selected:           Primary,
+			SelectedBackground: Secondary,
+		},
 		Permissions: PermissionColors{
 			Granted: tcell.ColorGreen,
 			Missing: tcell.ColorGray,

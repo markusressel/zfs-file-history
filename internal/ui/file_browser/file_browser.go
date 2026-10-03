@@ -1069,6 +1069,20 @@ func (fileBrowser *FileBrowserComponent) showError(err error) {
 }
 
 // currentFolderEntry returns the folder that is shown, as an entry (e.g. for its history).
+// DiffCounts counts the entries of the folder (including the ones hidden by the filter) by their state compared to
+// the selected snapshot. Entries whose state is still being determined count as unknown.
+func (fileBrowser *FileBrowserComponent) DiffCounts() diff_state.Counts {
+	var counts diff_state.Counts
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+		if entry.IsLoading {
+			counts.Add(diff_state.Unknown)
+		} else {
+			counts.Add(entry.DiffState)
+		}
+	}
+	return counts
+}
+
 // HistoryEntry returns the entry whose history h shows: the selected file or folder, or the folder that is shown
 // while the header row is selected or the folder is empty. nil if the selection has no history (e.g. a symlink).
 func (fileBrowser *FileBrowserComponent) HistoryEntry() *data.FileBrowserEntry {

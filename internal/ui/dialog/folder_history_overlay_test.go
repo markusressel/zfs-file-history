@@ -17,25 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSparkline(t *testing.T) {
-	line, column := sparkline([]int64{0, 1, 2, 3, 4, 5, 6, 7}, 20)
-	assert.Equal(t, "▁▂▃▄▅▆▇█", string(line))
-	assert.Equal(t, 3, column(3))
-
-	// gaps for missing values, an all-zero line
-	line, _ = sparkline([]int64{-1, 0, 0}, 10)
-	assert.Equal(t, " ▁▁", string(line))
-
-	// more values than columns: the maximum of each column
-	line, column = sparkline([]int64{1, 8, 1, 1, 1, 1, 1, 8}, 4)
-	assert.Equal(t, "█▁▁█", string(line))
-	assert.Equal(t, 0, column(1))
-	assert.Equal(t, 3, column(7))
-
-	line, _ = sparkline(nil, 10)
-	assert.Empty(t, line)
-}
-
 // folderHistoryTest shows the folder history of "docs" in a fake dataset, in a running application.
 type folderHistoryTest struct {
 	t       *testing.T
@@ -174,11 +155,18 @@ func TestFolderHistoryOverlay_Timeline(t *testing.T) {
 	ft.waitFor("timeline, sparklines and footer", func() bool {
 		text := ft.screenText()
 		return strings.Contains(text, "+1 −1 ~1") && strings.Contains(text, "initial (2)") &&
-			strings.Contains(text, "Items") && strings.Contains(text, "▲") &&
+			strings.Contains(text, "Items") &&
 			strings.Contains(text, "1 added · 1 deleted · 1 modified") && strings.Contains(text, "2 of 3 snapshots")
 	})
 	// b.txt grew from "b" to "bbbb"
 	assert.Contains(t, ft.screenText(), "1 B → 4 B")
+
+	// the selected snapshot is highlighted in both sparklines, which are not next to each other
+	itemsRow, itemsHighlighted := sparklineRow(t, ft.app, ft.screen, "Items")
+	sizeRow, sizeHighlighted := sparklineRow(t, ft.app, ft.screen, "Size")
+	assert.True(t, itemsHighlighted)
+	assert.True(t, sizeHighlighted)
+	assert.Equal(t, itemsRow+2, sizeRow, "a spacer between the sparklines")
 }
 
 // Opened from the snapshot browser: the version that was current in the snapshot is selected. d2 did not change

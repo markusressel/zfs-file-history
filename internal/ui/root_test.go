@@ -285,5 +285,9 @@ func TestMainPageHasNoDatasetInfo(t *testing.T) {
 	assert.Equal(t, []FocusableUiComponent{mainPage.fileBrowser, mainPage.snapshotBrowser}, mainPage.focusableComponents())
 	assert.Equal(t, 2, mainPage.windowLayout.GetItemCount())
 	assert.Same(t, mainPage.snapshotBrowser.GetLayout(), mainPage.windowLayout.GetItem(1))
+	// the overview is below the file browser
+	assert.Same(t, mainPage.leftLayout, mainPage.windowLayout.GetItem(0))
+	assert.Same(t, mainPage.fileBrowser.GetLayout(), mainPage.leftLayout.GetItem(0))
+	assert.Same(t, mainPage.pathOverview.GetLayout(), mainPage.leftLayout.GetItem(1))
 	app.Stop()
 }

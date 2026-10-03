@@ -25,7 +25,8 @@ import (
 const (
 	FolderHistoryOverlayPage uiutil.Page = "FolderHistoryOverlay"
 
-	// folderHistorySparklineLines: items, size, and the marker of the selected snapshot
+	// folderHistorySparklineLines: items, a spacer (so the sparklines are distinguishable) and size; the selected
+	// snapshot is highlighted in the sparklines
 	folderHistorySparklineLines = 3
 	// folderHistoryHeaderLines is the height above both tables: the mode and the sparklines on the left, the details
 	// of the selected change on the right, so the tables line up
@@ -347,22 +348,17 @@ func (o *FolderHistoryOverlay) drawSparklines(screen tcell.Screen, x, y, width, 
 	}
 
 	label := theme.Colors.ShortcutMap.Name
-	bars := theme.Colors.Layout.Table.Accent
-	drawLine := func(row int, name string, values []int64, value string) int {
+	selected := -1
+	if o.selected != nil {
+		selected = o.selected.Index
+	}
+	drawLine := func(row int, name string, values []int64, value string) {
 		tview.Print(screen, name, x, y+row, labelWidth, tview.AlignLeft, label)
-		line, column := sparkline(values, chartWidth)
-		tview.Print(screen, string(line), x+labelWidth, y+row, chartWidth, tview.AlignLeft, bars)
-		tview.Print(screen, value, x+labelWidth+len(line)+1, y+row, valueWidth, tview.AlignLeft, label)
-		if o.selected == nil {
-			return -1
-		}
-		return column(o.selected.Index)
+		graphWidth := uiutil.DrawSparkline(screen, x+labelWidth, y+row, chartWidth, values, selected)
+		tview.Print(screen, value, x+labelWidth+graphWidth+1, y+row, valueWidth, tview.AlignLeft, label)
 	}
 	drawLine(0, "Items", items, itemsValue)
-	markerColumn := drawLine(1, "Size", sizes, sizeValue)
-	if markerColumn >= 0 {
-		tview.Print(screen, "▲", x+labelWidth+markerColumn, y+2, 1, tview.AlignLeft, theme.Colors.Layout.Table.Accent)
-	}
+	drawLine(2, "Size", sizes, sizeValue)
 	return x, y, width, height
 }
 

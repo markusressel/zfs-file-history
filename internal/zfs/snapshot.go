@@ -278,11 +278,16 @@ func (s *Snapshot) IsRealFileDifferent(path string) bool {
 		return false
 	}
 
-	return realStat.IsDir() != snapStat.IsDir() ||
-		realStat.Mode() != snapStat.Mode() ||
-		realStat.ModTime() != snapStat.ModTime() ||
-		realStat.Size() != snapStat.Size() ||
-		realStat.Name() != snapStat.Name()
+	return isFileInfoDifferent(realStat, snapStat)
+}
+
+// isFileInfoDifferent returns whether two versions of a file differ, judged by their metadata.
+func isFileInfoDifferent(a os.FileInfo, b os.FileInfo) bool {
+	return a.IsDir() != b.IsDir() ||
+		a.Mode() != b.Mode() ||
+		!a.ModTime().Equal(b.ModTime()) ||
+		a.Size() != b.Size() ||
+		a.Name() != b.Name()
 }
 
 func (s *Snapshot) IsSnapshotPath(path string) bool {
@@ -302,24 +307,37 @@ func (s *Snapshot) ContainsFile(entry string) (bool, error) {
 
 // DetermineDiffState Determine the diff state between a real file and its snapshot counterpart
 func (s *Snapshot) DetermineDiffState(path string) diff_state.DiffState {
-	snapshotContainsFile, err := s.ContainsFile(path)
-	if err != nil {
+	state, _ := s.DiffStateAndInfo(path)
+	return state
+}
+
+// DiffStateAndInfo determines the diff state like DetermineDiffState, and also returns the file info of the path in
+// the snapshot (nil if the snapshot does not contain it). Both come from a single Lstat of each side.
+func (s *Snapshot) DiffStateAndInfo(path string) (diff_state.DiffState, os.FileInfo) {
+	snapshotInfo, err := os.Lstat(s.GetSnapshotPath(path))
+	if os.IsNotExist(err) {
+		snapshotInfo = nil
+	} else if err != nil {
 		logging.Error("Could not determine if snapshot contains file %s: %s", path, err.Error())
-		return diff_state.Unknown
+		return diff_state.Unknown, nil
 	}
-	realFileExists := util.FileExists(path)
-	if snapshotContainsFile && realFileExists {
-		if s.IsRealFileDifferent(path) {
-			return diff_state.Modified
-		}
-		return diff_state.Equal
-	} else if snapshotContainsFile {
-		return diff_state.Deleted
-	} else if realFileExists {
-		return diff_state.Added
+	realInfo, err := os.Lstat(path)
+	if err != nil {
+		realInfo = nil
 	}
 
-	return diff_state.Equal
+	switch {
+	case snapshotInfo != nil && realInfo != nil:
+		if isFileInfoDifferent(realInfo, snapshotInfo) {
+			return diff_state.Modified, snapshotInfo
+		}
+		return diff_state.Equal, snapshotInfo
+	case snapshotInfo != nil:
+		return diff_state.Deleted, snapshotInfo
+	case realInfo != nil:
+		return diff_state.Added, nil
+	}
+	return diff_state.Equal, nil
 }
 
 // DetermineDiffStateBetween Determine the diff state between this snapshot and another snapshot of a file

@@ -91,6 +91,7 @@ type Color struct {
 	List            ListColors
 	Layout          LayoutColors
 	ShortcutMap     ShortcutMapColors
+	Sparkline       SparklineColors
 	Permissions     PermissionColors
 	Properties      PropertyColors
 }
@@ -144,6 +145,15 @@ type LayoutTableColors struct {
 	TreeLines tcell.Color
 	// TreeCollapsedIndicator is the "▸ +N" behind collapsed entries of tree views
 	TreeCollapsedIndicator tcell.Color
+}
+
+// SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the
+// histories.
+type SparklineColors struct {
+	Graph tcell.Color
+	// Selected and SelectedBackground mark the selected value, e.g. the snapshot selected in a list
+	Selected           tcell.Color
+	SelectedBackground tcell.Color
 }
 
 type ShortcutMapColors struct {

@@ -3,6 +3,7 @@ package snapshot_browser
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -340,10 +341,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) cancelDiffCalculation() {
 func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 	snapshots := snapshotBrowser.currentSnapshots
 	fileEntry := snapshotBrowser.currentFileEntry
+	folderPath := snapshotBrowser.path
 
 	if len(snapshots) == 0 {
 		snapshotBrowser.tableContainer.SetData([]*data.SnapshotBrowserEntry{})
 		snapshotBrowser.updateTitleAndFooter()
+		snapshotBrowser.emit(PathVersionsLoaded{FolderPath: folderPath, Entry: fileEntry})
 		return
 	}
 
@@ -450,6 +453,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 			}
 		}
 
+		// the versions of the folder and the entry, for the path overview (see PathVersionsLoaded)
+		folderVersions := make([]data.PathVersion, 0, len(entriesToProcess))
+		var entryVersions []data.PathVersion
+
 		for i, entry := range entriesToProcess {
 			if ctx.Err() != nil {
 				return
@@ -457,21 +464,45 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 
 			diffState := diff_state.Unknown
 			if filePath != "" {
-				diffState = entry.Snapshot.DetermineDiffState(filePath)
+				var info os.FileInfo
+				diffState, info = entry.Snapshot.DiffStateAndInfo(filePath)
+				entryVersions = append(entryVersions, data.PathVersion{Snapshot: entry.Snapshot, Info: info})
+			}
+			if folderPath != "" {
+				folderInfo, err := os.Lstat(entry.Snapshot.GetSnapshotPath(folderPath))
+				if err != nil {
+					folderInfo = nil
+				}
+				folderVersions = append(folderVersions, data.PathVersion{Snapshot: entry.Snapshot, Info: folderInfo})
 			}
 
 			batch = append(batch, diffResult{entry: entry, state: diffState})
 
 			now := time.Now()
 			isLast := i == len(entriesToProcess)-1
-			// Draw at most once every 50ms to prevent SSH connection flooding
-			if isLast || now.Sub(lastDrawTime) > 50*time.Millisecond {
+			if isLast {
+				// drawn together with the versions below
+				pushBatch(false)
+			} else if now.Sub(lastDrawTime) > 50*time.Millisecond {
+				// Draw at most once every 50ms to prevent SSH connection flooding
 				pushBatch(true)
 				lastDrawTime = now
 			} else if len(batch) >= 10 {
 				pushBatch(false)
 			}
 		}
+
+		loaded := PathVersionsLoaded{FolderPath: folderPath, Folder: folderVersions, Entry: fileEntry, EntryVersions: entryVersions}
+		if len(entriesToProcess) > 0 && entriesToProcess[0].Snapshot.ParentDataset != nil {
+			// may read a libzfs property, so not on the UI thread
+			dataset := entriesToProcess[0].Snapshot.ParentDataset
+			loaded.DatasetName, loaded.DatasetPath = dataset.GetName(), dataset.Path
+		}
+		snapshotBrowser.application.QueueUpdateDraw(func() {
+			if snapshotBrowser.diffLoader.IsCurrentSequence(seq) {
+				snapshotBrowser.emit(loaded)
+			}
+		})
 	}()
 }
 
