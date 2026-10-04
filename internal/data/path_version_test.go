@@ -42,3 +42,21 @@ func TestVersionChanges(t *testing.T) {
 	changes = VersionChanges([]PathVersion{version("s1", 2, testutil.Folder(3, day(1))), version("s2", 3, testutil.Folder(5, day(2)))})
 	assert.Equal(t, VersionChange{Kind: VersionModified, SizeDelta: 2}, changes["s2"])
 }
+
+func TestInfoDiffers(t *testing.T) {
+	day := func(n int) time.Time { return time.Date(2026, 10, n, 0, 0, 0, 0, time.UTC) }
+
+	f1 := testutil.File(100, day(1))
+	f2 := testutil.File(100, day(1))
+	fDifferentSize := testutil.File(200, day(1))
+	fDifferentTime := testutil.File(100, day(2))
+	dir := testutil.Folder(5, day(1))
+
+	assert.False(t, InfoDiffers(nil, nil))
+	assert.True(t, InfoDiffers(f1, nil))
+	assert.True(t, InfoDiffers(nil, f1))
+	assert.False(t, InfoDiffers(f1, f2))
+	assert.True(t, InfoDiffers(f1, fDifferentSize))
+	assert.True(t, InfoDiffers(f1, fDifferentTime))
+	assert.True(t, InfoDiffers(f1, dir))
+}

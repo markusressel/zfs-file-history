@@ -8,6 +8,7 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fileState struct {
@@ -135,4 +136,89 @@ func TestSnapshot_CloneRequiresAName(t *testing.T) {
 	snapshot := &Snapshot{Name: "daily-2026", FullName: "pool/data@daily-2026"}
 	assert.Error(t, snapshot.Clone(""))
 	assert.Error(t, snapshot.Clone("   "))
+}
+
+func TestSnapshot_PathsAndEqual(t *testing.T) {
+	dataset := &Dataset{
+		Path:          "/tank/data",
+		HiddenZfsPath: "/tank/data/.zfs",
+	}
+	s1 := &Snapshot{
+		Name:          "snap1",
+		Path:          "/tank/data/.zfs/snapshot/snap1",
+		ParentDataset: dataset,
+	}
+	s2 := &Snapshot{
+		Name: "snap1",
+		Path: "/tank/data/.zfs/snapshot/snap1",
+	}
+	s3 := &Snapshot{
+		Name: "snap2",
+		Path: "/tank/data/.zfs/snapshot/snap2",
+	}
+
+	assert.True(t, s1.Equal(*s2))
+	assert.False(t, s1.Equal(*s3))
+
+	assert.Equal(t, "/tank/data/.zfs/snapshot/snap1/folder/file.txt", s1.GetSnapshotPath("/tank/data/folder/file.txt"))
+	assert.Equal(t, "/tank/data/folder/file.txt", s1.GetRealPath("/tank/data/.zfs/snapshot/snap1/folder/file.txt"))
+}
+
+func TestSnapshot_RestoreOperations(t *testing.T) {
+	tmpDir := t.TempDir()
+	datasetPath := filepath.Join(tmpDir, "dataset")
+	snapBase := filepath.Join(datasetPath, ".zfs", "snapshot")
+	snapPath := filepath.Join(snapBase, "snap1")
+
+	require.NoError(t, os.MkdirAll(snapPath, 0755))
+	require.NoError(t, os.MkdirAll(datasetPath, 0755))
+
+	dataset := &Dataset{
+		Path:          datasetPath,
+		HiddenZfsPath: filepath.Join(datasetPath, ".zfs"),
+	}
+	snap := &Snapshot{
+		Name:          "snap1",
+		Path:          snapPath,
+		ParentDataset: dataset,
+	}
+
+	// 1. Restore single file
+	srcFile := filepath.Join(snapPath, "sub", "hello.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(srcFile), 0755))
+	require.NoError(t, os.WriteFile(srcFile, []byte("hello world"), 0644))
+
+	err := snap.RestoreFile(srcFile)
+	require.NoError(t, err)
+
+	dstFile := filepath.Join(datasetPath, "sub", "hello.txt")
+	data, err := os.ReadFile(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", string(data))
+
+	// 2. Restore directory
+	srcDir := filepath.Join(snapPath, "somedir")
+	require.NoError(t, os.Mkdir(srcDir, 0755))
+	stat, err := os.Lstat(srcDir)
+	require.NoError(t, err)
+	err = snap.RestoreDir(filepath.Join(datasetPath, "somedir"), stat)
+	require.NoError(t, err)
+
+	// 3. RestoreRecursive
+	nestedDir := filepath.Join(snapPath, "nested")
+	require.NoError(t, os.MkdirAll(filepath.Join(nestedDir, "child"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(nestedDir, "f1.txt"), []byte("file1"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(nestedDir, "child", "f2.txt"), []byte("file2"), 0644))
+
+	err = snap.RestoreRecursive(nestedDir)
+	require.NoError(t, err)
+
+	assert.FileExists(t, filepath.Join(datasetPath, "nested", "f1.txt"))
+	assert.FileExists(t, filepath.Join(datasetPath, "nested", "child", "f2.txt"))
+
+	// 4. Restore generic function on file and dir
+	err = snap.Restore(srcFile)
+	require.NoError(t, err)
+	err = snap.Restore(nestedDir)
+	require.NoError(t, err)
 }
