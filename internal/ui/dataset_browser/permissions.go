@@ -264,5 +264,9 @@ func (datasetBrowser *DatasetBrowserComponent) openPropertiesDialog(entry *zfs.D
 }
 
 func (datasetBrowser *DatasetBrowserComponent) showDialog(d dialog.Dialog) {
-	dialog.ShowDialogOnPages(datasetBrowser.application, datasetBrowser.layout, d, nil)
+	pages := datasetBrowser.layout
+	if datasetBrowser.dialogPages != nil {
+		pages = datasetBrowser.dialogPages
+	}
+	dialog.ShowDialogOnPages(datasetBrowser.application, pages, d, nil)
 }

@@ -112,7 +112,9 @@ type FileBrowserComponent struct {
 	tableContainer *table.RowSelectionTable[data.FileBrowserEntry]
 
 	selectionMemory *uiutil.SelectionMemory[data.FileBrowserEntry]
-	fileWatcher     *util.FileWatcher
+	// dialogPages are the pages dialogs are shown on, see SetDialogPages
+	dialogPages *tview.Pages
+	fileWatcher *util.FileWatcher
 
 	diffLoader    *uiutil.DebouncedLoader
 	refreshLoader *uiutil.DebouncedLoader
@@ -901,8 +903,18 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.layout.HasFocus()
 }
 
+// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
+// whole screen, not only the area of this component. Without them, they are shown on its own layout.
+func (fileBrowser *FileBrowserComponent) SetDialogPages(pages *tview.Pages) {
+	fileBrowser.dialogPages = pages
+}
+
 func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
-	dialog.ShowDialogOnPages(fileBrowser.application, fileBrowser.layout, d, onClosed)
+	pages := fileBrowser.layout
+	if fileBrowser.dialogPages != nil {
+		pages = fileBrowser.dialogPages
+	}
+	dialog.ShowDialogOnPages(fileBrowser.application, pages, d, onClosed)
 }
 
 func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {

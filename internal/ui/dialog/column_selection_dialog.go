@@ -111,19 +111,13 @@ func (d *ColumnSelectionDialog) createLayout() {
 	content.AddItem(d.shortcutMap.GetLayout(), columnSelectionShortcutLines, 0, false)
 	content.AddItem(columns, 0, 1, true)
 	content.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		// mouse captures get all events, not only those on the primitive (https://github.com/rivo/tview/issues/926)
 		if action == tview.MouseLeftDown {
 			x, y := event.Position()
-
-			ax, ay, aw, ah := d.activeTable.GetRect()
-			inActive := x >= ax && x < ax+aw && y >= ay && y < ay+ah
-
-			avx, avy, avw, avh := d.availableTable.GetRect()
-			inAvailable := x >= avx && x < avx+avw && y >= avy && y < avy+avh
-
-			if inActive {
+			if d.activeTable.InRect(x, y) {
 				d.focusActive = true
 				d.updateShortcutMap()
-			} else if inAvailable {
+			} else if d.availableTable.InRect(x, y) {
 				d.focusActive = false
 				d.updateShortcutMap()
 			}

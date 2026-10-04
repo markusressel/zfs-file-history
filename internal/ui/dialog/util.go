@@ -115,6 +115,47 @@ func createModal(title string, content tview.Primitive, constraints DialogSizeCo
 
 // clearInside makes a bordered dialog frame clear its inside before its children are drawn. tview's Flex does not
 // clear its area, so gaps between the children (e.g. the padding of a table) would show the page behind the dialog.
+// modalLayout is the layout of a dialog as a page: it consumes all mouse events but moves, also those that no
+// primitive of the dialog consumes (e.g. on its border). tview hands mouse events on to the pages below until one
+// consumes them, so they would reach the page behind the dialog otherwise (https://github.com/rivo/tview/issues/926).
+// Moves are not consumed, so moving the mouse does not redraw the screen.
+type modalLayout struct {
+	*tview.Flex
+}
+
+func (layout modalLayout) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	handler := layout.Flex.MouseHandler()
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (bool, tview.Primitive) {
+		consumed, capture := handler(action, event, setFocus)
+		return consumed || action != tview.MouseMove, capture
+	}
+}
+
+// isOnDialog returns whether the position is on the dialog (its frame), not on the empty space around it. The
+// layouts of dialogs (see createModalWithFrame, createOverlayFrame) center the frame with nil items around it;
+// frames have no nil items.
+func isOnDialog(primitive tview.Primitive, x int, y int) bool {
+	if flex, ok := primitive.(*tview.Flex); ok {
+		isWrapper := false
+		for i := 0; i < flex.GetItemCount(); i++ {
+			if flex.GetItem(i) == nil {
+				isWrapper = true
+				break
+			}
+		}
+		if isWrapper {
+			for i := 0; i < flex.GetItemCount(); i++ {
+				if item := flex.GetItem(i); item != nil && isOnDialog(item, x, y) {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	rectX, rectY, width, height := primitive.GetRect()
+	return x >= rectX && x < rectX+width && y >= rectY && y < rectY+height
+}
+
 // The draw func runs after the border is drawn and before the children. Call it before other draw funcs are
 // installed on the frame (e.g. uiutil.NewBorderFooter), which keep and call it.
 func clearInside(frame *tview.Box) {
@@ -353,7 +394,7 @@ func ShowDialogOnPages(
 		}
 	}()
 
-	pages.AddPage(d.GetName(), layout, true, true)
+	pages.AddPage(d.GetName(), modalLayout{layout}, true, true)
 	if !layout.HasFocus() {
 		application.SetFocus(layout)
 	}
@@ -368,10 +409,21 @@ func ShowDialogOnPages(
 	// Ensure that clicking outside the focusable elements doesn't lose focus
 	capturer, hasMouseCapture := d.(mouseCapturer)
 	layout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		// first, so drags (e.g. of a split) continue when the mouse leaves the dialog
 		if hasMouseCapture {
 			if action, event = capturer.captureMouse(action, event); event == nil {
 				return action, event
 			}
+		}
+		// tview hands mouse events to all pages until one consumes them, and the empty space around the dialog does
+		// not: without this, a click next to the dialog would select an entry of the page behind it
+		// (https://github.com/rivo/tview/issues/926)
+		if x, y := event.Position(); !isOnDialog(layout, x, y) {
+			if action == tview.MouseMove {
+				// no redraw for moves; the page behind ignores them while it is not in front
+				return action, nil
+			}
+			return tview.MouseConsumed, nil
 		}
 		currentFocus := application.GetFocus()
 		if currentFocus != nil && layout.HasFocus() {
@@ -509,6 +561,8 @@ func isDescendantOf(parent tview.Primitive, child tview.Primitive) bool {
 		return true
 	}
 	switch p := parent.(type) {
+	case modalLayout:
+		return isDescendantOf(p.Flex, child)
 	case *tview.Flex:
 		for i := 0; i < p.GetItemCount(); i++ {
 			if isDescendantOf(p.GetItem(i), child) {

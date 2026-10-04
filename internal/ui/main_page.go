@@ -229,3 +229,10 @@ func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
 	}
 	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Group: shortcut_helper.GroupView}
 }
+
+// SetPages sets the pages of the application, on which the dialogs of the components are shown as well.
+func (mainPage *MainPage) SetPages(pages *tview.Pages) {
+	mainPage.basePage.SetPages(pages)
+	mainPage.fileBrowser.SetDialogPages(pages)
+	mainPage.snapshotBrowser.SetDialogPages(pages)
+}

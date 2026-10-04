@@ -69,6 +69,8 @@ type SnapshotBrowserComponent struct {
 	onlyChanges bool
 	// layoutStateKey is where the columns of the page are saved, see UseColumnLayout
 	layoutStateKey string
+	// dialogPages are the pages dialogs are shown on, see SetDialogPages
+	dialogPages *tview.Pages
 }
 
 type snapshotLoadResult struct {
@@ -1085,8 +1087,18 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDestroyConfirmation(request
 	snapshotBrowser.showDialog(confirmation, nil)
 }
 
+// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
+// whole screen, not only the area of this component. Without them, they are shown on its own layout.
+func (snapshotBrowser *SnapshotBrowserComponent) SetDialogPages(pages *tview.Pages) {
+	snapshotBrowser.dialogPages = pages
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
-	dialog.ShowDialogOnPages(snapshotBrowser.application, snapshotBrowser.container.Pages, d, onClosed)
+	pages := snapshotBrowser.container.Pages
+	if snapshotBrowser.dialogPages != nil {
+		pages = snapshotBrowser.dialogPages
+	}
+	dialog.ShowDialogOnPages(snapshotBrowser.application, pages, d, onClosed)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {

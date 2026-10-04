@@ -383,3 +383,54 @@ func TestPageBoundariesCanBeDragged(t *testing.T) {
 		return x == infoX+10
 	}, 2*time.Second, 20*time.Millisecond, "the datasets dragged to the right")
 }
+
+// Regression: dialogs of components (e.g. the action dialog of the file browser) were shown on the component's own
+// pages, covering only its area: the snapshot list next to it could still be clicked, and keys of the page (e.g.
+// ⭾) still worked. They are shown on the pages of the application now, and are modal for the whole screen.
+func TestComponentDialogsAreModal(t *testing.T) {
+	app, mainPage, _ := createUi(t.TempDir(), true)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	screen.SetSize(150, 40)
+	app.EnableMouse(true)
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+
+	frontPage := func() string {
+		var name string
+		testutil.OnUiThread(t, app, func() { name, _ = mainPage.pages.GetFrontPage() })
+		return name
+	}
+	snapshotsFocused := func() bool {
+		var focused bool
+		testutil.OnUiThread(t, app, func() { focused = mainPage.snapshotBrowser.HasFocus() })
+		return focused
+	}
+
+	// a dialog of the file browser (the column dialog, like its action dialog)
+	testutil.OnUiThread(t, app, func() { app.SetFocus(mainPage.fileBrowser.GetLayout()) })
+	screen.InjectKey(tcell.KeyF2, 0, tcell.ModNone)
+	require.Eventually(t, func() bool { return frontPage() != string(Main) }, 2*time.Second, 10*time.Millisecond,
+		"shown on the pages of the application")
+
+	// ⭾ does not move the focus to the snapshot list behind the dialog
+	screen.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
+	time.Sleep(100 * time.Millisecond)
+	assert.False(t, snapshotsFocused())
+
+	// neither does a click on it
+	var x, y, width, height int
+	testutil.OnUiThread(t, app, func() { x, y, width, height = mainPage.snapshotBrowser.GetLayout().GetRect() })
+	screen.InjectMouse(x+width-3, y+height-3, tcell.Button1, tcell.ModNone)
+	screen.InjectMouse(x+width-3, y+height-3, tcell.ButtonNone, tcell.ModNone)
+	time.Sleep(200 * time.Millisecond)
+	assert.False(t, snapshotsFocused())
+	assert.NotEqual(t, string(Main), frontPage(), "the dialog is still open")
+
+	// closed, the focus is back in the file browser
+	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	require.Eventually(t, func() bool { return frontPage() == string(Main) }, 2*time.Second, 10*time.Millisecond)
+	var fileBrowserFocused bool
+	testutil.OnUiThread(t, app, func() { fileBrowserFocused = mainPage.fileBrowser.HasFocus() })
+	assert.True(t, fileBrowserFocused)
+}
