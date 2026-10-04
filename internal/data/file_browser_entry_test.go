@@ -1,6 +1,7 @@
 package data
 
 import (
+	"os"
 	"testing"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/zfs"
@@ -94,4 +95,35 @@ func TestSnapshotFile_Equal(t *testing.T) {
 
 	assert.True(t, f1.Equal(f2))
 	assert.False(t, f1.Equal(f3))
+}
+
+func TestFileBrowserEntry_GetStatAndNew(t *testing.T) {
+	tmpDir := t.TempDir()
+	fileStat, err := os.Stat(tmpDir)
+	assert.NoError(t, err)
+
+	entry := NewFileBrowserEntry("tmp", &RealFile{Path: tmpDir, Stat: fileStat}, nil, Directory)
+	assert.Equal(t, "tmp", entry.Name)
+	assert.Equal(t, Directory, entry.Type)
+	assert.Equal(t, fileStat, entry.GetStat())
+
+	canEnter, err := entry.CanEnter()
+	assert.NoError(t, err)
+	assert.True(t, canEnter)
+
+	// Non-existent path
+	badEntry := NewFileBrowserEntry("bad", &RealFile{Path: "/nonexistent/path/xyz"}, nil, File)
+	canEnter, err = badEntry.CanEnter()
+	assert.Error(t, err)
+	assert.False(t, canEnter)
+
+	// Snapshot-only stat
+	snapEntry := NewFileBrowserEntry("snap", nil, []*SnapshotFile{{OriginalPath: tmpDir, Stat: fileStat}}, File)
+	assert.Equal(t, fileStat, snapEntry.GetStat())
+}
+
+func TestSnapshotBrowserEntry_TableRowId(t *testing.T) {
+	snap := &zfs.Snapshot{Path: "pool/ds@snap1"}
+	entry := SnapshotBrowserEntry{Snapshot: snap}
+	assert.Equal(t, "pool/ds@snap1", entry.TableRowId())
 }

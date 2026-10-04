@@ -16,3 +16,8 @@ func TestHeaderBackgroundIsDistinct(t *testing.T) {
 	assert.NotEqual(t, table.HeaderBackground, table.SelectedBackground)
 	assert.NotEqual(t, table.HeaderBackground, tcell.ColorBlack)
 }
+
+func TestCreateTitleText(t *testing.T) {
+	title := CreateTitleText("Hello")
+	assert.Equal(t, " Hello ", title)
+}
