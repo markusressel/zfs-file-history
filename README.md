@@ -127,19 +127,13 @@ sudo zfs-file-history setup
 
 ### Permissions
 
-To create, destroy, hold or release ZFS snapshots, the user running zfs-file-history needs to have the appropriate
-permissions, f.ex.:
+If a ZFS permission (delegation) is missing, zfs-file-history automatically gives you the option to add the missing permission to the relevant dataset for your user.
+
+However, if you want to give these permissions in one swoop you can also run this one line:
 
 ```shell
 sudo zfs allow markus mount,snapshot,destroy,hold,release rpool/HOME/default/markus
 ```
-
-If a permission is missing, zfs-file-history tells you which ones are needed on which dataset, shows the matching
-`zfs allow` command and offers to run it for you (it asks for your `sudo` password) or to copy it. Once the
-permissions are in effect, the action you tried is repeated automatically (destroying asks for confirmation again),
-and the permissions shown in the dataset overview are updated.
-Destroying snapshots checks the permissions before asking for confirmation, as the dry run of `zfs destroy`
-succeeds without them.
 
 ## Configuration
 
