@@ -14,7 +14,6 @@
 # Features
 
 * 📁 **File browser:** Navigate datasets and snapshot contents in a terminal-based file explorer.
-* ⌨️ **Keyboard-first navigation:** Use arrow keys and optional Vim key bindings for efficient traversal.
 * 🔍 **Dual Diff Comparison Modes:** Inspect file changes inside the history overlay using two modes:
   * **vs Predecessor:** Chronological comparison showing how the file evolved over snapshot versions (Additions in
     Green, Deletions in Red, baseline labeled as `Initial`).
