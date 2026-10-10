@@ -14,7 +14,7 @@ import (
 
 // m shows the messages and marks them as seen; a later key press dismisses an error from the status bar
 func TestMessageHistoryKey(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, datasetPage := createUi(t.TempDir(), true)
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	screen.SetSize(200, 30)
@@ -22,6 +22,17 @@ func TestMessageHistoryKey(t *testing.T) {
 	defer app.Stop()
 
 	messages := mainPage.messages
+	// once the datasets are loaded: without ZFS (e.g. in CI), loading them fails with an error message, which would
+	// replace the one of this test and be counted as well
+	assert.Eventually(t, func() bool {
+		loading := true
+		testutil.OnUiThread(t, app, func() { loading = datasetPage.datasetBrowser.IsLoading() })
+		return !loading
+	}, 10*time.Second, 20*time.Millisecond, "datasets loaded")
+	testutil.OnUiThread(t, app, func() {
+		messages.MarkRead()
+		messages.Dismiss()
+	})
 	testutil.OnUiThread(t, app, func() { messages.Show(status_message.NewErrorStatusMessage("something failed")) })
 	assert.Eventually(t, func() bool {
 		text := screenText(t, app, screen)
