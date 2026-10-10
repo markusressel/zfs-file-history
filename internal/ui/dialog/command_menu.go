@@ -174,7 +174,7 @@ func (menu *CommandMenu) filter(query string) {
 		}
 		row := len(menu.rows)
 		menu.list.SetCell(row, 0, tview.NewTableCell(section.Title).
-			SetTextColor(theme.Colors.ShortcutMap.Separator).
+			SetTextColor(theme.Colors.Dialog.SectionTitle).
 			SetAttributes(tcell.AttrItalic).
 			SetSelectable(false))
 		menu.rows = append(menu.rows, nil)
