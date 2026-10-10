@@ -2,6 +2,7 @@ package table
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -856,4 +857,38 @@ func TestTable_NewDataIsNotScrolledToTheEnd(t *testing.T) {
 
 	rowOffset, _ = table.table.GetOffset()
 	assert.Zero(t, rowOffset, "the first rows are shown")
+}
+
+// values computed in the background (e.g. the diff states of files) are sorted once Resort is called, keeping the
+// selection
+func TestTable_Resort(t *testing.T) {
+	cols := []*Column{{Id: 0, Title: "Name"}}
+	table := NewTableContainer[namedEntry](
+		tview.NewApplication(),
+		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
+			return []*tview.TableCell{tview.NewTableCell(entry.name)}
+		},
+		func(entries []*namedEntry, column *Column, inverted bool) []*namedEntry {
+			slices.SortStableFunc(entries, func(a, b *namedEntry) int { return strings.Compare(a.name, b.name) })
+			return entries
+		},
+	)
+	table.SetColumnSpec(cols, cols[0], false)
+	selectionChanges := 0
+	table.SetSelectionChangedCallback(func(*namedEntry) { selectionChanges++ })
+
+	a, b, c := &namedEntry{name: "a"}, &namedEntry{name: "b"}, &namedEntry{name: "c"}
+	table.SetData([]*namedEntry{c, a, b})
+	table.Select(b)
+	selectionChanges = 0
+	assert.True(t, table.IsSortedBy(cols[0]))
+
+	a.name = "z"
+	table.UpdateEntry(a)
+	assert.Equal(t, []*namedEntry{a, b, c}, table.GetEntries(), "not sorted by UpdateEntry")
+
+	table.Resort()
+	assert.Equal(t, []*namedEntry{b, c, a}, table.GetEntries())
+	assert.Equal(t, b, table.GetSelectedEntry(), "the selection is kept")
+	assert.Zero(t, selectionChanges, "the selection did not change")
 }

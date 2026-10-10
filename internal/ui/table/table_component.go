@@ -496,6 +496,25 @@ func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {
 	c.entriesMutex.Unlock()
 }
 
+// IsSortedBy returns whether the entries are sorted by the column.
+func (c *RowSelectionTable[T]) IsSortedBy(column *Column) bool {
+	return c.sortByColumn == column
+}
+
+// Resort sorts the entries again, keeping the selected one selected (without notifying the selection changed
+// callback, as it stays the same). Call it after values the entries are sorted by changed, e.g. ones computed in
+// the background (UpdateEntry does not sort). Must be called on the UI thread.
+func (c *RowSelectionTable[T]) Resort() {
+	selected := c.GetSelectedEntry()
+	c.isUpdatingData = true
+	defer func() { c.isUpdatingData = false }()
+	c.SortBy(c.sortByColumn, c.sortInverted)
+	c.updateTableContents()
+	if selected != nil {
+		c.Select(selected)
+	}
+}
+
 func (c *RowSelectionTable[T]) nextSortOrder() {
 	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
 	nextIndex := (currentIndex + 1) % len(c.columnSpec)
