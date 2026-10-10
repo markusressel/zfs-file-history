@@ -122,7 +122,6 @@ func (s *Snapshot) RestoreRecursive(srcPath string) error {
 
 		files, err := util.ListFilesIn(srcPath)
 		if err != nil {
-			logging.Fatal("Cannot list path: %s", err.Error())
 			return err
 		}
 		for _, file := range files {
@@ -204,11 +203,16 @@ func (s *Snapshot) RestoreDir(dstPath string, stat os.FileInfo) error {
 	return err
 }
 
-func (s *Snapshot) RestoreFile(srcPath string) error {
+// RestoreFile replaces the real file with its version in the snapshot (srcPath), with the mode, owner and times of
+// that version. The content is written to a temporary file next to the real one first, which then replaces it: so a
+// failed restore leaves the real file as it was, and files that cannot be written to while they are in use can be
+// restored as well, e.g. the executable of a running program (open fails with "text file busy").
+func (s *Snapshot) RestoreFile(srcPath string) (err error) {
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
 		return err
 	}
+	defer srcFile.Close()
 
 	stat, err := os.Lstat(srcPath)
 	if err != nil {
@@ -227,36 +231,39 @@ func (s *Snapshot) RestoreFile(srcPath string) error {
 		return err
 	}
 
-	destFile, err := os.Create(dstPath) // creates if file doesn't exist
+	// in the same folder, so it can be renamed to the real file (a rename does not work across file systems)
+	tempFile, err := os.CreateTemp(parentDir, "."+path2.Base(dstPath)+".zfh-restore-*")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tempFile.Close()
+			_ = os.Remove(tempFile.Name())
+		}
+	}()
+
+	_, err = io.Copy(tempFile, srcFile)
 	if err != nil {
 		return err
 	}
 
-	_, err = io.Copy(destFile, srcFile) // check first var for number of bytes copied
+	err = tempFile.Sync()
 	if err != nil {
 		return err
 	}
 
-	err = destFile.Sync()
+	err = tempFile.Close()
 	if err != nil {
 		return err
 	}
 
-	err = destFile.Close()
-	if err != nil {
-		return err
-	}
-	err = srcFile.Close()
+	err = syncFileProperties(tempFile.Name(), stat)
 	if err != nil {
 		return err
 	}
 
-	err = syncFileProperties(dstPath, stat)
-	if err != nil {
-		return err
-	}
-
-	return err
+	return os.Rename(tempFile.Name(), dstPath)
 }
 
 func (s *Snapshot) IsRealFileDifferent(path string) bool {

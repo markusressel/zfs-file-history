@@ -26,6 +26,8 @@ type RestoreFileProgressDialog struct {
 
 	layout              *tview.Flex
 	descriptionTextView *tview.TextView
+	// sizeConstraints decide the size of the dialog; the description is replaced by an error, see handleError
+	sizeConstraints     DialogSizeConstraints
 	actionsHelpTextView *tview.TextView
 	actionPages         *tview.Pages
 	closeTable          *tview.Table
@@ -63,7 +65,7 @@ func (d *RestoreFileProgressDialog) createLayout() {
 	fileToRestore := d.fileSelection.SnapshotFiles[0]
 
 	text := fmt.Sprintf("Restoring '%s' from snapshot '%s'", d.fileSelection.Name, fileToRestore.Snapshot.Name)
-	descriptionTextView := tview.NewTextView().SetText(text)
+	descriptionTextView := tview.NewTextView().SetText(text).SetWordWrap(true)
 	d.descriptionTextView = descriptionTextView
 
 	spinner := tvxwidgets.NewSpinner().SetStyle(tvxwidgets.SpinnerCircleQuarters)
@@ -121,11 +123,12 @@ func (d *RestoreFileProgressDialog) createLayout() {
 		AddItem(actionPages, 1, 0, false)
 	progressLayout.SetBorderPadding(0, 0, 1, 1)
 
-	dialog := createModal(dialogTitle, progressLayout, DialogSizeConstraints{
+	d.sizeConstraints = DialogSizeConstraints{
 		Title:        dialogTitle,
 		Description:  text,
 		StaticHeight: 4, // 3 for progress bar, 1 for actionPages
-	})
+	}
+	dialog := createResizingModal(dialogTitle, progressLayout, func() DialogSizeConstraints { return d.sizeConstraints })
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			d.Close()
@@ -227,6 +230,8 @@ func (d *RestoreFileProgressDialog) handleError(err error) {
 		d.application.QueueUpdateDraw(func() {
 			d.isRunning = false
 			d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
+			// the error is usually longer than the description, e.g. with the path of a file
+			d.sizeConstraints.Description = err.Error()
 			d.progress.SetTitle(theme.CreateTitleText("Failed!"))
 			d.progress.SetTitleColor(tcell.ColorRed)
 			d.actionPages.ShowPage("finished")

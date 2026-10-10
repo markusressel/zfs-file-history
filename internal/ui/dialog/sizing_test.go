@@ -38,6 +38,18 @@ func TestCalculateWrappedHeight(t *testing.T) {
 			expected:     3,
 		},
 		{
+			name:         "words that do not fit start a new line",
+			text:         "ab cdefg hijkl", // 14 runes, but "ab cdefg" does not fit
+			maxLineWidth: 7,
+			expected:     3,
+		},
+		{
+			name:         "words longer than a line are broken",
+			text:         "/a/very/long/path", // 17 runes
+			maxLineWidth: 8,
+			expected:     3,
+		},
+		{
 			name:         "multiple lines with empty lines",
 			text:         "line1\n\nline2",
 			maxLineWidth: 10,
