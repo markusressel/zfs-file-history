@@ -272,16 +272,22 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 			// are synced with the latest selection, even if logically it's the same path.
 			snapshotBrowser.emit(SelectedSnapshotChanged{snapshotBrowser.GetSelection()})
 		}).
-		OnError(func(err error) {
-			snapshotBrowser.container.SetIsLoading(false)
-			logging.Error("Could not load snapshots: %s", err.Error())
-			snapshotBrowser.currentSnapshots = []*zfs.Snapshot{}
-			snapshotBrowser.updateCurrentSnapshotEntries(true)
-		})
+		OnError(snapshotBrowser.onLoadError)
 
 	snapshotBrowser.setupTable()
 
 	return snapshotBrowser
+}
+
+// onLoadError shows no snapshots after loading them failed, e.g. for a folder that cannot be read.
+func (snapshotBrowser *SnapshotBrowserComponent) onLoadError(err error) {
+	snapshotBrowser.container.SetIsLoading(false)
+	logging.Error("Could not load snapshots: %s", err.Error())
+	// the dataset is unknown: the next path is loaded completely, instead of reusing the (now missing) snapshots
+	// of the dataset shown before
+	snapshotBrowser.hostDataset = nil
+	snapshotBrowser.currentSnapshots = []*zfs.Snapshot{}
+	snapshotBrowser.updateCurrentSnapshotEntries(true)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {

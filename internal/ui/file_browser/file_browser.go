@@ -441,6 +441,14 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 			fileBrowser.SetPath(path2.Dir(newPath), false)
 			return
 		}
+
+		// e.g. no permission: the entries could not be listed, but the path would change
+		directory, err := os.Open(newPath)
+		if err != nil {
+			fileBrowser.showError(err)
+			return
+		}
+		_ = directory.Close()
 	}
 
 	if fileBrowser.path != newPath {
