@@ -18,8 +18,9 @@ func (c *RowSelectionTable[T]) SortCommands() []shortcut_helper.ShortcutEntry {
 	var commands []shortcut_helper.ShortcutEntry
 	for _, column := range c.columnSpec {
 		commands = append(commands, shortcut_helper.ShortcutEntry{
-			Name:  "Sort by " + column.Title,
-			Group: shortcut_helper.GroupView,
+			Name:        "Sort by " + column.Title,
+			Description: "Sort the entries by the " + column.Title + " column",
+			Group:       shortcut_helper.GroupView,
 			Run: func() {
 				c.SortBy(column, c.sortInverted)
 				c.updateTableContents()
@@ -29,9 +30,10 @@ func (c *RowSelectionTable[T]) SortCommands() []shortcut_helper.ShortcutEntry {
 		})
 	}
 	return append(commands, shortcut_helper.ShortcutEntry{
-		Name:     "Flip sort direction",
-		Group:    shortcut_helper.GroupView,
-		Run:      c.toggleSortDirection,
-		MenuOnly: true,
+		Name:        "Flip sort direction",
+		Description: "Switch between ascending and descending order",
+		Group:       shortcut_helper.GroupView,
+		Run:         c.toggleSortDirection,
+		MenuOnly:    true,
 	})
 }

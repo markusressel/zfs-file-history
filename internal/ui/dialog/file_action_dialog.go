@@ -49,9 +49,10 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 
 	if file.HasReal() {
 		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-			Id:       FileDialogDeleteDialogActionId,
-			Name:     fmt.Sprintf("🗑  Delete '%s'", file.RealFile.Name),
-			Severity: DialogSeverityDanger,
+			Id:          FileDialogDeleteDialogActionId,
+			Name:        fmt.Sprintf("🗑  Delete '%s'", file.RealFile.Name),
+			Description: "Delete the file or folder from the disk",
+			Severity:    DialogSeverityDanger,
 		})
 	}
 
@@ -59,32 +60,37 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 	if canRestore {
 		if file.Type == data.Directory {
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:       FileDialogRestoreFileActionId,
-				Name:     "📁 Restore directory only",
-				Severity: DialogSeverityWarning,
+				Id:          FileDialogRestoreFileActionId,
+				Name:        "📁 Restore directory only",
+				Description: "Restore the folder from the snapshot, without its content",
+				Severity:    DialogSeverityWarning,
 			})
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:       FileDialogRestoreRecursiveDialogActionId,
-				Name:     "🌳 Restore directory recursively",
-				Severity: DialogSeverityDanger,
+				Id:          FileDialogRestoreRecursiveDialogActionId,
+				Name:        "🌳 Restore directory recursively",
+				Description: "Restore the folder and all its content from the snapshot",
+				Severity:    DialogSeverityDanger,
 			})
 		}
 
 		if file.Type == data.File {
 			if diffBinAvailable && file.HasDiff() {
 				dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-					Id:   FileDialogShowDiffActionId,
-					Name: "🔍 Show diff",
+					Id:          FileDialogShowDiffActionId,
+					Name:        "🔍 Show diff",
+					Description: "Compare the file with its version in the snapshot",
 				})
 			}
 			dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-				Id:   FileDialogShowHistoryActionId,
-				Name: "📜 Browse history / versions",
+				Id:          FileDialogShowHistoryActionId,
+				Name:        "📜 Browse history / versions",
+				Description: "Browse all versions of the file in the snapshots",
 			})
 			dialogOptions = slices.Insert(dialogOptions, 1, &DialogOption{
-				Id:       FileDialogRestoreFileActionId,
-				Name:     "♻️ Restore file",
-				Severity: DialogSeverityWarning,
+				Id:          FileDialogRestoreFileActionId,
+				Name:        "♻️ Restore file",
+				Description: "Replace the file with its version in the snapshot",
+				Severity:    DialogSeverityWarning,
 			})
 		}
 	}
@@ -92,14 +98,16 @@ func buildFileDialogOptions(file *data.FileBrowserEntry, diffBinAvailable bool) 
 	if file.Type == data.Directory {
 		// also interesting if the directory did not change compared to the snapshot
 		dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-			Id:   FileDialogShowHistoryActionId,
-			Name: "📂 Browse folder history",
+			Id:          FileDialogShowHistoryActionId,
+			Name:        "📂 Browse folder history",
+			Description: "Browse the changes of the folder in the snapshots",
 		})
 	}
 
 	dialogOptions = slices.Insert(dialogOptions, 0, &DialogOption{
-		Id:   FileDialogCreateSnapshotDialogActionId,
-		Name: "📸 Create Snapshot",
+		Id:          FileDialogCreateSnapshotDialogActionId,
+		Name:        "📸 Create Snapshot",
+		Description: "Snapshot the dataset of the folder now",
 	})
 
 	return ensureDialogCloseIsLast(dialogOptions)

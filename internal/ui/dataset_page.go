@@ -45,6 +45,9 @@ func NewDatasetPage(application *tview.Application, messages *status_message.Cen
 	datasetPage.focusableComponents = func() []FocusableUiComponent {
 		return []FocusableUiComponent{datasetBrowser, datasetInfo, snapshotBrowser}
 	}
+	datasetPage.componentTitles = map[FocusableUiComponent]string{
+		datasetBrowser: "Datasets", datasetInfo: "Dataset info", snapshotBrowser: "Snapshots",
+	}
 
 	// Loading the dataset info and the snapshots of the selected dataset waits until the selection rests, so
 	// holding an arrow key only moves the selection (like in the file browser).

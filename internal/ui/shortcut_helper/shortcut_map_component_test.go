@@ -174,9 +174,9 @@ func TestFormatEntriesGroupsShortcuts(t *testing.T) {
 func TestGroupColorsDiffer(t *testing.T) {
 	colors := map[tcell.Color]ShortcutGroup{}
 	for _, group := range []ShortcutGroup{GroupAction, GroupView, GroupNavigation, GroupGlobal} {
-		previous, exists := colors[group.keyColor()]
+		previous, exists := colors[group.KeyColor()]
 		assert.False(t, exists, "group %d has the color of group %d", group, previous)
-		colors[group.keyColor()] = group
+		colors[group.KeyColor()] = group
 	}
 }
 

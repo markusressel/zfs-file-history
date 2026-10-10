@@ -62,7 +62,7 @@ func TestCommandMenu_RunsTheChosenCommandOnceClosed(t *testing.T) {
 		// only shortcuts that can be run are commands
 		{Name: "Move", KeyCombo: []string{"↑"}},
 	}
-	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, commands) })
+	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, []CommandSection{{Title: "Section", Commands: commands}}) })
 	app.QueueUpdateDraw(func() {})
 
 	assert.Eventually(t, func() bool {
@@ -89,7 +89,7 @@ func TestCommandMenu_EscClosesWithoutRunning(t *testing.T) {
 
 	ran := false
 	commands := []shortcut_helper.ShortcutEntry{{Name: "Refresh", Run: func() { ran = true }}}
-	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, commands) })
+	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, []CommandSection{{Title: "Section", Commands: commands}}) })
 	app.QueueUpdateDraw(func() {})
 	assert.Eventually(t, func() bool { return strings.Contains(menuScreenText(t, app, screen), "Refresh") },
 		3*time.Second, 20*time.Millisecond)
@@ -104,21 +104,30 @@ func TestCommandMenu_EscClosesWithoutRunning(t *testing.T) {
 }
 
 func TestCommandMenu_MovesTheSelection(t *testing.T) {
-	menu := NewCommandMenu([]shortcut_helper.ShortcutEntry{
-		{Name: "First", Run: func() {}},
-		{Name: "Second", Run: func() {}},
+	menu := NewCommandMenu([]CommandSection{
+		{Title: "Files", Commands: []shortcut_helper.ShortcutEntry{{Name: "First", Run: func() {}}}},
+		{Title: "Empty", Commands: []shortcut_helper.ShortcutEntry{{Name: "Not runnable"}}},
+		{Title: "Global", Commands: []shortcut_helper.ShortcutEntry{{Name: "Second", Run: func() {}}}},
 	})
 	selected := func() string {
 		row, _ := menu.list.GetSelection()
-		return menu.matches[row].command.Name
+		if menu.rows[row] == nil {
+			return "title"
+		}
+		return menu.rows[row].command.Name
 	}
+	assert.Len(t, menu.rows, 4, "two sections with a title each, the one without commands is left out")
 	assert.Equal(t, "First", selected())
 	menu.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
-	assert.Equal(t, "Second", selected())
+	assert.Equal(t, "Second", selected(), "the title of the section is skipped")
 	menu.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	assert.Equal(t, "Second", selected(), "stays at the last one")
 	menu.handleKey(tcell.NewEventKey(tcell.KeyCtrlP, 0, tcell.ModNone))
 	assert.Equal(t, "First", selected())
+
+	// the best match is selected, even if it is not the first one
+	menu.filter("sec")
+	assert.Equal(t, "Second", selected())
 
 	menu.filter("zzz")
 	menu.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
@@ -126,10 +135,39 @@ func TestCommandMenu_MovesTheSelection(t *testing.T) {
 	assert.Nil(t, menu.Chosen(), "nothing to choose without matches")
 }
 
+func TestCommandMenu_ShowsSectionsAndDescriptions(t *testing.T) {
+	app, screen, pages, _ := startCommandMenuApp(t)
+	sections := []CommandSection{
+		{Title: "Files", Commands: []shortcut_helper.ShortcutEntry{
+			{Name: "Columns", Description: "Choose the shown columns", KeyCombo: []string{"F2"}, Run: func() {}},
+		}},
+		{Title: "Global", Commands: []shortcut_helper.ShortcutEntry{{Name: "Quit", Run: func() {}}}},
+	}
+	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, sections) })
+	app.QueueUpdateDraw(func() {})
+
+	assert.Eventually(t, func() bool {
+		lines := strings.Split(menuScreenText(t, app, screen), "\n")
+		has := func(parts ...string) bool {
+			for _, line := range lines {
+				found := true
+				for _, part := range parts {
+					found = found && strings.Contains(line, part)
+				}
+				if found {
+					return true
+				}
+			}
+			return false
+		}
+		return has("Files") && has("Columns", "Choose the shown columns", "F2") && has("Global") && has("Quit")
+	}, 3*time.Second, 20*time.Millisecond, "titles, and the description and keys in the row of the command")
+}
+
 func TestSelectionDialog_OptionCommands(t *testing.T) {
 	app := tview.NewApplication()
 	options := []*DialogOption{
-		{Id: 1, Name: "📸 Create Snapshot"},
+		{Id: 1, Name: "📸 Create Snapshot", Description: "Snapshot the dataset now"},
 		{Id: 2, Name: "📜 Browse history"},
 		{Id: DialogCloseActionId, Name: "Close"},
 	}
@@ -138,6 +176,7 @@ func TestSelectionDialog_OptionCommands(t *testing.T) {
 	commands := d.OptionCommands(func(Dialog) {}, 2)
 	require.Len(t, commands, 1, "not close and the skipped option")
 	assert.Equal(t, "Create Snapshot", commands[0].Name)
+	assert.Equal(t, "Snapshot the dataset now", commands[0].Description)
 	assert.True(t, commands[0].MenuOnly)
 	assert.NotNil(t, commands[0].Run)
 }

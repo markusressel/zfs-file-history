@@ -100,9 +100,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) setOnlyChanges(onlyChanges bool
 
 // onlyChangesShortcut is the shortcut that toggles the "only changes" setting.
 func (snapshotBrowser *SnapshotBrowserComponent) onlyChangesShortcut() shortcut_helper.ShortcutEntry {
-	name := "Only changes"
+	name, description := "Only changes", "Show only the snapshots in which the selection changed"
 	if snapshotBrowser.onlyChanges {
-		name = "All snapshots"
+		name, description = "All snapshots", "Show all snapshots again"
 	}
-	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"v"}, Name: name, Group: shortcut_helper.GroupView}
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"v"}, Name: name, Description: description, Group: shortcut_helper.GroupView}
 }

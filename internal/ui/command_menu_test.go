@@ -41,12 +41,21 @@ func TestCommandMenuKey(t *testing.T) {
 	}
 	// of the file browser (in the empty folder: the folder), of the page and global (filtered, as they are listed
 	// last)
+	clear := func(runes int) {
+		for range runes {
+			screen.InjectKey(tcell.KeyBackspace2, 0, tcell.ModNone)
+		}
+	}
+	waitForText("Files")
 	waitForText("Folder history")
+	typeText("overv")
+	waitForText("Files page")
 	waitForText("Hide overview")
-	typeText("go")
+	clear(5)
+	typeText("go to")
+	waitForText("Global")
 	waitForText("Go to Datasets")
-	screen.InjectKey(tcell.KeyBackspace2, 0, tcell.ModNone)
-	screen.InjectKey(tcell.KeyBackspace2, 0, tcell.ModNone)
+	clear(5)
 
 	relative := util.IsRelativeTimes()
 	defer testutil.OnUiThread(t, app, func() {

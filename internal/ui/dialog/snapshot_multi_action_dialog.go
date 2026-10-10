@@ -34,30 +34,35 @@ func NewMultiSnapshotActionDialog(
 
 	dialogOptions := []*DialogOption{
 		{
-			Id:   MultiSnapshotDialogHoldSnapshotsActionId,
-			Name: "🔒 Hold all (protect from destruction)",
+			Id:          MultiSnapshotDialogHoldSnapshotsActionId,
+			Name:        "🔒 Hold all (protect from destruction)",
+			Description: "Protect the selected snapshots from being destroyed (zfs hold)",
 		},
 	}
 	if anyHeld {
 		dialogOptions = append(dialogOptions, &DialogOption{
-			Id:   MultiSnapshotDialogReleaseSnapshotsActionId,
-			Name: "🔓 Release holds of all",
+			Id:          MultiSnapshotDialogReleaseSnapshotsActionId,
+			Name:        "🔓 Release holds of all",
+			Description: "Allow destroying the selected snapshots again (zfs release)",
 		})
 	}
 	dialogOptions = append(dialogOptions,
 		&DialogOption{
-			Id:       MultiSnapshotDialogDestroySnapshotActionId,
-			Name:     "💥 Destroy all",
-			Severity: DialogSeverityDanger,
+			Id:          MultiSnapshotDialogDestroySnapshotActionId,
+			Name:        "💥 Destroy all",
+			Description: "Destroy the selected snapshots (zfs destroy)",
+			Severity:    DialogSeverityDanger,
 		},
 		&DialogOption{
-			Id:       MultiSnapshotDialogDestroySnapshotRecursivelyActionId,
-			Name:     "💥 Destroy all (recursive)",
-			Severity: DialogSeverityDanger,
+			Id:          MultiSnapshotDialogDestroySnapshotRecursivelyActionId,
+			Name:        "💥 Destroy all (recursive)",
+			Description: "Destroy the selected snapshots and the ones of the same names of the child datasets",
+			Severity:    DialogSeverityDanger,
 		},
 		&DialogOption{
-			Id:   MultiSnapshotDialogClearSelectionActionId,
-			Name: "Clear Selection",
+			Id:          MultiSnapshotDialogClearSelectionActionId,
+			Name:        "Clear Selection",
+			Description: "Unselect the selected snapshots",
 		},
 		&DialogOption{
 			Id:   DialogCloseActionId,

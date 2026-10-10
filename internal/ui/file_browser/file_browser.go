@@ -1160,19 +1160,20 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		uiutil.TableComponentShortcutFilter.WithRun(fileBrowser.tableContainer.StartFilter),
 	}
 
-	history := shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History"}
+	history := shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History", Description: "Browse all versions of the selection in the snapshots"}
 	if entry := fileBrowser.HistoryEntry(); entry != nil {
 		history.Run = func() { fileBrowser.emit(RequestFileHistoryEvent{FileEntry: entry}) }
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {
-		parent := shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory", Group: shortcut_helper.GroupNavigation, Run: fileBrowser.goUp}
+		parent := shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory", Description: "Go up to the folder containing this one",
+			Group: shortcut_helper.GroupNavigation, Run: fileBrowser.goUp}
 		if ok, _ := selection.CanEnter(); ok {
 			// one entry in the shortcut map for both, separate ones in the command menu
 			shortcutMap = append(shortcutMap,
 				shortcut_helper.ShortcutEntry{KeyCombo: []string{"←", "→"}, Name: "Parent/enter directory", Group: shortcut_helper.GroupNavigation},
 				parent.OnlyInMenu(),
-				shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Enter directory", Group: shortcut_helper.GroupNavigation, Run: func() { fileBrowser.enterFileEntry(selection) }, MenuOnly: true},
+				shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Enter directory", Description: "Open the selected folder", Group: shortcut_helper.GroupNavigation, Run: func() { fileBrowser.enterFileEntry(selection) }, MenuOnly: true},
 			)
 		} else {
 			shortcutMap = append(shortcutMap, parent)
@@ -1181,7 +1182,8 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutActions.WithRun(func() { fileBrowser.openActionDialog(selection) }))
 
 		if selection.HasReal() {
-			shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutDelete.WithRun(func() { fileBrowser.openDeleteDialog(selection) }).OnlyInMenu())
+			shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutDelete.WithRun(func() { fileBrowser.openDeleteDialog(selection) }).OnlyInMenu().
+				WithDescription("Delete the file or folder from the disk, after asking"))
 		}
 
 		if selection.Type == data.File || selection.Type == data.Directory {
@@ -1189,10 +1191,12 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		}
 
 		if selection.HasSnapshot() && selection.DiffState != diff_state.Equal {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("r")}, Name: "Restore", Run: func() { fileBrowser.openRestoreDialog(selection) }})
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("r")}, Name: "Restore",
+				Description: "Restore the selection from the selected snapshot", Run: func() { fileBrowser.openRestoreDialog(selection) }})
 		}
 	} else {
 		history.Name = "Folder history"
+		history.Description = "Browse the changes of the shown folder in the snapshots"
 		shortcutMap = append(shortcutMap,
 			// on the header row or in an empty folder: the folder that is shown
 			history,

@@ -50,6 +50,7 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 	mainPage.focusableComponents = func() []FocusableUiComponent {
 		return []FocusableUiComponent{fileBrowser, snapshotBrowser}
 	}
+	mainPage.componentTitles = map[FocusableUiComponent]string{fileBrowser: "Files", snapshotBrowser: "Snapshots"}
 	mainPage.pageShortcuts = func() []shortcut_helper.ShortcutEntry {
 		return []shortcut_helper.ShortcutEntry{mainPage.overviewShortcut()}
 	}
@@ -233,7 +234,8 @@ func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
 	if mainPage.isOverviewHidden() {
 		name = "Show overview"
 	}
-	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Group: shortcut_helper.GroupView, Run: mainPage.toggleOverview, MenuOnly: true}
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Description: "The details of the folder and the selection, below the files",
+		Group: shortcut_helper.GroupView, Run: mainPage.toggleOverview, MenuOnly: true}
 }
 
 // SetPages sets the pages of the application, on which the dialogs of the components are shown as well.

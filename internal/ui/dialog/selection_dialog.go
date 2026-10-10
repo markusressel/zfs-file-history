@@ -308,7 +308,8 @@ func (d *SelectionDialog) OptionCommands(show func(d Dialog), skip ...DialogActi
 			continue
 		}
 		commands = append(commands, shortcut_helper.ShortcutEntry{
-			Name: withoutIcon(option.Name),
+			Name:        withoutIcon(option.Name),
+			Description: option.Description,
 			Run: func() {
 				show(d)
 				d.selectAction(option)

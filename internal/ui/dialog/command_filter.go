@@ -18,7 +18,8 @@ type commandMatch struct {
 // How well a term of the query matches a name, see matchTerm.
 const (
 	scoreNoMatch = iota
-	// scoreSubsequence: the runes of the term appear in the name in order, e.g. "rsf" in "Restore file"
+	// scoreSubsequence: the runes of the term appear in the name in order, e.g. "rsf" in "Restore file", or the term
+	// is part of the description
 	scoreSubsequence
 	// scoreSubstring: the term is part of the name, e.g. "tore" in "Restore file"
 	scoreSubstring
@@ -29,18 +30,23 @@ const (
 
 // filterCommands returns the commands that match the query, the best matches first and otherwise in their order.
 // The query is split into terms at spaces, each of them has to match (ignoring the case), so "res rec" finds
-// "Restore directory recursively".
+// "Restore directory recursively". A term matches the name, a key or a part of the description.
 func filterCommands(commands []shortcut_helper.ShortcutEntry, query string) []commandMatch {
 	terms := strings.Fields(strings.ToLower(query))
 	var matches []commandMatch
 	for _, command := range commands {
 		match := commandMatch{command: command}
 		name := []rune(strings.ToLower(command.Name))
+		description := strings.ToLower(command.Description)
 		matched := true
 		for _, term := range terms {
 			score, positions := matchTerm([]rune(term), name)
 			if slices.ContainsFunc(command.KeyCombo, func(key string) bool { return strings.EqualFold(key, term) }) {
 				score = max(score, scoreWordStart)
+			}
+			if score == scoreNoMatch && strings.Contains(description, term) {
+				// as weak as runes in order, the name is what is looked for
+				score = scoreSubsequence
 			}
 			if score == scoreNoMatch {
 				matched = false

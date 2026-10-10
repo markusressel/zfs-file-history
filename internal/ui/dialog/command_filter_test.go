@@ -44,6 +44,13 @@ func TestFilterCommands(t *testing.T) {
 
 	// keys match as well
 	assert.Equal(t, []string{"Refresh"}, matchNames(filterCommands(commands, "f5")))
+
+	// and descriptions, weaker than names
+	described := []shortcut_helper.ShortcutEntry{
+		{Name: "Columns", Description: "Choose, order and reset the shown columns"},
+		{Name: "Reset"},
+	}
+	assert.Equal(t, []string{"Reset", "Columns"}, matchNames(filterCommands(described, "reset")))
 }
 
 func TestMatchTerm(t *testing.T) {

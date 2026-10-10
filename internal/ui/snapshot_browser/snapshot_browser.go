@@ -1200,12 +1200,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 	if selection := snapshotBrowser.GetSelection(); selection != nil {
 		shortcutMap = append(shortcutMap,
 			uiutil.TableComponentShortcutActions.WithRun(func() { snapshotBrowser.showDialog(snapshotBrowser.selectionActionDialog(), nil) }),
-			uiutil.TableComponentShortcutDelete.WithRun(func() { snapshotBrowser.openDeleteDialog(selection) }).OnlyInMenu(),
+			uiutil.TableComponentShortcutDelete.WithRun(func() { snapshotBrowser.openDeleteDialog(selection) }).OnlyInMenu().
+				WithDescription("Destroy the selected snapshot, after asking (zfs destroy)"),
 		)
 		if target := snapshotBrowser.getHistoryTarget(); target != nil && !snapshotBrowser.HasMultiSelection() {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History at snapshot", Run: func() {
-				snapshotBrowser.emit(RequestHistoryEvent{Entry: target, Snapshot: selection})
-			}})
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History at snapshot",
+				Description: "Browse the history of the selected file or folder, starting at this snapshot", Run: func() {
+					snapshotBrowser.emit(RequestHistoryEvent{Entry: target, Snapshot: selection})
+				}})
 		}
 	} else {
 		shortcutMap = append(shortcutMap,

@@ -19,6 +19,8 @@ type ShortcutEntry struct {
 	// KeyCombo are the keys of the shortcut, empty for commands that are only run from the command menu
 	KeyCombo []string
 	Name     string
+	// Description tells what the command does, shown behind its name in the command menu (not in the shortcut map)
+	Description string
 	// Group decides the color of the keys and where the entry is shown, see ShortcutGroup
 	Group ShortcutGroup
 	// Run runs the command, nil if it can only be run with its keys (e.g. moving the selection)
@@ -30,6 +32,12 @@ type ShortcutEntry struct {
 // WithRun returns the entry with Run set to run, so it is a command of the command menu.
 func (entry ShortcutEntry) WithRun(run func()) ShortcutEntry {
 	entry.Run = run
+	return entry
+}
+
+// WithDescription returns the entry with the description, see ShortcutEntry.Description.
+func (entry ShortcutEntry) WithDescription(description string) ShortcutEntry {
+	entry.Description = description
 	return entry
 }
 
@@ -66,8 +74,8 @@ const (
 	GroupGlobal
 )
 
-// keyColor returns the color of the keys of the group.
-func (group ShortcutGroup) keyColor() tcell.Color {
+// KeyColor returns the color of the keys of the group.
+func (group ShortcutGroup) KeyColor() tcell.Color {
 	switch group {
 	case GroupView:
 		return theme.Colors.ShortcutMap.ViewKeyCombo
@@ -111,7 +119,7 @@ func formatEntries(entries []ShortcutEntry, styled bool) string {
 		keys := "[" + strings.Join(entry.KeyCombo, "\u01c0") + "]"
 		name := strings.ReplaceAll(entry.Name, " ", "\u00a0")
 		if styled {
-			keys = txwidgets.Span(entry.Group.keyColor(), "%s", keys)
+			keys = txwidgets.Span(entry.Group.KeyColor(), "%s", keys)
 			name = txwidgets.Span(theme.Colors.ShortcutMap.Name, "%s", name)
 		}
 		text.WriteString(keys + ":\u00a0" + name)

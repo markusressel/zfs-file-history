@@ -3,6 +3,7 @@ package ui
 import (
 	"slices"
 	"strconv"
+	"strings"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -18,7 +19,7 @@ const (
 )
 
 var (
-	shortcutCycleFocus = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Cycle focus", Group: shortcut_helper.GroupNavigation}
+	shortcutCycleFocus = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Cycle focus", Description: "Focus the next list of the page", Group: shortcut_helper.GroupNavigation}
 	shortcutGoToPage   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"1", "2"}, Name: "Go to page", Group: shortcut_helper.GroupGlobal}
 	shortcutCommands   = shortcut_helper.ShortcutEntry{KeyCombo: []string{":"}, Name: "Commands", Group: shortcut_helper.GroupGlobal}
 	shortcutQuit       = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("q")}, Name: "Quit", Group: shortcut_helper.GroupGlobal}
@@ -71,8 +72,8 @@ func adjacentPage(pages []util.Page, current util.Page, reversed bool) util.Page
 type switchablePage interface {
 	refreshShortcutMap()
 	CycleFocus(reversed bool)
-	// commands returns the commands of the command menu for the focused component and the page
-	commands() []shortcut_helper.ShortcutEntry
+	// commandSections returns the commands of the command menu for the focused component and the page
+	commandSections() []dialog.CommandSection
 	// refresh reloads the data shown (F5)
 	refresh()
 }
@@ -133,27 +134,30 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 		}
 		for index, page := range switchablePages {
 			commands = append(commands, shortcut_helper.ShortcutEntry{
-				KeyCombo: []string{strconv.Itoa(index + 1)},
-				Name:     "Go to " + pageTitles[page],
-				Group:    shortcut_helper.GroupGlobal,
-				Run:      func() { switchTo(page) },
+				KeyCombo:    []string{strconv.Itoa(index + 1)},
+				Name:        "Go to " + pageTitles[page],
+				Description: "Show the " + strings.ToLower(pageTitles[page]) + " page",
+				Group:       shortcut_helper.GroupGlobal,
+				Run:         func() { switchTo(page) },
 			})
 		}
 		hideShortcuts := shortcut_helper.ShortcutHide
 		if shortcut_helper.ShortcutsHidden() {
 			hideShortcuts.Name = "Show shortcuts"
+			hideShortcuts.Description = "Show the keys at the bottom again"
 		}
 		return append(commands,
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Alt("→")}, Name: "Next page", Group: shortcut_helper.GroupGlobal,
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Alt("→")}, Name: "Next page", Description: "Show the page on the right", Group: shortcut_helper.GroupGlobal,
 				Run: func() { switchTo(adjacentPage(switchablePages, front, false)) }},
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Alt("←")}, Name: "Previous page", Group: shortcut_helper.GroupGlobal,
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Alt("←")}, Name: "Previous page", Description: "Show the page on the left", Group: shortcut_helper.GroupGlobal,
 				Run: func() { switchTo(adjacentPage(switchablePages, front, true)) }},
 			shortcut_helper.ShortcutTimeFormat.WithRun(util.ToggleRelativeTimes),
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"F5"}, Name: "Refresh", Group: shortcut_helper.GroupGlobal, Run: pages[front].refresh},
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"m"}, Name: "Messages", Group: shortcut_helper.GroupGlobal,
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"F5"}, Name: "Refresh", Description: "Reload the datasets, snapshots and files",
+				Group: shortcut_helper.GroupGlobal, Run: pages[front].refresh},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"m"}, Name: "Messages", Description: "Show all messages, e.g. errors", Group: shortcut_helper.GroupGlobal,
 				Run: func() { showMessageHistory(application, pagesLayout, messages) }},
 			hideShortcuts.WithRun(toggleShortcuts),
-			shortcutQuit.WithRun(application.Stop),
+			shortcutQuit.WithRun(application.Stop).WithDescription("Exit the application"),
 		)
 	}
 
@@ -187,7 +191,8 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 		case event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ:
 			application.Stop()
 		case event.Key() == tcell.KeyRune && event.Rune() == ':' && !textInput:
-			dialog.ShowCommandMenu(application, pagesLayout, append(pages[front].commands(), globalCommands(front)...))
+			dialog.ShowCommandMenu(application, pagesLayout,
+				append(pages[front].commandSections(), dialog.CommandSection{Title: "Global", Commands: globalCommands(front)}))
 		case event.Key() == tcell.KeyRune && event.Rune() == 'm' && !textInput:
 			showMessageHistory(application, pagesLayout, messages)
 		case (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight) && event.Modifiers()&tcell.ModAlt != 0 && !textInput:
