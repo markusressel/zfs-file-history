@@ -145,6 +145,7 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 	})
 	datasetPageLayout.AddItem(shortcutMap.GetLayout(), 1, 0, false)
 	datasetPage.shortcutMap = shortcutMap
+	datasetPage.reserveShortcutMapHeight()
 
 	return datasetPageLayout
 }

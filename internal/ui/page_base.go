@@ -47,16 +47,31 @@ func (page *basePage) showStatusMessage(status *status_message.StatusMessage) {
 
 // updateShortcutMap shows the shortcuts of the component, the page and the global ones.
 func (page *basePage) updateShortcutMap(component FocusableUiComponent) {
-	provider, ok := component.(shortcut_helper.ShortcutMapProvider)
-	if !ok {
-		page.shortcutMap.Clear()
-		return
+	page.shortcutMap.SetEntries(page.shortcutsOf(component))
+}
+
+// shortcutsOf returns the shortcuts shown while the component has the focus: its own, the page's and the global ones.
+func (page *basePage) shortcutsOf(component FocusableUiComponent) []shortcut_helper.ShortcutEntry {
+	var shortcuts []shortcut_helper.ShortcutEntry
+	if provider, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
+		shortcuts = provider.GetShortcutMap()
 	}
-	shortcuts := provider.GetShortcutMap()
 	if page.pageShortcuts != nil {
 		shortcuts = append(shortcuts, page.pageShortcuts()...)
 	}
-	page.shortcutMap.SetEntries(append(shortcuts, globalShortcuts()...))
+	return append(shortcuts, globalShortcuts()...)
+}
+
+// reserveShortcutMapHeight makes the shortcut map as high as the shortcuts of any focusable component need, so
+// cycling the focus does not resize the components of the page.
+func (page *basePage) reserveShortcutMapHeight() {
+	page.shortcutMap.SetAlternativeEntries(func() [][]shortcut_helper.ShortcutEntry {
+		var alternatives [][]shortcut_helper.ShortcutEntry
+		for _, component := range page.focusableComponents() {
+			alternatives = append(alternatives, page.shortcutsOf(component))
+		}
+		return alternatives
+	})
 }
 
 // refreshShortcutMap shows the shortcuts of the focused component (or the main one, if none has focus),

@@ -163,6 +163,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	})
 	mainPageLayout.AddItem(shortcutMap.GetLayout(), 1, 0, false)
 	mainPage.shortcutMap = shortcutMap
+	mainPage.reserveShortcutMapHeight()
 
 	return mainPageLayout
 }
