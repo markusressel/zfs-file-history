@@ -13,11 +13,49 @@ import (
 	"golang.org/x/term"
 )
 
+// ShortcutEntry is a shortcut shown in a shortcut map and, if it can be run, a command of the command menu (see
+// dialog.CommandMenu), with its keys as a hint.
 type ShortcutEntry struct {
+	// KeyCombo are the keys of the shortcut, empty for commands that are only run from the command menu
 	KeyCombo []string
 	Name     string
+	// Description tells what the command does, shown behind its name in the command menu (not in the shortcut map)
+	Description string
 	// Group decides the color of the keys and where the entry is shown, see ShortcutGroup
 	Group ShortcutGroup
+	// Run runs the command, nil if it can only be run with its keys (e.g. moving the selection)
+	Run func()
+	// MenuOnly entries are not shown in the shortcut map, only in the command menu
+	MenuOnly bool
+}
+
+// WithRun returns the entry with Run set to run, so it is a command of the command menu.
+func (entry ShortcutEntry) WithRun(run func()) ShortcutEntry {
+	entry.Run = run
+	return entry
+}
+
+// WithDescription returns the entry with the description, see ShortcutEntry.Description.
+func (entry ShortcutEntry) WithDescription(description string) ShortcutEntry {
+	entry.Description = description
+	return entry
+}
+
+// OnlyInMenu returns the entry with MenuOnly set, so it is only shown in the command menu.
+func (entry ShortcutEntry) OnlyInMenu() ShortcutEntry {
+	entry.MenuOnly = true
+	return entry
+}
+
+// Commands returns the entries that can be run, i.e. the ones of the command menu.
+func Commands(entries []ShortcutEntry) []ShortcutEntry {
+	var commands []ShortcutEntry
+	for _, entry := range entries {
+		if entry.Run != nil {
+			commands = append(commands, entry)
+		}
+	}
+	return commands
 }
 
 // ShortcutGroup groups the entries of a shortcut map, so the one looked for is found quickly: the groups are
@@ -36,8 +74,8 @@ const (
 	GroupGlobal
 )
 
-// keyColor returns the color of the keys of the group.
-func (group ShortcutGroup) keyColor() tcell.Color {
+// KeyColor returns the color of the keys of the group.
+func (group ShortcutGroup) KeyColor() tcell.Color {
 	switch group {
 	case GroupView:
 		return theme.Colors.ShortcutMap.ViewKeyCombo
@@ -53,9 +91,10 @@ func (group ShortcutGroup) keyColor() tcell.Color {
 // groupSeparator is shown between groups. Surrounded by spaces, so lines may wrap around it.
 const groupSeparator = "│"
 
-// sortedByGroup returns the entries ordered by group, keeping their order within a group.
+// sortedByGroup returns the entries shown in a shortcut map (not MenuOnly) ordered by group, keeping their order
+// within a group.
 func sortedByGroup(entries []ShortcutEntry) []ShortcutEntry {
-	sorted := slices.Clone(entries)
+	sorted := slices.DeleteFunc(slices.Clone(entries), func(entry ShortcutEntry) bool { return entry.MenuOnly })
 	slices.SortStableFunc(sorted, func(a, b ShortcutEntry) int { return cmp.Compare(a.Group, b.Group) })
 	return sorted
 }
@@ -80,7 +119,7 @@ func formatEntries(entries []ShortcutEntry, styled bool) string {
 		keys := "[" + strings.Join(entry.KeyCombo, "\u01c0") + "]"
 		name := strings.ReplaceAll(entry.Name, " ", "\u00a0")
 		if styled {
-			keys = txwidgets.Span(entry.Group.keyColor(), "%s", keys)
+			keys = txwidgets.Span(entry.Group.KeyColor(), "%s", keys)
 			name = txwidgets.Span(theme.Colors.ShortcutMap.Name, "%s", name)
 		}
 		text.WriteString(keys + ":\u00a0" + name)

@@ -41,7 +41,7 @@
   file and folder history and the dataset properties.
   The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
   see [State](#state)), `r` in the column dialog resets them.
-* 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`ctrl+f`), with glob patterns like `*.txt`.
+* 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`/` or `ctrl+f`), with glob patterns like `*.txt`.
   The filter is edited like a shell prompt: `ctrl+←`/`ctrl+→` jump and `ctrl+Backspace`/`ctrl+Delete` delete whole
   words, `ctrl+w`/`ctrl+u`/`ctrl+k` work as well.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree (`-`/`+`, `*` for all, like htop) or as a flat
@@ -61,9 +61,12 @@
   files that are absent in a snapshot by deleting the current working copy copy.
 * 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like
   "3 minutes ago" (remembered between runs). Recent times count up live.
-* ⌨️ **Inline shortcuts:** The available keys are shown at the bottom of each page and overlay, grouped and
+* ⌨️ **Inline shortcuts:** The most used keys are shown at the bottom of each page and overlay, grouped and
   color-coded: actions first, then view options, navigation and global keys. `?` (or `F1`) hides
   them to make room in small terminals, and shows them again (remembered between runs).
+* 🧭 **Command menu:** `:` lists all actions of the focused list, the page and the global ones at the bottom of
+  the screen, with their keys, e.g. the actions of the selected file or snapshot or sorting by a column. Type to
+  filter (`res rec` finds "Restore directory recursively"), `Enter` runs the selected action.
 * 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
   dynamically clamping to screen bounds to prevent clipping.
 * 🗃️ **Snapshot columns per screen:** On the files screen, the snapshot list is about the selected file or folder:

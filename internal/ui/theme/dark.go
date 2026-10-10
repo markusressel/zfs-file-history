@@ -36,6 +36,8 @@ var (
 		Dialog: DialogColors{
 			Border: Secondary,
 			Error:  tcell.ColorRed,
+			// a lighter Secondary, readable on the background
+			SectionTitle: tcell.ColorIsRGB | tcell.ColorValid | 0x8C99A6,
 		},
 		FileBrowser: FileBrowserColors{
 			Table: FileBrowserTableColors{

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -18,11 +19,15 @@ type basePage struct {
 	name   uiutil.Page
 	pages  *tview.Pages
 	header *ApplicationHeaderComponent
+	// messages are the messages of the whole application, shown in the header of each page
+	messages *status_message.Center
 	// shortcutMap shows the shortcuts of the focused component, see updateShortcutMap
 	shortcutMap *shortcut_helper.ShortcutMapComponent
 	// focusableComponents returns the components that can be focused, in focus cycle order; the first one is the
 	// main component of the page
 	focusableComponents func() []FocusableUiComponent
+	// componentTitles are the titles of the focusable components in the command menu, e.g. "Snapshots"
+	componentTitles map[FocusableUiComponent]string
 	// pageShortcuts returns the shortcuts of the page itself (nil: none), shown behind the ones of the focused
 	// component and before the global ones
 	pageShortcuts func() []shortcut_helper.ShortcutEntry
@@ -42,7 +47,7 @@ func (page *basePage) isInFront() bool {
 }
 
 func (page *basePage) showStatusMessage(status *status_message.StatusMessage) {
-	page.header.SetStatus(status)
+	page.messages.Show(status)
 }
 
 // updateShortcutMap shows the shortcuts of the component, the page and the global ones.
@@ -74,17 +79,40 @@ func (page *basePage) reserveShortcutMapHeight() {
 	})
 }
 
-// refreshShortcutMap shows the shortcuts of the focused component (or the main one, if none has focus),
-// e.g. after the page was switched to.
-func (page *basePage) refreshShortcutMap() {
+// focusedComponent returns the focused component, or the main one if none has focus.
+func (page *basePage) focusedComponent() FocusableUiComponent {
 	components := page.focusableComponents()
 	for _, component := range components {
 		if component.HasFocus() {
-			page.updateShortcutMap(component)
-			return
+			return component
 		}
 	}
-	page.updateShortcutMap(components[0])
+	return components[0]
+}
+
+// refreshShortcutMap shows the shortcuts of the focused component (or the main one, if none has focus),
+// e.g. after the page was switched to.
+func (page *basePage) refreshShortcutMap() {
+	page.updateShortcutMap(page.focusedComponent())
+}
+
+// commandSections returns the commands of the focused component and of the page for the command menu (see
+// dialog.CommandMenu): the shortcuts that can be run (also the MenuOnly ones) and the commands of the component that
+// have no shortcut (see shortcut_helper.CommandProvider). The global ones are added by the root.
+func (page *basePage) commandSections() []dialog.CommandSection {
+	component := page.focusedComponent()
+	var commands []shortcut_helper.ShortcutEntry
+	if provider, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
+		commands = provider.GetShortcutMap()
+	}
+	if provider, ok := component.(shortcut_helper.CommandProvider); ok {
+		commands = append(commands, provider.GetCommands()...)
+	}
+	sections := []dialog.CommandSection{{Title: page.componentTitles[component], Commands: commands}}
+	if page.pageShortcuts != nil {
+		sections = append(sections, dialog.CommandSection{Title: pageTitles[page.name] + " page", Commands: page.pageShortcuts()})
+	}
+	return sections
 }
 
 func (page *basePage) CycleFocus(reversed bool) {

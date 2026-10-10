@@ -87,21 +87,24 @@ func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 		}, 3*time.Second, 20*time.Millisecond, "expected %q on the screen", text)
 	}
 
-	// shown by the file browser for both the header and data rows, but not by the dataset browser
-	const mainPageShortcut = "[↑ǀ↓ǀPgUpǀPgDn]: Move"
-	const datasetPageShortcut = "[u]: Show unmounted"
+	// shown by the file browser in the empty start folder, but not by the dataset browser
+	const mainPageShortcut = "[h]: Folder history"
+	waitForTextGone := func(text string) {
+		assert.Eventually(t, func() bool {
+			return !strings.Contains(screenText(t, app, screen), text)
+		}, 3*time.Second, 20*time.Millisecond, "expected %q to be gone from the screen", text)
+	}
 
 	waitForText(mainPageShortcut)
 
 	// dataset page, without any further key press
 	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
-	waitForText(datasetPageShortcut)
-	assert.NotContains(t, screenText(t, app, screen), mainPageShortcut)
+	waitForTextGone(mainPageShortcut)
+	waitForText("[/ǀctrl+f]: Filter")
 
-	// and back, in reverse
+	// and back
 	screen.InjectKey(tcell.KeyRune, '1', tcell.ModNone)
 	waitForText(mainPageShortcut)
-	assert.NotContains(t, screenText(t, app, screen), datasetPageShortcut)
 }
 
 func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {

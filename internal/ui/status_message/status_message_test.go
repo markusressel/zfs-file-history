@@ -11,23 +11,25 @@ import (
 func TestStatusMessageConstructors(t *testing.T) {
 	msg := NewSuccessStatusMessage("success")
 	assert.Equal(t, "success", msg.Message)
-	assert.Equal(t, tcell.ColorGreen, msg.Color)
-	assert.Equal(t, StatusMessageDurationInfinite, msg.Duration)
-
-	msg = NewErrorStatusMessage("error")
-	assert.Equal(t, tcell.ColorRed, msg.Color)
-
-	msg = NewWarningStatusMessage("warning")
-	assert.Equal(t, tcell.ColorYellow, msg.Color)
+	assert.Equal(t, LevelSuccess, msg.Level)
+	assert.Equal(t, tcell.ColorGreen, msg.Color())
+	assert.Equal(t, DefaultDuration, msg.Duration)
 
 	msg = NewInfoStatusMessage("info")
-	assert.Equal(t, tcell.ColorLightGray, msg.Color)
+	assert.Equal(t, tcell.ColorLightGray, msg.Color())
+	assert.Equal(t, DefaultDuration, msg.Duration)
+
+	// shown until a key is pressed
+	msg = NewWarningStatusMessage("warning")
+	assert.Equal(t, tcell.ColorYellow, msg.Color())
+	assert.Equal(t, UntilKeyPress, msg.Duration)
+
+	msg = NewErrorStatusMessage("error")
+	assert.Equal(t, tcell.ColorRed, msg.Color())
+	assert.Equal(t, UntilKeyPress, msg.Duration)
 }
 
-func TestStatusMessageSetters(t *testing.T) {
-	msg := NewInfoStatusMessage("info")
-	msg.SetDuration(5 * time.Second).SetColor(tcell.ColorBlue)
-
+func TestStatusMessageSetDuration(t *testing.T) {
+	msg := NewInfoStatusMessage("info").SetDuration(5 * time.Second)
 	assert.Equal(t, 5*time.Second, msg.Duration)
-	assert.Equal(t, tcell.ColorBlue, msg.Color)
 }

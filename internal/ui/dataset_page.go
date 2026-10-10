@@ -5,6 +5,7 @@ import (
 	"zfs-file-history/internal/ui/dataset_info"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
+	"zfs-file-history/internal/ui/status_message"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
@@ -26,7 +27,7 @@ type DatasetPage struct {
 	wasInitialized bool
 }
 
-func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
+func NewDatasetPage(application *tview.Application, messages *status_message.Center, path string) *DatasetPage {
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
@@ -36,13 +37,16 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 	datasetBrowser := dataset_browser.NewDatasetBrowser(application)
 
 	datasetPage := &DatasetPage{
-		basePage:        basePage{application: application, name: Dataset},
+		basePage:        basePage{application: application, name: Dataset, messages: messages},
 		datasetBrowser:  datasetBrowser,
 		datasetInfo:     datasetInfo,
 		snapshotBrowser: snapshotBrowser,
 	}
 	datasetPage.focusableComponents = func() []FocusableUiComponent {
 		return []FocusableUiComponent{datasetBrowser, datasetInfo, snapshotBrowser}
+	}
+	datasetPage.componentTitles = map[FocusableUiComponent]string{
+		datasetBrowser: "Datasets", datasetInfo: "Dataset info", snapshotBrowser: "Snapshots",
 	}
 
 	// Loading the dataset info and the snapshots of the selected dataset waits until the selection rests, so
@@ -118,8 +122,7 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 			return nil
 		}
 		if event.Key() == tcell.KeyF5 {
-			// also reloads the dataset list, via the zfs.DatasetsLoaded subscription
-			zfs.RefreshZfsData()
+			datasetPage.refresh()
 		}
 		return event
 	})
@@ -127,10 +130,15 @@ func NewDatasetPage(application *tview.Application, path string) *DatasetPage {
 	return datasetPage
 }
 
+// refresh reloads the ZFS data, and with it the datasets (via the zfs.DatasetsLoaded subscription).
+func (datasetPage *DatasetPage) refresh() {
+	zfs.RefreshZfsData()
+}
+
 func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 	datasetPageLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	datasetPage.header = NewApplicationHeader(datasetPage.application)
+	datasetPage.header = NewApplicationHeader(datasetPage.application, datasetPage.messages)
 	datasetPageLayout.AddItem(datasetPage.header.layout, 1, 0, false)
 
 	datasetPage.infoSplit = datasetPage.newSplit(datasetPage.datasetInfo.GetLayout(), datasetPage.snapshotBrowser.GetLayout(), 1, 2, true)

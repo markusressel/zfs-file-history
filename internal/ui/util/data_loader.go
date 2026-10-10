@@ -10,11 +10,13 @@ import (
 
 // DataLoader handles asynchronous data loading with sequence tracking to avoid race conditions.
 type DataLoader[T any] struct {
-	app     *tview.Application
-	seq     atomic.Uint64
-	onLoad  func(T)
-	onError func(error)
-	onStart func()
+	app *tview.Application
+	seq atomic.Uint64
+	// delivered is the seq of the latest load whose result was handed to onLoad or onError, see IsLoading
+	delivered atomic.Uint64
+	onLoad    func(T)
+	onError   func(error)
+	onStart   func()
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -27,6 +29,11 @@ func NewDataLoader[T any](app *tview.Application) *DataLoader[T] {
 func (l *DataLoader[T]) OnLoad(f func(T)) *DataLoader[T]      { l.onLoad = f; return l }
 func (l *DataLoader[T]) OnError(f func(error)) *DataLoader[T] { l.onError = f; return l }
 func (l *DataLoader[T]) OnStart(f func()) *DataLoader[T]      { l.onStart = f; return l }
+
+// IsLoading returns whether a load was started whose result was not handed to OnLoad or OnError yet.
+func (l *DataLoader[T]) IsLoading() bool {
+	return l.delivered.Load() < l.seq.Load()
+}
 
 func (l *DataLoader[T]) Load(f func(ctx context.Context) (T, error)) {
 	l.load(f, true)
@@ -65,6 +72,7 @@ func (l *DataLoader[T]) load(f func(ctx context.Context) (T, error), showLoading
 					l.onLoad(data)
 				}
 			}
+			l.delivered.Store(seq)
 		})
 	}()
 }

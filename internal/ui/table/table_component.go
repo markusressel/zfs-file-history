@@ -108,6 +108,10 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	isScrollbarVisible bool
 
+	// placeholder is shown instead of the rows while there are none, see SetPlaceholder
+	placeholder      string
+	placeholderColor tcell.Color
+
 	lastSyncHeight int
 	resizeTimer    *time.Timer
 }
@@ -277,7 +281,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.table = table
 
 	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
-	c.view = &tableView{Table: c.table, beforeDraw: c.renderIfTimeFormatChanged, afterDraw: c.redrawScrollbar}
+	c.view = &tableView{Table: c.table, beforeDraw: c.renderIfTimeFormatChanged, afterDraw: c.afterDraw}
 
 	c.isScrollbarVisible = true
 	c.layout = tview.NewFlex().
@@ -334,6 +338,41 @@ func (v *tableView) Draw(screen tcell.Screen) {
 func (c *RowSelectionTable[T]) renderIfTimeFormatChanged() {
 	if c.renderedTimeFormat != uiutil.TimeFormatGeneration() {
 		c.updateTableContents()
+	}
+}
+
+// afterDraw draws what is drawn over the table. Runs while drawing.
+func (c *RowSelectionTable[T]) afterDraw(screen tcell.Screen) {
+	c.drawPlaceholder(screen)
+	c.redrawScrollbar(screen)
+}
+
+// SetPlaceholder shows the text in place of the rows while there are none, e.g. why they could not be loaded.
+// An empty text shows nothing. Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetPlaceholder(text string, color tcell.Color) {
+	c.placeholder = text
+	c.placeholderColor = color
+}
+
+// GetPlaceholder returns the text set with SetPlaceholder.
+func (c *RowSelectionTable[T]) GetPlaceholder() string {
+	return c.placeholder
+}
+
+// drawPlaceholder draws the placeholder centered below the header row, wrapped to the width of the table, if there
+// are no rows. Runs while drawing.
+func (c *RowSelectionTable[T]) drawPlaceholder(screen tcell.Screen) {
+	if c.placeholder == "" || len(c.entries) > 0 {
+		return
+	}
+	x, y, width, height := c.table.GetInnerRect()
+	// below the header row and an empty line
+	top := y + 2
+	for i, line := range tview.WordWrap(tview.Escape(c.placeholder), width) {
+		if top+i >= y+height {
+			break
+		}
+		tview.Print(screen, line, x, top+i, width, tview.AlignCenter, c.placeholderColor)
 	}
 }
 
@@ -856,7 +895,7 @@ func (c *RowSelectionTable[T]) PageDown() {
 
 }
 
-// SetFilterFunc enables filtering: pressing Ctrl+F starts typing a filter, which hides all entries that don't match.
+// SetFilterFunc enables filtering: pressing Ctrl+F or / starts typing a filter, which hides all entries that don't match.
 // This replaces tview's Ctrl+F (page down) for this table, PgDn still works.
 // While typing, the filter can be edited like a terminal input line (see lineEditor), ↑/↓/PgUp/PgDn still
 // navigate the list, Enter keeps the filter, Esc clears it and Backspace on an empty filter stops typing.
@@ -1014,7 +1053,7 @@ func (c *RowSelectionTable[T]) stopEditingFilter() {
 func (c *RowSelectionTable[T]) handleFilterInput(event *tcell.EventKey) (result *tcell.EventKey, handled bool) {
 	if !c.isEditingFilter {
 		switch {
-		case event.Key() == tcell.KeyCtrlF:
+		case event.Key() == tcell.KeyCtrlF || (event.Key() == tcell.KeyRune && event.Rune() == '/' && event.Modifiers() == tcell.ModNone):
 			c.startEditingFilter()
 			return nil, true
 		case event.Key() == tcell.KeyEscape && c.IsFilterActive():

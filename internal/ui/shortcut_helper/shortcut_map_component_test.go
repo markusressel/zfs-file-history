@@ -174,8 +174,31 @@ func TestFormatEntriesGroupsShortcuts(t *testing.T) {
 func TestGroupColorsDiffer(t *testing.T) {
 	colors := map[tcell.Color]ShortcutGroup{}
 	for _, group := range []ShortcutGroup{GroupAction, GroupView, GroupNavigation, GroupGlobal} {
-		previous, exists := colors[group.keyColor()]
+		previous, exists := colors[group.KeyColor()]
 		assert.False(t, exists, "group %d has the color of group %d", group, previous)
-		colors[group.keyColor()] = group
+		colors[group.KeyColor()] = group
 	}
+}
+
+func TestMenuOnlyEntriesAreNotShown(t *testing.T) {
+	entries := []ShortcutEntry{
+		{KeyCombo: []string{"h"}, Name: "History"},
+		{KeyCombo: []string{"F2"}, Name: "Columns", Group: GroupView, MenuOnly: true},
+		{KeyCombo: []string{"q"}, Name: "Quit", Group: GroupGlobal},
+	}
+	assert.Equal(t, "[h]: History  │  [q]: Quit", formatEntries(entries, false),
+		"no separator for the group of the hidden entry either")
+}
+
+func TestCommands(t *testing.T) {
+	run := func() {}
+	history := ShortcutEntry{KeyCombo: []string{"h"}, Name: "History"}.WithRun(run)
+	columns := ShortcutEntry{KeyCombo: []string{"F2"}, Name: "Columns"}.WithRun(run).OnlyInMenu()
+	move := ShortcutEntry{KeyCombo: []string{"↑"}, Name: "Move"}
+
+	commands := Commands([]ShortcutEntry{history, columns, move})
+	assert.Len(t, commands, 2, "only the ones that can be run")
+	assert.Equal(t, "History", commands[0].Name)
+	assert.Equal(t, "Columns", commands[1].Name)
+	assert.True(t, commands[1].MenuOnly)
 }

@@ -32,7 +32,7 @@ type MainPage struct {
 	wasInitialized bool
 }
 
-func NewMainPage(application *tview.Application, path string) *MainPage {
+func NewMainPage(application *tview.Application, messages *status_message.Center, path string) *MainPage {
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
@@ -42,7 +42,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	snapshotBrowser.RequireFolderChanges()
 
 	mainPage := &MainPage{
-		basePage:        basePage{application: application, name: Main},
+		basePage:        basePage{application: application, name: Main, messages: messages},
 		fileBrowser:     fileBrowser,
 		snapshotBrowser: snapshotBrowser,
 		pathOverview:    pathOverview,
@@ -50,6 +50,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	mainPage.focusableComponents = func() []FocusableUiComponent {
 		return []FocusableUiComponent{fileBrowser, snapshotBrowser}
 	}
+	mainPage.componentTitles = map[FocusableUiComponent]string{fileBrowser: "Files", snapshotBrowser: "Snapshots"}
 	mainPage.pageShortcuts = func() []shortcut_helper.ShortcutEntry {
 		return []shortcut_helper.ShortcutEntry{mainPage.overviewShortcut()}
 	}
@@ -131,8 +132,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 			return nil
 		}
 		if event.Key() == tcell.KeyF5 {
-			zfs.RefreshZfsData()
-			fileBrowser.Refresh(false)
+			mainPage.refresh()
 		}
 		return event
 	})
@@ -140,10 +140,16 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	return mainPage
 }
 
+// refresh reloads the ZFS data and the folder shown.
+func (mainPage *MainPage) refresh() {
+	zfs.RefreshZfsData()
+	mainPage.fileBrowser.Refresh(false)
+}
+
 func (mainPage *MainPage) createLayout() *tview.Flex {
 	mainPageLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	mainPage.header = NewApplicationHeader(mainPage.application)
+	mainPage.header = NewApplicationHeader(mainPage.application, mainPage.messages)
 	mainPageLayout.AddItem(mainPage.header.layout, 1, 0, false)
 
 	// the overview below the file browser describes its folder and selected entry
@@ -228,7 +234,8 @@ func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
 	if mainPage.isOverviewHidden() {
 		name = "Show overview"
 	}
-	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Group: shortcut_helper.GroupView}
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Description: "The details of the folder and the selection, below the files",
+		Group: shortcut_helper.GroupView, Run: mainPage.toggleOverview, MenuOnly: true}
 }
 
 // SetPages sets the pages of the application, on which the dialogs of the components are shown as well.

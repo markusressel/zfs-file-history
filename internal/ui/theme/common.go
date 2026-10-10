@@ -71,6 +71,8 @@ type DialogColors struct {
 	Border tcell.Color
 	// Error is the color of validation errors in input dialogs
 	Error tcell.Color
+	// SectionTitle is the color of the titles of the sections of lists, e.g. of the command menu
+	SectionTitle tcell.Color
 }
 
 type StyleStruct struct {

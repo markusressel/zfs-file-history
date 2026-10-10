@@ -48,9 +48,11 @@ type mouseCapturer interface {
 }
 
 type DialogOption struct {
-	Id       DialogActionId
-	Name     string
-	Severity DialogSeverity
+	Id   DialogActionId
+	Name string
+	// Description tells what the option does, shown in the command menu (see SelectionDialog.OptionCommands)
+	Description string
+	Severity    DialogSeverity
 }
 
 // buildConfirmDialogOptions creates a standard [confirm, cancel] option list.

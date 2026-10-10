@@ -611,7 +611,11 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 
 func TestDatasetBrowser_ShortcutMapContainsColumns(t *testing.T) {
 	browser := NewDatasetBrowser(tview.NewApplication())
-	assert.Contains(t, browser.GetShortcutMap(), uiutil.TableComponentShortcutColumns)
+	columns := findEntry(browser.GetShortcutMap(), uiutil.TableComponentShortcutColumns.Name)
+	if assert.NotNil(t, columns) {
+		assert.Equal(t, uiutil.TableComponentShortcutColumns.KeyCombo, columns.KeyCombo)
+		assert.NotNil(t, columns.Run, "a command of the command menu")
+	}
 }
 
 func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
@@ -690,8 +694,18 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	restored := NewDatasetBrowser(tview.NewApplication())
 	assert.False(t, restored.IsHidingUnmounted())
 	assert.False(t, restored.IsTreeView())
-	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"u"}, Name: "Hide unmounted", Group: shortcut_helper.GroupView})
-	assert.Contains(t, restored.GetShortcutMap(), shortcut_helper.ShortcutEntry{KeyCombo: []string{"t"}, Name: "Tree view", Group: shortcut_helper.GroupView})
+	assert.NotNil(t, findEntry(restored.GetShortcutMap(), "Hide unmounted"))
+	assert.NotNil(t, findEntry(restored.GetShortcutMap(), "Tree view"))
+}
+
+// findEntry returns the entry with the name, or nil.
+func findEntry(entries []shortcut_helper.ShortcutEntry, name string) *shortcut_helper.ShortcutEntry {
+	for i := range entries {
+		if entries[i].Name == name {
+			return &entries[i]
+		}
+	}
+	return nil
 }
 
 // The size columns are colored by how big their sizes are compared to all datasets, 0 dimmed. The available space

@@ -441,14 +441,6 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 			fileBrowser.SetPath(path2.Dir(newPath), false)
 			return
 		}
-
-		// e.g. no permission: the entries could not be listed, but the path would change
-		directory, err := os.Open(newPath)
-		if err != nil {
-			fileBrowser.showError(err)
-			return
-		}
-		_ = directory.Close()
 	}
 
 	if fileBrowser.path != newPath {
@@ -477,6 +469,11 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	if selection == nil {
 		return
 	}
+	fileBrowser.showDialog(fileBrowser.newActionDialog(selection), nil)
+}
+
+// newActionDialog creates the dialog with the actions for the selection (not nil), see openActionDialog.
+func (fileBrowser *FileBrowserComponent) newActionDialog(selection *data.FileBrowserEntry) *dialog.SelectionDialog {
 
 	// captured on the UI thread, asyncWork runs in the background
 	path := fileBrowser.path
@@ -522,8 +519,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 		}
 	}
 
-	actionDialog := dialog.NewFileActionDialog(fileBrowser.application, selection, asyncWork, onComplete)
-	fileBrowser.showDialog(actionDialog, nil)
+	return dialog.NewFileActionDialog(fileBrowser.application, selection, asyncWork, onComplete)
 }
 
 func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBrowserEntry) {
@@ -733,8 +729,15 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 				return
 			}
 			if err != nil {
-				fileBrowser.showError(err)
+				// e.g. no permission: shown in place of the entries, until the entries of a path can be listed
+				logging.Error("Cannot list %s: %s", path, err.Error())
+				fileBrowser.tableContainer.SetPlaceholder(err.Error(), tcell.ColorRed)
+				fileBrowser.tableContainer.SetData([]*data.FileBrowserEntry{})
+				fileBrowser.entriesPath = path
+				fileBrowser.updateFooter()
+				fileBrowser.emit(SelectedTableEntryChangedEvent{fileBrowser.GetSelection()})
 			} else {
+				fileBrowser.tableContainer.SetPlaceholder("", tcell.ColorDefault)
 				fileBrowser.tableContainer.SetData(entries)
 				fileBrowser.entriesPath = path
 				fileBrowser.updateFooter()
@@ -1143,37 +1146,64 @@ func (fileBrowser *FileBrowserComponent) currentFolderEntry() *data.FileBrowserE
 	return entry
 }
 
+// GetCommands returns the commands only shown in the command menu, see shortcut_helper.CommandProvider: the actions
+// of the selection that have no shortcut, and sorting.
+func (fileBrowser *FileBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
+	var commands []shortcut_helper.ShortcutEntry
+	if selection := fileBrowser.GetSelection(); selection != nil {
+		show := func(d dialog.Dialog) { fileBrowser.showDialog(d, nil) }
+		commands = fileBrowser.newActionDialog(selection).OptionCommands(show,
+			dialog.FileDialogShowHistoryActionId, dialog.FileDialogDeleteDialogActionId)
+	}
+	return append(commands, fileBrowser.tableContainer.SortCommands()...)
+}
+
 func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	shortcutMap := []shortcut_helper.ShortcutEntry{
-		uiutil.TableComponentShortcutMove,
-		uiutil.TableComponentShortcutColumns,
-		uiutil.TableComponentShortcutFilter,
+		uiutil.TableComponentShortcutColumns.WithRun(fileBrowser.openColumnSelectionDialog).OnlyInMenu(),
+		uiutil.TableComponentShortcutFilter.WithRun(fileBrowser.tableContainer.StartFilter),
+	}
+
+	history := shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History", Description: "Browse all versions of the selection in the snapshots"}
+	if entry := fileBrowser.HistoryEntry(); entry != nil {
+		history.Run = func() { fileBrowser.emit(RequestFileHistoryEvent{FileEntry: entry}) }
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {
-		shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory", Group: shortcut_helper.GroupNavigation})
-
+		parent := shortcut_helper.ShortcutEntry{KeyCombo: []string{"←"}, Name: "Parent directory", Description: "Go up to the folder containing this one",
+			Group: shortcut_helper.GroupNavigation, Run: fileBrowser.goUp}
 		if ok, _ := selection.CanEnter(); ok {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Enter directory", Group: shortcut_helper.GroupNavigation})
+			// one entry in the shortcut map for both, separate ones in the command menu
+			shortcutMap = append(shortcutMap,
+				shortcut_helper.ShortcutEntry{KeyCombo: []string{"←", "→"}, Name: "Parent/enter directory", Group: shortcut_helper.GroupNavigation},
+				parent.OnlyInMenu(),
+				shortcut_helper.ShortcutEntry{KeyCombo: []string{"→"}, Name: "Enter directory", Description: "Open the selected folder", Group: shortcut_helper.GroupNavigation, Run: func() { fileBrowser.enterFileEntry(selection) }, MenuOnly: true},
+			)
+		} else {
+			shortcutMap = append(shortcutMap, parent)
 		}
 
-		shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutActions)
+		shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutActions.WithRun(func() { fileBrowser.openActionDialog(selection) }))
 
 		if selection.HasReal() {
-			shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutDelete)
+			shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutDelete.WithRun(func() { fileBrowser.openDeleteDialog(selection) }).OnlyInMenu().
+				WithDescription("Delete the file or folder from the disk, after asking"))
 		}
 
 		if selection.Type == data.File || selection.Type == data.Directory {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History"})
+			shortcutMap = append(shortcutMap, history)
 		}
 
 		if selection.HasSnapshot() && selection.DiffState != diff_state.Equal {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("r")}, Name: "Restore"})
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("r")}, Name: "Restore",
+				Description: "Restore the selection from the selected snapshot", Run: func() { fileBrowser.openRestoreDialog(selection) }})
 		}
 	} else {
+		history.Name = "Folder history"
+		history.Description = "Browse the changes of the shown folder in the snapshots"
 		shortcutMap = append(shortcutMap,
 			// on the header row or in an empty folder: the folder that is shown
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "Folder history"},
+			history,
 			uiutil.TableComponentShortcutFlipColumnDirection,
 			uiutil.TableComponentShortcutCycleSortColumnLeft,
 			uiutil.TableComponentShortcutCycleSortColumnRight,

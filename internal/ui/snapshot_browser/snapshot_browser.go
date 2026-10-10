@@ -253,6 +253,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		}).
 		OnLoad(func(result snapshotLoadResult) {
 			snapshotBrowser.container.SetIsLoading(false)
+			snapshotBrowser.tableContainer.SetPlaceholder("", tcell.ColorDefault)
 
 			datasetChanged := snapshotBrowser.hostDataset == nil || result.dataset == nil || snapshotBrowser.hostDataset.Path != result.dataset.Path
 			if datasetChanged {
@@ -283,6 +284,8 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 func (snapshotBrowser *SnapshotBrowserComponent) onLoadError(err error) {
 	snapshotBrowser.container.SetIsLoading(false)
 	logging.Error("Could not load snapshots: %s", err.Error())
+	// shown until snapshots are loaded again
+	snapshotBrowser.tableContainer.SetPlaceholder(fmt.Sprintf("Cannot load snapshots: %s", err.Error()), tcell.ColorRed)
 	// the dataset is unknown: the next path is loaded completely, instead of reusing the (now missing) snapshots
 	// of the dataset shown before
 	snapshotBrowser.hostDataset = nil
@@ -299,16 +302,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 		}
 		if snapshotBrowser.GetSelection() != nil {
 			if key == tcell.KeyEnter {
-				if snapshotBrowser.HasMultiSelection() {
-					multiSelectionEntries := snapshotBrowser.tableContainer.GetMultiSelection()
-					if len(multiSelectionEntries) <= 1 {
-						snapshotBrowser.openActionDialog(multiSelectionEntries[0])
-					} else {
-						snapshotBrowser.openMultiActionDialog(multiSelectionEntries)
-					}
-				} else {
-					snapshotBrowser.openActionDialog(snapshotBrowser.GetSelection())
-				}
+				snapshotBrowser.showDialog(snapshotBrowser.selectionActionDialog(), nil)
 				return nil
 			} else if key == tcell.KeyRune && event.Rune() == 'v' {
 				snapshotBrowser.toggleOnlyChanges()
@@ -410,6 +404,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force boo
 	}
 
 	loadFunc := func(ctx context.Context) (snapshotLoadResult, error) {
+		if path == "" {
+			// no dataset (e.g. an unmounted one is selected), which is not an error
+			return snapshotLoadResult{}, nil
+		}
 		ds, err := zfs.FindHostDataset(path)
 		if err != nil {
 			return snapshotLoadResult{}, err
@@ -786,6 +784,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	if snapshotBrowser.GetSelection() == nil {
 		return
 	}
+	snapshotBrowser.showDialog(snapshotBrowser.newActionDialog(selection), nil)
+}
+
+// newActionDialog creates the dialog with the actions for the snapshot, see openActionDialog.
+func (snapshotBrowser *SnapshotBrowserComponent) newActionDialog(selection *data.SnapshotBrowserEntry) *dialog.SelectionDialog {
 	// captured now, the selection of the file browser may change while the dialog is open
 	historyTarget := snapshotBrowser.getHistoryTarget()
 	historyTargetName := ""
@@ -864,8 +867,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 		snapshotBrowser.Refresh(true)
 	}
 
-	actionDialog := dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection, historyTargetName, asyncWork, onComplete)
-	snapshotBrowser.showDialog(actionDialog, nil)
+	return dialog.NewSnapshotActionDialog(snapshotBrowser.application, selection, historyTargetName, asyncWork, onComplete)
 }
 
 // cloneSnapshot creates a new dataset from a snapshot, replaceable in tests.
@@ -916,6 +918,12 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 	if len(entries) <= 0 {
 		return
 	}
+	snapshotBrowser.showDialog(snapshotBrowser.newMultiActionDialog(entries), nil)
+}
+
+// newMultiActionDialog creates the dialog with the actions for the snapshots (at least one), see
+// openMultiActionDialog.
+func (snapshotBrowser *SnapshotBrowserComponent) newMultiActionDialog(entries []*data.SnapshotBrowserEntry) *dialog.SelectionDialog {
 
 	// destroying asks for confirmation first, with the result of a dry run
 	var destroy *destroyRequest
@@ -966,8 +974,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 		}
 	}
 
-	actionDialog := dialog.NewMultiSnapshotActionDialog(snapshotBrowser.application, entries, asyncWork, onComplete)
-	snapshotBrowser.showDialog(actionDialog, nil)
+	return dialog.NewMultiSnapshotActionDialog(snapshotBrowser.application, entries, asyncWork, onComplete)
 }
 
 // openDeleteDialog asks for confirmation to destroy the given snapshot, with the result of a dry run.
@@ -1158,21 +1165,49 @@ func (snapshotBrowser *SnapshotBrowserComponent) ClearMultiSelection() {
 	snapshotBrowser.tableContainer.ClearMultiSelection()
 }
 
+// selectionActionDialog creates the dialog with the actions for the selected snapshots: the multi-selection, or the
+// selection (not nil).
+func (snapshotBrowser *SnapshotBrowserComponent) selectionActionDialog() *dialog.SelectionDialog {
+	if snapshotBrowser.HasMultiSelection() {
+		multiSelectionEntries := snapshotBrowser.tableContainer.GetMultiSelection()
+		if len(multiSelectionEntries) > 1 {
+			return snapshotBrowser.newMultiActionDialog(multiSelectionEntries)
+		}
+		return snapshotBrowser.newActionDialog(multiSelectionEntries[0])
+	}
+	return snapshotBrowser.newActionDialog(snapshotBrowser.GetSelection())
+}
+
+// GetCommands returns the commands only shown in the command menu, see shortcut_helper.CommandProvider: the actions
+// of the selection that have no shortcut, and sorting.
+func (snapshotBrowser *SnapshotBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
+	var commands []shortcut_helper.ShortcutEntry
+	if snapshotBrowser.GetSelection() != nil {
+		show := func(d dialog.Dialog) { snapshotBrowser.showDialog(d, nil) }
+		commands = snapshotBrowser.selectionActionDialog().OptionCommands(show,
+			dialog.SnapshotDialogShowHistoryActionId, dialog.SnapshotDialogDestroySnapshotActionId)
+	}
+	return append(commands, snapshotBrowser.tableContainer.SortCommands()...)
+}
+
 func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	shortcutMap := []shortcut_helper.ShortcutEntry{
-		uiutil.TableComponentShortcutMove,
-		uiutil.TableComponentShortcutColumns,
-		uiutil.TableComponentShortcutFilter,
-		snapshotBrowser.onlyChangesShortcut(),
+		uiutil.TableComponentShortcutColumns.WithRun(snapshotBrowser.openColumnSelectionDialog).OnlyInMenu(),
+		uiutil.TableComponentShortcutFilter.WithRun(snapshotBrowser.tableContainer.StartFilter),
+		snapshotBrowser.onlyChangesShortcut().WithRun(snapshotBrowser.toggleOnlyChanges),
 	}
 
-	if snapshotBrowser.GetSelection() != nil {
+	if selection := snapshotBrowser.GetSelection(); selection != nil {
 		shortcutMap = append(shortcutMap,
-			uiutil.TableComponentShortcutActions,
-			uiutil.TableComponentShortcutDelete,
+			uiutil.TableComponentShortcutActions.WithRun(func() { snapshotBrowser.showDialog(snapshotBrowser.selectionActionDialog(), nil) }),
+			uiutil.TableComponentShortcutDelete.WithRun(func() { snapshotBrowser.openDeleteDialog(selection) }).OnlyInMenu().
+				WithDescription("Destroy the selected snapshot, after asking (zfs destroy)"),
 		)
-		if snapshotBrowser.getHistoryTarget() != nil && !snapshotBrowser.HasMultiSelection() {
-			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History at snapshot"})
+		if target := snapshotBrowser.getHistoryTarget(); target != nil && !snapshotBrowser.HasMultiSelection() {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History at snapshot",
+				Description: "Browse the history of the selected file or folder, starting at this snapshot", Run: func() {
+					snapshotBrowser.emit(RequestHistoryEvent{Entry: target, Snapshot: selection})
+				}})
 		}
 	} else {
 		shortcutMap = append(shortcutMap,

@@ -33,40 +33,47 @@ func NewSnapshotActionDialog(
 	var dialogOptions []*DialogOption
 	if historyTarget != "" {
 		dialogOptions = append(dialogOptions, &DialogOption{
-			Id:   SnapshotDialogShowHistoryActionId,
-			Name: fmt.Sprintf("🕘 History of '%s' at this snapshot", historyTarget),
+			Id:          SnapshotDialogShowHistoryActionId,
+			Name:        fmt.Sprintf("🕘 History of '%s' at this snapshot", historyTarget),
+			Description: "Browse the history, starting at this snapshot",
 		})
 	}
 	dialogOptions = append(dialogOptions, []*DialogOption{
 		{
-			Id:   SnapshotDialogCreateSnapshotActionId,
-			Name: "📸 Create Snapshot",
+			Id:          SnapshotDialogCreateSnapshotActionId,
+			Name:        "📸 Create Snapshot",
+			Description: "Snapshot the dataset now",
 		},
 		{
-			Id:   SnapshotDialogCloneSnapshotActionId,
-			Name: fmt.Sprintf("🧬 Clone '%s'", snapshot.Snapshot.Name),
+			Id:          SnapshotDialogCloneSnapshotActionId,
+			Name:        fmt.Sprintf("🧬 Clone '%s'", snapshot.Snapshot.Name),
+			Description: "Create a new dataset from the snapshot (zfs clone)",
 		},
 		{
-			Id:   SnapshotDialogHoldSnapshotActionId,
-			Name: fmt.Sprintf("🔒 Hold '%s' (protect from destruction)", snapshot.Snapshot.Name),
+			Id:          SnapshotDialogHoldSnapshotActionId,
+			Name:        fmt.Sprintf("🔒 Hold '%s' (protect from destruction)", snapshot.Snapshot.Name),
+			Description: "Protect the snapshot from being destroyed (zfs hold)",
 		},
 	}...)
 	if snapshot.Snapshot.Properties.Holds > 0 {
 		dialogOptions = append(dialogOptions, &DialogOption{
-			Id:   SnapshotDialogReleaseSnapshotActionId,
-			Name: fmt.Sprintf("🔓 Release hold of '%s'", snapshot.Snapshot.Name),
+			Id:          SnapshotDialogReleaseSnapshotActionId,
+			Name:        fmt.Sprintf("🔓 Release hold of '%s'", snapshot.Snapshot.Name),
+			Description: "Allow destroying the snapshot again (zfs release)",
 		})
 	}
 	dialogOptions = append(dialogOptions,
 		&DialogOption{
-			Id:       SnapshotDialogDestroySnapshotActionId,
-			Name:     fmt.Sprintf("💥 Destroy '%s'", snapshot.Snapshot.Name),
-			Severity: DialogSeverityDanger,
+			Id:          SnapshotDialogDestroySnapshotActionId,
+			Name:        fmt.Sprintf("💥 Destroy '%s'", snapshot.Snapshot.Name),
+			Description: "Destroy the snapshot (zfs destroy)",
+			Severity:    DialogSeverityDanger,
 		},
 		&DialogOption{
-			Id:       SnapshotDialogDestroySnapshotRecursivelyActionId,
-			Name:     fmt.Sprintf("💥 Destroy (recursive) '%s'", snapshot.Snapshot.Name),
-			Severity: DialogSeverityDanger,
+			Id:          SnapshotDialogDestroySnapshotRecursivelyActionId,
+			Name:        fmt.Sprintf("💥 Destroy (recursive) '%s'", snapshot.Snapshot.Name),
+			Description: "Destroy the snapshot and the ones of the same name of the child datasets",
+			Severity:    DialogSeverityDanger,
 		},
 		&DialogOption{
 			Id:   DialogCloseActionId,
