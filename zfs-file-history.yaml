@@ -1,3 +1,7 @@
+# Whether to restore the last session (folder, page, focused list and selected dataset) when started again in the
+# same directory without a path. --fresh skips it for a single run.
+restoreSession: true
+
 diff:
   mode: external
 

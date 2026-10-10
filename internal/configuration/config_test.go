@@ -24,12 +24,14 @@ func TestInitConfigAndDefaults(t *testing.T) {
 	assert.Equal(t, DiffModeExternal, CurrentConfig.Diff.Mode)
 	assert.Equal(t, FileBrowserPermissionsFormatSymbolic, CurrentConfig.FileBrowser.Permissions)
 	assert.Equal(t, FileBrowserOwnerFormatName, CurrentConfig.FileBrowser.Owner)
+	assert.True(t, CurrentConfig.RestoreSession)
 }
 
 func TestInitConfigWithCustomFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "custom.yaml")
 	configContent := `
+restoreSession: false
 diff:
   mode: internal
 fileBrowser:
@@ -59,6 +61,7 @@ profiling:
 	assert.True(t, CurrentConfig.Profiling.Enabled)
 	assert.Equal(t, "0.0.0.0", CurrentConfig.Profiling.Host)
 	assert.Equal(t, 8080, CurrentConfig.Profiling.Port)
+	assert.False(t, CurrentConfig.RestoreSession)
 }
 
 func TestFileBrowserConfig_KeepsFilterOnDirectoryChange(t *testing.T) {

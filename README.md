@@ -36,6 +36,11 @@
   are dimmed (without a selected entry: the snapshots in which the folder changed, or data was written to the
   dataset). `v` shows only the snapshots with changes, like the histories (remembered per screen). `h` in the snapshot
   list (or its action menu) opens the history of the selected file or folder at that snapshot.
+* 💾 **Session restore:** Quit and reopen zfs-file-history in the same directory (without a path) and it shows
+  the folder, page and focused list you left, with the same selections. The selected entry of each folder, the
+  selected snapshot of each dataset and the collapsed datasets are remembered between runs as well. Several running
+  instances do not overwrite each other's settings, the last one used is restored. `--fresh` (or
+  `restoreSession: false` in the configuration) starts in the given path or working directory instead.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
 * 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the
   file and folder history and the dataset properties.
@@ -164,13 +169,14 @@ in [zfs-file-history.yaml](/zfs-file-history.yaml).
 
 Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
 (the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview, the
-comparison mode of the file and folder history, relative times, hidden shortcuts and the hidden overview)
-in a state file:
+comparison mode of the file and folder history, relative times, hidden shortcuts and the hidden overview) and the
+last session (see Session restore above) in a state file:
 
 * `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`
 
 It is written by the application and specific to the machine, so there is no need to copy it to other systems.
-Deleting it resets all remembered settings.
+Deleting it resets all remembered settings. If it was written by a newer version of zfs-file-history that this one cannot write, it is
+left as it is (changes are not saved) and a warning asks you to update.
 
 # Dependencies
 

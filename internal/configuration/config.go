@@ -13,6 +13,9 @@ type Configuration struct {
 	Diff        DiffConfig        `json:"diff"`
 	FileBrowser FileBrowserConfig `json:"fileBrowser"`
 	Profiling   ProfilingConfig   `json:"profiling"`
+	// RestoreSession restores the last session (folder, page, focus and dataset) when started in the same directory
+	// again without a path, see ui.Start
+	RestoreSession bool `json:"restoreSession"`
 }
 
 var CurrentConfig Configuration
@@ -63,6 +66,8 @@ func setDefaultValues() {
 	viper.SetDefault("FileBrowser.Permissions", FileBrowserPermissionsFormatSymbolic)
 	viper.SetDefault("FileBrowser.Owner", FileBrowserOwnerFormatName)
 	viper.SetDefault("FileBrowser.FilterOnDirectoryChange", FileBrowserFilterOnDirectoryChangeKeep)
+
+	viper.SetDefault("RestoreSession", true)
 
 	viper.SetDefault("Profiling", ProfilingConfig{
 		Enabled: false,

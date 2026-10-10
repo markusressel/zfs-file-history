@@ -201,6 +201,9 @@ var (
 	}
 )
 
+// maxRememberedSelections is the number of datasets whose selected snapshot is remembered between runs.
+const maxRememberedSelections = 200
+
 // legacyLayoutStateKey is where both pages saved their (shared) layout before they had their own.
 const legacyLayoutStateKey = "snapshotBrowser"
 
@@ -217,6 +220,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) UseColumnLayout(layout ColumnLa
 	snapshotBrowser.tableContainer.SetActiveColumns(layout.columns)
 	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, layout.stateKey, tableColumns)
 	snapshotBrowser.layoutStateKey = layout.stateKey
+	// by page, like the layout: the pages show the snapshots for different purposes
+	snapshotBrowser.selectedSnapshotMemory.Persist(state.Current, layout.stateKey+".selection", maxRememberedSelections)
 	snapshotBrowser.loadOnlyChanges()
 }
 
@@ -225,7 +230,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		Events:                 *util.NewEmitter[Event](),
 		application:            application,
 		currentSnapshots:       []*zfs.Snapshot{},
-		selectedSnapshotMemory: uiutil.NewSelectionMemory[data.SnapshotBrowserEntry](),
+		selectedSnapshotMemory: uiutil.NewSelectionMemory(func(entry *data.SnapshotBrowserEntry) string { return entry.Snapshot.Name }),
 		layoutStateKey:         legacyLayoutStateKey,
 	}
 	snapshotBrowser.folderChangesDebouncer = uiutil.NewDebouncer(application, folderChangesDelay)
@@ -681,10 +686,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) rememberSelectionForDataset(sel
 	)
 }
 
-func (snapshotBrowser *SnapshotBrowserComponent) getRememberedSelectionInfo(path string) *uiutil.SelectionInfo[data.SnapshotBrowserEntry] {
-	return snapshotBrowser.selectedSnapshotMemory.Get(path)
-}
-
 func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset(quiet bool) {
 	if quiet {
 		snapshotBrowser.isRestoringSelection = true
@@ -693,41 +694,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) restoreSelectionForDataset(quie
 		}()
 	}
 
-	var entryToSelect *data.SnapshotBrowserEntry
 	if snapshotBrowser.hostDataset == nil {
-		snapshotBrowser.selectSnapshot(entryToSelect, quiet)
-		return
-	}
-
-	entries := snapshotBrowser.GetEntries()
-	if len(entries) == 0 {
 		snapshotBrowser.selectSnapshot(nil, quiet)
 		return
 	}
-
-	rememberedSelectionInfo := snapshotBrowser.getRememberedSelectionInfo(snapshotBrowser.hostDataset.Path)
-	if rememberedSelectionInfo == nil {
-		if len(entries) > 0 {
-			entryToSelect = entries[0]
-		}
-	} else {
-		var index int
-		if rememberedSelectionInfo.Entry == nil {
-			snapshotBrowser.selectHeader()
-			return
-		} else {
-			index = slices.IndexFunc(entries, func(entry *data.SnapshotBrowserEntry) bool {
-				return entry.Snapshot.Name == rememberedSelectionInfo.Entry.Snapshot.Name
-			})
-		}
-		if index < 0 {
-			closestIndex := util.Coerce(rememberedSelectionInfo.Index, 0, len(entries)-1)
-			entryToSelect = entries[closestIndex]
-		} else {
-			entryToSelect = entries[index]
-		}
+	entry, header := snapshotBrowser.selectedSnapshotMemory.Restore(snapshotBrowser.hostDataset.Path, snapshotBrowser.GetEntries())
+	if header {
+		snapshotBrowser.selectHeader()
+		return
 	}
-	snapshotBrowser.selectSnapshot(entryToSelect, quiet)
+	snapshotBrowser.selectSnapshot(entry, quiet)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) selectSnapshot(snapshot *data.SnapshotBrowserEntry, quiet bool) {

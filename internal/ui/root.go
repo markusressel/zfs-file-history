@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/dataset_browser"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/util"
@@ -76,6 +80,9 @@ type switchablePage interface {
 	commandSections() []dialog.CommandSection
 	// refresh reloads the data shown (F5)
 	refresh()
+	// focusComponent and setOnFocusChanged restore and record the focused component, see session
+	focusComponent(title string)
+	setOnFocusChanged(onFocusChanged func(title string))
 }
 
 type FocusableUiComponent interface {
@@ -83,13 +90,22 @@ type FocusableUiComponent interface {
 	HasFocus() bool
 }
 
-func CreateUi(path string, fullscreen bool) *tview.Application {
-	application, _, _ := createUi(path, fullscreen)
+// CreateUi creates the application, showing what start says, and records the session in state.Current.
+func CreateUi(start Start, fullscreen bool) *tview.Application {
+	application, _, _ := createUiFor(start, fullscreen)
 	return application
 }
 
-// createUi creates the application and also returns its pages, for tests.
+// createUi creates the application showing path, and also returns its pages, for tests.
 func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *DatasetPage) {
+	return createUiFor(Start{Path: path, LaunchDir: path, PathGiven: true}, fullscreen)
+}
+
+func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *DatasetPage) {
+	restored := sessionToRestore(state.Current, start)
+	path := start.startPath(restored)
+	recorder := newSessionRecorder(state.Current, start.LaunchDir, restored)
+
 	// completely disable double click interval to avoid unnecessary delays
 	tview.DoubleClickInterval = 0
 
@@ -100,6 +116,9 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 
 	// one for all pages, so a message is shown on whichever page is shown
 	messages := status_message.NewCenter(application)
+	if version, newer := state.Current.NewerVersion(); newer {
+		messages.Show(newerStateVersionMessage(version))
+	}
 	mainPage := NewMainPage(application, messages, path)
 	datasetPage := NewDatasetPage(application, messages, path)
 
@@ -118,7 +137,26 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 	pages := map[util.Page]switchablePage{Main: mainPage, Dataset: datasetPage}
 	switchTo := func(page util.Page) {
 		pagesLayout.SwitchToPage(string(page))
+		recorder.setPage(page)
 		pages[page].refreshShortcutMap()
+	}
+
+	// the session is restored on the next start, see Start.RestoreSession
+	for page, switchable := range pages {
+		switchable.setOnFocusChanged(func(title string) { recorder.setFocus(page, title) })
+	}
+	mainPage.fileBrowser.Events.Subscribe(func(event file_browser.Event) {
+		if e, ok := event.(file_browser.PathChangedEvent); ok {
+			recorder.setPath(e.NewPath)
+		}
+	})
+	datasetPage.datasetBrowser.Events.Subscribe(func(event dataset_browser.Event) {
+		if e, ok := event.(dataset_browser.SelectedDatasetChangedEvent); ok && e.Dataset != nil {
+			recorder.setDataset(e.Dataset.Name)
+		}
+	})
+	if restored != nil && restored.Dataset != "" {
+		datasetPage.datasetBrowser.SelectOnLoad(restored.Dataset)
 	}
 	toggleShortcuts := func() {
 		shortcut_helper.ToggleShortcuts()
@@ -210,7 +248,9 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 
 	application.SetRoot(pagesLayout, fullscreen).
 		SetFocus(mainPage.fileBrowser.GetLayout())
+	recorder.setPath(path)
 	mainPage.updateShortcutMap(mainPage.fileBrowser)
+	restoreSession(restored, pages, switchTo)
 
 	return application, mainPage, datasetPage
 }
@@ -219,4 +259,12 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 func showMessageHistory(application *tview.Application, pages *tview.Pages, messages *status_message.Center) {
 	dialog.ShowDialogOnPages(application, pages, dialog.NewMessageHistoryDialog(messages.History()), nil)
 	messages.MarkRead()
+}
+
+// newerStateVersionMessage is the warning shown when the state file was written by a newer version of the
+// application (format version), see state.Store.NewerVersion.
+func newerStateVersionMessage(version int) *status_message.StatusMessage {
+	return status_message.NewWarningStatusMessage(fmt.Sprintf(
+		"The remembered settings were saved by a newer version of zfs-file-history (format %d). "+
+			"Changes are not saved, to keep them. Please update zfs-file-history to the latest version.", version))
 }

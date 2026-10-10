@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"zfs-file-history/internal/logging"
@@ -99,6 +101,10 @@ const (
 	stateKeyTable       = "datasetBrowser"
 	toggleHideUnmounted = "datasetBrowser.hideUnmounted"
 	toggleTreeView      = "datasetBrowser.treeView"
+	// stateNamespace holds the other values remembered in state.Current, e.g. stateKeyCollapsed
+	stateNamespace = "datasetBrowser"
+	// stateKeyCollapsed are the names of the collapsed datasets, see DatasetBrowserComponent.collapsed
+	stateKeyCollapsed = "collapsed"
 )
 
 // listDatasets is replaceable in tests.
@@ -129,6 +135,9 @@ type DatasetBrowserComponent struct {
 	// currentPath is the mount path of the selected dataset ("" if it is not mounted).
 	// Until the first selection, it is the path the application was started with.
 	currentPath string
+	// initialSelection is the name of the dataset to select once the datasets are loaded, instead of the one
+	// containing currentPath, see SelectOnLoad. Only accessed on the UI thread.
+	initialSelection string
 
 	// allEntries are all datasets of the last load, including the ones hidden by hideUnmounted.
 	// Only accessed on the UI thread.
@@ -160,7 +169,7 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 		application:   application,
 		hideUnmounted: state.Current.Toggle(toggleHideUnmounted, true),
 		treeView:      state.Current.Toggle(toggleTreeView, true),
-		collapsed:     map[string]bool{},
+		collapsed:     loadCollapsed(),
 		permissions:   permissionLoader{loaded: map[string]permissionState{}, stale: map[string]bool{}},
 	}
 
@@ -178,6 +187,28 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 		})
 
 	return datasetBrowser
+}
+
+// loadCollapsed returns the collapsed datasets remembered in state.Current.
+func loadCollapsed() map[string]bool {
+	collapsed := map[string]bool{}
+	names, _ := state.Get[[]string](state.Current, stateNamespace, stateKeyCollapsed)
+	for _, name := range names {
+		collapsed[name] = true
+	}
+	return collapsed
+}
+
+// saveCollapsed remembers the collapsed datasets in state.Current.
+func (datasetBrowser *DatasetBrowserComponent) saveCollapsed() {
+	names := slices.Sorted(maps.Keys(datasetBrowser.collapsed))
+	state.Set(state.Current, stateNamespace, stateKeyCollapsed, names)
+}
+
+// SelectOnLoad selects the dataset with the given name once the datasets are loaded (if it is shown), instead of
+// the one containing the path set with SetPath, e.g. to restore the last session. Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) SelectOnLoad(name string) {
+	datasetBrowser.initialSelection = name
 }
 
 // IsLoading returns whether the datasets are being loaded (their result, or error, is not shown yet).
@@ -497,6 +528,7 @@ func (datasetBrowser *DatasetBrowserComponent) toggleCollapseAll() {
 
 	if !anyExpanded {
 		clear(datasetBrowser.collapsed)
+		datasetBrowser.saveCollapsed()
 		datasetBrowser.updateEntries()
 		return
 	}
@@ -513,6 +545,7 @@ func (datasetBrowser *DatasetBrowserComponent) toggleCollapseAll() {
 	for _, entry := range datasetBrowser.allEntries {
 		datasetBrowser.collapsed[entry.Name] = true
 	}
+	datasetBrowser.saveCollapsed()
 	datasetBrowser.updateEntries()
 	if newSelection != nil && newSelection != selected {
 		datasetBrowser.tableContainer.Select(newSelection)
@@ -526,6 +559,7 @@ func (datasetBrowser *DatasetBrowserComponent) setCollapsed(name string, collaps
 	} else {
 		delete(datasetBrowser.collapsed, name)
 	}
+	datasetBrowser.saveCollapsed()
 	datasetBrowser.updateEntries()
 }
 
@@ -619,6 +653,9 @@ func (datasetBrowser *DatasetBrowserComponent) updateEntries() {
 	previousName := ""
 	if previous := datasetBrowser.tableContainer.GetSelectedEntry(); previous != nil {
 		previousName = previous.Name
+	} else if datasetBrowser.initialSelection != "" && len(datasetBrowser.allEntries) > 0 {
+		previousName = datasetBrowser.initialSelection
+		datasetBrowser.initialSelection = ""
 	}
 
 	datasetBrowser.updateSizeScales()
