@@ -2,7 +2,9 @@ package zfs
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data/diff_state"
@@ -221,4 +223,54 @@ func TestSnapshot_RestoreOperations(t *testing.T) {
 	require.NoError(t, err)
 	err = snap.Restore(nestedDir)
 	require.NoError(t, err)
+}
+
+// Regression: restoring the executable of a running program failed with "text file busy", as it cannot be written
+// to. It is replaced instead, the program keeps running its version.
+func TestSnapshot_RestoreFileOfARunningProgram(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("no sleep command")
+	}
+	content, err := os.ReadFile(sleep)
+	require.NoError(t, err)
+
+	datasetPath := filepath.Join(t.TempDir(), "dataset")
+	snapPath := filepath.Join(datasetPath, ".zfs", "snapshot", "snap1")
+	require.NoError(t, os.MkdirAll(filepath.Join(snapPath, "bin"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(datasetPath, "bin"), 0o755))
+	snap := &Snapshot{
+		Name:          "snap1",
+		Path:          snapPath,
+		ParentDataset: &Dataset{Path: datasetPath, HiddenZfsPath: filepath.Join(datasetPath, ".zfs")},
+	}
+
+	// the snapshot version differs from the running one
+	snapshotVersion := append(slices.Clone(content), 0)
+	srcFile := filepath.Join(snapPath, "bin", "program")
+	require.NoError(t, os.WriteFile(srcFile, snapshotVersion, 0o755))
+
+	realFile := filepath.Join(datasetPath, "bin", "program")
+	require.NoError(t, os.WriteFile(realFile, content, 0o755))
+	program := exec.Command(realFile, "10")
+	if err := program.Start(); err != nil {
+		t.Skipf("cannot run programs in the temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = program.Process.Kill()
+		_ = program.Wait()
+	})
+
+	require.NoError(t, snap.RestoreFile(srcFile))
+
+	restored, err := os.ReadFile(realFile)
+	require.NoError(t, err)
+	assert.Equal(t, snapshotVersion, restored)
+	stat, err := os.Lstat(realFile)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), stat.Mode())
+
+	entries, err := os.ReadDir(filepath.Join(datasetPath, "bin"))
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "no temporary file is left")
 }

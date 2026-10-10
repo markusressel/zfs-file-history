@@ -183,6 +183,18 @@ func fillBackground(screen tcell.Screen, x, y, width, height int) {
 // createModalWithFrame is createModal, and also returns the frame (with the border and title) around the content,
 // e.g. to show the footer of a table in its bottom border, see table.RowSelectionTable.EmbedInFrame.
 func createModalWithFrame(title string, content tview.Primitive, constraints DialogSizeConstraints) (*tview.Flex, *tview.Flex) {
+	return createResizingModalWithFrame(title, content, func() DialogSizeConstraints { return constraints })
+}
+
+// createResizingModal is createModal for dialogs whose content changes while they are shown, e.g. a longer text:
+// the size is calculated from the constraints returned by sizeConstraints each time the dialog is drawn.
+func createResizingModal(title string, content tview.Primitive, sizeConstraints func() DialogSizeConstraints) *tview.Flex {
+	layout, _ := createResizingModalWithFrame(title, content, sizeConstraints)
+	return layout
+}
+
+// createResizingModalWithFrame is createModalWithFrame with constraints that may change, see createResizingModal.
+func createResizingModalWithFrame(title string, content tview.Primitive, sizeConstraints func() DialogSizeConstraints) (*tview.Flex, *tview.Flex) {
 	dialogFrame := tview.NewFlex()
 	dialogFrame.SetBorder(true)
 	uiutil.SetupDialogWindow(dialogFrame, title)
@@ -203,7 +215,7 @@ func createModalWithFrame(title string, content tview.Primitive, constraints Dia
 
 	dialogContentColumnWrapper.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
 		screenWidth, screenHeight := screen.Size()
-		w, h := CalculateDialogSize(constraints)
+		w, h := CalculateDialogSize(sizeConstraints())
 
 		// Center the modal on top of the view it is associated with (defined by x, y, width, height)
 		dx := x + (width-w)/2
@@ -547,16 +559,12 @@ func CalculateDialogSize(constraints DialogSizeConstraints) (width int, height i
 	return dialogWidth, dialogHeight
 }
 
+// calculateWrappedHeight returns the number of lines of the text in a text view of the width that wraps words
+// (SetWordWrap): words that do not fit on a line start a new one, longer ones are broken.
 func calculateWrappedHeight(text string, maxLineWidth int) int {
-	lines := strings.Split(text, "\n")
 	height := 0
-	for _, line := range lines {
-		runes := utf8.RuneCountInString(line)
-		if runes == 0 {
-			height += 1
-			continue
-		}
-		height += (runes + maxLineWidth - 1) / maxLineWidth
+	for _, line := range strings.Split(text, "\n") {
+		height += max(len(tview.WordWrap(tview.Escape(line), maxLineWidth)), 1)
 	}
 	return height
 }
