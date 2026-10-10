@@ -121,6 +121,8 @@ func createModal(title string, content tview.Primitive, constraints DialogSizeCo
 // Moves are not consumed, so moving the mouse does not redraw the screen.
 type modalLayout struct {
 	*tview.Flex
+	// returnFocus is focused once the dialog is closed (if it is still shown), see ShowDialogOnPages
+	returnFocus tview.Primitive
 }
 
 func (layout modalLayout) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
@@ -350,6 +352,16 @@ func emitDialogActions(actionChannel chan DialogActionId, actionIds ...DialogAct
 	}()
 }
 
+// focusedDialog returns the dialog shown on pages that has the focus, if any.
+func focusedDialog(pages *tview.Pages) (modalLayout, bool) {
+	for _, name := range pages.GetPageNames(true) {
+		if dialog, ok := pages.GetPage(name).(modalLayout); ok && dialog.HasFocus() {
+			return dialog, true
+		}
+	}
+	return modalLayout{}, false
+}
+
 // ShowDialogOnPages mounts and focuses a dialog to the provided pages component.
 // The dialog will be removed from the pages when it emits a close action.
 // onUpdate - Called when the dialog emits a close action.
@@ -367,21 +379,29 @@ func ShowDialogOnPages(
 	if !layout.HasFocus() {
 		previousFocus = application.GetFocus()
 	}
+	// a dialog shown from another one (e.g. the result of an action) usually outlives it: it returns the focus to
+	// where the other one was shown from, instead of to the closed dialog
+	if opener, ok := focusedDialog(pages); ok {
+		previousFocus = opener.returnFocus
+	}
 
 	go func() {
 		for {
 			action := <-d.GetActionChannel()
 			if action == DialogCloseActionId {
 				closeFunc := func() {
-					if layout.HasFocus() {
+					hadFocus := layout.HasFocus()
+
+					// before the focus is restored: removing a page focuses the front page, i.e. its first view
+					pages.RemovePage(d.GetName())
+
+					if hadFocus {
 						if previousFocus != nil && isDescendantOf(pages, previousFocus) {
 							application.SetFocus(previousFocus)
 						} else {
 							application.SetFocus(pages)
 						}
 					}
-
-					pages.RemovePage(d.GetName())
 
 					if onClosed != nil {
 						onClosed()
@@ -394,7 +414,7 @@ func ShowDialogOnPages(
 		}
 	}()
 
-	pages.AddPage(d.GetName(), modalLayout{layout}, true, true)
+	pages.AddPage(d.GetName(), modalLayout{Flex: layout, returnFocus: previousFocus}, true, true)
 	if !layout.HasFocus() {
 		application.SetFocus(layout)
 	}
@@ -560,16 +580,21 @@ func isDescendantOf(parent tview.Primitive, child tview.Primitive) bool {
 	if parent == child {
 		return true
 	}
+	// by their methods, so components that embed a Flex or Pages (e.g. util.ResizableSplit) are searched as well
 	switch p := parent.(type) {
-	case modalLayout:
-		return isDescendantOf(p.Flex, child)
-	case *tview.Flex:
+	case interface {
+		GetItemCount() int
+		GetItem(index int) tview.Primitive
+	}:
 		for i := 0; i < p.GetItemCount(); i++ {
 			if isDescendantOf(p.GetItem(i), child) {
 				return true
 			}
 		}
-	case *tview.Pages:
+	case interface {
+		GetPageNames(visibleOnly bool) []string
+		GetPage(name string) tview.Primitive
+	}:
 		for _, name := range p.GetPageNames(false) {
 			pagePrim := p.GetPage(name)
 			if isDescendantOf(pagePrim, child) {
