@@ -876,7 +876,7 @@ func (c *RowSelectionTable[T]) PageDown() {
 
 }
 
-// SetFilterFunc enables filtering: pressing Ctrl+F starts typing a filter, which hides all entries that don't match.
+// SetFilterFunc enables filtering: pressing Ctrl+F or / starts typing a filter, which hides all entries that don't match.
 // This replaces tview's Ctrl+F (page down) for this table, PgDn still works.
 // While typing, the filter can be edited like a terminal input line (see lineEditor), ↑/↓/PgUp/PgDn still
 // navigate the list, Enter keeps the filter, Esc clears it and Backspace on an empty filter stops typing.
@@ -1034,7 +1034,7 @@ func (c *RowSelectionTable[T]) stopEditingFilter() {
 func (c *RowSelectionTable[T]) handleFilterInput(event *tcell.EventKey) (result *tcell.EventKey, handled bool) {
 	if !c.isEditingFilter {
 		switch {
-		case event.Key() == tcell.KeyCtrlF:
+		case event.Key() == tcell.KeyCtrlF || (event.Key() == tcell.KeyRune && event.Rune() == '/' && event.Modifiers() == tcell.ModNone):
 			c.startEditingFilter()
 			return nil, true
 		case event.Key() == tcell.KeyEscape && c.IsFilterActive():

@@ -681,6 +681,11 @@ func (datasetBrowser *DatasetBrowserComponent) SetPath(path string, checkExists 
 	datasetBrowser.currentPath = path
 }
 
+// GetCommands returns the commands only shown in the command menu, see shortcut_helper.CommandProvider.
+func (datasetBrowser *DatasetBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
+	return datasetBrowser.tableContainer.SortCommands()
+}
+
 func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
 	toggleUnmountedName := "Hide unmounted"
 	if datasetBrowser.hideUnmounted {
@@ -691,21 +696,24 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 		toggleTreeViewName = "Flat list"
 	}
 	shortcuts := []shortcut_helper.ShortcutEntry{
-		uiutil.TableComponentShortcutColumns,
-		uiutil.TableComponentShortcutFilter,
-		{KeyCombo: []string{"u"}, Name: toggleUnmountedName, Group: shortcut_helper.GroupView},
-		{KeyCombo: []string{"t"}, Name: toggleTreeViewName, Group: shortcut_helper.GroupView},
+		uiutil.TableComponentShortcutColumns.WithRun(datasetBrowser.openColumnSelectionDialog).OnlyInMenu(),
+		uiutil.TableComponentShortcutFilter.WithRun(datasetBrowser.tableContainer.StartFilter),
+		{KeyCombo: []string{"u"}, Name: toggleUnmountedName, Group: shortcut_helper.GroupView, Run: datasetBrowser.ToggleHideUnmounted, MenuOnly: true},
+		{KeyCombo: []string{"t"}, Name: toggleTreeViewName, Group: shortcut_helper.GroupView, Run: datasetBrowser.ToggleTreeView, MenuOnly: true},
 	}
-	if datasetBrowser.treeView && datasetBrowser.tableContainer.GetSelectedEntry() != nil {
+	selection := datasetBrowser.tableContainer.GetSelectedEntry()
+	if datasetBrowser.treeView && selection != nil {
 		shortcuts = append(shortcuts,
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"-", "+"}, Name: "Collapse/expand", Group: shortcut_helper.GroupView},
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"*"}, Name: "All", Group: shortcut_helper.GroupView},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"-"}, Name: "Collapse", Group: shortcut_helper.GroupView, Run: func() { datasetBrowser.handleTreeKey('-') }, MenuOnly: true},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"+"}, Name: "Expand", Group: shortcut_helper.GroupView, Run: func() { datasetBrowser.handleTreeKey('+') }, MenuOnly: true},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"*"}, Name: "Collapse/expand all", Group: shortcut_helper.GroupView, Run: datasetBrowser.toggleCollapseAll, MenuOnly: true},
 		)
 	}
-	if datasetBrowser.tableContainer.GetSelectedEntry() != nil {
+	if selection != nil {
 		shortcuts = append(shortcuts,
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"p"}, Name: "Permissions"},
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"e"}, Name: "Properties"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"p"}, Name: "Permissions", Run: func() { datasetBrowser.openPermissionsDialog(selection) }, MenuOnly: true},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"e"}, Name: "Properties", Run: func() { datasetBrowser.openPropertiesDialog(selection) }, MenuOnly: true},
 		)
 	}
 	return shortcuts

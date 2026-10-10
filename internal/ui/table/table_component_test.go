@@ -421,6 +421,20 @@ func TestFilter_HidesEntriesFromMultiSelection(t *testing.T) {
 	assert.Equal(t, []string{"daily-1"}, entryNames(table.GetMultiSelection()))
 }
 
+func TestFilter_SlashStartsTyping(t *testing.T) {
+	table, _, ownerKeys, _ := newFilterTestTable()
+	table.SelectFirstIfExists()
+
+	assert.Nil(t, pressKey(table, tcell.KeyRune, '/'))
+	assert.True(t, table.IsEditingFilter())
+	assert.Empty(t, table.GetFilterText(), "the '/' starts typing, it is not typed")
+
+	// while typing, '/' is part of the filter, e.g. of a path
+	typeText(table, "a/b")
+	assert.Equal(t, "a/b", table.GetFilterText())
+	assert.Empty(t, *ownerKeys)
+}
+
 func TestFilter_Typing(t *testing.T) {
 	table, _, ownerKeys, _ := newFilterTestTable()
 	table.SelectFirstIfExists()
@@ -518,20 +532,6 @@ func TestFilter_DisabledWithoutFilterFunc(t *testing.T) {
 	pressKey(table, tcell.KeyCtrlF, 0)
 	assert.False(t, table.IsEditingFilter())
 	assert.Equal(t, []tcell.Key{tcell.KeyCtrlF}, *ownerKeys)
-}
-
-func TestFilter_SlashIsAnOrdinaryCharacter(t *testing.T) {
-	table, _, ownerKeys, _ := newFilterTestTable()
-
-	// '/' does not start typing a filter, it reaches the owner
-	pressKey(table, tcell.KeyRune, '/')
-	assert.False(t, table.IsEditingFilter())
-	assert.Equal(t, []tcell.Key{tcell.KeyRune}, *ownerKeys)
-
-	// and it can be typed into the filter
-	pressKey(table, tcell.KeyCtrlF, 0)
-	typeText(table, "a/b")
-	assert.Equal(t, "a/b", table.GetFilterText())
 }
 
 type filterFooter struct {

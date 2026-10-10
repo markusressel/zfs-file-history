@@ -23,7 +23,7 @@ var (
 	TableComponentShortcutActions = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Actions"}
 	TableComponentShortcutDelete  = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyDelete}, Name: "Delete"}
 	TableComponentShortcutColumns = shortcut_helper.ShortcutEntry{KeyCombo: []string{"F2"}, Name: "Columns", Group: shortcut_helper.GroupView}
-	TableComponentShortcutFilter  = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("f")}, Name: "Filter", Group: shortcut_helper.GroupView}
+	TableComponentShortcutFilter  = shortcut_helper.ShortcutEntry{KeyCombo: []string{"/", shortcut_helper.Ctrl("f")}, Name: "Filter", Group: shortcut_helper.GroupView}
 	// TableComponentShortcutMove moves the selection (j/k/g/G work as well, like in Vim)
 	TableComponentShortcutMove                 = shortcut_helper.ShortcutEntry{KeyCombo: []string{"↑", "↓", shortcut_helper.KeyPgUp, shortcut_helper.KeyPgDn}, Name: "Move", Group: shortcut_helper.GroupNavigation}
 	TableComponentShortcutFlipColumnDirection  = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Flip Direction", Group: shortcut_helper.GroupView}

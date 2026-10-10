@@ -3,8 +3,11 @@ package dialog
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
+	"zfs-file-history/internal/ui/shortcut_helper"
 
 	"github.com/rivo/tview"
 )
@@ -293,4 +296,34 @@ func (d *SelectionDialog) StopLoading() {
 		d.stopLoading = nil
 	}
 	d.optionTable.SetSelectable(true, false) // Unlock input
+}
+
+// OptionCommands returns a command for each option of the dialog (but close and skipped ones) for the command menu
+// (see CommandMenu): it shows the dialog with show and selects the option, as if it was chosen in the dialog. Skip
+// the options that are commands of their own already, e.g. because they have a shortcut.
+func (d *SelectionDialog) OptionCommands(show func(d Dialog), skip ...DialogActionId) []shortcut_helper.ShortcutEntry {
+	var commands []shortcut_helper.ShortcutEntry
+	for _, option := range d.options {
+		if option.Id == DialogCloseActionId || slices.Contains(skip, option.Id) {
+			continue
+		}
+		commands = append(commands, shortcut_helper.ShortcutEntry{
+			Name: withoutIcon(option.Name),
+			Run: func() {
+				show(d)
+				d.selectAction(option)
+			},
+			MenuOnly: true,
+		})
+	}
+	return commands
+}
+
+// withoutIcon returns the name of an option without its leading icon, e.g. "Create Snapshot" for "📸 Create Snapshot".
+func withoutIcon(name string) string {
+	first, rest, found := strings.Cut(name, " ")
+	if !found || strings.ContainsFunc(first, isWordRune) {
+		return name
+	}
+	return strings.TrimSpace(rest)
 }

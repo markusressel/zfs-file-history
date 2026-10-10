@@ -131,13 +131,18 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 			return nil
 		}
 		if event.Key() == tcell.KeyF5 {
-			zfs.RefreshZfsData()
-			fileBrowser.Refresh(false)
+			mainPage.refresh()
 		}
 		return event
 	})
 
 	return mainPage
+}
+
+// refresh reloads the ZFS data and the folder shown.
+func (mainPage *MainPage) refresh() {
+	zfs.RefreshZfsData()
+	mainPage.fileBrowser.Refresh(false)
 }
 
 func (mainPage *MainPage) createLayout() *tview.Flex {
@@ -228,7 +233,7 @@ func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
 	if mainPage.isOverviewHidden() {
 		name = "Show overview"
 	}
-	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Group: shortcut_helper.GroupView}
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Group: shortcut_helper.GroupView, Run: mainPage.toggleOverview, MenuOnly: true}
 }
 
 // SetPages sets the pages of the application, on which the dialogs of the components are shown as well.

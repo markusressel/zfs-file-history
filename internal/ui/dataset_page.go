@@ -119,13 +119,17 @@ func NewDatasetPage(application *tview.Application, messages *status_message.Cen
 			return nil
 		}
 		if event.Key() == tcell.KeyF5 {
-			// also reloads the dataset list, via the zfs.DatasetsLoaded subscription
-			zfs.RefreshZfsData()
+			datasetPage.refresh()
 		}
 		return event
 	})
 
 	return datasetPage
+}
+
+// refresh reloads the ZFS data, and with it the datasets (via the zfs.DatasetsLoaded subscription).
+func (datasetPage *DatasetPage) refresh() {
+	zfs.RefreshZfsData()
 }
 
 func (datasetPage *DatasetPage) createLayout() *tview.Flex {

@@ -76,17 +76,39 @@ func (page *basePage) reserveShortcutMapHeight() {
 	})
 }
 
-// refreshShortcutMap shows the shortcuts of the focused component (or the main one, if none has focus),
-// e.g. after the page was switched to.
-func (page *basePage) refreshShortcutMap() {
+// focusedComponent returns the focused component, or the main one if none has focus.
+func (page *basePage) focusedComponent() FocusableUiComponent {
 	components := page.focusableComponents()
 	for _, component := range components {
 		if component.HasFocus() {
-			page.updateShortcutMap(component)
-			return
+			return component
 		}
 	}
-	page.updateShortcutMap(components[0])
+	return components[0]
+}
+
+// refreshShortcutMap shows the shortcuts of the focused component (or the main one, if none has focus),
+// e.g. after the page was switched to.
+func (page *basePage) refreshShortcutMap() {
+	page.updateShortcutMap(page.focusedComponent())
+}
+
+// commands returns the commands of the focused component and of the page, for the command menu (see
+// dialog.CommandMenu): the shortcuts that can be run (also the MenuOnly ones) and the commands of the component that
+// have no shortcut (see shortcut_helper.CommandProvider). The global ones are added by the root.
+func (page *basePage) commands() []shortcut_helper.ShortcutEntry {
+	component := page.focusedComponent()
+	var entries []shortcut_helper.ShortcutEntry
+	if provider, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
+		entries = provider.GetShortcutMap()
+	}
+	if provider, ok := component.(shortcut_helper.CommandProvider); ok {
+		entries = append(entries, provider.GetCommands()...)
+	}
+	if page.pageShortcuts != nil {
+		entries = append(entries, page.pageShortcuts()...)
+	}
+	return shortcut_helper.Commands(entries)
 }
 
 func (page *basePage) CycleFocus(reversed bool) {
