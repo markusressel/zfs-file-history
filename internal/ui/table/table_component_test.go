@@ -857,3 +857,34 @@ func TestTable_NewDataIsNotScrolledToTheEnd(t *testing.T) {
 	rowOffset, _ = table.table.GetOffset()
 	assert.Zero(t, rowOffset, "the first rows are shown")
 }
+
+func TestTable_Placeholder(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 12)
+	table.GetLayout().SetRect(0, 0, 40, 12)
+	screenText := func() string {
+		screen.Clear()
+		drawTableLayout(table, screen)
+		screen.Show()
+		cells, width, _ := screen.GetContents()
+		var text strings.Builder
+		for i, cell := range cells {
+			if i > 0 && i%width == 0 {
+				text.WriteRune('\n')
+			}
+			if len(cell.Runes) > 0 {
+				text.WriteRune(cell.Runes[0])
+			}
+		}
+		return text.String()
+	}
+
+	table.SetPlaceholder("open /x: permission denied", tcell.ColorRed)
+	table.SetData([]*namedEntry{})
+	assert.Contains(t, screenText(), "open /x: permission denied", "shown while there are no rows")
+
+	table.SetData(entries)
+	assert.NotContains(t, screenText(), "permission denied", "not shown over rows")
+}

@@ -3,7 +3,6 @@ package ui
 import (
 	"strings"
 	"testing"
-	"time"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -14,38 +13,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestApplicationHeader_TimedStatusIsCleared(t *testing.T) {
+func TestApplicationHeader_ShowsMessages(t *testing.T) {
 	app := tview.NewApplication()
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-	header := NewApplicationHeader(app)
+	messages := status_message.NewCenter(app)
+	header := NewApplicationHeader(app, messages)
 	app.SetRoot(header.layout, true)
 	go func() { _ = app.Run() }()
 	t.Cleanup(app.Stop)
 
-	statusText := func() string {
-		var text string
-		testutil.OnUiThread(t, app, func() { text = header.statusTextView.GetText(true) })
-		return text
+	texts := func() (status string, badge string) {
+		testutil.OnUiThread(t, app, func() {
+			status = header.statusTextView.GetText(true)
+			badge = header.unreadBadge.GetText(true)
+		})
+		return status, badge
 	}
 
-	timed := status_message.NewSuccessStatusMessage("created")
-	timed.Duration = 30 * time.Millisecond
-	testutil.OnUiThread(t, app, func() { header.SetStatus(timed) })
-	assert.Equal(t, "created", statusText())
-	assert.Eventually(t, func() bool { return statusText() == "" }, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, app, func() { messages.Show(status_message.NewSuccessStatusMessage("created")) })
+	status, badge := texts()
+	assert.Equal(t, "created", status)
+	assert.Empty(t, badge, "only warnings and errors are counted")
 
-	// a newer message is not cleared by the timer of an older one
-	testutil.OnUiThread(t, app, func() { header.SetStatus(timed) })
-	permanent := status_message.NewErrorStatusMessage("failed")
-	permanent.Duration = 0
-	testutil.OnUiThread(t, app, func() { header.SetStatus(permanent) })
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, "failed", statusText())
+	testutil.OnUiThread(t, app, func() {
+		messages.Show(status_message.NewWarningStatusMessage("careful"))
+		messages.Show(status_message.NewErrorStatusMessage("failed"))
+	})
+	status, badge = texts()
+	assert.Equal(t, "failed", status)
+	assert.Equal(t, "⚠ 2", badge)
+
+	testutil.OnUiThread(t, app, func() {
+		messages.Dismiss()
+		messages.MarkRead()
+	})
+	status, badge = texts()
+	assert.Empty(t, status)
+	assert.Empty(t, badge)
 }
 
 // The hint how to show the shortcuts again is only shown while they are hidden.
 func TestApplicationHeader_ShortcutHint(t *testing.T) {
-	header := NewApplicationHeader(tview.NewApplication())
+	header := NewApplicationHeader(tview.NewApplication(), status_message.NewCenter(tview.NewApplication()))
 	t.Cleanup(func() {
 		if shortcut_helper.ShortcutsHidden() {
 			shortcut_helper.ToggleShortcuts()

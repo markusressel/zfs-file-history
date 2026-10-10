@@ -32,7 +32,7 @@ type MainPage struct {
 	wasInitialized bool
 }
 
-func NewMainPage(application *tview.Application, path string) *MainPage {
+func NewMainPage(application *tview.Application, messages *status_message.Center, path string) *MainPage {
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
@@ -42,7 +42,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 	snapshotBrowser.RequireFolderChanges()
 
 	mainPage := &MainPage{
-		basePage:        basePage{application: application, name: Main},
+		basePage:        basePage{application: application, name: Main, messages: messages},
 		fileBrowser:     fileBrowser,
 		snapshotBrowser: snapshotBrowser,
 		pathOverview:    pathOverview,
@@ -143,7 +143,7 @@ func NewMainPage(application *tview.Application, path string) *MainPage {
 func (mainPage *MainPage) createLayout() *tview.Flex {
 	mainPageLayout := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	mainPage.header = NewApplicationHeader(mainPage.application)
+	mainPage.header = NewApplicationHeader(mainPage.application, mainPage.messages)
 	mainPageLayout.AddItem(mainPage.header.layout, 1, 0, false)
 
 	// the overview below the file browser describes its folder and selected entry

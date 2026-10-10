@@ -2,7 +2,9 @@ package ui
 
 import (
 	"slices"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
+	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -22,6 +24,7 @@ func globalShortcuts() []shortcut_helper.ShortcutEntry {
 		{KeyCombo: []string{shortcut_helper.Alt("←"), shortcut_helper.Alt("→")}, Name: "Switch page", Group: shortcut_helper.GroupGlobal},
 		shortcut_helper.ShortcutTimeFormat,
 		{KeyCombo: []string{"F5"}, Name: "Refresh", Group: shortcut_helper.GroupGlobal},
+		{KeyCombo: []string{"m"}, Name: "Messages", Group: shortcut_helper.GroupGlobal},
 		shortcut_helper.ShortcutHide,
 		{KeyCombo: []string{shortcut_helper.Ctrl("q")}, Name: "Quit", Group: shortcut_helper.GroupGlobal},
 	}
@@ -78,8 +81,10 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 	util.InitTimeFormat()
 	shortcut_helper.InitShortcutVisibility()
 
-	mainPage := NewMainPage(application, path)
-	datasetPage := NewDatasetPage(application, path)
+	// one for all pages, so a message is shown on whichever page is shown
+	messages := status_message.NewCenter(application)
+	mainPage := NewMainPage(application, messages, path)
+	datasetPage := NewDatasetPage(application, messages, path)
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
@@ -94,6 +99,9 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 	}
 
 	pagesLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// before the key is handled, so a message shown because of it stays
+		messages.DismissOnKeyPress()
+
 		// the time format also applies to the tables of dialogs and overlays (e.g. the histories), which are pages
 		// of their own
 		if event.Key() == tcell.KeyRune && event.Rune() == 'T' && !util.IsTextInputActive(application.GetFocus()) {
@@ -120,6 +128,9 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 
 		if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyCtrlQ {
 			application.Stop()
+			return nil
+		} else if event.Key() == tcell.KeyRune && event.Rune() == 'm' && !util.IsTextInputActive(application.GetFocus()) {
+			showMessageHistory(application, pagesLayout, messages)
 			return nil
 		} else if (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight) && event.Modifiers()&tcell.ModAlt != 0 && !util.IsTextInputActive(application.GetFocus()) {
 			nextPage := adjacentPage(switchablePages, util.Page(name), event.Key() == tcell.KeyLeft)
@@ -156,4 +167,10 @@ func createUi(path string, fullscreen bool) (*tview.Application, *MainPage, *Dat
 	mainPage.updateShortcutMap(mainPage.fileBrowser)
 
 	return application, mainPage, datasetPage
+}
+
+// showMessageHistory shows all messages, and marks them as seen. Must be called on the UI thread.
+func showMessageHistory(application *tview.Application, pages *tview.Pages, messages *status_message.Center) {
+	dialog.ShowDialogOnPages(application, pages, dialog.NewMessageHistoryDialog(messages.History()), nil)
+	messages.MarkRead()
 }

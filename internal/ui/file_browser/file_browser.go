@@ -441,14 +441,6 @@ func (fileBrowser *FileBrowserComponent) SetPath(newPath string, checkExists boo
 			fileBrowser.SetPath(path2.Dir(newPath), false)
 			return
 		}
-
-		// e.g. no permission: the entries could not be listed, but the path would change
-		directory, err := os.Open(newPath)
-		if err != nil {
-			fileBrowser.showError(err)
-			return
-		}
-		_ = directory.Close()
 	}
 
 	if fileBrowser.path != newPath {
@@ -729,8 +721,15 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 				return
 			}
 			if err != nil {
-				fileBrowser.showError(err)
+				// e.g. no permission: shown in place of the entries, until the entries of a path can be listed
+				logging.Error("Cannot list %s: %s", path, err.Error())
+				fileBrowser.tableContainer.SetPlaceholder(err.Error(), tcell.ColorRed)
+				fileBrowser.tableContainer.SetData([]*data.FileBrowserEntry{})
+				fileBrowser.entriesPath = path
+				fileBrowser.updateFooter()
+				fileBrowser.emit(SelectedTableEntryChangedEvent{fileBrowser.GetSelection()})
 			} else {
+				fileBrowser.tableContainer.SetPlaceholder("", tcell.ColorDefault)
 				fileBrowser.tableContainer.SetData(entries)
 				fileBrowser.entriesPath = path
 				fileBrowser.updateFooter()

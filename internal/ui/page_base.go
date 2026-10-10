@@ -18,6 +18,8 @@ type basePage struct {
 	name   uiutil.Page
 	pages  *tview.Pages
 	header *ApplicationHeaderComponent
+	// messages are the messages of the whole application, shown in the header of each page
+	messages *status_message.Center
 	// shortcutMap shows the shortcuts of the focused component, see updateShortcutMap
 	shortcutMap *shortcut_helper.ShortcutMapComponent
 	// focusableComponents returns the components that can be focused, in focus cycle order; the first one is the
@@ -42,7 +44,7 @@ func (page *basePage) isInFront() bool {
 }
 
 func (page *basePage) showStatusMessage(status *status_message.StatusMessage) {
-	page.header.SetStatus(status)
+	page.messages.Show(status)
 }
 
 // updateShortcutMap shows the shortcuts of the component, the page and the global ones.

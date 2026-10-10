@@ -253,6 +253,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 		}).
 		OnLoad(func(result snapshotLoadResult) {
 			snapshotBrowser.container.SetIsLoading(false)
+			snapshotBrowser.tableContainer.SetPlaceholder("", tcell.ColorDefault)
 
 			datasetChanged := snapshotBrowser.hostDataset == nil || result.dataset == nil || snapshotBrowser.hostDataset.Path != result.dataset.Path
 			if datasetChanged {
@@ -283,6 +284,8 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 func (snapshotBrowser *SnapshotBrowserComponent) onLoadError(err error) {
 	snapshotBrowser.container.SetIsLoading(false)
 	logging.Error("Could not load snapshots: %s", err.Error())
+	// shown until snapshots are loaded again
+	snapshotBrowser.tableContainer.SetPlaceholder(fmt.Sprintf("Cannot load snapshots: %s", err.Error()), tcell.ColorRed)
 	// the dataset is unknown: the next path is loaded completely, instead of reusing the (now missing) snapshots
 	// of the dataset shown before
 	snapshotBrowser.hostDataset = nil
@@ -410,6 +413,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) reloadSnapshotEntries(force boo
 	}
 
 	loadFunc := func(ctx context.Context) (snapshotLoadResult, error) {
+		if path == "" {
+			// no dataset (e.g. an unmounted one is selected), which is not an error
+			return snapshotLoadResult{}, nil
+		}
 		ds, err := zfs.FindHostDataset(path)
 		if err != nil {
 			return snapshotLoadResult{}, err

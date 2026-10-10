@@ -3,29 +3,38 @@ package file_browser
 import (
 	"os"
 	"testing"
-	"time"
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-// a folder that cannot be read is not entered: its entries could not be shown, but the path would change
-func TestFileBrowser_DoesNotEnterUnreadableFolder(t *testing.T) {
+// a folder that cannot be read is entered, and shows why its entries are missing in their place, until a folder
+// that can be read is shown
+func TestFileBrowser_ShowsErrorOfUnreadableFolderInPlaceOfEntries(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can read any folder")
 	}
 	ft := newFileBrowserTest(t, configuration.FileBrowserFilterOnDirectoryChangeClear)
-	require.NoError(t, os.Chmod(ft.sub, 0o000))
+	if err := os.Chmod(ft.sub, 0o000); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = os.Chmod(ft.sub, 0o755) })
+	placeholder := func() (text string) {
+		testutil.OnUiThread(t, ft.app, func() { text = ft.fileBrowser.tableContainer.GetPlaceholder() })
+		return text
+	}
 
 	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
 	ft.waitFor("directory loaded", func(s fileBrowserState) bool { return s.footer == "4 entries" })
+	assert.Empty(t, placeholder())
 
 	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.sub, true) })
-	time.Sleep(200 * time.Millisecond)
-	s := ft.state()
-	assert.Equal(t, ft.dir, s.path)
-	assert.Equal(t, []string{"a.txt", "b.txt", "c.log", "sub"}, s.visible)
+	s := ft.waitFor("unreadable folder entered", func(s fileBrowserState) bool { return s.path == ft.sub && len(s.visible) == 0 })
+	assert.Empty(t, s.visible, "the entries of the former folder are not shown")
+	assert.Contains(t, placeholder(), "permission denied")
+
+	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.goUp() })
+	ft.waitFor("parent loaded", func(s fileBrowserState) bool { return s.path == ft.dir && s.footer == "4 entries" })
+	assert.Empty(t, placeholder())
 }
