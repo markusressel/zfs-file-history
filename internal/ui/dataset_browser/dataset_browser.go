@@ -180,6 +180,11 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 	return datasetBrowser
 }
 
+// IsLoading returns whether the datasets are being loaded (their result, or error, is not shown yet).
+func (datasetBrowser *DatasetBrowserComponent) IsLoading() bool {
+	return datasetBrowser.loader.IsLoading()
+}
+
 func (datasetBrowser *DatasetBrowserComponent) createLayout() {
 	datasetBrowser.layout = tview.NewPages().
 		AddPage("dataset-browser", datasetBrowser.tableContainer.GetLayout(), true, true)
