@@ -96,6 +96,9 @@ type ShortcutMapComponent struct {
 	onHeightChanged         func(height int)
 	// collapsible maps are hidden with ToggleShortcuts, see SetCollapsible
 	collapsible bool
+	// alternativeEntries returns the entries that may be shown instead of the current ones, see
+	// SetAlternativeEntries
+	alternativeEntries func() [][]ShortcutEntry
 
 	ShortCutEntries []ShortcutEntry
 }
@@ -143,6 +146,13 @@ func (sm *ShortcutMapComponent) createLayout() {
 
 func (sm *ShortcutMapComponent) SetOnHeightChanged(f func(height int)) {
 	sm.onHeightChanged = f
+}
+
+// SetAlternativeEntries sets the entries that may be shown instead of the current ones, e.g. those of the other
+// components of a page: the map is as high as the highest of them needs, so its height does not change (and the
+// layout above it does not move) when the entries are switched. Called on each draw.
+func (sm *ShortcutMapComponent) SetAlternativeEntries(alternatives func() [][]ShortcutEntry) {
+	sm.alternativeEntries = alternatives
 }
 
 func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
@@ -197,7 +207,18 @@ func (sm *ShortcutMapComponent) CalculateHeightForWidth(width int) int {
 		availableWidth = 80
 	}
 
-	visibleText := formatEntries(sm.ShortCutEntries, false)
+	lines := linesForWidth(sm.ShortCutEntries, availableWidth)
+	if sm.alternativeEntries != nil {
+		for _, entries := range sm.alternativeEntries() {
+			lines = max(lines, linesForWidth(entries, availableWidth))
+		}
+	}
+	return lines
+}
+
+// linesForWidth returns the number of lines the entries need when wrapped at availableWidth, at least 1.
+func linesForWidth(entries []ShortcutEntry, availableWidth int) int {
+	visibleText := formatEntries(entries, false)
 	if len(visibleText) == 0 {
 		return 1
 	}
