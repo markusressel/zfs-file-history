@@ -825,3 +825,35 @@ func TestTable_RendersAgainWhenTheTimeFormatChanged(t *testing.T) {
 	table.GetLayout().Draw(screen)
 	assert.Equal(t, "2 hours ago", table.table.GetCell(1, 0).Text)
 }
+
+// tview's table follows the end of the rows once all of them fit (e.g. while it is empty, before new data is
+// loaded), so the next data would be shown scrolled to the end, also hiding the selected row
+func TestTable_NewDataIsNotScrolledToTheEnd(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 12)
+	table.GetLayout().SetRect(0, 0, 40, 12)
+	table.table.Focus(func(tview.Primitive) {})
+
+	// e.g. while the snapshots of another dataset are loaded
+	table.SetData([]*namedEntry{})
+	drawTableLayout(table, screen)
+
+	table.SetData(entries)
+	table.Select(entries[2])
+	drawTableLayout(table, screen)
+
+	rowOffset, _ := table.table.GetOffset()
+	assert.Zero(t, rowOffset, "the first rows are shown")
+	assert.Equal(t, entries[2], table.GetSelectedEntry())
+
+	// also without selecting again, e.g. if the same row is selected as before
+	table.SetData([]*namedEntry{})
+	drawTableLayout(table, screen)
+	table.SetData(entries)
+	drawTableLayout(table, screen)
+
+	rowOffset, _ = table.table.GetOffset()
+	assert.Zero(t, rowOffset, "the first rows are shown")
+}

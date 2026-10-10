@@ -535,6 +535,9 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	}
 
 	table.Clear()
+	// tview follows the end of the rows once all of them fit (e.g. while the table is empty): new rows would be
+	// shown scrolled to the end, hiding the selected row. Setting the offset stops that.
+	table.SetOffset(table.GetOffset())
 	c.renderedTimeFormat = uiutil.TimeFormatGeneration()
 	columns := c.visibleColumns()
 
