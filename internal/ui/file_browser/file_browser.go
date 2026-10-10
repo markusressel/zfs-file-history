@@ -630,7 +630,7 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 		var batch []diffResult
 		lastDrawTime := time.Now()
 
-		pushBatch := func(forceDraw bool) {
+		pushBatch := func(forceDraw bool, isLast bool) {
 			if len(batch) == 0 {
 				return
 			}
@@ -645,6 +645,10 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 					res.entry.DiffState = res.state
 					res.entry.IsLoading = false
 					fileBrowser.tableContainer.UpdateEntry(res.entry)
+				}
+				// sorted while the states were unknown; once, so the entries do not move around while computing
+				if isLast && fileBrowser.tableContainer.IsSortedBy(columnDiff) {
+					fileBrowser.tableContainer.Resort()
 				}
 			}
 
@@ -668,10 +672,10 @@ func (fileBrowser *FileBrowserComponent) startAsyncDiffCalculation() {
 			isLast := i == len(entriesToProcess)-1
 			// Draw at most once every 50ms to prevent SSH connection flooding
 			if isLast || now.Sub(lastDrawTime) > 50*time.Millisecond {
-				pushBatch(true)
+				pushBatch(true, isLast)
 				lastDrawTime = now
 			} else if len(batch) >= 10 {
-				pushBatch(false)
+				pushBatch(false, false)
 			}
 		}
 	}()
