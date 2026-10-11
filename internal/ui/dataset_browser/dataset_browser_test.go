@@ -739,3 +739,94 @@ func TestDatasetBrowser_SizeColors(t *testing.T) {
 	assert.Equal(t, stops[0].Color, color(large, columnUsedBySnapshots), "the hidden dataset has the larger snapshots")
 	assert.NotContains(t, []tcell.Color{stops[0].Color, stops[len(stops)-1].Color, theme.Colors.Layout.Table.ZeroSize}, color(large, columnAvail))
 }
+
+// SelectOnLoad selects the dataset (e.g. of the last session) instead of the one containing the path.
+func TestDatasetBrowser_SelectOnLoad(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{
+			{Name: "rpool/ROOT", Mountpoint: "/", MountPath: "/"},
+			{Name: "rpool/home", Mountpoint: "/home", MountPath: "/home"},
+			{Name: "rpool/data", Mountpoint: "/data", MountPath: "/data"},
+		}, nil
+	})
+	app, browser, _ := newBrowserApp(t)
+
+	testutil.OnUiThread(t, app, func() {
+		hidePermissions(browser)
+		browser.SetPath("/home/user", false)
+		browser.SelectOnLoad("rpool/data")
+		browser.Refresh(false)
+	})
+	selected := func() string {
+		var name string
+		testutil.OnUiThread(t, app, func() {
+			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
+				name = entry.Name
+			}
+		})
+		return name
+	}
+	assert.Eventually(t, func() bool { return selected() == "rpool/data" }, 2*time.Second, 10*time.Millisecond)
+
+	// only once: a reload keeps the selection of the user
+	testutil.OnUiThread(t, app, func() {
+		browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/home"))
+		browser.Refresh(false)
+	})
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, "rpool/home", selected())
+}
+
+func TestDatasetBrowser_CollapsedDatasetsAreSavedAndRestored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store := state.Load(path)
+	state.Current = store
+	t.Cleanup(func() {
+		_ = store.Flush()
+		state.Current = nil
+	})
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{
+			{Name: "rpool", MountPath: "/rpool"},
+			{Name: "rpool/a", MountPath: "/rpool/a"},
+			{Name: "tank", MountPath: "/tank"},
+			{Name: "tank/b", MountPath: "/tank/b"},
+		}, nil
+	})
+	app, browser, _ := newBrowserApp(t)
+	testutil.OnUiThread(t, app, func() {
+		hidePermissions(browser)
+		browser.Refresh(false)
+	})
+	assert.Eventually(t, func() bool {
+		var count int
+		testutil.OnUiThread(t, app, func() { count = len(browser.tableContainer.GetEntries()) })
+		return count == 4
+	}, 2*time.Second, 10*time.Millisecond)
+
+	testutil.OnUiThread(t, app, func() { browser.setCollapsed("tank", true) })
+	require.NoError(t, store.Flush())
+
+	state.Current = state.Load(path)
+	restored := NewDatasetBrowser(tview.NewApplication())
+	assert.Equal(t, map[string]bool{"tank": true}, restored.collapsed)
+
+	// expanding is saved as well
+	state.Current = store
+	testutil.OnUiThread(t, app, func() { browser.setCollapsed("tank", false) })
+	require.NoError(t, store.Flush())
+	state.Current = state.Load(path)
+	assert.Empty(t, NewDatasetBrowser(tview.NewApplication()).collapsed)
+	state.Current = store
+}
+
+// hidePermissions hides the permissions column, so no permissions are read in the background (and outlive the test).
+func hidePermissions(browser *DatasetBrowserComponent) {
+	var columns []*table.Column
+	for _, column := range browser.tableContainer.GetColumnSpec() {
+		if column != columnPermissions {
+			columns = append(columns, column)
+		}
+	}
+	browser.tableContainer.SetActiveColumns(columns)
+}

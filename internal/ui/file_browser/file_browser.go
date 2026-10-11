@@ -27,6 +27,13 @@ import (
 	"github.com/rivo/tview"
 )
 
+const (
+	// selectionStateKey is the namespace of the selections of the folders in state.Current
+	selectionStateKey = "fileBrowser.selection"
+	// maxRememberedSelections is the number of folders whose selection is remembered between runs
+	maxRememberedSelections = 500
+)
+
 var (
 	columnSize = &table.Column{
 		Id:        0,
@@ -111,6 +118,7 @@ type FileBrowserComponent struct {
 
 	tableContainer *table.RowSelectionTable[data.FileBrowserEntry]
 
+	// selectionMemory remembers the selected entry of each folder, also between runs
 	selectionMemory *uiutil.SelectionMemory[data.FileBrowserEntry]
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
 	dialogPages *tview.Pages
@@ -126,7 +134,8 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 
 		application: application,
 
-		selectionMemory: uiutil.NewSelectionMemory[data.FileBrowserEntry](),
+		selectionMemory: uiutil.NewSelectionMemory(func(entry *data.FileBrowserEntry) string { return entry.Name }).
+			Persist(state.Current, selectionStateKey, maxRememberedSelections),
 	}
 
 	fileBrowser.diffLoader = uiutil.NewDebouncedLoader(application, func() {
@@ -419,9 +428,7 @@ func (fileBrowser *FileBrowserComponent) goUp() {
 
 func (fileBrowser *FileBrowserComponent) SetPathWithSelection(newPath string, newSelection string) {
 	// Remember the intended selection for the new path before triggering async refresh
-	parentEntryName := path2.Base(path2.Clean(newSelection))
-	fakeEntry := &data.FileBrowserEntry{Name: parentEntryName}
-	fileBrowser.selectionMemory.Remember(newPath, 0, fakeEntry)
+	fileBrowser.selectionMemory.RememberInfo(newPath, uiutil.SelectionInfo{Key: path2.Base(path2.Clean(newSelection))})
 
 	fileBrowser.SetPath(newPath, false)
 }
@@ -831,33 +838,10 @@ func (fileBrowser *FileBrowserComponent) restoreSelectionForPath() bool {
 		return false
 	}
 
-	var entryToSelect *data.FileBrowserEntry
-	if fileBrowser.isEmpty() {
-		entryToSelect = nil
-	} else {
-		entries := fileBrowser.GetEntries()
-		rememberedSelectionInfo := fileBrowser.getRememberedSelectionInfo(fileBrowser.path)
-		if rememberedSelectionInfo == nil {
-			if len(entries) > 0 {
-				entryToSelect = entries[0]
-			}
-		} else {
-			var index int
-			if rememberedSelectionInfo.Entry == nil {
-				fileBrowser.SelectHeader()
-				return true
-			} else {
-				index = slices.IndexFunc(entries, func(entry *data.FileBrowserEntry) bool {
-					return entry.Name == rememberedSelectionInfo.Entry.Name
-				})
-			}
-			if index < 0 {
-				closestIndex := util.Coerce(rememberedSelectionInfo.Index, 0, len(entries)-1)
-				entryToSelect = entries[closestIndex]
-			} else {
-				entryToSelect = entries[index]
-			}
-		}
+	entryToSelect, header := fileBrowser.selectionMemory.Restore(fileBrowser.path, fileBrowser.GetEntries())
+	if header {
+		fileBrowser.SelectHeader()
+		return true
 	}
 	fileBrowser.selectFileEntry(entryToSelect)
 	return true
@@ -876,10 +860,6 @@ func (fileBrowser *FileBrowserComponent) rememberSelectionInfoForCurrentPath() {
 		index := slices.Index(fileBrowser.GetEntries(), selectedEntry)
 		fileBrowser.selectionMemory.Remember(fileBrowser.path, index, selectedEntry)
 	}
-}
-
-func (fileBrowser *FileBrowserComponent) getRememberedSelectionInfo(path string) *uiutil.SelectionInfo[data.FileBrowserEntry] {
-	return fileBrowser.selectionMemory.Get(path)
 }
 
 func (fileBrowser *FileBrowserComponent) GetSelection() *data.FileBrowserEntry {

@@ -15,14 +15,14 @@ import (
 	"github.com/oklog/run"
 )
 
-func RunApplication(path string) {
+func RunApplication(start ui.Start) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	var g run.Group
 	addSignalHandlerActor(&g, cancel)
 	profiling.AddActor(&g, ctx)
-	ui.AddActor(&g, ctx, path)
+	ui.AddActor(&g, ctx, start)
 	zfs.AddZpoolEventWatcherActor(&g, ctx)
 
 	err := g.Run()

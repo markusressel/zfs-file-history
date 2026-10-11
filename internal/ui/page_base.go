@@ -31,6 +31,9 @@ type basePage struct {
 	// pageShortcuts returns the shortcuts of the page itself (nil: none), shown behind the ones of the focused
 	// component and before the global ones
 	pageShortcuts func() []shortcut_helper.ShortcutEntry
+	// onFocusChanged is called with the title of the component that got the focus while the page is in front, see
+	// setOnFocusChanged
+	onFocusChanged func(title string)
 }
 
 func (page *basePage) SetPages(pages *tview.Pages) {
@@ -50,9 +53,30 @@ func (page *basePage) showStatusMessage(status *status_message.StatusMessage) {
 	page.messages.Show(status)
 }
 
-// updateShortcutMap shows the shortcuts of the component, the page and the global ones.
+// updateShortcutMap shows the shortcuts of the component, the page and the global ones. Called whenever the focus
+// changes, so it reports the focused component as well, see setOnFocusChanged.
 func (page *basePage) updateShortcutMap(component FocusableUiComponent) {
 	page.shortcutMap.SetEntries(page.shortcutsOf(component))
+	if page.onFocusChanged != nil && page.isInFront() && component.HasFocus() {
+		page.onFocusChanged(page.componentTitles[component])
+	}
+}
+
+// setOnFocusChanged sets the function called with the title of the component that got the focus (see
+// componentTitles), e.g. to restore it on the next start with focusComponent.
+func (page *basePage) setOnFocusChanged(onFocusChanged func(title string)) {
+	page.onFocusChanged = onFocusChanged
+}
+
+// focusComponent focuses the component with the given title (see componentTitles), if there is one.
+func (page *basePage) focusComponent(title string) {
+	for _, component := range page.focusableComponents() {
+		if title != "" && page.componentTitles[component] == title {
+			component.Focus()
+			page.updateShortcutMap(component)
+			return
+		}
+	}
 }
 
 // shortcutsOf returns the shortcuts shown while the component has the focus: its own, the page's and the global ones.

@@ -9,10 +9,14 @@ import (
 	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
+
+// fresh starts without restoring the last session, see ui.Start.RestoreSession
+var fresh bool
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -31,23 +35,25 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		var path string
-		if len(args) > 0 {
-			path = args[0]
-			path, err = filepath.Abs(path)
+		currentWorkingDirectory, err := os.Getwd()
+		if err != nil {
+			logging.Fatal("Couldn't find current working dir: %v", err)
+		}
+		start := ui.Start{
+			Path:           currentWorkingDirectory,
+			LaunchDir:      currentWorkingDirectory,
+			PathGiven:      len(args) > 0,
+			RestoreSession: configuration.CurrentConfig.RestoreSession && !fresh,
+		}
+		if start.PathGiven {
+			start.Path, err = filepath.Abs(args[0])
 			if err != nil {
 				logging.Fatal("Couldn't resolve path: %v", err)
 			}
-		} else {
-			currentWorkingDirectory, err := os.Getwd()
-			if err != nil {
-				logging.Fatal("Couldn't find current working dir: %v", err)
-			}
-			path = currentWorkingDirectory
 		}
 
 		state.Init()
-		internal.RunApplication(path)
+		internal.RunApplication(start)
 	},
 }
 
@@ -56,6 +62,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&global.NoColor, "no-color", "", false, "Disable all terminal output coloration")
 	rootCmd.PersistentFlags().BoolVarP(&global.NoStyle, "no-style", "", false, "Disable all terminal output styling")
 	rootCmd.PersistentFlags().BoolVarP(&global.Verbose, "verbose", "v", false, "More verbose output")
+	rootCmd.Flags().BoolVarP(&fresh, "fresh", "", false, "Start in the given path or working directory, without restoring the last session")
 }
 
 func setupUi() {

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
@@ -89,4 +90,53 @@ func TestFileBrowser_RemembersSelectionWhenEnteringADirectoryAgain(t *testing.T)
 	s = getState()
 	require.Equal(t, selectedInChild, s.selected, "remembered selection restored (state: %+v)", s)
 	require.Equal(t, 10, s.index)
+}
+
+// The selections of the folders are remembered between runs.
+func TestFileBrowser_RemembersSelectionBetweenRuns(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a", "b", "c"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644))
+	}
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Cleanup(func() { state.Current = nil })
+
+	// opens dir in a new browser, like after a restart, and returns it once its entries are shown
+	open := func() (*tview.Application, *FileBrowserComponent, tcell.SimulationScreen) {
+		state.Current = state.Load(statePath)
+		app := tview.NewApplication()
+		screen := tcell.NewSimulationScreen("UTF-8")
+		app.SetScreen(screen)
+		fileBrowser := NewFileBrowser(app)
+		app.SetRoot(fileBrowser.GetLayout(), true)
+		go func() { _ = app.Run() }()
+		t.Cleanup(app.Stop)
+		testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })
+		require.Eventually(t, func() bool {
+			var count int
+			testutil.OnUiThread(t, app, func() { count = len(fileBrowser.tableContainer.GetEntries()) })
+			return count == 3
+		}, 5*time.Second, 20*time.Millisecond)
+		return app, fileBrowser, screen
+	}
+	selected := func(app *tview.Application, fileBrowser *FileBrowserComponent) string {
+		var name string
+		testutil.OnUiThread(t, app, func() {
+			if selection := fileBrowser.GetSelection(); selection != nil {
+				name = selection.Name
+			}
+		})
+		return name
+	}
+
+	app, fileBrowser, screen := open()
+	require.Eventually(t, func() bool { return selected(app, fileBrowser) == "a" }, 5*time.Second, 20*time.Millisecond)
+	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
+	require.Eventually(t, func() bool { return selected(app, fileBrowser) == "c" }, 5*time.Second, 20*time.Millisecond)
+	app.Stop()
+	require.NoError(t, state.Current.Flush())
+
+	app, fileBrowser, _ = open()
+	require.Eventually(t, func() bool { return selected(app, fileBrowser) == "c" }, 5*time.Second, 20*time.Millisecond)
 }
