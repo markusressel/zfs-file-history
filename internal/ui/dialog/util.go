@@ -249,6 +249,7 @@ func createResizingModalWithFrame(title string, content tview.Primitive, sizeCon
 func createOptionTable(application *tview.Application, options []*DialogOption, onSelect func(option *DialogOption)) *tview.Table {
 	optionTable := tview.NewTable()
 	optionTable.SetSelectable(true, false)
+	uiutil.IgnoreClicksBelowRows(optionTable)
 	optionTable.Select(0, 0)
 
 	tableRow := 0

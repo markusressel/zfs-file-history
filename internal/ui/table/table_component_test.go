@@ -924,6 +924,121 @@ func TestTable_Resort(t *testing.T) {
 	assert.Zero(t, selectionChanges, "the selection did not change")
 }
 
+// Regression: a click into the empty space below the rows selected the header row.
+func TestTable_ClickBelowTheRowsKeepsTheSelection(t *testing.T) {
+	table, entries, _, _ := newFilterTestTable()
+	table.table.SetRect(0, 0, 40, 20)
+	table.Select(entries[1])
+
+	click := tcell.NewEventMouse(5, 15, tcell.ButtonNone, tcell.ModNone)
+	table.table.MouseHandler()(tview.MouseLeftClick, click, func(tview.Primitive) {})
+
+	assert.Equal(t, entries[1], table.GetSelectedEntry())
+}
+
+// pressAndClick presses and releases the mouse button at the position, like the application does for a click.
+func pressAndClick(table *RowSelectionTable[mockEntry], x int, y int) {
+	handler := table.table.MouseHandler()
+	focus := func(p tview.Primitive) { p.Focus(nil) }
+	handler(tview.MouseLeftDown, tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone), focus)
+	handler(tview.MouseLeftUp, tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone), focus)
+	handler(tview.MouseLeftClick, tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone), focus)
+}
+
+// Clicking the header: the first click selects it, the next ones sort by the clicked column, or toggle the
+// direction of the sort column.
+func TestTable_HeaderClicks(t *testing.T) {
+	table, cols := newSortHighlightTestTable()
+	var layoutChanges int
+	table.SetColumnLayoutChangedCallback(func(ColumnLayout) { layoutChanges++ })
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 10)
+	table.table.SetRect(0, 0, 40, 10)
+	table.table.Draw(screen)
+	col0X, headerY, found := findText(screen, "Col0")
+	require.True(t, found)
+	table.Select(table.GetEntries()[0])
+	require.NotNil(t, table.GetSelectedEntry())
+
+	// not focused, a row selected: selects the header, without sorting
+	pressAndClick(table, col0X, headerY)
+	assert.Nil(t, table.GetSelectedEntry(), "the header is selected")
+	assert.True(t, table.IsSortedBy(cols[1]))
+	assert.Zero(t, layoutChanges)
+
+	// again: sorts by the clicked column, in the same direction
+	pressAndClick(table, col0X, headerY)
+	assert.True(t, table.IsSortedBy(cols[0]))
+	assert.False(t, table.sortInverted)
+	assert.Nil(t, table.GetSelectedEntry(), "the header stays selected")
+	assert.Equal(t, 1, layoutChanges, "saved")
+
+	// the sort column again: the direction is toggled
+	pressAndClick(table, col0X, headerY)
+	assert.True(t, table.IsSortedBy(cols[0]))
+	assert.True(t, table.sortInverted)
+	// the sort indicator moved the column
+	table.table.Draw(screen)
+	col1X, _, _ := findText(screen, "Col1")
+	pressAndClick(table, col1X, headerY)
+	assert.True(t, table.IsSortedBy(cols[1]))
+	assert.True(t, table.sortInverted, "the direction is kept")
+
+	// next to the columns: nothing
+	table.table.Draw(screen)
+	pressAndClick(table, 38, headerY)
+	assert.True(t, table.IsSortedBy(cols[1]))
+	assert.True(t, table.sortInverted)
+	assert.Nil(t, table.GetSelectedEntry())
+
+	// a row: selected
+	pressAndClick(table, col0X, headerY+1)
+	assert.NotNil(t, table.GetSelectedEntry())
+}
+
+// The header is selected, but another pane is focused: the click focuses the table, without sorting.
+func TestTable_HeaderClickWhileNotFocused(t *testing.T) {
+	table, cols := newSortHighlightTestTable()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 10)
+	table.table.SetRect(0, 0, 40, 10)
+	table.table.Draw(screen)
+	col0X, headerY, _ := findText(screen, "Col0")
+	table.SelectHeader()
+	table.table.Blur()
+
+	pressAndClick(table, col0X, headerY)
+	assert.True(t, table.IsSortedBy(cols[1]))
+	assert.True(t, table.table.HasFocus())
+}
+
+// Regression: a click into the empty space to the right of a row selected it.
+func TestTable_ClickBesideTheColumnsKeepsTheSelection(t *testing.T) {
+	table, entries, _, _ := newFilterTestTable()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 10)
+	table.table.SetRect(0, 0, 40, 10)
+	table.table.Draw(screen)
+	table.Select(entries[1])
+
+	click := func(x int, y int) {
+		event := tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone)
+		table.table.MouseHandler()(tview.MouseLeftClick, event, func(tview.Primitive) {})
+	}
+	// the names are at most 9 characters wide
+	click(30, 3)
+	assert.Equal(t, entries[1], table.GetSelectedEntry())
+	click(30, 0)
+	assert.Equal(t, entries[1], table.GetSelectedEntry(), "the header is not selected either")
+
+	// on the name: selected
+	click(2, 3)
+	assert.Equal(t, table.GetEntries()[2], table.GetSelectedEntry())
+}
+
 func TestTable_ContentSize(t *testing.T) {
 	table, entries, _ := newWideTestTable(4)
 	table.Select(entries[0])

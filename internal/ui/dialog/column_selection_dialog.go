@@ -98,6 +98,8 @@ func (d *ColumnSelectionDialog) createLayout() {
 	d.availableTable.SetBorder(true)
 	d.availableTable.SetTitle(" Available ")
 	d.availableTable.SetTitleAlign(tview.AlignLeft)
+	util.IgnoreClicksBelowRows(d.activeTable)
+	util.IgnoreClicksBelowRows(d.availableTable)
 
 	d.refreshTables()
 
