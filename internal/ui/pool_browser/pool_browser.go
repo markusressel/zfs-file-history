@@ -377,6 +377,12 @@ func (poolBrowser *PoolBrowserComponent) GetLayout() *tview.Pages {
 	return poolBrowser.layout
 }
 
+// ContentSize returns the size needed to show all pools and columns, see table.RowSelectionTable.ContentSize. Must
+// be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) ContentSize() (width int, height int) {
+	return poolBrowser.tableContainer.ContentSize()
+}
+
 // GetSelectedPool returns the selected pool, or nil if none is selected.
 func (poolBrowser *PoolBrowserComponent) GetSelectedPool() *zfs.PoolListEntry {
 	return poolBrowser.tableContainer.GetSelectedEntry()

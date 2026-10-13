@@ -114,6 +114,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	lastSyncHeight int
 	resizeTimer    *time.Timer
+
+	// contentWidth is the width of all columns, see ContentSize. Only accessed on the UI thread.
+	contentWidth int
 }
 
 func NewTableContainer[T RowSelectionTableEntry](
@@ -650,6 +653,10 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 			table.SetCell(row+1, column, cell)
 		}
 	}
+	if c.columnOffset == 0 {
+		// not while scrolled horizontally: the hidden columns are not measured
+		c.contentWidth = c.columnsWidth()
+	}
 	c.syncScrollbar()
 }
 
@@ -696,10 +703,27 @@ func (c *RowSelectionTable[T]) scrollColumns(delta int) {
 	c.updateTableContents()
 }
 
-// isCutOffOnTheRight returns whether the displayed columns are wider than the table, like tview measures them
-// (the widest cell of each column, one space between columns).
+// isCutOffOnTheRight returns whether the displayed columns are wider than the table.
 func (c *RowSelectionTable[T]) isCutOffOnTheRight() bool {
 	_, _, width, _ := c.table.GetInnerRect()
+	return c.columnsWidth() > width
+}
+
+// ContentSize returns the size the table needs to show all of its rows and columns, including its border, padding
+// and scrollbar. The width does not change while it is scrolled horizontally. The height counts all entries,
+// including the ones hidden by the filter, so filtering does not resize it; at least one row is counted for the
+// placeholder. Must be called on the UI thread.
+func (c *RowSelectionTable[T]) ContentSize() (width int, height int) {
+	// border, padding and scrollbar
+	width = c.contentWidth + 2 + 2 + 1
+	// border and header
+	height = max(len(c.allEntries), 1) + 2 + 1
+	return width, height
+}
+
+// columnsWidth returns the width of the displayed columns, like tview measures them (the widest cell of each
+// column, one space between columns).
+func (c *RowSelectionTable[T]) columnsWidth() int {
 	tableWidth := -1
 	for column := 0; column < c.table.GetColumnCount(); column++ {
 		columnWidth := 0
@@ -713,7 +737,7 @@ func (c *RowSelectionTable[T]) isCutOffOnTheRight() bool {
 		}
 		tableWidth += columnWidth + 1
 	}
-	return tableWidth > width
+	return max(tableWidth, 0)
 }
 
 // EmbedInFrame removes the table's own border (and title), for a table that fills a frame with its own border,

@@ -27,6 +27,13 @@ type DatasetPage struct {
 	wasInitialized bool
 }
 
+const (
+	// datasetInfoMaxHeightPercent and datasetInfoMaxWidthPercent are the maximum shares of the dataset info, when it
+	// fits its content: the snapshots below it, and the datasets next to it, keep the rest
+	datasetInfoMaxHeightPercent = 60
+	datasetInfoMaxWidthPercent  = 40
+)
+
 func NewDatasetPage(application *tview.Application, messages *status_message.Center, path string) *DatasetPage {
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
@@ -146,8 +153,26 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 	datasetPage.header = NewApplicationHeader(datasetPage.application, datasetPage.messages)
 	datasetPageLayout.AddItem(datasetPage.header.layout, 1, 0, false)
 
-	datasetPage.infoSplit = datasetPage.newSplit(datasetPage.datasetInfo.GetLayout(), datasetPage.snapshotBrowser.GetLayout(), 1, 2, true)
-	datasetPage.split = datasetPage.newSplit(datasetPage.datasetBrowser.GetLayout(), datasetPage.infoSplit, 2, 1, false)
+	// The info fits its content (so it is not cut off), the snapshots get the rest of the height. The size of the
+	// info differs between datasets (e.g. encrypted ones have more properties), so it only grows: the boundaries do
+	// not move while moving through the datasets.
+	infoWidth, infoHeight := 0, 0
+	datasetPage.infoSplit = datasetPage.newSplit(datasetPage.datasetInfo.GetLayout(), datasetPage.snapshotBrowser.GetLayout(), 1, 2, true).
+		SetAutoSize(func(size int) int {
+			_, height := datasetPage.datasetInfo.ContentSize()
+			infoHeight = max(infoHeight, height)
+			return uiutil.FitContent(size, infoHeight, datasetInfoMaxHeightPercent)
+		})
+	// the info and the snapshots get at least a third of the width, more if the info needs it
+	datasetPage.split = datasetPage.newSplit(datasetPage.datasetBrowser.GetLayout(), datasetPage.infoSplit, 2, 1, false).
+		SetAutoSize(func(size int) int {
+			width, _ := datasetPage.datasetInfo.ContentSize()
+			infoWidth = max(infoWidth, width)
+			if infoWidth == 0 {
+				return 0
+			}
+			return size - max(size/3, uiutil.FitContent(size, infoWidth, datasetInfoMaxWidthPercent))
+		})
 	datasetPageLayout.AddItem(datasetPage.split, 0, 1, true)
 	captureSplitDrags(datasetPageLayout, datasetPage.split, datasetPage.infoSplit)
 

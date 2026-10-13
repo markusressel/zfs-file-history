@@ -404,3 +404,9 @@ func (datasetInfo *DatasetInfoComponent) SetBorderColor(color tcell.Color) {
 		datasetInfo.container.SetBorderColor(color)
 	}
 }
+
+// ContentSize returns the size needed to show all of the text, including the border. Must be called on the UI
+// thread.
+func (datasetInfo *DatasetInfoComponent) ContentSize() (width int, height int) {
+	return uiutil.TextViewContentSize(datasetInfo.textView)
+}

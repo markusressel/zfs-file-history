@@ -254,3 +254,9 @@ func (poolStatus *PoolStatusComponent) GetLayout() *uiutil.LoadingContainer {
 func (poolStatus *PoolStatusComponent) IsLoading() bool {
 	return poolStatus.loader.IsLoading()
 }
+
+// ContentSize returns the size needed to show all of the text, including the border. Must be called on the UI
+// thread.
+func (poolStatus *PoolStatusComponent) ContentSize() (width int, height int) {
+	return uiutil.TextViewContentSize(poolStatus.textView)
+}
