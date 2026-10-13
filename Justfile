@@ -11,6 +11,8 @@ PACKAGE := "github.com/markusressel/" + NAME
 GIT_REV := `git rev-parse --short HEAD`
 DATE := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
 VERSION := "2.1.0"
+# agg renders the demo as a GIF, see demo-gif
+AGG := "agg"
 
 # Run all tests
 test:
@@ -59,3 +61,15 @@ deploy: clean build
 clean:
     go clean
     rm -f {{OUTPUT_BIN}}
+# Record the demo (scripts/demo/driver.py) with asciinema to bin/demo.cast; run it while a scrub is running
+demo-record: build
+    asciinema rec --headless --overwrite --window-size 179x42 --idle-time-limit 2 --quiet \
+        --command "python3 scripts/demo/driver.py {{OUTPUT_BIN}} ." bin/demo.cast
+
+# Render bin/demo.cast as screenshots/demo.gif with agg (https://github.com/asciinema/agg, a release binary on the PATH)
+demo-gif:
+    python3 scripts/demo/prepare_cast.py bin/demo.cast bin/demo-gif.cast
+    {{AGG}} --font-size 14 --idle-time-limit 2 --fps-cap 15 bin/demo-gif.cast screenshots/demo.gif
+
+# Record the demo and render it as screenshots/demo.gif
+demo: demo-record demo-gif

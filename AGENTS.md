@@ -7,6 +7,8 @@ of the code.
 
 - Go with cgo: building needs the libzfs headers (e.g. `libzfslinux-dev` on Debian/Ubuntu, see the CI workflow).
 - `just build`, `just test`, `just coverage`. Or directly: `go build ./...`, `go vet ./...`, `go test ./...`.
+- `just demo` records the demo of the README (`screenshots/demo.gif`) on this system: `scripts/demo/driver.py` types
+  the keys while asciinema records, agg renders the GIF. Run it while a scrub runs, so the activity panel is shown.
 - Before committing: `gofmt -l .` is empty, `go vet ./...` and `go test ./...` pass, the touched packages pass with
   `-race`. CI also runs codespell (see `.codespellignore`).
 - `TestOverviewKey` in `internal/ui` fails with `-race` (a test writes `state.Current` while the UI runs). Known, not
