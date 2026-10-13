@@ -10,7 +10,7 @@ OUTPUT_BIN := "bin/" + NAME
 PACKAGE := "github.com/markusressel/" + NAME
 GIT_REV := `git rev-parse --short HEAD`
 DATE := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-VERSION := "2.1.0"
+VERSION := "2.2.0"
 # agg renders the demo as a GIF, see demo-gif
 AGG := "agg"
 # the colors of the GIF: background, foreground and the 16 palette colors of kitty (agg defaults to dracula, which has
