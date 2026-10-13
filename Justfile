@@ -13,6 +13,9 @@ DATE := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
 VERSION := "2.1.0"
 # agg renders the demo as a GIF, see demo-gif
 AGG := "agg"
+# the colors of the GIF: background, foreground and the 16 palette colors of kitty (agg defaults to dracula, which has
+# a blue-gray background)
+AGG_THEME := "000000,dddddd,000000,cc0403,19cb00,cecb00,0d73cc,cb1ed1,0dcdcd,dddddd,767676,f2201f,23fd00,fffd00,1a8fff,fd28ff,14ffff,ffffff"
 
 # Run all tests
 test:
@@ -69,7 +72,7 @@ demo-record: build
 # Render bin/demo.cast as screenshots/demo.gif with agg (https://github.com/asciinema/agg, a release binary on the PATH)
 demo-gif:
     python3 scripts/demo/prepare_cast.py bin/demo.cast bin/demo-gif.cast
-    {{AGG}} --font-size 14 --idle-time-limit 2 --fps-cap 15 bin/demo-gif.cast screenshots/demo.gif
+    {{AGG}} --theme {{AGG_THEME}} --font-size 14 --idle-time-limit 2 --fps-cap 15 bin/demo-gif.cast screenshots/demo.gif
 
 # Record the demo and render it as screenshots/demo.gif
 demo: demo-record demo-gif
