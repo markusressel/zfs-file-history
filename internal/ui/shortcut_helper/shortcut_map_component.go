@@ -2,11 +2,11 @@ package shortcut_helper
 
 import (
 	"cmp"
+	"math"
 	"os"
 	"slices"
 	"strings"
 	"zfs-file-history/internal/ui/theme"
-	"zfs-file-history/internal/ui/txwidgets"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -99,30 +99,16 @@ func sortedByGroup(entries []ShortcutEntry) []ShortcutEntry {
 	return sorted
 }
 
-// formatEntries returns the text of the entries, styled or (for calculating its size) plain.
-func formatEntries(entries []ShortcutEntry, styled bool) string {
+// formatEntries returns the plain text of the entries, as shown in one line.
+func formatEntries(entries []ShortcutEntry) string {
 	var text strings.Builder
-	sorted := sortedByGroup(entries)
-	for i, entry := range sorted {
+	for i, item := range layoutEntries(entries, math.MaxInt) {
 		if i > 0 {
-			text.WriteString("  ")
-			if sorted[i-1].Group != entry.Group {
-				if styled {
-					text.WriteString(txwidgets.Span(theme.Colors.ShortcutMap.Separator, "%s", groupSeparator))
-				} else {
-					text.WriteString(groupSeparator)
-				}
-				text.WriteString("  ")
-			}
+			text.WriteString(strings.Repeat(" ", entryGap))
 		}
-		// alternative keys joined with a non-breaking vertical line, so an entry is never wrapped
-		keys := "[" + strings.Join(entry.KeyCombo, "\u01c0") + "]"
-		name := strings.ReplaceAll(entry.Name, " ", "\u00a0")
-		if styled {
-			keys = txwidgets.Span(entry.Group.KeyColor(), "%s", keys)
-			name = txwidgets.Span(theme.Colors.ShortcutMap.Name, "%s", name)
+		for _, segment := range item.segments {
+			text.WriteString(segment.text)
 		}
-		text.WriteString(keys + ":\u00a0" + name)
 	}
 	return text.String()
 }
@@ -130,9 +116,9 @@ func formatEntries(entries []ShortcutEntry, styled bool) string {
 type ShortcutMapComponent struct {
 	application *tview.Application
 
-	layout                  *tview.Flex
-	shortcutEntriesTextView *tview.TextView
-	onHeightChanged         func(height int)
+	layout          *tview.Flex
+	bar             *shortcutBar
+	onHeightChanged func(height int)
 	// collapsible maps are hidden with ToggleShortcuts, see SetCollapsible
 	collapsible bool
 	// alternativeEntries returns the entries that may be shown instead of the current ones, see
@@ -155,14 +141,10 @@ func NewShortcutMap(application *tview.Application) *ShortcutMapComponent {
 func (sm *ShortcutMapComponent) createLayout() {
 	layout := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	shortcutEntriesTextView := tview.NewTextView().
-		SetDynamicColors(true)
-	shortcutEntriesTextView.SetBorderPadding(0, 0, 1, 1)
-	shortcutEntriesTextView.SetTextAlign(tview.AlignLeft)
-
-	// Set draw func to monitor and dynamically resize height on line wraps
-	shortcutEntriesTextView.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		lines := sm.CalculateHeightForWidth(width)
+	bar := newShortcutBar(sm.application)
+	// resizes the map when its lines wrap differently, e.g. after the terminal was resized
+	bar.beforeDraw = func(width int, height int) {
+		lines := sm.CalculateHeightForWidth(width + 2)
 		if height != lines {
 			if sm.onHeightChanged != nil {
 				go func() {
@@ -174,12 +156,11 @@ func (sm *ShortcutMapComponent) createLayout() {
 				}()
 			}
 		}
-		return x, y, width, height
-	})
+	}
 
-	layout.AddItem(shortcutEntriesTextView, 0, 1, false)
+	layout.AddItem(bar, 0, 1, false)
 
-	sm.shortcutEntriesTextView = shortcutEntriesTextView
+	sm.bar = bar
 	sm.layout = layout
 }
 
@@ -194,16 +175,23 @@ func (sm *ShortcutMapComponent) SetAlternativeEntries(alternatives func() [][]Sh
 	sm.alternativeEntries = alternatives
 }
 
+// SetEnabledFunc sets a function that returns whether the entries can be clicked, e.g. not while a dialog is
+// shown above the map.
+func (sm *ShortcutMapComponent) SetEnabledFunc(enabled func() bool) *ShortcutMapComponent {
+	sm.bar.enabled = enabled
+	return sm
+}
+
 func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 	sm.ShortCutEntries = entries
 	if sm.isHidden() {
-		sm.shortcutEntriesTextView.SetText("")
+		sm.bar.setEntries(nil)
 		if sm.onHeightChanged != nil {
 			sm.onHeightChanged(0)
 		}
 		return
 	}
-	sm.shortcutEntriesTextView.SetText(formatEntries(entries, true))
+	sm.bar.setEntries(entries)
 	if sm.onHeightChanged != nil {
 		lines := sm.CalculateHeightFromTerminal()
 		sm.onHeightChanged(lines)
@@ -211,7 +199,7 @@ func (sm *ShortcutMapComponent) SetEntries(entries []ShortcutEntry) {
 }
 
 func (sm *ShortcutMapComponent) Clear() {
-	sm.shortcutEntriesTextView.SetText("")
+	sm.bar.setEntries(nil)
 	if sm.onHeightChanged != nil {
 		height := 1
 		if sm.isHidden() {
@@ -255,37 +243,7 @@ func (sm *ShortcutMapComponent) CalculateHeightForWidth(width int) int {
 	return lines
 }
 
-// linesForWidth returns the number of lines the entries need when wrapped at availableWidth, at least 1.
+// linesForWidth returns the number of lines the entries need in availableWidth, at least 1.
 func linesForWidth(entries []ShortcutEntry, availableWidth int) int {
-	visibleText := formatEntries(entries, false)
-	if len(visibleText) == 0 {
-		return 1
-	}
-
-	runes := []rune(visibleText)
-	lines := 1
-	currentLineLength := 0
-
-	i := 0
-	for i < len(runes) {
-		if runes[i] == ' ' {
-			currentLineLength++
-			i++
-		} else {
-			wordStart := i
-			for i < len(runes) && runes[i] != ' ' {
-				i++
-			}
-			wordWidth := i - wordStart
-
-			if currentLineLength+wordWidth > availableWidth {
-				lines++
-				currentLineLength = wordWidth
-			} else {
-				currentLineLength += wordWidth
-			}
-		}
-	}
-
-	return lines
+	return lineCount(layoutEntries(entries, availableWidth))
 }

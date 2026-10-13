@@ -146,7 +146,7 @@ func NewFileHistoryOverlay(
 	overlay.diffFooter = uiutil.NewBorderFooter(overlay.diffView.Box)
 
 	// hidden with ? (see shortcut_helper.ToggleShortcuts)
-	overlay.shortcutHelp = shortcut_helper.NewShortcutMap(application).SetCollapsible()
+	overlay.shortcutHelp = shortcut_helper.NewShortcutMap(application).SetCollapsible().SetEnabledFunc(overlay.isMainPageInFront)
 	overlay.updateShortcuts()
 
 	overlay.layout = overlay.createLayout()

@@ -2,12 +2,13 @@ package shortcut_helper
 
 import (
 	"testing"
+	"time"
 	"zfs-file-history/internal/ui/theme"
-	"zfs-file-history/internal/ui/txwidgets"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewShortcutMap(t *testing.T) {
@@ -16,7 +17,7 @@ func TestNewShortcutMap(t *testing.T) {
 
 	assert.NotNil(t, sm)
 	assert.NotNil(t, sm.GetLayout())
-	assert.NotNil(t, sm.shortcutEntriesTextView)
+	assert.NotNil(t, sm.bar)
 }
 
 func TestSetOnHeightChanged(t *testing.T) {
@@ -55,14 +56,14 @@ func TestSetEntriesAndClear(t *testing.T) {
 
 	assert.Equal(t, entries, sm.ShortCutEntries)
 
-	text := sm.shortcutEntriesTextView.GetText(false)
+	text := formatEntries(sm.bar.entries)
 	// Verify formatting contains non-breaking spaces (\u00a0) inside cycle focus name
 	assert.Contains(t, text, "Cycle\u00a0focus")
 	// Verify multiple combos joined with non-breaking dental click (\u01c0)
 	assert.Contains(t, text, "⭾\u01c0shift+⭾")
 
 	sm.Clear()
-	assert.Empty(t, sm.shortcutEntriesTextView.GetText(false))
+	assert.Empty(t, sm.bar.entries)
 }
 
 func TestCalculateHeightForWidth(t *testing.T) {
@@ -78,21 +79,25 @@ func TestCalculateHeightForWidth(t *testing.T) {
 		{KeyCombo: []string{"ctrl+q"}, Name: "Quit"},
 	}
 
-	// "[ctrl+q]:\u00a0Quit  " -> trimmed: "[ctrl+q]:\u00a0Quit" (14 runes)
+	// "[ctrl+q]:\u00a0Quit" (14 characters)
 	// availableWidth = 30 - 2 = 28 -> fits (1 line)
-	// availableWidth = 10 - 2 = 8 -> wraps (2 lines because word length 14 > 8)
+	// availableWidth = 10 - 2 = 8 -> cut off, entries are not wrapped (1 line)
 	assert.Equal(t, 1, sm.CalculateHeightForWidth(30))
-	assert.Equal(t, 2, sm.CalculateHeightForWidth(10))
+	assert.Equal(t, 1, sm.CalculateHeightForWidth(10))
 
 	// Multi-combo entry with Unicode symbols
 	sm.ShortCutEntries = []ShortcutEntry{
 		{KeyCombo: []string{"⭾", "shift+⭾"}, Name: "Cycle focus"},
 	}
-	// "[⭾\u01c0shift+⭾]:\u00a0Cycle\u00a0focus  " -> trimmed length: 24 runes (including multi-byte symbols counted as 1)
+	// "[⭾\u01c0shift+⭾]:\u00a0Cycle\u00a0focus" (24 characters)
 	// availableWidth = 30 - 2 = 28 -> fits (1 line)
-	// availableWidth = 20 - 2 = 18 -> wraps (2 lines because word length 24 > 18)
+	// availableWidth = 20 - 2 = 18 -> cut off (1 line)
 	assert.Equal(t, 1, sm.CalculateHeightForWidth(30))
-	assert.Equal(t, 2, sm.CalculateHeightForWidth(20))
+	assert.Equal(t, 1, sm.CalculateHeightForWidth(20))
+	// a second entry moves to the next line as a whole
+	sm.ShortCutEntries = append(sm.ShortCutEntries, ShortcutEntry{KeyCombo: []string{"q"}, Name: "Quit"})
+	assert.Equal(t, 1, sm.CalculateHeightForWidth(24+2+9+2))
+	assert.Equal(t, 2, sm.CalculateHeightForWidth(24+2+9+2-1))
 
 	// Long list of entries
 	sm.ShortCutEntries = []ShortcutEntry{
@@ -123,23 +128,28 @@ func TestCalculateHeightFromTerminal(t *testing.T) {
 	assert.GreaterOrEqual(t, height, 1)
 }
 
-func TestDrawFuncHeightResize(t *testing.T) {
+// Drawing in a width the entries wrap differently in reports the new height.
+func TestDrawReportsHeightChanges(t *testing.T) {
 	app := tview.NewApplication()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	app.SetScreen(screen)
+	go func() { _ = app.Run() }()
+	t.Cleanup(app.Stop)
 	sm := NewShortcutMap(app)
+	heights := make(chan int, 10)
+	sm.SetOnHeightChanged(func(height int) { heights <- height })
+	sm.SetEntries([]ShortcutEntry{{KeyCombo: []string{"ctrl+q"}, Name: "Quit"}, {KeyCombo: []string{"q"}, Name: "Other"}})
+	<-heights
 
-	sm.SetOnHeightChanged(func(height int) {
-		t.Logf("Height changed to %d", height)
-	})
-
-	sm.ShortCutEntries = []ShortcutEntry{
-		{KeyCombo: []string{"ctrl+q"}, Name: "Quit"},
+	sm.GetLayout().SetRect(0, 0, 20, 1)
+	sm.GetLayout().Draw(screen)
+	select {
+	case height := <-heights:
+		assert.Equal(t, 2, height)
+	case <-time.After(2 * time.Second):
+		t.Fatal("no height reported")
 	}
-
-	drawFunc := sm.shortcutEntriesTextView.GetDrawFunc()
-	assert.NotNil(t, drawFunc)
-
-	// Invoke the DrawFunc to trigger size verification logic
-	drawFunc(nil, 0, 0, 8, 1)
 }
 
 func TestFormatEntriesGroupsShortcuts(t *testing.T) {
@@ -153,21 +163,24 @@ func TestFormatEntriesGroupsShortcuts(t *testing.T) {
 
 	// ordered by group (stable within a group), groups separated by a line
 	assert.Equal(t,
-		"[h]: History  [r]: Restore file  │  [F2]: Columns  │  [↑ǀ↓]: Move  │  [q]: Quit",
-		formatEntries(entries, false))
-	assert.Equal(t, "[h]: History", formatEntries(entries[2:3], false), "no separator for a single group")
+		"[h]:\u00a0History  [r]:\u00a0Restore\u00a0file  │  [F2]:\u00a0Columns  │  [↑ǀ↓]:\u00a0Move  │  [q]:\u00a0Quit",
+		formatEntries(entries))
+	assert.Equal(t, "[h]:\u00a0History", formatEntries(entries[2:3]), "no separator for a single group")
 
-	// the keys of each group have their own color, the shown text is the same
-	styled := formatEntries(entries, true)
+	// the keys of each group have their own color
+	colors := map[tcell.Color]bool{}
+	for _, item := range layoutEntries(entries, 200) {
+		for _, segment := range item.segments {
+			colors[segment.color] = true
+		}
+	}
 	for _, color := range []tcell.Color{
 		theme.Colors.ShortcutMap.KeyCombo, theme.Colors.ShortcutMap.ViewKeyCombo,
 		theme.Colors.ShortcutMap.NavigationKeyCombo, theme.Colors.ShortcutMap.GlobalKeyCombo,
-		theme.Colors.ShortcutMap.Separator,
+		theme.Colors.ShortcutMap.Separator, theme.Colors.ShortcutMap.Name,
 	} {
-		assert.Contains(t, styled, txwidgets.ColorTag(color))
+		assert.True(t, colors[color], "%v", color)
 	}
-	view := tview.NewTextView().SetDynamicColors(true).SetText(styled)
-	assert.Equal(t, formatEntries(entries, false), view.GetText(true))
 	assert.Equal(t, entries[0].Name, "Quit", "the entries are not reordered in place")
 }
 
@@ -186,7 +199,7 @@ func TestMenuOnlyEntriesAreNotShown(t *testing.T) {
 		{KeyCombo: []string{"F2"}, Name: "Columns", Group: GroupView, MenuOnly: true},
 		{KeyCombo: []string{"q"}, Name: "Quit", Group: GroupGlobal},
 	}
-	assert.Equal(t, "[h]: History  │  [q]: Quit", formatEntries(entries, false),
+	assert.Equal(t, "[h]: History  │  [q]: Quit", formatEntries(entries),
 		"no separator for the group of the hidden entry either")
 }
 

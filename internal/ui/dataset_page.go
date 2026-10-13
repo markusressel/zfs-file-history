@@ -177,7 +177,7 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 	captureSplitDrags(datasetPageLayout, datasetPage.split, datasetPage.infoSplit)
 
 	// hidden with ? (see shortcut_helper.ToggleShortcuts)
-	shortcutMap := shortcut_helper.NewShortcutMap(datasetPage.application).SetCollapsible()
+	shortcutMap := shortcut_helper.NewShortcutMap(datasetPage.application).SetCollapsible().SetEnabledFunc(datasetPage.isInFront)
 	shortcutMap.SetOnHeightChanged(func(height int) {
 		datasetPageLayout.ResizeItem(shortcutMap.GetLayout(), height, 0)
 	})
