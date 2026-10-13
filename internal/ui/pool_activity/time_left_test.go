@@ -1,14 +1,15 @@
 package pool_activity
 
 import (
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
-	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // setNow sets the time formatTimeLeft takes as now, until the end of the test.
@@ -100,28 +101,37 @@ func TestLayoutLines_Modes(t *testing.T) {
 
 	for _, mode := range timeLeftModes {
 		lines := layoutLines(activities, 120, mode)
-		_, width := formatRemainingWidth(zfs.PoolActivity{}, mode, false)
+		width := timeLeftWidth(timeLeftFields(zfs.PoolActivity{}, mode))
 		for _, line := range lines {
-			assert.Equal(t, width, utf8.RuneCountInString(testutil.StripTags(line.remaining)), "aligned in %s", mode)
+			assert.Equal(t, width, utf8.RuneCountInString(timeLeftText(line.timeLeft)), "aligned in %s", mode)
 			assert.Equal(t, 120-line.barStart-width-1, line.barWidth, mode)
 		}
 	}
 	lines := layoutLines(activities, 120, TimeLeftEta)
-	assert.Equal(t, "   ⚑     14:32 ", testutil.StripTags(lines[0].remaining))
-	assert.Equal(t, "   ⚑ --- --:-- ", testutil.StripTags(lines[1].remaining))
+	assert.Equal(t, "   ⚑     14:32 ", timeLeftText(lines[0].timeLeft))
+	assert.Equal(t, "   ⚑ --- --:-- ", timeLeftText(lines[1].timeLeft))
 }
 
-func TestFormatRemaining_Backgrounds(t *testing.T) {
+func TestTimeLeftFields_Backgrounds(t *testing.T) {
 	colors := theme.Colors.Activity
 	assert.NotEqual(t, colors.RemainingBackground, colors.EtaBackground, "switching between them is noticed")
 
-	remaining := formatRemaining(zfs.PoolActivity{}, TimeLeftRemaining, false)
-	assert.Contains(t, remaining, backgroundTag(colors.RemainingBackground))
-	assert.NotContains(t, remaining, backgroundTag(colors.EtaBackground))
+	fields := timeLeftFields(zfs.PoolActivity{}, TimeLeftBoth)
+	require.Len(t, fields, 2)
+	assert.Equal(t, timeLeftField{"⧗   --h --m", colors.RemainingBackground, colors.RemainingHoverBackground}, fields[0])
+	assert.Equal(t, timeLeftField{"⚑ --- --:--", colors.EtaBackground, colors.EtaHoverBackground}, fields[1])
+	assert.Equal(t, "   ⧗   --h --m   ⚑ --- --:-- ", timeLeftText(fields))
+	assert.Equal(t, utf8.RuneCountInString(timeLeftText(fields)), timeLeftWidth(fields))
+}
 
-	both, width := formatRemainingWidth(zfs.PoolActivity{}, TimeLeftBoth, false)
-	assert.Contains(t, both, backgroundTag(colors.RemainingBackground)+" ⧗")
-	assert.Contains(t, both, backgroundTag(colors.EtaBackground)+" ⚑")
-	assert.Equal(t, "   ⧗   --h --m   ⚑ --- --:-- ", testutil.StripTags(both))
-	assert.Equal(t, utf8.RuneCountInString(testutil.StripTags(both)), width)
+// timeLeftText returns the time left behind a bar as drawn (see Bar.Draw), without the colors.
+func timeLeftText(fields []timeLeftField) string {
+	if fields == nil {
+		return ""
+	}
+	texts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		texts = append(texts, " "+field.text+" ")
+	}
+	return strings.Repeat(" ", timeLeftGap) + strings.Join(texts, " ")
 }

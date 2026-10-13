@@ -171,6 +171,8 @@ func TestAlertBar_Click(t *testing.T) {
 	testutil.OnUiThread(t, app, func() {
 		bar.SetOnClick(func(alert zfs.PoolAlert) { clicked = append(clicked, alert.Pool) })
 		bar.SetEnabledFunc(func() bool { return enabled })
+		// the regions are added when drawn
+		app.ForceDraw()
 	})
 
 	// the bar starts at line 1, below the header, its lines below its border at line 2
