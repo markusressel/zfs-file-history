@@ -71,6 +71,8 @@ type SnapshotBrowserComponent struct {
 	layoutStateKey string
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
 	dialogPages *tview.Pages
+	// dataErrors are the damaged files, nil if there are none, see SetDataErrors. Only accessed on the UI thread.
+	dataErrors *zfs.DataErrorIndex
 }
 
 type snapshotLoadResult struct {
@@ -176,9 +178,18 @@ var (
 		Alignment: tview.AlignLeft,
 	}
 
+	// columnDamaged is the number of damaged files and objects in the snapshot (see zfs.DataErrorIndex), and whether
+	// the selected entry is one of them
+	columnDamaged = &table.Column{
+		Id:        14,
+		Key:       "damaged",
+		Title:     "Damaged",
+		Alignment: tview.AlignLeft,
+	}
+
 	tableColumns = []*table.Column{
 		columnName, columnDate, columnDiff, columnChange, columnSize, columnModified, columnVsNow, columnChanges,
-		columnUsed, columnWritten, columnRefer, columnRatio, columnClones, columnHolds,
+		columnUsed, columnWritten, columnRefer, columnRatio, columnClones, columnHolds, columnDamaged,
 	}
 )
 
@@ -192,12 +203,12 @@ var (
 	// FilesLayout is the layout on the files page: about the path that is shown
 	FilesLayout = ColumnLayout{
 		stateKey: "snapshotBrowser.files",
-		columns:  []*table.Column{columnName, columnDate, columnDiff, columnChange, columnSize, columnModified, columnHolds},
+		columns:  []*table.Column{columnName, columnDate, columnDiff, columnChange, columnSize, columnModified, columnHolds, columnDamaged},
 	}
 	// DatasetsLayout is the layout on the dataset page: about the whole dataset
 	DatasetsLayout = ColumnLayout{
 		stateKey: "snapshotBrowser.datasets",
-		columns:  []*table.Column{columnName, columnDate, columnUsed, columnWritten, columnRefer, columnHolds},
+		columns:  []*table.Column{columnName, columnDate, columnUsed, columnWritten, columnRefer, columnHolds, columnDamaged},
 	}
 )
 

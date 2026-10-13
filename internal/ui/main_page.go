@@ -29,6 +29,9 @@ type MainPage struct {
 	// split separates the file browser (with the overview) and the snapshots
 	split      *uiutil.ResizableSplit
 	leftLayout *tview.Flex
+	// fileHistory is the last file history shown, to mark its damaged versions while it is shown (see
+	// pool_activity.Monitor.DataErrors), nil if none was. Only accessed on the UI thread.
+	fileHistory *dialog.FileHistoryOverlay
 
 	wasInitialized bool
 }
@@ -52,6 +55,14 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 		return []FocusableUiComponent{fileBrowser, snapshotBrowser}
 	}
 	mainPage.componentTitles = map[FocusableUiComponent]string{fileBrowser: "Files", snapshotBrowser: "Snapshots"}
+	// the damaged files are marked, see pool_activity.Monitor.DataErrors
+	activities.OnDataErrorsChanged(func() {
+		fileBrowser.SetDataErrors(activities.DataErrors())
+		snapshotBrowser.SetDataErrors(activities.DataErrors())
+		if history := mainPage.fileHistory; history != nil && mainPage.pages != nil && mainPage.pages.HasPage(history.GetName()) {
+			history.SetDataErrors(activities.DataErrors())
+		}
+	})
 	mainPage.pageShortcuts = func() []shortcut_helper.ShortcutEntry {
 		return []shortcut_helper.ShortcutEntry{mainPage.overviewShortcut()}
 	}
@@ -196,6 +207,8 @@ func (mainPage *MainPage) showHistory(entry *data.FileBrowserEntry, snapshot *zf
 		overlay = folderHistory
 	} else {
 		fileHistory := dialog.NewFileHistoryOverlay(mainPage.application, entry, mainPage.snapshotBrowser.GetAllEntries())
+		fileHistory.SetDataErrors(mainPage.activities.DataErrors())
+		mainPage.fileHistory = fileHistory
 		if snapshot != nil {
 			fileHistory.SelectSnapshot(snapshot)
 		}

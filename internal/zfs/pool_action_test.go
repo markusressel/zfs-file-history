@@ -105,7 +105,8 @@ func TestRunPoolAction_InvalidName(t *testing.T) {
 }
 
 func TestSudoersRules(t *testing.T) {
-	assert.Equal(t, "alice ALL=(root) NOPASSWD: /usr/sbin/zpool events -v -f, /sbin/zpool events -v -f, /usr/bin/zpool events -v -f\n",
+	assert.Equal(t, "alice ALL=(root) NOPASSWD: /usr/sbin/zpool events -v -f, /usr/sbin/zpool status -p -v, "+
+		"/sbin/zpool events -v -f, /sbin/zpool status -p -v, /usr/bin/zpool events -v -f, /usr/bin/zpool status -p -v\n",
 		SudoersEventsRule("alice"))
 
 	rules := strings.Split(strings.TrimSpace(SudoersPoolActionRules("alice")), "\n")

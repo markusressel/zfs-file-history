@@ -126,6 +126,8 @@ type FileBrowserComponent struct {
 
 	diffLoader    *uiutil.DebouncedLoader
 	refreshLoader *uiutil.DebouncedLoader
+	// dataErrors are the damaged files, nil if there are none, see SetDataErrors. Only accessed on the UI thread.
+	dataErrors *zfs.DataErrorIndex
 }
 
 func NewFileBrowser(application *tview.Application) *FileBrowserComponent {

@@ -21,12 +21,14 @@ var setupPoolActions bool
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
-	Short: "Install the sudoers rules for real-time ZFS event monitoring (and optionally pool actions)",
+	Short: "Install the sudoers rules for real-time ZFS event monitoring and damaged files (and optionally pool actions)",
 	Long: `In order to watch for snapshot creations and destructions in real-time,
 zfs-file-history needs permission to run 'zpool events' without a password.
+To show which files are damaged (data errors), it needs to run 'zpool status -v',
+which only lists them for root.
 
 This command creates a minimal, secure sudoers rule in /etc/sudoers.d/zfs-file-history
-that grants the current user access ONLY to that specific command.
+that grants the current user access ONLY to these specific commands.
 
 With --pool-actions, the user may also start, pause and cancel scrubs, start and
 cancel TRIMs and clear the errors of pools (zpool scrub, trim and clear), which need

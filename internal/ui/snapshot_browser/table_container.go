@@ -41,6 +41,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			cellText = uiutil.FormatTime(entry.Snapshot.Properties.CreationDate)
 		case columnName:
 			cellText = formatName(entry.Snapshot)
+			if snapshotBrowser.dataErrors.DamagedInSnapshot(entry.Snapshot.FullName) > 0 {
+				cellColor = theme.Colors.Alert.Error
+			}
 		case columnDiff:
 			cellAlign = tview.AlignCenter
 			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
@@ -92,6 +95,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 		case columnHolds:
 			cellAlign = tview.AlignCenter
 			cellText = formatHolds(entry.Snapshot.Properties.Holds)
+		case columnDamaged:
+			cellText = snapshotBrowser.formatDamaged(entry.Snapshot)
+			cellColor = theme.Colors.Alert.Error
 		}
 		cell := tview.NewTableCell(cellText).
 			SetTextColor(cellColor).
@@ -249,6 +255,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) sortEntries(entries []*data.Sna
 	return sortSnapshotEntries(entries, column, inverted, sortLookups{
 		folderChanges: snapshotBrowser.changesOf,
 		entryChange:   snapshotBrowser.entryChangeOf,
+		dataErrors:    snapshotBrowser.dataErrors,
 	})
 }
 
@@ -256,6 +263,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) sortEntries(entries []*data.Sna
 type sortLookups struct {
 	folderChanges func(*zfs.Snapshot) (folder_listing.SnapshotChanges, bool)
 	entryChange   func(*zfs.Snapshot) (data.VersionChange, bool)
+	// dataErrors are the damaged files, nil if there are none
+	dataErrors *zfs.DataErrorIndex
 }
 
 // entryChangeWeight orders the changes of the selected entry for sorting: unknown first, then unchanged, then by
@@ -343,6 +352,10 @@ func sortSnapshotEntries(entries []*data.SnapshotBrowserEntry, columnToSortBy *t
 			result = big.NewFloat(ratioA).Cmp(big.NewFloat(ratioB))
 		case columnHolds:
 			result = cmp.Compare(a.Snapshot.Properties.Holds, b.Snapshot.Properties.Holds)
+		case columnDamaged:
+			// the most damaged first, like the sizes
+			result = cmp.Compare(lookups.dataErrors.DamagedInSnapshot(b.Snapshot.FullName),
+				lookups.dataErrors.DamagedInSnapshot(a.Snapshot.FullName))
 		case columnClones:
 			clonesA := a.Snapshot.Properties.Clones
 			clonesB := b.Snapshot.Properties.Clones

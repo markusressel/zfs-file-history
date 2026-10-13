@@ -61,13 +61,27 @@ func withDataErrors(name string) *zfs.PoolStatus {
 // setupAlertTest runs an application showing an alert bar in a layout below a line, like on the pages. The heights
 // reported by the bar are recorded, and applied to the layout.
 func setupAlertTest(t *testing.T, statuses []*zfs.PoolStatus) (*tview.Application, *Monitor, *AlertBar, *fakeStatuses, func() []int) {
+	return setupAlertTestWith(t, statuses, noDataErrors)
+}
+
+// noDataErrors lists no damaged files, so the tests do not run zpool.
+func noDataErrors() (*zfs.DataErrorIndex, error) {
+	return nil, nil
+}
+
+// setupAlertTestWith is setupAlertTest with the given function that lists the damaged files.
+func setupAlertTestWith(t *testing.T, statuses []*zfs.PoolStatus, listDataErrors func() (*zfs.DataErrorIndex, error)) (*tview.Application, *Monitor, *AlertBar, *fakeStatuses, func() []int) {
 	fake := &fakeStatuses{statuses: statuses}
-	originalLoad, originalActive, originalIdle := loadPoolStatuses, activeRefreshInterval, idleRefreshInterval
+	originalLoad, originalActive, originalIdle, originalDataErrors := loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors
 	loadPoolStatuses = fake.load
+	loadDataErrors = listDataErrors
 	activeRefreshInterval = 50 * time.Millisecond
 	idleRefreshInterval = time.Hour
+	originalDataErrorsInterval := dataErrorsRefreshInterval
+	dataErrorsRefreshInterval = 0
 	t.Cleanup(func() {
-		loadPoolStatuses, activeRefreshInterval, idleRefreshInterval = originalLoad, originalActive, originalIdle
+		dataErrorsRefreshInterval = originalDataErrorsInterval
+		loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors = originalLoad, originalActive, originalIdle, originalDataErrors
 	})
 
 	app := tview.NewApplication()

@@ -27,6 +27,8 @@
   * [x] Manage delegated permissions
 * [x] Pool health and `zpool status`
 * [x] Progress of running scrubs, resilvers, TRIMs and other pool operations on every page
+* [x] Alerts on every page when a pool has problems (data errors, degraded, failing devices)
+* [x] Damaged files (data errors) marked in the file and snapshot browsers, including the snapshots holding them
 * [x] Start, pause and cancel scrubs and TRIMs, clear pool errors
 * [x] Live updates using zpool events
 * [x] Filter, sort and configure the columns of all lists
@@ -76,6 +78,7 @@ zfs-file-history can listen to zpool events to automatically update the UI when 
 Unfortunately, due to the current design of ZFS, this requires root privileges.
 To avoid having to run zfs-file-history as root, a one-time setup command can be run as root, which creates
 a sudoers rule that lets your user run `zpool events` as root without requiring interactive permission approval.
+The same rule lets it list the damaged files of pools with data errors (`zpool status -v`), which also needs root.
 
 ```shell
 sudo zfs-file-history setup
