@@ -7,7 +7,7 @@
 [![Latest Release](https://img.shields.io/github/release/markusressel/zfs-file-history.svg)](https://github.com/markusressel/zfs-file-history/releases)
 [![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)](/LICENSE)
 
-[![asciicast](./screenshots/asciinema.svg)](https://asciinema.org/a/1267397)
+![Demo of zfs-file-history](./screenshots/demo.gif)
 
 </div>
 
@@ -26,6 +26,8 @@
   * [x] Edit properties
   * [x] Manage delegated permissions
 * [x] Pool health and `zpool status`
+* [x] Progress of running scrubs, resilvers, TRIMs and other pool operations on every page
+* [x] Start, pause and cancel scrubs and TRIMs, clear pool errors
 * [x] Live updates using zpool events
 * [x] Filter, sort and configure the columns of all lists
 * [x] Remembers your last session
@@ -77,6 +79,16 @@ a sudoers rule that lets your user run `zpool events` as root without requiring 
 
 ```shell
 sudo zfs-file-history setup
+```
+
+### Pool Actions
+
+Scrubs, TRIMs and clearing the errors of a pool (`Enter` on the pools page) need root as well, ZFS cannot delegate
+them. zfs-file-history offers to run them once with sudo, or to allow them for your user, which is the same as adding
+`--pool-actions` to the setup. Destroying, exporting or upgrading pools is not offered by zfs-file-history at all.
+
+```shell
+sudo zfs-file-history setup --pool-actions
 ```
 
 ### Permissions

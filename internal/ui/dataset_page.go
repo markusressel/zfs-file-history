@@ -3,6 +3,7 @@ package ui
 import (
 	"zfs-file-history/internal/ui/dataset_browser"
 	"zfs-file-history/internal/ui/dataset_info"
+	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
@@ -34,7 +35,7 @@ const (
 	datasetInfoMaxWidthPercent  = 40
 )
 
-func NewDatasetPage(application *tview.Application, messages *status_message.Center, path string) *DatasetPage {
+func NewDatasetPage(application *tview.Application, messages *status_message.Center, activities *pool_activity.Monitor, path string) *DatasetPage {
 
 	datasetInfo := dataset_info.NewDatasetInfo(application)
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
@@ -44,7 +45,7 @@ func NewDatasetPage(application *tview.Application, messages *status_message.Cen
 	datasetBrowser := dataset_browser.NewDatasetBrowser(application)
 
 	datasetPage := &DatasetPage{
-		basePage:        basePage{application: application, name: Dataset, messages: messages},
+		basePage:        basePage{application: application, name: Dataset, messages: messages, activities: activities},
 		datasetBrowser:  datasetBrowser,
 		datasetInfo:     datasetInfo,
 		snapshotBrowser: snapshotBrowser,
@@ -152,6 +153,7 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 
 	datasetPage.header = NewApplicationHeader(datasetPage.application, datasetPage.messages)
 	datasetPageLayout.AddItem(datasetPage.header.layout, 1, 0, false)
+	datasetPage.addActivityBar(datasetPageLayout)
 
 	// The info fits its content (so it is not cut off), the snapshots get the rest of the height. The size of the
 	// info differs between datasets (e.g. encrypted ones have more properties), so it only grows: the boundaries do

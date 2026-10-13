@@ -3,6 +3,7 @@ package ui
 import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -21,6 +22,10 @@ type basePage struct {
 	header *ApplicationHeaderComponent
 	// messages are the messages of the whole application, shown in the header of each page
 	messages *status_message.Center
+	// activities are the operations running on the pools of the whole application, shown by activityBar below the
+	// header of each page
+	activities  *pool_activity.Monitor
+	activityBar *pool_activity.Bar
 	// shortcutMap shows the shortcuts of the focused component, see updateShortcutMap
 	shortcutMap *shortcut_helper.ShortcutMapComponent
 	// focusableComponents returns the components that can be focused, in focus cycle order; the first one is the
@@ -173,6 +178,17 @@ func (page *basePage) handleFocusKeys(event *tcell.EventKey) bool {
 	}
 	page.CycleFocus(key == tcell.KeyBacktab || event.Modifiers()&tcell.ModShift != 0)
 	return true
+}
+
+// addActivityBar adds the bar with the operations running on the pools (e.g. a scrub) to the layout, below the
+// header. It has no height while nothing runs.
+func (page *basePage) addActivityBar(layout *tview.Flex) {
+	bar := pool_activity.NewBar(page.activities).SetEnabledFunc(page.isInFront)
+	bar.SetOnHeightChanged(func(height int) {
+		layout.ResizeItem(bar, height, 0)
+	})
+	layout.AddItem(bar, bar.Height(), 0, false)
+	page.activityBar = bar
 }
 
 // newSplit returns a split of two panes side by side (or one above the other), whose boundary can be dragged

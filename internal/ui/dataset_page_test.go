@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/status_message"
 
 	"github.com/gdamore/tcell/v2"
@@ -20,7 +21,7 @@ func TestDatasetPage_CyclingFocusKeepsTheLayout(t *testing.T) {
 			screen := tcell.NewSimulationScreen("UTF-8")
 			app.SetScreen(screen)
 			screen.SetSize(width, 50)
-			page := NewDatasetPage(app, status_message.NewCenter(app), "/")
+			page := NewDatasetPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), "/")
 			app.SetRoot(page.layout, true)
 			go func() { _ = app.Run() }()
 			defer app.Stop()

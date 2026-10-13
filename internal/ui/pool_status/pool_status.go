@@ -3,7 +3,6 @@ package pool_status
 import (
 	"context"
 	"strings"
-	"time"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -16,10 +15,6 @@ import (
 
 // loadPoolStatus is replaceable in tests.
 var loadPoolStatus = zfs.GetPoolStatus
-
-// scanRefreshInterval is how often the status is reloaded while a scrub or resilver is running, to show its
-// progress. Replaceable in tests.
-var scanRefreshInterval = 5 * time.Second
 
 // progressBarWidth is the width of the progress bar of a running scrub or resilver, without the percentage.
 const progressBarWidth = 30
@@ -34,7 +29,8 @@ type StatusLoadedEvent struct {
 
 // PoolStatusComponent shows the status of a pool, like the top of "zpool status": its state, what is wrong with it
 // and what to do about it, the last or running scrub or resilver, and the data errors. The devices are shown by
-// PoolDevicesComponent, see StatusLoadedEvent.
+// PoolDevicesComponent, see StatusLoadedEvent. It loads the status when the pool is set and on Refresh; newer
+// statuses loaded elsewhere (e.g. the progress of a scrub, by the activity monitor) are shown with ShowStatus.
 type PoolStatusComponent struct {
 	Events *util.Emitter[Event]
 
@@ -47,8 +43,6 @@ type PoolStatusComponent struct {
 
 	// name is the name of the requested pool, "" if none
 	name string
-	// refreshTimer reloads the status while a scrub or resilver is running, see scheduleScanRefresh
-	refreshTimer *time.Timer
 }
 
 func NewPoolStatus(application *tview.Application) *PoolStatusComponent {
@@ -103,9 +97,18 @@ func (poolStatus *PoolStatusComponent) Refresh() {
 	poolStatus.load(true)
 }
 
+// ShowStatus shows a status of the requested pool that was loaded elsewhere, e.g. by the activity monitor, which
+// reloads all pools while a scrub runs: so it is not loaded twice. A load that is still running is dropped, it is
+// not newer. Statuses of other pools are ignored. Must be called on the UI thread.
+func (poolStatus *PoolStatusComponent) ShowStatus(status *zfs.PoolStatus) {
+	if status == nil || status.Name != poolStatus.name {
+		return
+	}
+	poolStatus.loader.LoadQuietly(func(ctx context.Context) (*zfs.PoolStatus, error) { return status, nil })
+}
+
 // load starts loading the status of the requested pool in the background. Must be called on the UI thread.
 func (poolStatus *PoolStatusComponent) load(quietly bool) {
-	poolStatus.stopScanRefresh()
 	name := poolStatus.name
 	if name == "" {
 		// e.g. no pools: a load still running must not show its result
@@ -135,35 +138,8 @@ func (poolStatus *PoolStatusComponent) show(status *zfs.PoolStatus, err error) {
 	default:
 		uiutil.SetupWindow(poolStatus.textView, "Pool: "+status.Name)
 		poolStatus.textView.SetText(formatStatus(status))
-		if status.IsScanning() {
-			poolStatus.scheduleScanRefresh()
-		}
 	}
 	poolStatus.Events.Emit(StatusLoadedEvent{Status: status})
-}
-
-// scheduleScanRefresh reloads the status after scanRefreshInterval, to show the progress of the running scrub or
-// resilver. Runs on the UI thread.
-func (poolStatus *PoolStatusComponent) scheduleScanRefresh() {
-	poolStatus.stopScanRefresh()
-	var timer *time.Timer
-	timer = time.AfterFunc(scanRefreshInterval, func() {
-		poolStatus.application.QueueUpdateDraw(func() {
-			// not if it was stopped, or replaced, in the meantime
-			if poolStatus.refreshTimer == timer {
-				poolStatus.refreshTimer = nil
-				poolStatus.load(true)
-			}
-		})
-	})
-	poolStatus.refreshTimer = timer
-}
-
-func (poolStatus *PoolStatusComponent) stopScanRefresh() {
-	if poolStatus.refreshTimer != nil {
-		poolStatus.refreshTimer.Stop()
-		poolStatus.refreshTimer = nil
-	}
 }
 
 // formatStatus formats the fields of the status that are set, like "zpool status" does: the name of each field in
@@ -206,7 +182,7 @@ func formatStatus(status *zfs.PoolStatus) string {
 			out.WriteString(txwidgets.Span(f.color, "%s", line) + "\n")
 		}
 		if f.name == "Scan" && status.IsScanning() {
-			out.WriteString(indent + formatProgressBar(status.ScanProgress, progressBarWidth) + "\n")
+			out.WriteString(indent + uiutil.FormatProgressBar(status.ScanProgress, progressBarWidth) + "\n")
 		}
 	}
 	return out.String()
@@ -218,16 +194,6 @@ func errorsColor(errors string) tcell.Color {
 		return theme.Colors.Pool.Online
 	}
 	return theme.Colors.Pool.Faulted
-}
-
-// formatProgressBar returns a bar of the given width, filled by percent, followed by the percentage, e.g.
-// "██████░░░░ 60.0%".
-func formatProgressBar(percent float64, width int) string {
-	percent = min(max(percent, 0), 100)
-	filled := int(percent / 100 * float64(width))
-	return txwidgets.Span(theme.Colors.Sparkline.Graph, "%s", strings.Repeat("█", filled)) +
-		txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "%s", strings.Repeat("░", width-filled)) +
-		txwidgets.Span(tcell.ColorWhite, " %.1f%%", percent)
 }
 
 // capitalize returns the text with its first letter in upper case, e.g. "Remove" for "remove".

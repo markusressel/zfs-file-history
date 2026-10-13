@@ -9,10 +9,12 @@ import (
 	"zfs-file-history/internal/ui/dataset_browser"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
+	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/pool_browser"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -122,9 +124,11 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	if version, newer := state.Current.NewerVersion(); newer {
 		messages.Show(newerStateVersionMessage(version))
 	}
-	mainPage := NewMainPage(application, messages, path)
-	datasetPage := NewDatasetPage(application, messages, path)
-	poolPage := NewPoolPage(application, messages)
+	// one for all pages, like the messages: the operations running on the pools are shown on every page
+	activities := pool_activity.NewMonitor(application)
+	mainPage := NewMainPage(application, messages, activities, path)
+	datasetPage := NewDatasetPage(application, messages, activities, path)
+	poolPage := NewPoolPage(application, messages, activities)
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
@@ -166,6 +170,18 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			recorder.setPool(e.Pool.Name)
 		}
 	})
+	// a click on a running operation shows its pool
+	for _, page := range []*basePage{&mainPage.basePage, &datasetPage.basePage, &poolPage.basePage} {
+		page.activityBar.SetOnClick(func(activity zfs.PoolActivity) {
+			switchTo(Pool)
+			poolPage.poolBrowser.SelectPool(activity.Pool)
+		})
+	}
+	// e.g. after F5, or a change reported by the ZFS event watcher (see zfs.WatchZpoolEvents)
+	refreshActivities := func(_ struct{}) { activities.Refresh() }
+	util.SubscribeUI(zfs.DatasetsLoaded, application, refreshActivities)
+	util.SubscribeUI(zfs.PoolsChanged, application, refreshActivities)
+
 	if restored != nil && restored.Dataset != "" {
 		datasetPage.datasetBrowser.SelectOnLoad(restored.Dataset)
 	}
@@ -260,6 +276,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	mainPage.Init(path)
 	datasetPage.Init(path)
 	poolPage.Init()
+	activities.Refresh()
 
 	application.SetRoot(pagesLayout, fullscreen).
 		SetFocus(mainPage.fileBrowser.GetLayout())

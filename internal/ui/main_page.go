@@ -7,6 +7,7 @@ import (
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/path_overview"
+	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/snapshot_browser"
 	"zfs-file-history/internal/ui/status_message"
@@ -32,7 +33,7 @@ type MainPage struct {
 	wasInitialized bool
 }
 
-func NewMainPage(application *tview.Application, messages *status_message.Center, path string) *MainPage {
+func NewMainPage(application *tview.Application, messages *status_message.Center, activities *pool_activity.Monitor, path string) *MainPage {
 	snapshotBrowser := snapshot_browser.NewSnapshotBrowser(application)
 
 	fileBrowser := file_browser.NewFileBrowser(application)
@@ -42,7 +43,7 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 	snapshotBrowser.RequireFolderChanges()
 
 	mainPage := &MainPage{
-		basePage:        basePage{application: application, name: Main, messages: messages},
+		basePage:        basePage{application: application, name: Main, messages: messages, activities: activities},
 		fileBrowser:     fileBrowser,
 		snapshotBrowser: snapshotBrowser,
 		pathOverview:    pathOverview,
@@ -151,6 +152,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	mainPage.header = NewApplicationHeader(mainPage.application, mainPage.messages)
 	mainPageLayout.AddItem(mainPage.header.layout, 1, 0, false)
+	mainPage.addActivityBar(mainPageLayout)
 
 	// the overview below the file browser describes its folder and selected entry
 	mainPage.leftLayout = tview.NewFlex().SetDirection(tview.FlexRow).

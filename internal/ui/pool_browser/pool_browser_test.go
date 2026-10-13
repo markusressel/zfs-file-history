@@ -2,14 +2,18 @@ package pool_browser
 
 import (
 	"errors"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -241,6 +245,29 @@ func TestPoolBrowser_SelectOnLoad(t *testing.T) {
 	assert.Equal(t, []string{"tank", "rpool", "rpool"}, selections.get())
 }
 
+func TestPoolBrowser_SelectPool(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) {
+		return []*zfs.PoolListEntry{{Name: "rpool"}, {Name: "tank"}}, nil
+	})
+	app, browser := newBrowserApp(t)
+	selections := (&recordedSelections{}).record(browser)
+
+	// not loaded yet: selected once loaded
+	testutil.OnUiThread(t, app, func() {
+		browser.SelectPool("tank")
+		browser.Refresh()
+	})
+	assert.Eventually(t, func() bool { return len(selections.get()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"tank"}, selections.get())
+
+	// loaded: selected right away
+	testutil.OnUiThread(t, app, func() {
+		browser.SelectPool("rpool")
+		assert.Equal(t, "rpool", browser.GetSelectedPool().Name)
+	})
+	assert.Equal(t, []string{"tank", "rpool"}, selections.get())
+}
+
 func TestPoolBrowser_RefreshErrorIsReported(t *testing.T) {
 	setListPools(t, func() ([]*zfs.PoolListEntry, error) {
 		return nil, errors.New("zpool list failed")
@@ -333,8 +360,25 @@ func TestPoolBrowser_Keys(t *testing.T) {
 		return selected != nil
 	}, 2*time.Second, 10*time.Millisecond)
 
-	// Enter on a pool does nothing (yet)
+	// Enter on a pool opens its actions
 	app.QueueEvent(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	assert.Eventually(t, func() bool {
+		front := ""
+		testutil.OnUiThread(t, app, func() { front, _ = pages.GetFrontPage() })
+		return front == string(dialog.PoolActionDialogPage)
+	}, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, app, func() { assert.Equal(t, "rpool", browser.GetSelectedPool().Name) })
+}
+
+func TestPoolBrowser_ColumnsKey(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) { return []*zfs.PoolListEntry{{Name: "rpool"}}, nil })
+	app, browser := newBrowserApp(t)
+	pages := tview.NewPages()
+	testutil.OnUiThread(t, app, func() {
+		browser.SetDialogPages(pages)
+		browser.Focus()
+	})
+
 	// F2 opens the columns dialog
 	app.QueueEvent(tcell.NewEventKey(tcell.KeyF2, 0, tcell.ModNone))
 	assert.Eventually(t, func() bool {
@@ -342,5 +386,151 @@ func TestPoolBrowser_Keys(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { count = pages.GetPageCount() })
 		return count == 1
 	}, 2*time.Second, 10*time.Millisecond)
-	testutil.OnUiThread(t, app, func() { assert.Equal(t, "rpool", browser.GetSelectedPool().Name) })
+}
+
+// setRunPoolAction replaces running the pool actions, recording them as "<zpool args> <pool>", failing with err.
+func setRunPoolAction(t *testing.T, err error) func() []string {
+	var mu sync.Mutex
+	var actions []string
+	original := runPoolAction
+	runPoolAction = func(action zfs.PoolAction, pool string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		actions = append(actions, strings.Join(append(append([]string{}, action.Args...), pool), " "))
+		return err
+	}
+	t.Cleanup(func() { runPoolAction = original })
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string{}, actions...)
+	}
+}
+
+// commandNamed returns the command of the browser with the given name, read on the UI thread.
+func commandNamed(t *testing.T, app *tview.Application, browser *PoolBrowserComponent, name string) shortcut_helper.ShortcutEntry {
+	var found *shortcut_helper.ShortcutEntry
+	testutil.OnUiThread(t, app, func() {
+		for _, command := range browser.GetCommands() {
+			if command.Name == name {
+				found = &command
+			}
+		}
+	})
+	require.NotNil(t, found, "no command %q", name)
+	return *found
+}
+
+// loadedBrowserApp returns a running browser with the pools loaded and the first one selected, showing its dialogs
+// on the returned pages.
+func loadedBrowserApp(t *testing.T, pools ...string) (*tview.Application, *PoolBrowserComponent, *tview.Pages) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) {
+		var entries []*zfs.PoolListEntry
+		for _, pool := range pools {
+			entries = append(entries, &zfs.PoolListEntry{Name: pool})
+		}
+		return entries, nil
+	})
+	app, browser := newBrowserApp(t)
+	pages := tview.NewPages()
+	testutil.OnUiThread(t, app, func() {
+		browser.SetDialogPages(pages)
+		browser.Refresh()
+	})
+	require.Eventually(t, func() bool {
+		var selected *zfs.PoolListEntry
+		testutil.OnUiThread(t, app, func() { selected = browser.GetSelectedPool() })
+		return selected != nil
+	}, 2*time.Second, 10*time.Millisecond)
+	return app, browser, pages
+}
+
+func TestPoolBrowser_Actions(t *testing.T) {
+	actions := setRunPoolAction(t, nil)
+	app, browser, pages := loadedBrowserApp(t, "tank")
+	var messages atomic.Int32
+	browser.Events.Subscribe(func(event Event) {
+		if e, ok := event.(PoolBrowserStatusEvent); ok && e.Message.Message == "Started a scrub of tank" {
+			messages.Add(1)
+		}
+	})
+	var reloads atomic.Int32
+	original := zfs.PoolsChanged
+	t.Cleanup(func() { zfs.PoolsChanged = original })
+	// an emitter of this test, so its listener does not outlive it
+	zfs.PoolsChanged = util.NewEmitter[struct{}]()
+	zfs.PoolsChanged.Subscribe(func(struct{}) { reloads.Add(1) })
+
+	// e.g. from the command menu
+	command := commandNamed(t, app, browser, "Start scrub")
+	testutil.OnUiThread(t, app, command.Run)
+
+	require.Eventually(t, func() bool { return messages.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"scrub tank"}, actions())
+	assert.Equal(t, int32(1), reloads.Load(), "the pools are reloaded")
+	// the dialog is closed
+	require.Eventually(t, func() bool {
+		count := -1
+		testutil.OnUiThread(t, app, func() { count = pages.GetPageCount() })
+		return count == 0
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestPoolBrowser_ActionsDependOnTheStatus(t *testing.T) {
+	setRunPoolAction(t, nil)
+	app, browser, _ := loadedBrowserApp(t, "tank")
+	scrubbing := &zfs.PoolStatus{Name: "tank", Scan: "scrub in progress since Tue Oct 13 10:00:01 2026", ScanProgress: 10}
+
+	testutil.OnUiThread(t, app, func() { browser.SetStatus(scrubbing) })
+	commandNamed(t, app, browser, "Pause scrub")
+
+	// the status of another pool (e.g. still loading the one of the selected pool) is not used
+	testutil.OnUiThread(t, app, func() {
+		other := *scrubbing
+		other.Name = "other"
+		browser.SetStatus(&other)
+	})
+	commandNamed(t, app, browser, "Start scrub")
+}
+
+func TestPoolBrowser_ActionFails(t *testing.T) {
+	actions := setRunPoolAction(t, errors.New("cannot scrub tank: permission denied"))
+	app, browser, pages := loadedBrowserApp(t, "tank")
+
+	command := commandNamed(t, app, browser, "Start TRIM")
+	testutil.OnUiThread(t, app, command.Run)
+
+	// the error is shown, with a retry
+	require.Eventually(t, func() bool {
+		front := ""
+		testutil.OnUiThread(t, app, func() { front, _ = pages.GetFrontPage() })
+		return front != "" && front != string(dialog.PoolActionDialogPage)
+	}, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"trim tank"}, actions())
+}
+
+func TestPoolBrowser_ActionNeedsRoot(t *testing.T) {
+	setRunPoolAction(t, &zfs.PoolActionNeedsRootError{Action: zfs.PoolActionScrub, Pool: "tank", Cause: errors.New("permission denied")})
+	app, browser, pages := loadedBrowserApp(t, "tank")
+
+	command := commandNamed(t, app, browser, "Start scrub")
+	testutil.OnUiThread(t, app, command.Run)
+
+	// offers to run it with sudo, or to allow it
+	require.Eventually(t, func() bool {
+		front := ""
+		testutil.OnUiThread(t, app, func() { front, _ = pages.GetFrontPage() })
+		return front == string(dialog.PoolActionRootDialogPage)
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestPoolBrowser_ActionShortcut(t *testing.T) {
+	app, browser, _ := loadedBrowserApp(t, "tank")
+
+	testutil.OnUiThread(t, app, func() {
+		shortcuts := browser.GetShortcutMap()
+		last := shortcuts[len(shortcuts)-1]
+		assert.Equal(t, shortcut_helper.KeyEnter, last.KeyCombo[0])
+		assert.NotNil(t, last.Run)
+	})
 }

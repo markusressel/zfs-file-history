@@ -264,3 +264,192 @@ func TestPoolStatus_ScanKindAndFinished(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePoolStatuses(t *testing.T) {
+	statuses, err := parsePoolStatuses(readTestData(t, "zpool-status-scrubbing.txt"))
+
+	require.NoError(t, err)
+	require.Len(t, statuses, 2)
+	assert.Equal(t, "backup", statuses[0].Name)
+	assert.True(t, statuses[0].IsScanning())
+	assert.Len(t, statuses[0].Devices, 2)
+	assert.Equal(t, "second", statuses[1].Name)
+	assert.Equal(t, PoolStateOnline, statuses[1].State)
+	assert.False(t, statuses[1].IsScanning())
+	assert.Equal(t, []*PoolDevice{{Name: "second", State: PoolStateOnline}, {Name: "sdi", Depth: 1, State: PoolStateOnline}}, statuses[1].Devices)
+	assert.Equal(t, "No known data errors", statuses[1].Errors)
+}
+
+func TestParsePoolStatuses_NoPools(t *testing.T) {
+	statuses, err := parsePoolStatuses("no pools available\n")
+
+	require.NoError(t, err)
+	assert.Empty(t, statuses)
+}
+
+func TestParsePoolStatuses_FieldBeforePool(t *testing.T) {
+	_, err := parsePoolStatuses(" state: ONLINE\n")
+	assert.Error(t, err)
+}
+
+func TestPoolStatus_Activities(t *testing.T) {
+	tests := map[string]struct {
+		file     string
+		expected []PoolActivity
+	}{
+		"resilver": {"zpool-status-resilvering.txt", []PoolActivity{{Pool: "tank", Kind: "resilver", Progress: 31.77, Remaining: "02:10:31",
+			Processed: "1.02T", Total: "3.21T", Rate: "294M/s"}}},
+		// nothing issued yet: the rate of scanning
+		"scrub without estimate": {"zpool-status-scrubbing.txt", []PoolActivity{{Pool: "backup", Kind: "scrub", Progress: 0,
+			Processed: "0B", Total: "2.00T", Rate: "1.10G/s"}}},
+		"nothing": {"zpool-status-healthy.txt", nil},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			status, err := parsePoolStatus(readTestData(t, test.file))
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, status.Activities())
+		})
+	}
+}
+
+func TestPoolStatus_Activities_OtherFields(t *testing.T) {
+	status := &PoolStatus{
+		Name:         "tank",
+		Scan:         "scrub paused since Tue Oct 13 10:00:01 2026",
+		ScanProgress: -1,
+		Other: []PoolStatusField{
+			{Name: "remove", Value: "Evacuation of /dev/sdb in progress since Tue Oct 13 10:00:01 2026\n" +
+				"2.10G copied out of 5.00G at 1.00M/s, 42.00% done, 0h48m to go"},
+			{Name: "expand", Value: "expansion of raidz2-0 in progress since Tue Oct 13 10:00:01 2026\n" +
+				"1.23T / 4.56T copied at 123M/s, 26.97% done, 0 days 07:53:32 to go"},
+			{Name: "checkpoint", Value: "created Tue Oct 13 10:00:01 2026, consumes 1.20M"},
+		},
+	}
+
+	// a paused scrub does not run
+	assert.Equal(t, []PoolActivity{
+		{Pool: "tank", Kind: "remove", Progress: 42, Remaining: "0h48m", Processed: "2.10G", Total: "5.00G", Rate: "1.00M/s"},
+		{Pool: "tank", Kind: "expand", Progress: 26.97, Remaining: "0 days 07:53:32", Processed: "1.23T", Total: "4.56T", Rate: "123M/s"},
+	}, status.Activities())
+}
+
+func TestParsePoolStatus_Trim(t *testing.T) {
+	status, err := parsePoolStatus(readTestData(t, "zpool-status-trimming.txt"))
+
+	require.NoError(t, err)
+	require.Len(t, status.Devices, 6)
+	assert.Equal(t, "", status.Devices[1].Trim, "vdevs have no TRIM state")
+	assert.Equal(t, "(40% trimmed, started at Tue Oct 13 10:00:01 2026)", status.Devices[2].Trim)
+	assert.Equal(t, "", status.Devices[2].Note)
+	assert.Equal(t, "(trim unsupported)", status.Devices[4].Trim)
+	// the TRIM state is not part of the note
+	assert.Equal(t, "(resilvering)", status.Devices[5].Note)
+	assert.Equal(t, uint64(1), status.Devices[5].Checksum)
+	assert.Equal(t, "(100% trimmed, completed at Mon Oct 12 08:00:00 2026)", status.Devices[5].Trim)
+
+	// the average of the devices being trimmed, the time left of the slowest one (started 1 hour ago, 40% done)
+	setNow(t, time.Date(2026, 10, 13, 11, 0, 1, 0, time.Local))
+	assert.True(t, status.IsTrimming())
+	assert.Equal(t, 50.0, status.TrimProgress())
+	assert.Equal(t, []PoolActivity{{Pool: "fast", Kind: "trim", Progress: 50, Remaining: "01:30:00"}}, status.Activities())
+}
+
+func TestPoolStatus_TrimProgress(t *testing.T) {
+	tests := map[string]struct {
+		trims    []string
+		expected float64
+	}{
+		"none":      {[]string{"", "(untrimmed)", "(trim unsupported)"}, -1},
+		"completed": {[]string{"(100% trimmed, completed at Mon Oct 12 08:00:00 2026)"}, -1},
+		"suspended": {[]string{"(12% trimmed, suspended at Mon Oct 12 08:00:00 2026)"}, -1},
+		"running":   {[]string{"(12% trimmed, started at Mon Oct 12 08:00:00 2026)", "(untrimmed)"}, 12},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			status := &PoolStatus{}
+			for _, trim := range test.trims {
+				status.Devices = append(status.Devices, &PoolDevice{Name: "sda", State: PoolStateOnline, Trim: trim})
+			}
+			assert.Equal(t, test.expected, status.TrimProgress())
+			assert.Equal(t, test.expected >= 0, status.IsTrimming())
+		})
+	}
+}
+
+func TestPoolStatus_IsScrubPaused(t *testing.T) {
+	assert.True(t, (&PoolStatus{Scan: "scrub paused since Tue Oct 13 10:00:01 2026"}).IsScrubPaused())
+	assert.False(t, (&PoolStatus{Scan: "scrub in progress since Tue Oct 13 10:00:01 2026"}).IsScrubPaused())
+	assert.False(t, (&PoolStatus{Scan: "scrub canceled on Tue Oct 13 10:00:01 2026"}).IsScrubPaused())
+}
+
+func TestParseAmounts(t *testing.T) {
+	tests := []struct {
+		text                   string
+		processed, total, rate string
+	}{
+		{"1.43T / 3.21T scanned at 412M/s, 1.02T / 3.21T issued at 294M/s", "1.02T", "3.21T", "294M/s"},
+		// paused: no rates
+		{"1.43T / 3.21T scanned, 1.02T / 3.21T issued", "1.02T", "3.21T", ""},
+		// nothing issued yet: the rate of scanning
+		{"512G / 2.00T scanned at 1.10G/s, 0B / 2.00T issued", "0B", "2.00T", "1.10G/s"},
+		{"2.10G copied out of 5.00G at 1.00M/s, 42.00% done", "2.10G", "5.00G", "1.00M/s"},
+		{"1.23T / 4.56T copied at 123M/s, 26.97% done", "1.23T", "4.56T", "123M/s"},
+		{"512B / 1K issued at 12B/s", "512B", "1K", "12B/s"},
+		{"scrub in progress since Tue Oct 13 10:00:01 2026", "", "", ""},
+	}
+	for _, test := range tests {
+		t.Run(test.text, func(t *testing.T) {
+			processed, total, rate := parseAmounts(test.text)
+			assert.Equal(t, []string{test.processed, test.total, test.rate}, []string{processed, total, rate})
+		})
+	}
+}
+
+// setNow makes now return the given time.
+func setNow(t *testing.T, fixed time.Time) {
+	original := now
+	now = func() time.Time { return fixed }
+	t.Cleanup(func() { now = original })
+}
+
+func TestPoolStatus_TrimRemaining(t *testing.T) {
+	setNow(t, time.Date(2026, 10, 13, 12, 0, 0, 0, time.Local))
+	tests := map[string]struct {
+		trims     []string
+		remaining time.Duration
+		known     bool
+	}{
+		"none running":    {[]string{"(untrimmed)", "(100% trimmed, completed at Mon Oct 12 08:00:00 2026)"}, 0, false},
+		"no progress yet": {[]string{"(0% trimmed, started at Tue Oct 13 11:00:00 2026)"}, 0, false},
+		// 1 hour for 25%: 3 hours for the rest
+		"one device": {[]string{"(25% trimmed, started at Tue Oct 13 11:00:00 2026)"}, 3 * time.Hour, true},
+		"the slowest device": {[]string{
+			"(25% trimmed, started at Tue Oct 13 11:00:00 2026)",
+			"(50% trimmed, started at Tue Oct 13 11:00:00 2026)",
+			"(0% trimmed, started at Tue Oct 13 11:00:00 2026)",
+		}, 3 * time.Hour, true},
+		// single-digit days are padded with a space by zpool
+		"padded day":    {[]string{"(50% trimmed, started at Thu Oct  1 12:00:00 2026)"}, 12 * 24 * time.Hour, true},
+		"not a date":    {[]string{"(50% trimmed, started at someday)"}, 0, false},
+		"in the future": {[]string{"(50% trimmed, started at Wed Oct 14 12:00:00 2026)"}, 0, false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			status := &PoolStatus{}
+			for _, trim := range test.trims {
+				status.Devices = append(status.Devices, &PoolDevice{Name: "sda", State: PoolStateOnline, Trim: trim})
+			}
+			remaining, known := status.TrimRemaining()
+			assert.Equal(t, test.known, known)
+			assert.Equal(t, test.remaining, remaining)
+		})
+	}
+}
+
+func TestFormatRemaining(t *testing.T) {
+	assert.Equal(t, "00:00:00", formatRemaining(0))
+	assert.Equal(t, "02:10:31", formatRemaining(2*time.Hour+10*time.Minute+31*time.Second+600*time.Millisecond))
+	assert.Equal(t, "23:59:59", formatRemaining(24*time.Hour-time.Second))
+	assert.Equal(t, "1 days 07:53:32", formatRemaining(31*time.Hour+53*time.Minute+32*time.Second))
+}
