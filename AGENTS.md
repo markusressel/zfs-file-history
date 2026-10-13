@@ -62,13 +62,13 @@ of the code.
     largest units, `⧗    2h 10m`, `⧗    1d 07h`; the ETA, `⚑     14:32` (today, else with the weekday); or both, `Monitor.TimeLeftMode`, cycled by a
     click on it or the command menu, saved in the state; placeholders like `⧗   --h --m` until it is known; each a field on its own background,
     `RemainingBackground` and `EtaBackground`, so a switch is noticed). Only the hovered part of a line is
-    highlighted (`linePanel.regionAt`): the label for the pool, the fields of the time left for switching it. zpool prints
+    highlighted (see `clickable.Regions`): the label for the pool, the fields of the time left for switching it. zpool prints
     the time left in several formats, `zfs.PoolActivity.Remaining` is parsed into a `time.Duration`. zpool does not estimate the time left of a TRIM,
     `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
     The same package has the `AlertBar` (above the activities): the problems of the pools (`PoolStatus.Alerts`: a
     state other than ONLINE, data errors, unusable devices or spares, device errors), most severe first, from the
     loads of the `Monitor`. It comes up by itself when something is wrong. A failed load keeps the last alerts.
-    Both bars share `linePanel` (height, hovered line, clicks).
+    Both bars share `linePanel` (height, mouse).
     The `Monitor` also loads the damaged files (`zfs.ListDataErrors`: `zpool status -p -v`, retried with `sudo -n`,
     allowed by the rule of `setup`) into a `zfs.DataErrorIndex`, only when the data errors of the pools changed or on
     `RefreshDataErrors` (F5, snapshot changes), not on every load (sudo logs every call). The file and snapshot
@@ -84,6 +84,8 @@ of the code.
     horizontal scrolling, multi-selection, persisted column layouts, `ContentSize`.
   - `util/` (imported as `uiutil`): `DataLoader`, `Debouncer`, `SubscribeUI`, `LoadingContainer`, `ResizableSplit`,
     `SelectionMemory`, content size helpers, formatting.
+  - `clickable/`: `Regions`, the parts of a primitive that are highlighted while hovered and run something when
+    clicked. Below `uiutil`, which imports `shortcut_helper`.
   - `shortcut_helper/`: shortcut entries, key names, the shortcut bar at the bottom.
   - `theme/`: all colors (`theme.Colors`), defined in `common.go`, set in `dark.go`. No hard-coded colors for new
     UI elements.
@@ -108,7 +110,12 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 - **Mouse capture on the top-level layout.** Drags are handled in the mouse capture of the page (or dialog) layout,
   not of the dragged widget, so a drag is not lost when the mouse leaves it (`captureSplitDrags`). A primitive that
   needs to know when the mouse leaves it returns itself as the capturing primitive while the mouse is on it (see
-  `shortcutBar.MouseHandler`).
+  `clickable.Regions.HandleMouse`).
+- **Parts that are hovered and clicked use `clickable.Regions`** (the activity, alert and shortcut bars): `Draw`
+  adds each part where it draws it (`Reset`, `Add`, `DrawHover` at the end), the mouse handler calls `HandleMouse`.
+  No second layout for hit testing. A region's `Key` identifies it across draws (regions with the same key are
+  highlighted together); the last added region wins where they overlap. Regions exist once drawn: UI tests draw
+  (`app.ForceDraw()`) before sending mouse events.
 - **tview hands mouse events to all pages until one consumes them** (rivo/tview#926). Dialogs consume clicks next to
   them; things on a page that react to the mouse check `isInFront` (splits, the shortcut bar), so they do nothing
   while a dialog is in front.

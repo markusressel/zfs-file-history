@@ -2,6 +2,7 @@ package shortcut_helper
 
 import (
 	"strings"
+	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -30,15 +31,13 @@ type barSegment struct {
 	key int
 }
 
-// barTarget is what a click on the map runs: an entry, or one of its keys.
+// barTarget is the key of what a click on the map runs (see clickable.Region): an entry, or one of its keys.
 type barTarget struct {
-	// item is the index in the layout, -1 for none
+	// item is the index in the layout
 	item int
 	// key is the index of the clicked key, -1 for the entry as a whole (its first key, or its Run)
 	key int
 }
-
-var noTarget = barTarget{item: -1, key: -1}
 
 // newBarItem returns the item of the entry: "[keys]: name", with the alternative keys joined by a vertical line.
 // Spaces in the name are non-breaking, like in the plain text of formatEntries.
@@ -117,8 +116,8 @@ type shortcutBar struct {
 	// beforeDraw is called with the inner size before drawing, see ShortcutMapComponent.createLayout
 	beforeDraw func(width int, height int)
 
-	// hovered is the entry (or key) below the mouse
-	hovered barTarget
+	// regions are the entries and keys that can be clicked, added by Draw
+	regions clickable.Regions
 }
 
 func newShortcutBar(application *tview.Application) *shortcutBar {
@@ -129,7 +128,6 @@ func newShortcutBar(application *tview.Application) *shortcutBar {
 			// not on the UI thread: QueueEvent blocks while the event queue is full
 			go application.QueueEvent(event)
 		},
-		hovered: noTarget,
 	}
 	return bar
 }
@@ -138,7 +136,7 @@ func newShortcutBar(application *tview.Application) *shortcutBar {
 func (bar *shortcutBar) setEntries(entries []ShortcutEntry) {
 	bar.entries = entries
 	// the positions changed
-	bar.hovered = noTarget
+	bar.regions.ClearHover()
 }
 
 // layout places the entries in the current width of the bar.
@@ -149,64 +147,43 @@ func (bar *shortcutBar) layout() []barItem {
 
 func (bar *shortcutBar) Draw(screen tcell.Screen) {
 	bar.DrawForSubclass(screen, bar)
+	bar.regions.Reset()
 	x, y, width, height := bar.GetInnerRect()
 	if bar.beforeDraw != nil {
 		bar.beforeDraw(width, height)
 	}
+	hover := theme.Colors.ShortcutMap.HoverBackground
 	for index, item := range bar.layout() {
 		if item.line >= height {
 			break
 		}
+		itemX := x + item.x
 		for _, segment := range item.segments {
-			segmentX := x + item.x + segment.x
+			segmentX := itemX + segment.x
 			if segmentX >= x+width {
 				break
 			}
 			tview.Print(screen, tview.Escape(segment.text), segmentX, y+item.line, x+width-segmentX, tview.AlignLeft, segment.color)
-			if bar.isHighlighted(index, segment) {
-				for column := segmentX; column < min(segmentX+segment.width, x+width); column++ {
-					str, style, _ := screen.Get(column, y+item.line)
-					screen.Put(column, y+item.line, str, style.Background(theme.Colors.ShortcutMap.HoverBackground))
-				}
-			}
 		}
-	}
-}
-
-// isHighlighted returns whether the segment of the item is below the mouse: the hovered key, or all of the hovered
-// entry.
-func (bar *shortcutBar) isHighlighted(item int, segment barSegment) bool {
-	if bar.hovered.item != item {
-		return false
-	}
-	return bar.hovered.key < 0 || bar.hovered.key == segment.key
-}
-
-// targetAt returns what a click at the position would run.
-func (bar *shortcutBar) targetAt(x int, y int) barTarget {
-	rectX, rectY, width, _ := bar.GetInnerRect()
-	if x < rectX || x >= rectX+width {
-		return noTarget
-	}
-	x, y = x-rectX, y-rectY
-	for index, item := range bar.layout() {
-		if item.line != y || x < item.x || x >= item.x+item.width || item.entry == nil {
+		if item.entry == nil || !isClickable(item.entry) {
 			continue
 		}
-		if !isClickable(item.entry) {
-			return noTarget
-		}
+		entry := item.entry
+		bar.regions.Add(clickable.Region{X: itemX, Y: y + item.line, Width: min(item.width, x+width-itemX),
+			Key: barTarget{item: index, key: -1}, HoverBackground: hover, OnClick: func() { bar.click(entry, -1) }})
+		// one of several keys, if it can be pressed: only that one, added last, so it wins over the entry
 		for _, segment := range item.segments {
-			// a key of several: only that one, if it is a key that can be pressed
-			if segment.key >= 0 && len(item.entry.KeyCombo) > 1 && x >= item.x+segment.x && x < item.x+segment.x+segment.width {
-				if _, ok := keyEvent(item.entry.KeyCombo[segment.key]); ok {
-					return barTarget{item: index, key: segment.key}
-				}
+			if segment.key < 0 || len(entry.KeyCombo) < 2 {
+				continue
+			}
+			if _, ok := keyEvent(entry.KeyCombo[segment.key]); ok {
+				key, segmentX := segment.key, itemX+segment.x
+				bar.regions.Add(clickable.Region{X: segmentX, Y: y + item.line, Width: min(segment.width, x+width-segmentX),
+					Key: barTarget{item: index, key: key}, HoverBackground: hover, OnClick: func() { bar.click(entry, key) }})
 			}
 		}
-		return barTarget{item: index, key: -1}
 	}
-	return noTarget
+	bar.regions.DrawHover(screen)
 }
 
 // isClickable returns whether clicking the entry does something: pressing its first key, or running it.
@@ -219,14 +196,10 @@ func isClickable(entry *ShortcutEntry) bool {
 	return entry.Run != nil
 }
 
-// click presses the key of the target, or runs its entry if it has no key that can be pressed.
-func (bar *shortcutBar) click(target barTarget) {
-	items := bar.layout()
-	if target.item < 0 || target.item >= len(items) || items[target.item].entry == nil {
-		return
-	}
-	entry := items[target.item].entry
-	key := max(target.key, 0)
+// click presses the key of the entry with the index (-1: its first key), or runs the entry if it has no key that can
+// be pressed.
+func (bar *shortcutBar) click(entry *ShortcutEntry, key int) {
+	key = max(key, 0)
 	if key < len(entry.KeyCombo) {
 		if event, ok := keyEvent(entry.KeyCombo[key]); ok {
 			bar.pressKey(event)
@@ -238,24 +211,14 @@ func (bar *shortcutBar) click(target barTarget) {
 	}
 }
 
-// MouseHandler highlights the entry below the mouse and runs a clicked one. The bar never takes the focus, so the
-// pressed key goes to the focused component, the one whose entries are shown.
+// MouseHandler highlights the entry below the mouse and runs a clicked one, see regions. The bar never takes the
+// focus, so the pressed key goes to the focused component, the one whose entries are shown.
 func (bar *shortcutBar) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	return bar.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		x, y := event.Position()
-		if !bar.enabled() || !bar.InRect(x, y) {
-			// e.g. moved away: tview only sends the events of other positions while the bar captures the mouse
-			changed := bar.hovered != noTarget
-			bar.hovered = noTarget
-			return changed, nil
+		consumed, captures := bar.regions.HandleMouse(action, event, bar.enabled() && bar.InRect(event.Position()))
+		if captures {
+			return consumed, bar
 		}
-		target := bar.targetAt(x, y)
-		changed := target != bar.hovered
-		bar.hovered = target
-		if action == tview.MouseLeftClick {
-			bar.click(target)
-		}
-		// captures the mouse while on the bar, to know when it leaves it
-		return changed || action == tview.MouseLeftDown || action == tview.MouseLeftClick, bar
+		return consumed, nil
 	})
 }

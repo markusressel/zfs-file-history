@@ -92,9 +92,9 @@ func TestShortcutBar_ClickPressesTheKey(t *testing.T) {
 	// no key that can be pressed: runs it, if it can be run
 	items := bar.layout()
 	require.Len(t, items, 4)
-	bar.click(barTarget{item: 2, key: -1})
+	bar.click(items[2].entry, -1)
 	assert.False(t, ran)
-	bar.click(barTarget{item: 3, key: -1})
+	bar.click(items[3].entry, -1)
 	assert.True(t, ran)
 	assert.Len(t, *pressed, 3)
 }
@@ -139,15 +139,18 @@ func TestShortcutBar_Disabled(t *testing.T) {
 
 	mouseAt(bar, tview.MouseMove, 2, 0)
 	mouseAt(bar, tview.MouseLeftClick, 2, 0)
-	assert.Equal(t, noTarget, bar.hovered)
+	_, hovered := bar.regions.Hovered()
+	assert.False(t, hovered)
 	assert.Empty(t, *pressed)
 }
 
 func TestShortcutBar_NewEntriesEndTheHover(t *testing.T) {
 	bar, _, _ := newTestBar(t, []ShortcutEntry{{KeyCombo: []string{"h"}, Name: "History"}})
 	mouseAt(bar, tview.MouseMove, 2, 0)
-	require.NotEqual(t, noTarget, bar.hovered)
+	_, hovered := bar.regions.Hovered()
+	require.True(t, hovered)
 
 	bar.setEntries([]ShortcutEntry{{KeyCombo: []string{"q"}, Name: "Quit"}})
-	assert.Equal(t, noTarget, bar.hovered)
+	_, hovered = bar.regions.Hovered()
+	assert.False(t, hovered)
 }

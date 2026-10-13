@@ -2,6 +2,7 @@ package pool_activity
 
 import (
 	"unicode/utf8"
+	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -20,11 +21,19 @@ var severityTitles = map[zfs.PoolAlertSeverity]string{
 // AlertBar shows the problems of the pools (see Monitor.Alerts), one line each, most severe first: how severe, which
 // pool, and what is wrong, e.g. " Error  rpool  18 data errors in files or metadata". The columns are aligned. It
 // has no height while all pools are healthy, so it comes up by itself when something goes wrong (see
-// SetOnHeightChanged). A click on a line runs the function set with SetOnClick.
+// SetOnHeightChanged). A click on a line runs the function set with SetOnClick, the line below the mouse is
+// highlighted.
 type AlertBar struct {
 	*linePanel
-	// monitor is only accessed on the UI thread
+	// All fields below are only accessed on the UI thread.
 	monitor *Monitor
+	// onClick is called with the clicked alert, nil: the lines cannot be clicked
+	onClick func(alert zfs.PoolAlert)
+}
+
+// alertRegion is the key of the line of an alert (see clickable.Region): a pool has at most one alert of a kind.
+type alertRegion struct {
+	pool, kind string
 }
 
 // NewAlertBar returns a bar showing the alerts of monitor. Must be called on the UI thread.
@@ -39,11 +48,7 @@ func NewAlertBar(monitor *Monitor) *AlertBar {
 
 // SetOnClick sets the function called with the clicked alert. Must be called on the UI thread.
 func (bar *AlertBar) SetOnClick(onClick func(alert zfs.PoolAlert)) {
-	bar.onClickLine = func(line int, _ int) {
-		if alerts := bar.monitor.Alerts(); line < len(alerts) {
-			onClick(alerts[line])
-		}
-	}
+	bar.onClick = onClick
 }
 
 // Draw draws one line per alert, see formatAlerts. The border has the color of the most severe alert.
@@ -53,14 +58,20 @@ func (bar *AlertBar) Draw(screen tcell.Screen) {
 		bar.SetBorderColor(severityColor(alerts[0].Severity))
 	}
 	bar.DrawForSubclass(screen, bar)
+	bar.regions.Reset()
 	x, y, width, height := bar.GetInnerRect()
-	bar.drawHover(screen, theme.Colors.Alert.HoverBackground)
 	for i, line := range formatAlerts(alerts, width) {
 		if i >= height {
 			break
 		}
 		tview.Print(screen, line, x, y+i, width, tview.AlignLeft, theme.Colors.Alert.Message)
+		if bar.onClick != nil {
+			alert := alerts[i]
+			bar.regions.Add(clickable.Region{X: x, Y: y + i, Width: width, Key: alertRegion{alert.Pool, alert.Kind},
+				HoverBackground: theme.Colors.Alert.HoverBackground, OnClick: func() { bar.onClick(alert) }})
+		}
 	}
+	bar.regions.DrawHover(screen)
 }
 
 // formatAlerts returns the lines of the alerts for the given width: the severity and the pool aligned in columns,

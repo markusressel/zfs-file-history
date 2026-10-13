@@ -62,15 +62,17 @@ const (
 
 // timeLeftField is a part of what is shown of the time left, see timeLeftFields.
 type timeLeftField struct {
-	text       string
-	background tcell.Color
+	text string
+	// background is the one of the field, hoverBackground the one while it is below the mouse
+	background      tcell.Color
+	hoverBackground tcell.Color
 }
 
 // timeLeftFields returns what the mode shows of the time left of the activity: the time left (e.g. "⧗    2h 10m"),
 // the ETA (e.g. "⚑     14:32") or both, with placeholders if it is not known. They have the same width for all
 // activities, and the time left and the ETA have the same width, so the bars keep their width when the mode changes
-// between them. hovered takes the lighter backgrounds.
-func timeLeftFields(activity zfs.PoolActivity, mode TimeLeftMode, hovered bool) []timeLeftField {
+// between them.
+func timeLeftFields(activity zfs.PoolActivity, mode TimeLeftMode) []timeLeftField {
 	remaining, eta := remainingPlaceholder, etaPlaceholder
 	if activity.RemainingKnown {
 		current := now()
@@ -78,12 +80,9 @@ func timeLeftFields(activity zfs.PoolActivity, mode TimeLeftMode, hovered bool) 
 		eta = formatEta(current.Add(activity.Remaining), current)
 	}
 	colors := theme.Colors.Activity
-	remainingBackground, etaBackground := colors.RemainingBackground, colors.EtaBackground
-	if hovered {
-		remainingBackground, etaBackground = colors.RemainingHoverBackground, colors.EtaHoverBackground
-	}
-	remainingField := timeLeftField{fmt.Sprintf("%s %*s", remainingSymbol, len(etaPlaceholder), remaining), remainingBackground}
-	etaField := timeLeftField{etaSymbol + " " + eta, etaBackground}
+	remainingField := timeLeftField{fmt.Sprintf("%s %*s", remainingSymbol, len(etaPlaceholder), remaining),
+		colors.RemainingBackground, colors.RemainingHoverBackground}
+	etaField := timeLeftField{etaSymbol + " " + eta, colors.EtaBackground, colors.EtaHoverBackground}
 	switch mode {
 	case TimeLeftEta:
 		return []timeLeftField{etaField}
@@ -96,7 +95,7 @@ func timeLeftFields(activity zfs.PoolActivity, mode TimeLeftMode, hovered bool) 
 // formatTimeLeft returns the text of the fields of the time left (see timeLeftFields), e.g. to write it into a bar.
 func formatTimeLeft(activity zfs.PoolActivity, mode TimeLeftMode) string {
 	var texts []string
-	for _, field := range timeLeftFields(activity, mode, false) {
+	for _, field := range timeLeftFields(activity, mode) {
 		texts = append(texts, field.text)
 	}
 	return strings.Join(texts, "  ")

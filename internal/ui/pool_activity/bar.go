@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -26,21 +27,22 @@ var kindTitles = map[string]string{
 
 // Bar shows the operations running on the pools (see Monitor), one line each: what runs on which pool, a progress
 // bar with the progress written into it, and the time left, e.g.
-// " Resilver  tank  [ 31.8%  1.02T / 3.21T  294M/s        ]  ⧗    2h 10m". The columns are aligned, so all bars
-// start and end at the same column. It has no height while nothing runs, see SetOnHeightChanged. A click on the time
-// left shows the ETA instead (see Monitor.CycleTimeLeftMode), a click on the rest of a line runs the function set with
-// SetOnClick. Only the part below the mouse is highlighted, see regionAt.
+// " Resilver  tank  [ 31.8%  1.02T / 3.21T  294M/s        ]   ⧗    2h 10m ". The columns are aligned, so all bars
+// start and end at the same column. It has no height while nothing runs, see SetOnHeightChanged. A click on the label
+// or the bar runs the function set with SetOnClick, a click on the time left shows the ETA instead (see
+// Monitor.CycleTimeLeftMode). Only the part below the mouse is highlighted.
 type Bar struct {
 	*linePanel
-	// monitor is only accessed on the UI thread
+	// All fields below are only accessed on the UI thread.
 	monitor *Monitor
+	// onClick is called with the clicked activity, nil: the label and the bar cannot be clicked
+	onClick func(activity zfs.PoolActivity)
 }
 
 // NewBar returns a bar showing the activities of monitor. Must be called on the UI thread.
 func NewBar(monitor *Monitor) *Bar {
 	bar := &Bar{monitor: monitor}
 	bar.linePanel = newLinePanel(func() int { return len(monitor.Activities()) })
-	bar.linePanel.regionAt = bar.regionAt
 	// a panel of its own, which looks different from the views of the page: it is about all pools, not the page
 	uiutil.SetupWindow(bar.Box, "Activity")
 	bar.SetBorderColor(theme.Colors.Activity.Border)
@@ -49,73 +51,63 @@ func NewBar(monitor *Monitor) *Bar {
 	return bar
 }
 
-// The parts of a line, which do different things when clicked, see regionAt.
+// SetOnClick sets the function called with the clicked activity. Must be called on the UI thread.
+func (bar *Bar) SetOnClick(onClick func(activity zfs.PoolActivity)) {
+	bar.onClick = onClick
+}
+
+// The parts of the line of an activity that do different things when clicked, see activityRegion.
 const (
 	// regionPool is the label and the progress bar: a click shows the pool
 	regionPool = iota
-	// regionTimeLeft is the time left behind the bar: a click shows the ETA instead (see Monitor.CycleTimeLeftMode)
+	// regionTimeLeft is the time left behind the bar: a click shows the ETA instead
 	regionTimeLeft
 )
 
-// SetOnClick sets the function called with the clicked activity. Must be called on the UI thread.
-func (bar *Bar) SetOnClick(onClick func(activity zfs.PoolActivity)) {
-	bar.onClickLine = func(line int, column int) {
-		activities := bar.monitor.Activities()
-		if line >= len(activities) {
-			return
-		}
-		if bar.regionAt(line, column) == regionTimeLeft {
-			bar.monitor.CycleTimeLeftMode()
-			return
-		}
-		onClick(activities[line])
-	}
+// activityRegion is the key of a part of the line of an activity (see clickable.Region), by what runs where, so the
+// hover stays while its progress changes.
+type activityRegion struct {
+	pool, kind string
+	part       int
 }
 
-// regionAt returns the part of the line of an activity at the column: the time left if it is behind the bar, else
-// the pool (the time left in the bar is part of it).
-func (bar *Bar) regionAt(line int, column int) int {
-	activities := bar.monitor.Activities()
-	if line >= len(activities) {
-		return regionPool
-	}
-	_, _, width, _ := bar.GetInnerRect()
-	layout := layoutLines(activities, width, bar.monitor.TimeLeftMode())[line]
-	if layout.remaining != "" && column >= layout.barStart+layout.barWidth {
-		return regionTimeLeft
-	}
-	return regionPool
-}
-
-// Draw draws one line per activity, see layoutLines.
+// Draw draws one line per activity, see layoutLines, and adds the parts that can be clicked to the regions.
 func (bar *Bar) Draw(screen tcell.Screen) {
 	bar.DrawForSubclass(screen, bar)
+	bar.regions.Reset()
 	x, y, width, height := bar.GetInnerRect()
 	activities := bar.monitor.Activities()
-	mode := bar.monitor.TimeLeftMode()
-	lines := layoutLines(activities, width, mode)
-	for i, line := range lines {
+	colors := theme.Colors.Activity
+	for i, line := range layoutLines(activities, width, bar.monitor.TimeLeftMode()) {
 		if i >= height {
 			break
 		}
-		// only the hovered part is highlighted: the label (for the bar, which has colors of its own), or the fields
-		// of the time left
-		if i == bar.hovered && bar.onClickLine != nil {
-			if bar.hoveredRegion == regionTimeLeft && line.remaining != "" {
-				line.remaining = formatRemaining(activities[i], mode, true)
-			} else {
-				style := tcell.StyleDefault.Background(theme.Colors.Activity.HoverBackground)
-				for column := 0; column < line.barStart; column++ {
-					screen.SetContent(x+column, y+i, ' ', nil, style)
-				}
-			}
-		}
+		activity := activities[i]
 		tview.Print(screen, line.label, x, y+i, width, tview.AlignLeft, tcell.ColorWhite)
-		drawProgressBar(screen, x+line.barStart, y+i, line.barWidth, activities[i].Progress, line.barText)
-		if line.remaining != "" {
-			tview.Print(screen, line.remaining, x+line.barStart+line.barWidth, y+i, width-line.barStart-line.barWidth, tview.AlignLeft, tcell.ColorWhite)
+		drawProgressBar(screen, x+line.barStart, y+i, line.barWidth, activity.Progress, line.barText)
+		if bar.onClick != nil {
+			// the bar has colors of its own: only the label is highlighted
+			key := activityRegion{activity.Pool, activity.Kind, regionPool}
+			onClick := func() { bar.onClick(activity) }
+			// cut to the panel: the labels can be wider than a narrow one, the hover would be painted over the border
+			labelWidth := min(line.barStart, width)
+			bar.regions.Add(clickable.Region{X: x, Y: y + i, Width: labelWidth, Key: key, HoverBackground: colors.HoverBackground, OnClick: onClick})
+			bar.regions.Add(clickable.Region{X: x + labelWidth, Y: y + i, Width: min(line.barWidth, width-labelWidth), Key: key,
+				HoverBackground: tcell.ColorDefault, OnClick: onClick})
+		}
+		column := x + line.barStart + line.barWidth + timeLeftGap
+		for j, field := range line.timeLeft {
+			if j > 0 {
+				column++
+			}
+			_, fieldWidth := tview.Print(screen, backgroundTag(field.background)+" "+tview.Escape(field.text)+" ",
+				column, y+i, x+width-column, tview.AlignLeft, colors.Remaining)
+			bar.regions.Add(clickable.Region{X: column, Y: y + i, Width: fieldWidth, Key: activityRegion{activity.Pool, activity.Kind, regionTimeLeft},
+				HoverBackground: field.hoverBackground, OnClick: bar.monitor.CycleTimeLeftMode})
+			column += fieldWidth
 		}
 	}
+	bar.regions.DrawHover(screen)
 }
 
 // activityLine is the layout of the line of an activity, see layoutLines.
@@ -126,19 +118,32 @@ type activityLine struct {
 	barStart int
 	barWidth int
 	barText  string
-	// remaining is the time left behind the bar (see formatRemaining), "" if it is written into the bar
-	remaining string
+	// timeLeft are the fields of the time left behind the bar (see timeLeftFields), nil if it is written into the bar
+	timeLeft []timeLeftField
+}
+
+// timeLeftGap is the space between a bar and the time left behind it.
+const timeLeftGap = 2
+
+// timeLeftWidth returns the width of the time left behind a bar: the fields with a space of padding on each side,
+// one column between them, and the gap in front, see Bar.Draw.
+func timeLeftWidth(fields []timeLeftField) int {
+	width := timeLeftGap + max(len(fields)-1, 0)
+	for _, field := range fields {
+		width += utf8.RuneCountInString(field.text) + 2
+	}
+	return width
 }
 
 // layoutLines lays out the lines of the activities for the given width: the labels (see formatLabels), the progress
 // bars, as wide as fits, and the time left behind them. All bars have the same width, so they end at the same
 // column, with space for the time left behind them (and one column of padding, like in front of the labels). The
-// time left (as chosen by mode) always has the same width (see formatTimeLeft), also while it is not known yet (e.g. a
-// TRIM, estimated after a while), so the bars do not change their width while an activity runs. If the bars would
+// time left (as chosen by mode) always has the same width (see timeLeftFields), also while it is not known yet (e.g.
+// a TRIM, estimated after a while), so the bars do not change their width while an activity runs. If the bars would
 // get narrower than minBarWidthWithRemaining that way, the time left is written into the bars instead.
 func layoutLines(activities []zfs.PoolActivity, width int, mode TimeLeftMode) []activityLine {
 	labels, labelWidth := formatLabels(activities)
-	_, remainingWidth := formatRemainingWidth(zfs.PoolActivity{}, mode, false)
+	remainingWidth := timeLeftWidth(timeLeftFields(zfs.PoolActivity{}, mode))
 	barWidth := width - labelWidth - remainingWidth - 1
 	besideBar := barWidth >= minBarWidthWithRemaining
 	if !besideBar {
@@ -149,34 +154,13 @@ func layoutLines(activities []zfs.PoolActivity, width int, mode TimeLeftMode) []
 	for i, activity := range activities {
 		line := activityLine{label: labels[i], barStart: labelWidth, barWidth: barWidth}
 		if besideBar {
-			line.remaining = formatRemaining(activity, mode, false)
+			line.timeLeft = timeLeftFields(activity, mode)
 			activity.RemainingKnown = false
 		}
 		line.barText = barText(activity, barWidth, mode)
 		lines = append(lines, line)
 	}
 	return lines
-}
-
-// formatRemaining returns the time left behind a progress bar (see timeLeftFields), each field on its background
-// (the lighter one while hovered) with a space of padding on each side, e.g. "   ⧗    2h 10m ".
-func formatRemaining(activity zfs.PoolActivity, mode TimeLeftMode, hovered bool) string {
-	text, _ := formatRemainingWidth(activity, mode, hovered)
-	return text
-}
-
-// formatRemainingWidth is formatRemaining, and also returns the width of the text (without the style tags).
-func formatRemainingWidth(activity zfs.PoolActivity, mode TimeLeftMode, hovered bool) (text string, width int) {
-	text, width = "  ", 2
-	for i, field := range timeLeftFields(activity, mode, hovered) {
-		if i > 0 {
-			text, width = text+" ", width+1
-		}
-		text += txwidgets.ColorTag(theme.Colors.Activity.Remaining) + backgroundTag(field.background) + " " +
-			tview.Escape(field.text) + " [-:-]"
-		width += utf8.RuneCountInString(field.text) + 2
-	}
-	return text, width
 }
 
 // backgroundTag returns the style tag of tview that sets the background color.
