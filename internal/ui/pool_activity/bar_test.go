@@ -461,3 +461,28 @@ func TestMonitor_OnStatusesLoaded(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, count, len(get()))
 }
+
+func TestBar_BackgroundOnlyInside(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(40, 3)
+	monitor := NewMonitor(tview.NewApplication())
+	monitor.activities = []zfs.PoolActivity{{Pool: "tank", Kind: "scrub", Progress: 10}}
+	bar := NewBar(monitor)
+	bar.SetRect(0, 0, 40, 3)
+
+	bar.Draw(screen)
+	screen.Show()
+
+	cells, width, _ := screen.GetContents()
+	background := func(x int, y int) tcell.Color {
+		_, color, _ := cells[y*width+x].Style.Decompose()
+		return color
+	}
+	// the border lines are in the middle of their cells: no background behind them
+	for _, position := range [][2]int{{0, 0}, {10, 0}, {0, 1}, {39, 1}, {10, 2}} {
+		assert.NotEqual(t, theme.Colors.Activity.Background, background(position[0], position[1]), "border at %v", position)
+	}
+	assert.Equal(t, theme.Colors.Activity.Background, background(1, 1), "inside")
+	assert.Equal(t, theme.Colors.Activity.Background, background(38, 1), "inside, behind the bar")
+}
