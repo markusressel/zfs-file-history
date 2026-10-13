@@ -3,19 +3,23 @@ package pool_activity
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 // TimeLeftMode is what is shown of the time left of the activities, see Monitor.CycleTimeLeftMode.
 type TimeLeftMode string
 
 const (
-	// TimeLeftRemaining shows how long an activity still runs, e.g. "  2h 10m to go"
+	// TimeLeftRemaining shows how long an activity still runs, e.g. "⧗    2h 10m"
 	TimeLeftRemaining TimeLeftMode = "remaining"
-	// TimeLeftEta shows when it ends, e.g. "done Tue 14:32"
+	// TimeLeftEta shows when it ends, e.g. "⚑     14:32" (today) or "⚑ Wed 14:32"
 	TimeLeftEta TimeLeftMode = "eta"
-	// TimeLeftBoth shows both, e.g. "  2h 10m to go · Tue 14:32"
+	// TimeLeftBoth shows both, e.g. "⧗    2h 10m  ⚑     14:32"
 	TimeLeftBoth TimeLeftMode = "both"
 )
 
@@ -49,22 +53,53 @@ const (
 // now is replaceable in tests.
 var now = time.Now
 
-// formatTimeLeft returns what the mode shows of the time left of the activity, e.g. "  2h 10m to go" or
-// "done Tue 14:32", with placeholders if it is not known. It has the same width for all activities.
-func formatTimeLeft(activity zfs.PoolActivity, mode TimeLeftMode) string {
+// Symbols in front of the time left and the ETA, one column wide each (unlike emoji, which take two in most
+// terminals).
+const (
+	remainingSymbol = "⧗"
+	etaSymbol       = "⚑"
+)
+
+// timeLeftField is a part of what is shown of the time left, see timeLeftFields.
+type timeLeftField struct {
+	text       string
+	background tcell.Color
+}
+
+// timeLeftFields returns what the mode shows of the time left of the activity: the time left (e.g. "⧗    2h 10m"),
+// the ETA (e.g. "⚑     14:32") or both, with placeholders if it is not known. They have the same width for all
+// activities, and the time left and the ETA have the same width, so the bars keep their width when the mode changes
+// between them. hovered takes the lighter backgrounds.
+func timeLeftFields(activity zfs.PoolActivity, mode TimeLeftMode, hovered bool) []timeLeftField {
 	remaining, eta := remainingPlaceholder, etaPlaceholder
 	if activity.RemainingKnown {
 		current := now()
 		remaining = formatDuration(activity.Remaining)
 		eta = formatEta(current.Add(activity.Remaining), current)
 	}
+	colors := theme.Colors.Activity
+	remainingBackground, etaBackground := colors.RemainingBackground, colors.EtaBackground
+	if hovered {
+		remainingBackground, etaBackground = colors.RemainingHoverBackground, colors.EtaHoverBackground
+	}
+	remainingField := timeLeftField{fmt.Sprintf("%s %*s", remainingSymbol, len(etaPlaceholder), remaining), remainingBackground}
+	etaField := timeLeftField{etaSymbol + " " + eta, etaBackground}
 	switch mode {
 	case TimeLeftEta:
-		return "done " + eta
+		return []timeLeftField{etaField}
 	case TimeLeftBoth:
-		return remaining + " to go · " + eta
+		return []timeLeftField{remainingField, etaField}
 	}
-	return remaining + " to go"
+	return []timeLeftField{remainingField}
+}
+
+// formatTimeLeft returns the text of the fields of the time left (see timeLeftFields), e.g. to write it into a bar.
+func formatTimeLeft(activity zfs.PoolActivity, mode TimeLeftMode) string {
+	var texts []string
+	for _, field := range timeLeftFields(activity, mode, false) {
+		texts = append(texts, field.text)
+	}
+	return strings.Join(texts, "  ")
 }
 
 // formatDuration formats a time left in its two largest units, in 8 columns whatever format zpool status printed it
@@ -84,12 +119,17 @@ func formatDuration(remaining time.Duration) string {
 	return fmt.Sprintf("%3dm %02ds", minutes, seconds%60)
 }
 
-// formatEta formats when an activity ends in 9 columns: the weekday and the time within the next 6 days ("Tue 14:32",
-// the weekday of today for today), the date after that ("   Oct 25"), when the weekday would be ambiguous and the time
-// does not matter much.
+// formatEta formats when an activity ends in 9 columns: the time for today ("    14:32", without the weekday, which
+// would suggest another day), the weekday and the time within the next 6 days ("Wed 14:32"), the date after that
+// ("   Oct 25"), when the weekday would be ambiguous and the time does not matter much. Right-aligned, so the times
+// of all lines are in the same columns.
 func formatEta(eta time.Time, now time.Time) string {
 	year, month, day := now.Date()
-	if eta.Before(time.Date(year, month, day+7, 0, 0, 0, 0, now.Location())) {
+	etaYear, etaMonth, etaDay := eta.Date()
+	switch {
+	case etaYear == year && etaMonth == month && etaDay == day:
+		return fmt.Sprintf("%9s", eta.Format("15:04"))
+	case eta.Before(time.Date(year, month, day+7, 0, 0, 0, 0, now.Location())):
 		return eta.Format("Mon 15:04")
 	}
 	return fmt.Sprintf("%9s", eta.Format("Jan 2"))

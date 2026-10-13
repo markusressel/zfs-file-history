@@ -28,6 +28,12 @@ type linePanel struct {
 	enabled func() bool
 	// hovered is the index of the line below the mouse, noLine if none
 	hovered int
+	// regionAt returns which part of a line is at the column (relative to the inner rect), e.g. the parts that do
+	// different things when clicked, so only the part below the mouse is highlighted. Moving the mouse within a
+	// part does not redraw. nil: the whole line is one part.
+	regionAt func(line int, column int) int
+	// hoveredRegion is the part of the hovered line below the mouse, see regionAt
+	hoveredRegion int
 }
 
 // newLinePanel returns a panel showing the given number of lines. Must be called on the UI thread.
@@ -111,8 +117,12 @@ func (panel *linePanel) MouseHandler() func(action tview.MouseAction, event *tce
 		if line < 0 || line >= panel.lines() {
 			line = noLine
 		}
-		changed := line != panel.hovered
-		panel.hovered = line
+		region := 0
+		if line != noLine && panel.regionAt != nil {
+			region = panel.regionAt(line, x-left)
+		}
+		changed := line != panel.hovered || region != panel.hoveredRegion
+		panel.hovered, panel.hoveredRegion = line, region
 		if action == tview.MouseLeftClick && line != noLine {
 			panel.onClickLine(line, x-left)
 		}

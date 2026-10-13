@@ -48,10 +48,10 @@ func TestBarText(t *testing.T) {
 		width    int
 		expected string
 	}{
-		{100, " 31.8%  1.02T / 3.21T   294M/s    2h 10m to go"},
+		{100, " 31.8%  1.02T / 3.21T   294M/s  ⧗    2h 10m"},
 		// too narrow (with a space on each side): the amount is left out first, then the rate, then the time left
-		{40, " 31.8%   294M/s    2h 10m to go"},
-		{25, " 31.8%    2h 10m to go"},
+		{40, " 31.8%   294M/s  ⧗    2h 10m"},
+		{25, " 31.8%  ⧗    2h 10m"},
 		{10, " 31.8%"},
 		{3, "31.8%"},
 	}
@@ -91,18 +91,18 @@ var layoutActivities = []zfs.PoolActivity{
 }
 
 func TestLayoutLines(t *testing.T) {
-	// label 19, time left "    2h 10m to go" 16, padding 1: 44 for the bars
+	// label 19, time left "   ⧗    2h 10m " 15, padding 1: 45 for the bars
 	lines := layoutLines(layoutActivities, 80, TimeLeftRemaining)
 
 	require.Len(t, lines, 2)
 	for _, line := range lines {
 		assert.Equal(t, 19, line.barStart, "the bars start at the same column")
-		assert.Equal(t, 44, line.barWidth, "and end at the same column")
+		assert.Equal(t, 45, line.barWidth, "and end at the same column")
 	}
 	assert.Equal(t, " 31.8%  1.02T / 3.21T   294M/s", lines[0].barText, "the time left is behind the bar")
-	assert.Equal(t, "    2h 10m to go", testutil.StripTags(lines[0].remaining))
+	assert.Equal(t, "   ⧗    2h 10m ", testutil.StripTags(lines[0].remaining))
 	assert.Equal(t, " 10.0%   200G / 2.00T  1.10G/s", lines[1].barText)
-	assert.Equal(t, "   --h --m to go", testutil.StripTags(lines[1].remaining), "not known yet")
+	assert.Equal(t, "   ⧗   --h --m ", testutil.StripTags(lines[1].remaining), "not known yet")
 }
 
 func TestLayoutLines_RemainingPlaceholder(t *testing.T) {
@@ -113,8 +113,8 @@ func TestLayoutLines_RemainingPlaceholder(t *testing.T) {
 	known := layoutLines([]zfs.PoolActivity{trim}, 120, TimeLeftRemaining)
 
 	assert.Equal(t, known[0].barWidth, unknown[0].barWidth)
-	assert.Equal(t, "   --h --m to go", testutil.StripTags(unknown[0].remaining))
-	assert.Equal(t, "    2h 10m to go", testutil.StripTags(known[0].remaining))
+	assert.Equal(t, "   ⧗   --h --m ", testutil.StripTags(unknown[0].remaining))
+	assert.Equal(t, "   ⧗    2h 10m ", testutil.StripTags(known[0].remaining))
 }
 
 func TestLayoutLines_LongTimeLeft(t *testing.T) {
@@ -125,24 +125,24 @@ func TestLayoutLines_LongTimeLeft(t *testing.T) {
 	long := layoutLines([]zfs.PoolActivity{scrub}, 120, TimeLeftRemaining)
 
 	assert.Equal(t, short[0].barWidth, long[0].barWidth)
-	assert.Equal(t, "    1d 07h to go", testutil.StripTags(long[0].remaining))
+	assert.Equal(t, "   ⧗    1d 07h ", testutil.StripTags(long[0].remaining))
 }
 
 func TestLayoutLines_Wide(t *testing.T) {
-	// the bars fill the line, but for the time left and one column of padding: label 19, time left 16, padding 1
+	// the bars fill the line, but for the time left and one column of padding: label 19, time left 15, padding 1
 	for _, line := range layoutLines(layoutActivities, 300, TimeLeftRemaining) {
-		assert.Equal(t, 300-19-16-1, line.barWidth)
+		assert.Equal(t, 300-19-15-1, line.barWidth)
 	}
 }
 
 func TestLayoutLines_Narrow(t *testing.T) {
-	// 19 + 16 + 1 leave 14 for the bars, less than minBarWidthWithRemaining: the time left goes into the bars
+	// 19 + 15 + 1 leave 15 for the bars, less than minBarWidthWithRemaining: the time left goes into the bars
 	lines := layoutLines(layoutActivities, 50, TimeLeftRemaining)
 
 	assert.Equal(t, 30, lines[0].barWidth)
 	assert.Empty(t, lines[0].remaining)
-	// with a space on each side, the rate does not fit anymore
-	assert.Equal(t, " 31.8%    2h 10m to go", lines[0].barText)
+	// with a space on each side, the amount does not fit anymore
+	assert.Equal(t, " 31.8%   294M/s  ⧗    2h 10m", lines[0].barText)
 }
 
 func TestLayoutLines_NoTimeLeft(t *testing.T) {
@@ -471,13 +471,13 @@ func TestBar_Click(t *testing.T) {
 	mouse(t, app, bar, tview.MouseLeftClick, 40, 2)
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank"}, clicked) })
 
-	// the time left (behind the bars, which end at 1 + 78 - 16 - 1): shows the ETA instead, and does not show the pool
-	mouse(t, app, bar, tview.MouseLeftClick, 62, 2)
+	// the time left (behind the bars, which end at 1 + 78 - 15 - 1): shows the ETA instead, and does not show the pool
+	mouse(t, app, bar, tview.MouseLeftClick, 63, 2)
 	testutil.OnUiThread(t, app, func() {
 		assert.Equal(t, TimeLeftEta, monitor.TimeLeftMode())
 		assert.Equal(t, []string{"backup", "tank"}, clicked)
 	})
-	mouse(t, app, bar, tview.MouseLeftClick, 61, 2)
+	mouse(t, app, bar, tview.MouseLeftClick, 62, 2)
 	testutil.OnUiThread(t, app, func() {
 		assert.Equal(t, TimeLeftEta, monitor.TimeLeftMode(), "the last column of the bar")
 		assert.Equal(t, []string{"backup", "tank", "tank"}, clicked)
@@ -500,6 +500,41 @@ func TestBar_Click(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { enabled = false })
 	assert.False(t, mouse(t, app, bar, tview.MouseLeftClick, 5, 2))
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank", "tank"}, clicked) })
+}
+
+func TestBar_HoverHighlightsPart(t *testing.T) {
+	app, _, bar, _, heights := setupTest(t, []*zfs.PoolStatus{scrubbing("tank", 10)})
+	require.Eventually(t, func() bool { return len(heights()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, app, func() { bar.SetOnClick(func(zfs.PoolActivity) {}) })
+	colors := theme.Colors.Activity
+
+	// backgrounds of the label (column 2), the bar (column 30) and the time left field (column 77) of the line at 2
+	backgrounds := func() (label tcell.Color, progress tcell.Color, timeLeft tcell.Color) {
+		screen := tcell.NewSimulationScreen("UTF-8")
+		require.NoError(t, screen.Init())
+		screen.SetSize(80, 10)
+		testutil.OnUiThread(t, app, func() { bar.Draw(screen) })
+		screen.Show()
+		cells, width, _ := screen.GetContents()
+		background := func(x int) tcell.Color {
+			_, color, _ := cells[2*width+x].Style.Decompose()
+			return color
+		}
+		return background(2), background(30), background(77)
+	}
+
+	// Regression: the whole line was highlighted, also the time left, which does something else when clicked
+	assert.True(t, mouse(t, app, bar, tview.MouseMove, 30, 2))
+	label, progress, timeLeft := backgrounds()
+	assert.Equal(t, colors.HoverBackground, label, "the label of the pool")
+	assert.NotEqual(t, colors.HoverBackground, progress, "the bar has colors of its own")
+	assert.Equal(t, colors.RemainingBackground, timeLeft)
+
+	assert.True(t, mouse(t, app, bar, tview.MouseMove, 77, 2), "another part: drawn again")
+	assert.False(t, mouse(t, app, bar, tview.MouseMove, 76, 2), "the same part: not drawn again")
+	label, _, timeLeft = backgrounds()
+	assert.Equal(t, colors.Background, label)
+	assert.Equal(t, colors.RemainingHoverBackground, timeLeft)
 }
 
 func TestMonitor_OnStatusesLoaded(t *testing.T) {

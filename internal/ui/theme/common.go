@@ -136,8 +136,14 @@ type ActivityColors struct {
 	Kind tcell.Color
 	// Pool is the name of the pool it runs on
 	Pool tcell.Color
-	// Remaining is the estimated time left, behind the progress bar
-	Remaining tcell.Color
+	// Remaining is the text of the estimated time left and the ETA behind the progress bar, RemainingBackground and
+	// EtaBackground the backgrounds of their fields: different, so switching between them is noticed. The hover
+	// ones are lighter, for the fields below the mouse (a click switches between them).
+	Remaining                tcell.Color
+	RemainingBackground      tcell.Color
+	EtaBackground            tcell.Color
+	RemainingHoverBackground tcell.Color
+	EtaHoverBackground       tcell.Color
 	// BarFilled is the background of the done part of a progress bar, by the column (0: the start of the bar, 1: its
 	// end), so the colors show up as the progress grows. BarTrack is the background of the remaining part.
 	BarFilled []GradientStop
@@ -146,7 +152,7 @@ type ActivityColors struct {
 	// the light one on dark backgrounds
 	BarDarkText  tcell.Color
 	BarLightText tcell.Color
-	// HoverBackground is the background of the line below the mouse, which can be clicked
+	// HoverBackground is the background of the label below the mouse, which can be clicked
 	HoverBackground tcell.Color
 }
 

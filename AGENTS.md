@@ -59,8 +59,10 @@ of the code.
     with a partly filled cell in eighths (`▏`…`▉`), the progress, amount and rate centered in it (padded to fixed
     widths, so the text does not move; dark or light text by the brightness of each cell), the time left in an
     aligned column behind it, always the same width, so the bar never changes its width (`time_left.go`: the two
-    largest units, `  2h 10m`, `  1d 07h`; the ETA, `done Tue 14:32`; or both, `Monitor.TimeLeftMode`, cycled by a
-    click on it or the command menu, saved in the state; placeholders like ` --h --m` until it is known). zpool prints
+    largest units, `⧗    2h 10m`, `⧗    1d 07h`; the ETA, `⚑     14:32` (today, else with the weekday); or both, `Monitor.TimeLeftMode`, cycled by a
+    click on it or the command menu, saved in the state; placeholders like `⧗   --h --m` until it is known; each a field on its own background,
+    `RemainingBackground` and `EtaBackground`, so a switch is noticed). Only the hovered part of a line is
+    highlighted (`linePanel.regionAt`): the label for the pool, the fields of the time left for switching it. zpool prints
     the time left in several formats, `zfs.PoolActivity.Remaining` is parsed into a `time.Duration`. zpool does not estimate the time left of a TRIM,
     `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
     The same package has the `AlertBar` (above the activities): the problems of the pools (`PoolStatus.Alerts`: a

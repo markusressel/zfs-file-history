@@ -156,6 +156,11 @@ var (
 			Kind:       Accent,
 			Pool:       tcell.ColorWhite,
 			Remaining:  tcell.ColorLightGray,
+			// slightly lighter than Background, tinted blue and violet
+			RemainingBackground:      tcell.ColorIsRGB | tcell.ColorValid | 0x1E2A36,
+			EtaBackground:            tcell.ColorIsRGB | tcell.ColorValid | 0x2C2436,
+			RemainingHoverBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x2F4256,
+			EtaHoverBackground:       tcell.ColorIsRGB | tcell.ColorValid | 0x44385A,
 			// from a deep to a light orange, all light enough for BarDarkText
 			BarFilled: []GradientStop{
 				{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xCC5500},
