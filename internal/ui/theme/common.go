@@ -104,6 +104,25 @@ type Color struct {
 	Permissions PermissionColors
 	Properties  PropertyColors
 	Pool        PoolColors
+	Activity    ActivityColors
+}
+
+// ActivityColors are used by the bar below the header that shows the operations running on the pools, e.g. a scrub.
+type ActivityColors struct {
+	// Kind is what runs, e.g. "Scrub"
+	Kind tcell.Color
+	// Pool is the name of the pool it runs on
+	Pool tcell.Color
+	// Remaining is the estimated time left, behind the progress bar
+	Remaining tcell.Color
+	// BarFilled and BarTrack are the backgrounds of the done and the remaining part of a progress bar,
+	// BarFilledText and BarTrackText the colors of the text written on them
+	BarFilled     tcell.Color
+	BarFilledText tcell.Color
+	BarTrack      tcell.Color
+	BarTrackText  tcell.Color
+	// HoverBackground is the background of the line below the mouse, which can be clicked
+	HoverBackground tcell.Color
 }
 
 // PoolColors are used to show the health of pools and their devices.

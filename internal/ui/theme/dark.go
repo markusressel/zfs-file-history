@@ -14,6 +14,8 @@ var (
 	PrimaryMuted = tcell.ColorIsRGB | tcell.ColorValid | 0xE8820C
 	Secondary    = tcell.ColorIsRGB | tcell.ColorValid | 0x48525C
 	Accent       = tcell.ColorDarkOrange
+	// Hover is the background of clickable things below the mouse
+	Hover = tcell.ColorIsRGB | tcell.ColorValid | 0x3A434D
 
 	OnPrimary   = tcell.ColorBlack
 	OnSecondary = tcell.ColorWhite
@@ -105,7 +107,7 @@ var (
 			GlobalKeyCombo:     tcell.ColorIsRGB | tcell.ColorValid | 0x9AA5B1,
 			Name:               tcell.ColorLightGray,
 			Separator:          Secondary,
-			HoverBackground:    tcell.ColorIsRGB | tcell.ColorValid | 0x3A434D,
+			HoverBackground:    Hover,
 		},
 		Sparkline: SparklineColors{
 			Graph:              Accent,
@@ -138,6 +140,17 @@ var (
 			Group:    Accent,
 			Errors:   tcell.ColorRed,
 			NoErrors: tcell.ColorGray,
+		},
+		Activity: ActivityColors{
+			Kind:          Accent,
+			Pool:          tcell.ColorWhite,
+			Remaining:     tcell.ColorLightGray,
+			BarFilled:     Accent,
+			BarFilledText: OnPrimary,
+			// darker than Secondary (e.g. the version in the header) and Hover, so it does not look like either
+			BarTrack:        tcell.ColorIsRGB | tcell.ColorValid | 0x262B31,
+			BarTrackText:    OnSecondary,
+			HoverBackground: Hover,
 		},
 	}
 

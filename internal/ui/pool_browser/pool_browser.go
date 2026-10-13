@@ -88,8 +88,11 @@ var (
 // stateKeyTable is the key of the column layout remembered in state.Current
 const stateKeyTable = "poolBrowser"
 
-// listPools is replaceable in tests.
-var listPools = zfs.ListPools
+// listPools and runPoolAction are replaceable in tests.
+var (
+	listPools     = zfs.ListPools
+	runPoolAction = zfs.RunPoolAction
+)
 
 type Event interface{}
 
@@ -117,6 +120,9 @@ type PoolBrowserComponent struct {
 	initialSelection string
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
 	dialogPages *tview.Pages
+	// status is the status of the selected pool (nil if not known), which decides the actions offered, see
+	// SetStatus. Only accessed on the UI thread.
+	status *zfs.PoolStatus
 }
 
 func NewPoolBrowser(application *tview.Application) *PoolBrowserComponent {
@@ -166,8 +172,8 @@ func (poolBrowser *PoolBrowserComponent) setupTable() {
 			poolBrowser.openColumnSelectionDialog()
 			return nil
 		}
-		if poolBrowser.tableContainer.GetSelectedEntry() != nil && event.Key() == tcell.KeyEnter {
-			// no action on data rows (yet), but don't let tview handle it either
+		if selection := poolBrowser.tableContainer.GetSelectedEntry(); selection != nil && event.Key() == tcell.KeyEnter {
+			poolBrowser.openActionDialog(selection)
 			return nil
 		}
 		return event
@@ -254,12 +260,66 @@ func sortPoolEntries(entries []*zfs.PoolListEntry, column *table.Column, inverte
 
 // openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
 func (poolBrowser *PoolBrowserComponent) openColumnSelectionDialog() {
+	d := dialog.NewTableColumnSelectionDialog(poolBrowser.application, "Configure Pool Columns", tableColumns, poolBrowser.tableContainer)
+	poolBrowser.showDialog(d)
+}
+
+// showDialog shows the dialog on the dialog pages (see SetDialogPages). Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) showDialog(d dialog.Dialog) {
 	pages := poolBrowser.layout
 	if poolBrowser.dialogPages != nil {
 		pages = poolBrowser.dialogPages
 	}
-	d := dialog.NewTableColumnSelectionDialog(poolBrowser.application, "Configure Pool Columns", tableColumns, poolBrowser.tableContainer)
 	dialog.ShowDialogOnPages(poolBrowser.application, pages, d, nil)
+}
+
+// SetStatus sets the status of the selected pool (nil if not known), which decides the actions offered, e.g.
+// pausing a scrub only while one runs. Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) SetStatus(status *zfs.PoolStatus) {
+	poolBrowser.status = status
+}
+
+// statusOf returns the status of the pool, nil if it is not known (e.g. the status of the previously selected pool
+// is still shown).
+func (poolBrowser *PoolBrowserComponent) statusOf(pool *zfs.PoolListEntry) *zfs.PoolStatus {
+	if poolBrowser.status == nil || poolBrowser.status.Name != pool.Name {
+		return nil
+	}
+	return poolBrowser.status
+}
+
+// openActionDialog shows the actions for the pool, e.g. starting a scrub. Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) openActionDialog(pool *zfs.PoolListEntry) {
+	poolBrowser.showDialog(poolBrowser.newActionDialog(pool))
+}
+
+// newActionDialog creates the dialog with the actions for the pool, see openActionDialog.
+func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry) *dialog.SelectionDialog {
+	name := pool.Name
+	asyncWork := func(d *dialog.SelectionDialog, id dialog.DialogActionId) error {
+		if action, ok := dialog.PoolActionOf(id); ok {
+			return runPoolAction(action, name)
+		}
+		return nil
+	}
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		d.Close()
+		action, ok := dialog.PoolActionOf(option.Id)
+		if !ok {
+			return
+		}
+		if err != nil {
+			logging.Error("Could not %s on %s: %s", action.Name, name, err.Error())
+			poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Operation Failed", err, d.RetryFunc(option)))
+			return
+		}
+		poolBrowser.Events.Emit(PoolBrowserStatusEvent{
+			Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("%s of %s", action.Done, name)),
+		})
+		// the event watcher may not run (see "setup"), so the pools are reloaded here
+		zfs.PoolsChanged.Emit(struct{}{})
+	}
+	return dialog.NewPoolActionDialog(poolBrowser.application, name, poolBrowser.statusOf(pool), asyncWork, onComplete)
 }
 
 // SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
@@ -272,6 +332,21 @@ func (poolBrowser *PoolBrowserComponent) SetDialogPages(pages *tview.Pages) {
 // the last session. Must be called on the UI thread.
 func (poolBrowser *PoolBrowserComponent) SelectOnLoad(name string) {
 	poolBrowser.initialSelection = name
+}
+
+// SelectPool selects the pool with the given name, or once the pools are loaded if they are not yet. Nothing
+// happens if it is not listed (e.g. hidden by the filter). Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) SelectPool(name string) {
+	if poolBrowser.allEntries == nil {
+		poolBrowser.SelectOnLoad(name)
+		return
+	}
+	for _, entry := range poolBrowser.tableContainer.GetEntries() {
+		if entry.Name == name {
+			poolBrowser.tableContainer.Select(entry)
+			return
+		}
+	}
 }
 
 // Refresh reloads the pools in the background.
@@ -388,14 +463,25 @@ func (poolBrowser *PoolBrowserComponent) GetSelectedPool() *zfs.PoolListEntry {
 	return poolBrowser.tableContainer.GetSelectedEntry()
 }
 
-// GetCommands returns the commands only shown in the command menu, see shortcut_helper.CommandProvider.
+// GetCommands returns the commands only shown in the command menu, see shortcut_helper.CommandProvider: the actions
+// of the selected pool, and sorting.
 func (poolBrowser *PoolBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
-	return poolBrowser.tableContainer.SortCommands()
+	var commands []shortcut_helper.ShortcutEntry
+	if selection := poolBrowser.GetSelectedPool(); selection != nil {
+		show := func(d dialog.Dialog) { poolBrowser.showDialog(d) }
+		commands = poolBrowser.newActionDialog(selection).OptionCommands(show)
+	}
+	return append(commands, poolBrowser.tableContainer.SortCommands()...)
 }
 
 func (poolBrowser *PoolBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
-	return []shortcut_helper.ShortcutEntry{
+	shortcutMap := []shortcut_helper.ShortcutEntry{
 		uiutil.TableComponentShortcutColumns.WithRun(poolBrowser.openColumnSelectionDialog).OnlyInMenu(),
 		uiutil.TableComponentShortcutFilter.WithRun(poolBrowser.tableContainer.StartFilter),
 	}
+	if selection := poolBrowser.GetSelectedPool(); selection != nil {
+		shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutActions.WithRun(func() { poolBrowser.openActionDialog(selection) }).
+			WithDescription("Scrub, TRIM or clear the errors of the pool"))
+	}
+	return shortcutMap
 }

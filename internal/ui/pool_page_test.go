@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/pool_browser"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/zfs"
@@ -22,7 +23,7 @@ func newPoolPageApp(t *testing.T, width int, height int) (*tview.Application, *P
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	screen.SetSize(width, height)
-	page := NewPoolPage(app, status_message.NewCenter(app))
+	page := NewPoolPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app))
 	app.SetRoot(page.layout, true)
 	go func() { _ = app.Run() }()
 	t.Cleanup(app.Stop)

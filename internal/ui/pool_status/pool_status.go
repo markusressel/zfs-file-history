@@ -206,7 +206,7 @@ func formatStatus(status *zfs.PoolStatus) string {
 			out.WriteString(txwidgets.Span(f.color, "%s", line) + "\n")
 		}
 		if f.name == "Scan" && status.IsScanning() {
-			out.WriteString(indent + formatProgressBar(status.ScanProgress, progressBarWidth) + "\n")
+			out.WriteString(indent + uiutil.FormatProgressBar(status.ScanProgress, progressBarWidth) + "\n")
 		}
 	}
 	return out.String()
@@ -218,16 +218,6 @@ func errorsColor(errors string) tcell.Color {
 		return theme.Colors.Pool.Online
 	}
 	return theme.Colors.Pool.Faulted
-}
-
-// formatProgressBar returns a bar of the given width, filled by percent, followed by the percentage, e.g.
-// "██████░░░░ 60.0%".
-func formatProgressBar(percent float64, width int) string {
-	percent = min(max(percent, 0), 100)
-	filled := int(percent / 100 * float64(width))
-	return txwidgets.Span(theme.Colors.Sparkline.Graph, "%s", strings.Repeat("█", filled)) +
-		txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "%s", strings.Repeat("░", width-filled)) +
-		txwidgets.Span(tcell.ColorWhite, " %.1f%%", percent)
 }
 
 // capitalize returns the text with its first letter in upper case, e.g. "Remove" for "remove".

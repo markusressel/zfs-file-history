@@ -21,12 +21,7 @@ const poolsChangedThrottle = time.Second
 // created, destroyed, imported or exported), which reload all ZFS data (see RefreshZfsData), and of the state of
 // the pools, which only reload the pools (see PoolsChanged).
 func WatchZpoolEvents(ctx context.Context) error {
-	zpoolPath, err := exec.LookPath("zpool")
-	if err != nil {
-		zpoolPath = "/usr/bin/zpool"
-	}
-
-	cmd := exec.CommandContext(ctx, "sudo", "-n", zpoolPath, "events", "-v", "-f")
+	cmd := exec.CommandContext(ctx, "sudo", "-n", ZpoolPath(), "events", "-v", "-f")
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/pool_browser"
 	"zfs-file-history/internal/ui/pool_status"
 	"zfs-file-history/internal/ui/shortcut_helper"
@@ -33,13 +34,13 @@ const (
 	statusMaxPercent = 60
 )
 
-func NewPoolPage(application *tview.Application, messages *status_message.Center) *PoolPage {
+func NewPoolPage(application *tview.Application, messages *status_message.Center, activities *pool_activity.Monitor) *PoolPage {
 	poolBrowser := pool_browser.NewPoolBrowser(application)
 	poolStatus := pool_status.NewPoolStatus(application)
 	poolDevices := pool_status.NewPoolDevices(application)
 
 	poolPage := &PoolPage{
-		basePage:    basePage{application: application, name: Pool, messages: messages},
+		basePage:    basePage{application: application, name: Pool, messages: messages, activities: activities},
 		poolBrowser: poolBrowser,
 		poolStatus:  poolStatus,
 		poolDevices: poolDevices,
@@ -64,11 +65,16 @@ func NewPoolPage(application *tview.Application, messages *status_message.Center
 				selectedPool = e.Pool.Name
 			}
 			selectionDebouncer.Call(func() { poolStatus.SetPool(selectedPool) })
+			// the actions depend on the selection
+			if poolBrowser.HasFocus() {
+				poolPage.updateShortcutMap(poolBrowser)
+			}
 		}
 	})
 	poolStatus.Events.Subscribe(func(event pool_status.Event) {
 		if e, ok := event.(pool_status.StatusLoadedEvent); ok {
 			poolDevices.SetStatus(e.Status)
+			poolBrowser.SetStatus(e.Status)
 		}
 	})
 
@@ -105,6 +111,7 @@ func (poolPage *PoolPage) createLayout() *tview.Flex {
 
 	poolPage.header = NewApplicationHeader(poolPage.application, poolPage.messages)
 	poolPageLayout.AddItem(poolPage.header.layout, 1, 0, false)
+	poolPage.addActivityBar(poolPageLayout)
 
 	// the pools and the status fit their content, the devices get the rest (and scroll)
 	poolPage.statusSplit = poolPage.newSplit(poolPage.poolStatus.GetLayout(), poolPage.poolDevices.GetLayout(), 1, 1, true).

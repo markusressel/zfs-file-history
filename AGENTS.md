@@ -17,7 +17,8 @@ of the code.
 ## Structure
 
 - `cmd/`: the cobra commands. `root.go` starts the UI, `setup.go` installs the sudoers rule for the event watcher
-  (`/etc/sudoers.d/zfs-file-history`, `sudo -n zpool events -v -f`).
+  (`/etc/sudoers.d/zfs-file-history`, `sudo -n zpool events -v -f`), and with `--pool-actions` the rules for the
+  pool actions (checked with `visudo` before installing).
 - `internal/zfs/`: everything ZFS. libzfs (`github.com/kraudcloud/go-libzfs`) for datasets and snapshots, the `zfs`
   and `zpool` commands (`runCommand`, `runZfs`, `runZpool`) for the rest. Parsers work on the text output
   (`zpool status -p`, `zpool list -Hp`, ...), not JSON (`-j` needs OpenZFS 2.3+). Sample outputs are in `testdata/`.
@@ -25,6 +26,12 @@ of the code.
   `DatasetsLoaded` (snapshots created/destroyed, pools imported/exported, also after F5 via `RefreshZfsData`) and
   `PoolsChanged` (state changes, scrub/resilver/trim, vdev changes, `ereport.*`/`resource.*`; throttled to once a
   second).
+- `internal/zfs/pool_action.go`: the actions on pools (`zfs.PoolActions`: scrub start/pause/cancel, TRIM
+  start/cancel, clear). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
+  denied, and returns a `PoolActionNeedsRootError` if that is not allowed either: `dialog.NewErrorDialogWithRetry`
+  then offers to run it once with sudo or to run `setup --pool-actions` (like `NewMissingPermissionsDialog` does
+  for dataset permissions). Actions that lose data or make a pool unavailable (destroy, export, upgrade, `clear -F`) are deliberately
+  not offered.
 - `internal/state/`: the persisted state (`state.Current`): settings, table column layouts, selections, the session.
 - `internal/ui/`: the pages and the root.
   - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`; keys `1`-`3`), global keys, the session
@@ -34,6 +41,12 @@ of the code.
   - One package per component (`file_browser`, `snapshot_browser`, `dataset_browser`, `dataset_info`,
     `pool_browser`, `pool_status`, ...). Components emit typed events (`Events *util.Emitter[Event]`), the page wires
     them together.
+  - `pool_activity/`: the operations running on the pools (scrub, resilver, TRIM, device removal, raidz expansion),
+    shown below the header of every page. One `Monitor` for the application (loads `zpool status` of all pools,
+    every 5 s while something runs, every minute otherwise, and on the zfs emitters), one `Bar` per page (no height
+    while nothing runs; a click shows the pool on the pools page). The progress bar is drawn cell by cell with the
+    progress, amount and rate written into it (in the text color of the background of each cell), the time left in
+    an aligned column behind it.
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). Shown with
     `ShowDialogOnPages`.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),

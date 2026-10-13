@@ -73,16 +73,6 @@ func TestErrorsColor(t *testing.T) {
 	assert.Equal(t, theme.Colors.Pool.Faulted, errorsColor("1 data errors, use '-v' for a list"))
 }
 
-func TestFormatProgressBar(t *testing.T) {
-	assert.Equal(t, "░░░░░░░░░░ 0.0%", testutil.StripTags(formatProgressBar(0, 10)))
-	assert.Equal(t, "█████░░░░░ 50.0%", testutil.StripTags(formatProgressBar(50, 10)))
-	assert.Equal(t, "█████████░ 99.9%", testutil.StripTags(formatProgressBar(99.9, 10)))
-	assert.Equal(t, "██████████ 100.0%", testutil.StripTags(formatProgressBar(100, 10)))
-	// clamped
-	assert.Equal(t, "░░░░░░░░░░ 0.0%", testutil.StripTags(formatProgressBar(-5, 10)))
-	assert.Equal(t, "██████████ 100.0%", testutil.StripTags(formatProgressBar(150, 10)))
-}
-
 func TestCapitalize(t *testing.T) {
 	assert.Equal(t, "", capitalize(""))
 	assert.Equal(t, "Remove", capitalize("remove"))

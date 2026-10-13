@@ -141,8 +141,11 @@ type PoolDevice struct {
 	Read     uint64
 	Write    uint64
 	Checksum uint64
-	// Note is what is printed behind the error counters, e.g. "(resilvering)" or "was /dev/sdb"
+	// Note is what is printed behind the error counters, e.g. "(resilvering)" or "was /dev/sdb", without Trim
 	Note string
+	// Trim is the TRIM state printed by "zpool status -t", e.g. "(12% trimmed, started at Tue Oct 13 10:00:01
+	// 2026)" or "(untrimmed)", "" if none is printed (e.g. for vdevs)
+	Trim string
 }
 
 // IsGroup returns whether the device is the name of a group of devices, e.g. "logs".
@@ -153,6 +156,40 @@ func (device *PoolDevice) IsGroup() bool {
 // HasErrors returns whether there were read, write or checksum errors on the device.
 func (device *PoolDevice) HasErrors() bool {
 	return device.Read > 0 || device.Write > 0 || device.Checksum > 0
+}
+
+// trimPattern matches the TRIM state of a device, see PoolDevice.Trim.
+var trimPattern = regexp.MustCompile(`\((?:[0-9]+% trimmed[^)]*|untrimmed|trim unsupported)\)`)
+
+// trimRunningPattern matches the TRIM state of a device that is being trimmed, e.g. "(12% trimmed, started at
+// ...)". Suspended or completed ones say "suspended at" or "completed at" instead.
+var trimRunningPattern = regexp.MustCompile(`^\(([0-9]+)% trimmed, started at`)
+
+// TrimProgress returns how much of the running TRIM is done in percent (the average of the devices being trimmed),
+// or -1 if none is running.
+func (status *PoolStatus) TrimProgress() float64 {
+	total, count := 0, 0
+	for _, device := range status.Devices {
+		if match := trimRunningPattern.FindStringSubmatch(device.Trim); match != nil {
+			percent, _ := strconv.Atoi(match[1])
+			total += percent
+			count++
+		}
+	}
+	if count == 0 {
+		return -1
+	}
+	return float64(total) / float64(count)
+}
+
+// IsTrimming returns whether a TRIM is running on one of the devices.
+func (status *PoolStatus) IsTrimming() bool {
+	return status.TrimProgress() >= 0
+}
+
+// IsScrubPaused returns whether the last scrub was paused (and can be resumed).
+func (status *PoolStatus) IsScrubPaused() bool {
+	return strings.HasPrefix(status.Scan, "scrub paused")
 }
 
 // IsScanning returns whether a scrub or resilver is running.
@@ -190,13 +227,16 @@ func (status *PoolStatus) ScanFinished() (time.Time, bool) {
 	return finished, true
 }
 
+// poolStatusArgs are the arguments of "zpool status": exact numbers (-p) and the TRIM state of the devices (-t).
+var poolStatusArgs = []string{"status", "-p", "-t"}
+
 // GetPoolStatus returns the status of the pool with the given name.
 // This executes "zpool status", so it must not be called on the UI thread.
 func GetPoolStatus(name string) (*PoolStatus, error) {
 	if name == "" {
 		return nil, errors.New("cannot get the status of a pool with an empty name")
 	}
-	output, err := runZpool("status", "-p", name)
+	output, err := runZpool(append(poolStatusArgs, name)...)
 	if err != nil {
 		return nil, err
 	}
@@ -214,19 +254,41 @@ var poolStatusFieldPattern = regexp.MustCompile(`^ *([a-z][a-z -]*): ?(.*)$`)
 // scanProgressPattern matches the progress of a running scrub or resilver, e.g. "0B repaired, 21.30% done".
 var scanProgressPattern = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)% done`)
 
-// parsePoolStatus parses the output of "zpool status -p <pool>", see PoolStatus. Only the first pool is parsed.
+// ListPoolStatuses returns the status of all pools on the system, see PoolStatus.
+// This executes "zpool status", so it must not be called on the UI thread.
+func ListPoolStatuses() ([]*PoolStatus, error) {
+	output, err := runZpool(poolStatusArgs...)
+	if err != nil {
+		return nil, err
+	}
+	return parsePoolStatuses(output)
+}
+
+// noPoolsOutput is what "zpool status" prints if there are no pools.
+const noPoolsOutput = "no pools available"
+
+// parsePoolStatus parses the output of "zpool status -p -t <pool>", see PoolStatus. Only the first pool is returned.
 func parsePoolStatus(output string) (*PoolStatus, error) {
-	status := &PoolStatus{ScanProgress: -1}
-	fields := map[string]*string{
-		"pool":   &status.Name,
-		"state":  &status.State,
-		"status": &status.Status,
-		"action": &status.Action,
-		"see":    &status.See,
-		"scan":   &status.Scan,
-		"errors": &status.Errors,
+	statuses, err := parsePoolStatuses(output)
+	if err != nil {
+		return nil, err
+	}
+	if len(statuses) == 0 {
+		return nil, errors.New("unexpected output of zpool status: no pool found")
+	}
+	return statuses[0], nil
+}
+
+// parsePoolStatuses parses the output of "zpool status -p -t", see PoolStatus: one status per pool, in their order.
+func parsePoolStatuses(output string) ([]*PoolStatus, error) {
+	if strings.TrimSpace(output) == noPoolsOutput {
+		return nil, nil
 	}
 
+	var statuses []*PoolStatus
+	// status is the pool being read, nil before the first one
+	var status *PoolStatus
+	var fields map[string]*string
 	// current is the value of the field being read, nil within the config
 	var current *string
 	inConfig := false
@@ -241,9 +303,20 @@ func parsePoolStatus(output string) (*PoolStatus, error) {
 				return nil, fmt.Errorf("unexpected output of zpool status: %q", line)
 			}
 			name, value := match[1], strings.TrimSpace(match[2])
-			if name == "pool" && status.Name != "" {
-				// the next pool
-				break
+			if name == "pool" {
+				status = &PoolStatus{ScanProgress: -1}
+				statuses = append(statuses, status)
+				fields = map[string]*string{
+					"pool":   &status.Name,
+					"state":  &status.State,
+					"status": &status.Status,
+					"action": &status.Action,
+					"see":    &status.See,
+					"scan":   &status.Scan,
+					"errors": &status.Errors,
+				}
+			} else if status == nil {
+				return nil, fmt.Errorf("unexpected output of zpool status: %q before the first pool", line)
 			}
 			inConfig = name == "config"
 			current = nil
@@ -275,22 +348,118 @@ func parsePoolStatus(output string) (*PoolStatus, error) {
 		*current = strings.TrimSpace(*current + "\n" + strings.TrimSpace(line))
 	}
 
-	if status.Name == "" {
+	if len(statuses) == 0 {
 		return nil, errors.New("unexpected output of zpool status: no pool found")
 	}
-	if strings.Contains(status.Scan, "in progress") {
-		if match := scanProgressPattern.FindStringSubmatch(status.Scan); match != nil {
-			status.ScanProgress, _ = strconv.ParseFloat(match[1], 64)
-		} else {
-			// e.g. just started: no progress yet
-			status.ScanProgress = 0
+	for _, status := range statuses {
+		if strings.Contains(status.Scan, "in progress") {
+			status.ScanProgress = parseProgress(status.Scan)
 		}
 	}
-	return status, nil
+	return statuses, nil
 }
 
-// parsePoolDevice parses a line of the config of "zpool status -p" (without the leading tab), e.g.
-// "    sda  ONLINE  0  0  0  (resilvering)". Each level of the tree is indented by two spaces. It returns nil for
+// parseProgress returns the progress of a running operation in percent, e.g. 21.3 for "0B repaired, 21.30% done".
+// Returns 0 if there is no progress yet (e.g. just started).
+func parseProgress(text string) float64 {
+	if match := scanProgressPattern.FindStringSubmatch(text); match != nil {
+		progress, _ := strconv.ParseFloat(match[1], 64)
+		return progress
+	}
+	return 0
+}
+
+// remainingPattern matches the estimated time left of a running operation, e.g. "31.77% done, 02:10:31 to go".
+var remainingPattern = regexp.MustCompile(`, ([^,\n]+) to go`)
+
+// PoolActivity is an operation running on a pool, e.g. a scrub, see PoolStatus.Activities.
+type PoolActivity struct {
+	Pool string
+	// Kind is what runs: "scrub", "resilver" or "trim", or the name of the status field that reports it, e.g. "remove" (a
+	// device is removed) or "expand" (a raidz is expanded)
+	Kind string
+	// Progress is how much is done in percent
+	Progress float64
+	// Remaining is the estimated time left as printed by zpool status, e.g. "02:10:31", "" if not known
+	Remaining string
+	// Processed and Total are how much is done of how much as printed by zpool status (e.g. "1.02T" of "3.21T"),
+	// and Rate how fast it goes (e.g. "294M/s"). "" if not known (e.g. the rate of a paused scrub).
+	Processed string
+	Total     string
+	Rate      string
+}
+
+// Activities returns the operations running on the pool: the running scrub or resilver, a running TRIM, and the
+// other fields that report an operation in progress (e.g. the removal of a device). Empty if nothing runs.
+func (status *PoolStatus) Activities() []PoolActivity {
+	var activities []PoolActivity
+	if status.IsScanning() {
+		kind := status.ScanKind()
+		if kind == "" {
+			kind = "scan"
+		}
+		activity := PoolActivity{Pool: status.Name, Kind: kind, Progress: status.ScanProgress, Remaining: parseRemaining(status.Scan)}
+		activity.Processed, activity.Total, activity.Rate = parseAmounts(status.Scan)
+		activities = append(activities, activity)
+	}
+	if progress := status.TrimProgress(); progress >= 0 {
+		// zpool status does not estimate the time left of a TRIM
+		activities = append(activities, PoolActivity{Pool: status.Name, Kind: "trim", Progress: progress})
+	}
+	for _, other := range status.Other {
+		if strings.Contains(other.Value, "in progress") {
+			activity := PoolActivity{Pool: status.Name, Kind: other.Name, Progress: parseProgress(other.Value), Remaining: parseRemaining(other.Value)}
+			activity.Processed, activity.Total, activity.Rate = parseAmounts(other.Value)
+			activities = append(activities, activity)
+		}
+	}
+	return activities
+}
+
+// amountPatterns match how much of a running operation is done and how fast it goes, as printed by zpool status
+// (sizes formatted like "1.43T" or "512B", also with -p): the issued part of a scrub or resilver ("1.43T / 3.21T
+// scanned at 412M/s, 1.02T / 3.21T issued at 294M/s"; scanning, not issuing, finds what to verify), the removal of a
+// device ("2.10G copied out of 5.00G at 1.00M/s") and a raidz expansion ("1.23T / 4.56T copied at 123M/s"). The
+// rate is missing e.g. while paused.
+var amountPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(` + sizePattern + `) / (` + sizePattern + `) issued(?: at (` + sizePattern + `/s))?`),
+	regexp.MustCompile(`(` + sizePattern + `) copied out of (` + sizePattern + `)(?: at (` + sizePattern + `/s))?`),
+	regexp.MustCompile(`(` + sizePattern + `) / (` + sizePattern + `) copied(?: at (` + sizePattern + `/s))?`),
+}
+
+// scanRatePattern matches the rate of scanning a scrub or resilver, e.g. "scanned at 412M/s".
+var scanRatePattern = regexp.MustCompile(`scanned at (` + sizePattern + `/s)`)
+
+// sizePattern matches a size as formatted by zpool status, e.g. "1.43T", "254G" or "512B".
+const sizePattern = `[0-9]+(?:\.[0-9]+)?[BKMGTPEZ]?`
+
+// parseAmounts returns how much of a running operation is done of how much, and how fast it goes (see
+// amountPatterns). Before a scrub issues anything, the rate is the one of scanning. "" for what is not known.
+func parseAmounts(text string) (processed string, total string, rate string) {
+	for _, pattern := range amountPatterns {
+		if match := pattern.FindStringSubmatch(text); match != nil {
+			processed, total, rate = match[1], match[2], match[3]
+			break
+		}
+	}
+	if rate == "" {
+		if match := scanRatePattern.FindStringSubmatch(text); match != nil {
+			rate = match[1]
+		}
+	}
+	return processed, total, rate
+}
+
+// parseRemaining returns the estimated time left of a running operation (see remainingPattern), "" if not known.
+func parseRemaining(text string) string {
+	if match := remainingPattern.FindStringSubmatch(text); match != nil {
+		return strings.TrimSpace(match[1])
+	}
+	return ""
+}
+
+// parsePoolDevice parses a line of the config of "zpool status -p -t" (without the leading tab), e.g.
+// "    sda  ONLINE  0  0  0  (resilvering)  (untrimmed)". Each level of the tree is indented by two spaces. It returns nil for
 // the header line ("NAME STATE READ WRITE CKSUM").
 func parsePoolDevice(line string) *PoolDevice {
 	trimmed := strings.TrimLeft(line, " ")
@@ -325,6 +494,11 @@ func parsePoolDevice(line string) *PoolDevice {
 			device.Read, device.Write, device.Checksum = 0, 0, 0
 		}
 	}
-	device.Note = strings.Join(fields[noteStart:], " ")
+	note := strings.Join(fields[noteStart:], " ")
+	if location := trimPattern.FindStringIndex(note); location != nil {
+		device.Trim = note[location[0]:location[1]]
+		note = note[:location[0]] + note[location[1]:]
+	}
+	device.Note = strings.Join(strings.Fields(note), " ")
 	return device
 }
