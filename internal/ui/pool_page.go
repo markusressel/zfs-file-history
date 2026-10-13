@@ -119,7 +119,7 @@ func (poolPage *PoolPage) createLayout() *tview.Flex {
 
 	poolPage.header = NewApplicationHeader(poolPage.application, poolPage.messages)
 	poolPageLayout.AddItem(poolPage.header.layout, 1, 0, false)
-	poolPage.addActivityBar(poolPageLayout)
+	poolPage.addPoolPanels(poolPageLayout)
 
 	// the pools and the status fit their content, the devices get the rest (and scroll)
 	poolPage.statusSplit = poolPage.newSplit(poolPage.poolStatus.GetLayout(), poolPage.poolDevices.GetLayout(), 1, 1, true).

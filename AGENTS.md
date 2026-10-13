@@ -51,6 +51,10 @@ of the code.
     progress, amount and rate centered in it (padded to fixed widths, so the text does not move; in the text color
     of the background of each cell), the time left in an aligned column behind it. zpool does not estimate the time
     left of a TRIM, `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
+    The same package has the `AlertBar` (above the activities): the problems of the pools (`PoolStatus.Alerts`: a
+    state other than ONLINE, data errors, unusable devices or spares, device errors), most severe first, from the
+    loads of the `Monitor`. It comes up by itself when something is wrong. A failed load keeps the last alerts.
+    Both bars share `linePanel` (height, hovered line, clicks).
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). Shown with
     `ShowDialogOnPages`.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),

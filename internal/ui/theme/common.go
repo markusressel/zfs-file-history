@@ -105,6 +105,22 @@ type Color struct {
 	Properties  PropertyColors
 	Pool        PoolColors
 	Activity    ActivityColors
+	Alert       AlertColors
+}
+
+// AlertColors are used by the panel below the header that shows the problems of the pools, e.g. data errors.
+type AlertColors struct {
+	// Background sets the panel apart from the views of the page
+	Background tcell.Color
+	// Error and Warning are the severities of the problems, also the border of the panel while it shows one of them
+	Error   tcell.Color
+	Warning tcell.Color
+	// Pool is the name of the pool with the problem
+	Pool tcell.Color
+	// Message describes the problem
+	Message tcell.Color
+	// HoverBackground is the background of the line below the mouse, which can be clicked
+	HoverBackground tcell.Color
 }
 
 // ActivityColors are used by the bar below the header that shows the operations running on the pools, e.g. a scrub.

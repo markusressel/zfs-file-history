@@ -1,5 +1,5 @@
-// Package pool_activity shows the operations running on the pools (e.g. a scrub or a resilver) on all pages, below
-// the header.
+// Package pool_activity shows the operations running on the pools (e.g. a scrub or a resilver) and their problems
+// (e.g. data errors) on all pages, below the header.
 package pool_activity
 
 import (
@@ -24,8 +24,9 @@ var (
 	idleRefreshInterval   = time.Minute
 )
 
-// Monitor knows the operations running on all pools, see zfs.PoolStatus.Activities. It reloads the status of all
-// pools periodically, and on Refresh. One for the whole application, shown by a Bar on each page. Others can use
+// Monitor knows the operations running on all pools (see zfs.PoolStatus.Activities) and their problems (see
+// zfs.PoolStatus.Alerts). It reloads the status of all pools periodically, and on Refresh. One for the whole
+// application, shown by a Bar and an AlertBar on each page. Others can use
 // the loaded statuses too (see OnStatusesLoaded), so they do not have to load them again while something runs.
 type Monitor struct {
 	application *tview.Application
@@ -34,7 +35,9 @@ type Monitor struct {
 	// All fields below are only accessed on the UI thread.
 
 	activities []zfs.PoolActivity
-	// listeners are called when the activities changed, see OnChanged
+	// alerts are the problems of all pools, most severe first
+	alerts []zfs.PoolAlert
+	// listeners are called when the activities or alerts changed, see OnChanged
 	listeners []func()
 	// statusListeners are called with the statuses of every load, see OnStatusesLoaded
 	statusListeners []func(statuses []*zfs.PoolStatus)
@@ -48,8 +51,9 @@ func NewMonitor(application *tview.Application) *Monitor {
 	monitor.loader = uiutil.NewDataLoader[[]*zfs.PoolStatus](application).
 		OnLoad(monitor.setStatuses).
 		OnError(func(err error) {
-			// e.g. zpool is not installed: there is nothing to show
-			monitor.setStatuses(nil)
+			// e.g. zpool is not installed: nothing runs that could be shown. The alerts stay: a failed load (e.g.
+			// while a pool is suspended) must not look like all problems were solved.
+			monitor.update(nil, monitor.alerts)
 		})
 	return monitor
 }
@@ -68,7 +72,13 @@ func (monitor *Monitor) Activities() []zfs.PoolActivity {
 	return monitor.activities
 }
 
-// OnChanged adds a function that is called on the UI thread whenever the activities changed.
+// Alerts returns the problems of the pools, most severe first, empty if all are healthy. Must be called on the UI
+// thread.
+func (monitor *Monitor) Alerts() []zfs.PoolAlert {
+	return monitor.alerts
+}
+
+// OnChanged adds a function that is called on the UI thread whenever the activities or the alerts changed.
 // Must be called on the UI thread.
 func (monitor *Monitor) OnChanged(listener func()) {
 	monitor.listeners = append(monitor.listeners, listener)
@@ -81,23 +91,31 @@ func (monitor *Monitor) OnStatusesLoaded(listener func(statuses []*zfs.PoolStatu
 	monitor.statusListeners = append(monitor.statusListeners, listener)
 }
 
-// setStatuses shows the activities of the loaded statuses (nil: none, e.g. they could not be loaded), and schedules
-// the next reload. Runs on the UI thread.
+// setStatuses shows the activities and alerts of the loaded statuses, and schedules the next reload. Runs on the UI
+// thread.
 func (monitor *Monitor) setStatuses(statuses []*zfs.PoolStatus) {
 	var activities []zfs.PoolActivity
+	var alerts []zfs.PoolAlert
 	for _, status := range statuses {
 		activities = append(activities, status.Activities()...)
+		alerts = append(alerts, status.Alerts()...)
 	}
-	changed := !slices.Equal(activities, monitor.activities)
+	// the most severe of all pools first
+	zfs.SortPoolAlerts(alerts)
+	monitor.update(activities, alerts)
+	for _, listener := range monitor.statusListeners {
+		listener(statuses)
+	}
+}
+
+// update shows the activities and alerts, and schedules the next reload. Runs on the UI thread.
+func (monitor *Monitor) update(activities []zfs.PoolActivity, alerts []zfs.PoolAlert) {
+	changed := !slices.Equal(activities, monitor.activities) || !slices.Equal(alerts, monitor.alerts)
 	monitor.activities = activities
+	monitor.alerts = alerts
 	if changed {
 		for _, listener := range monitor.listeners {
 			listener()
-		}
-	}
-	if statuses != nil {
-		for _, listener := range monitor.statusListeners {
-			listener(statuses)
 		}
 	}
 	monitor.scheduleRefresh()

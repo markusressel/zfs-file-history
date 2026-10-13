@@ -153,7 +153,7 @@ func (datasetPage *DatasetPage) createLayout() *tview.Flex {
 
 	datasetPage.header = NewApplicationHeader(datasetPage.application, datasetPage.messages)
 	datasetPageLayout.AddItem(datasetPage.header.layout, 1, 0, false)
-	datasetPage.addActivityBar(datasetPageLayout)
+	datasetPage.addPoolPanels(datasetPageLayout)
 
 	// The info fits its content (so it is not cut off), the snapshots get the rest of the height. The size of the
 	// info differs between datasets (e.g. encrypted ones have more properties), so it only grows: the boundaries do

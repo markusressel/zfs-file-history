@@ -170,12 +170,14 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			recorder.setPool(e.Pool.Name)
 		}
 	})
-	// a click on a running operation shows its pool
+	// a click on a running operation or a problem shows its pool
+	showPool := func(pool string) {
+		switchTo(Pool)
+		poolPage.poolBrowser.SelectPool(pool)
+	}
 	for _, page := range []*basePage{&mainPage.basePage, &datasetPage.basePage, &poolPage.basePage} {
-		page.activityBar.SetOnClick(func(activity zfs.PoolActivity) {
-			switchTo(Pool)
-			poolPage.poolBrowser.SelectPool(activity.Pool)
-		})
+		page.activityBar.SetOnClick(func(activity zfs.PoolActivity) { showPool(activity.Pool) })
+		page.alertBar.SetOnClick(func(alert zfs.PoolAlert) { showPool(alert.Pool) })
 	}
 	// e.g. after F5, or a change reported by the ZFS event watcher (see zfs.WatchZpoolEvents)
 	refreshActivities := func(_ struct{}) { activities.Refresh() }
