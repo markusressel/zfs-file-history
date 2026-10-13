@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -103,9 +104,9 @@ func TestLayoutLines(t *testing.T) {
 }
 
 func TestLayoutLines_Wide(t *testing.T) {
-	// the bars do not get wider than maxBarWidth, the rest of the line stays empty
+	// the bars fill the line, but for the time left and one column of padding: label 19, time left 16, padding 1
 	for _, line := range layoutLines(layoutActivities, 300) {
-		assert.Equal(t, maxBarWidth, line.barWidth)
+		assert.Equal(t, 300-19-16-1, line.barWidth)
 	}
 }
 
@@ -127,28 +128,42 @@ func TestLayoutLines_NoTimeLeft(t *testing.T) {
 	assert.Empty(t, lines[0].remaining)
 }
 
-func TestFilledCells(t *testing.T) {
-	assert.Equal(t, 0, filledCells(0, 10))
-	assert.Equal(t, 5, filledCells(50, 10))
-	assert.Equal(t, 9, filledCells(99.9, 10))
-	assert.Equal(t, 10, filledCells(100, 10))
-	assert.Equal(t, 0, filledCells(-5, 10))
-	assert.Equal(t, 10, filledCells(150, 10))
+func TestFilledEighths(t *testing.T) {
+	assert.Equal(t, 0, filledEighths(0, 10))
+	assert.Equal(t, 40, filledEighths(50, 10))
+	assert.Equal(t, 79, filledEighths(99.9, 10))
+	assert.Equal(t, 80, filledEighths(100, 10))
+	assert.Equal(t, 0, filledEighths(-5, 10))
+	assert.Equal(t, 80, filledEighths(150, 10))
 }
 
-func TestDrawProgressBar(t *testing.T) {
+func TestTextColor(t *testing.T) {
+	colors := theme.Colors.Activity
+	assert.Equal(t, colors.BarLightText, textColor(colors.BarTrack))
+	assert.Equal(t, colors.BarLightText, textColor(tcell.ColorDefault))
+	for _, stop := range colors.BarFilled {
+		assert.Equal(t, colors.BarDarkText, textColor(stop.Color), "the whole gradient takes the dark text")
+	}
+}
+
+// drawnBar draws a bar of width 10 at column 2 of a screen 20 columns wide, and returns its cells.
+func drawnBar(t *testing.T, percent float64, text string) []tcell.SimCell {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	require.NoError(t, screen.Init())
 	screen.SetSize(20, 1)
-
-	drawProgressBar(screen, 2, 0, 10, 50, " 50.0%  fast")
+	drawProgressBar(screen, 2, 0, 10, percent, text)
 	screen.Show()
+	cells, _, _ := screen.GetContents()
+	return cells
+}
 
-	cells, width, _ := screen.GetContents()
+func TestDrawProgressBar(t *testing.T) {
+	cells := drawnBar(t, 50, " 50.0%  fast")
+
 	var text strings.Builder
-	for x := 0; x < width; x++ {
-		if runes := cells[x].Runes; len(runes) > 0 {
-			text.WriteRune(runes[0])
+	for _, cell := range cells {
+		if len(cell.Runes) > 0 {
+			text.WriteRune(cell.Runes[0])
 		} else {
 			text.WriteRune(' ')
 		}
@@ -160,15 +175,38 @@ func TestDrawProgressBar(t *testing.T) {
 	for x := 2; x < 12; x++ {
 		foreground, background, _ := cells[x].Style.Decompose()
 		if x < 7 {
-			assert.Equal(t, colors.BarFilled, background, "filled at %d", x)
-			assert.Equal(t, colors.BarFilledText, foreground, "readable on the filled part at %d", x)
+			assert.Equal(t, uiutil.GradientColor(colors.BarFilled, float64(x-2)/9, 0), background, "the gradient at %d", x)
+			assert.Equal(t, colors.BarDarkText, foreground, "readable on the filled part at %d", x)
 		} else {
 			assert.Equal(t, colors.BarTrack, background, "not filled at %d", x)
-			assert.Equal(t, colors.BarTrackText, foreground, "readable on the track at %d", x)
+			assert.Equal(t, colors.BarLightText, foreground, "readable on the track at %d", x)
 		}
 	}
+	first, _, _ := cells[2].Style.Decompose()
+	_, last, _ := cells[6].Style.Decompose()
+	assert.NotEqual(t, first, last, "a gradient, not one color")
 	_, background, _ := cells[12].Style.Decompose()
 	assert.NotEqual(t, colors.BarTrack, background, "nothing drawn behind the bar")
+}
+
+func TestDrawProgressBar_PartialCell(t *testing.T) {
+	colors := theme.Colors.Activity
+	// 33% of 80 eighths: 26, so 3 cells and 2 eighths of the fourth
+	cells := drawnBar(t, 33, "")
+
+	assert.Equal(t, []rune("▎"), cells[5].Runes)
+	foreground, background, _ := cells[5].Style.Decompose()
+	assert.Equal(t, uiutil.GradientColor(colors.BarFilled, 3.0/9, 0), foreground)
+	assert.Equal(t, colors.BarTrack, background)
+	assert.Equal(t, []rune(" "), cells[6].Runes)
+
+	// text on the partly filled cell (28 eighths: 4 of the fourth): the background of the larger part, from half on the
+	// filled one
+	cells = drawnBar(t, 35, "1234567890")
+	assert.Equal(t, []rune("4"), cells[5].Runes)
+	foreground, background, _ = cells[5].Style.Decompose()
+	assert.Equal(t, uiutil.GradientColor(colors.BarFilled, 3.0/9, 0), background)
+	assert.Equal(t, colors.BarDarkText, foreground)
 }
 
 func TestDrawProgressBar_Centered(t *testing.T) {
@@ -201,7 +239,7 @@ func TestDrawProgressBar_NoWidth(t *testing.T) {
 
 	cells, _, _ := screen.GetContents()
 	_, background, _ := cells[0].Style.Decompose()
-	assert.NotEqual(t, theme.Colors.Activity.BarFilled, background)
+	assert.Equal(t, tcell.ColorDefault, background)
 }
 
 func TestKindTitle(t *testing.T) {

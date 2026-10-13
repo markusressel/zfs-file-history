@@ -13,10 +13,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// maxBarWidth is the widest the progress bars get, so they do not span wide terminals; the rest of the line stays
-// empty.
-const maxBarWidth = 60
-
 // minBarWidthWithRemaining is the narrowest a progress bar gets before the time left is written into it instead
 // of next to it, see layoutLines.
 const minBarWidthWithRemaining = 20
@@ -93,7 +89,7 @@ type activityLine struct {
 }
 
 // layoutLines lays out the lines of the activities for the given width: the labels (see formatLabels), the progress
-// bars, as wide as fits (up to maxBarWidth), and the time left behind them. All bars have the same width, so they
+// bars, as wide as fits, and the time left behind them. All bars have the same width, so they
 // end at the same column, with space for the longest time left behind them (and one column of padding, like in
 // front of the labels). If the bars would get narrower than minBarWidthWithRemaining that way, the time left is
 // written into the bars instead.
@@ -108,7 +104,6 @@ func layoutLines(activities []zfs.PoolActivity, width int) []activityLine {
 	if !besideBar {
 		barWidth = width - labelWidth - 1
 	}
-	barWidth = min(barWidth, maxBarWidth)
 
 	lines := make([]activityLine, 0, len(activities))
 	for i, activity := range activities {
@@ -133,34 +128,64 @@ func formatRemaining(remaining string) string {
 	return "  " + remaining + " to go"
 }
 
-// drawProgressBar draws a bar of the given width at x, y, filled by percent, with text written into its middle. Each
-// cell has the text color that is readable on its background, so the text stays readable where the filled part
-// ends.
+// partialBlocks are the characters of a cell filled from the left by 1 to 7 eighths, see drawProgressBar.
+var partialBlocks = []rune("▏▎▍▌▋▊▉")
+
+// drawProgressBar draws a bar of the given width at x, y, filled by percent, with text written into its middle. The
+// filled part has the colors of the gradient theme.Colors.Activity.BarFilled at its columns, and ends with a partly
+// filled cell (in eighths), so it grows smoothly. Each cell has the text color that is readable on its background,
+// so the text stays readable along the gradient and where the filled part ends.
 func drawProgressBar(screen tcell.Screen, x int, y int, width int, percent float64, text string) {
 	if width <= 0 {
 		return
 	}
-	filled := filledCells(percent, width)
 	colors := theme.Colors.Activity
+	eighths := filledEighths(percent, width)
 	runes := []rune(text)
 	start := max((width-len(runes))/2, 0)
 	for column := 0; column < width; column++ {
-		style := tcell.StyleDefault.Background(colors.BarTrack).Foreground(colors.BarTrackText)
-		if column < filled {
-			style = tcell.StyleDefault.Background(colors.BarFilled).Foreground(colors.BarFilledText)
+		filled := uiutil.GradientColor(colors.BarFilled, float64(column)/float64(max(width-1, 1)), colors.BarTrack)
+		background, partial := colors.BarTrack, 0
+		switch cellEighths := eighths - 8*column; {
+		case cellEighths >= 8:
+			background = filled
+		case cellEighths > 0:
+			partial = cellEighths
 		}
 		character := ' '
+		style := tcell.StyleDefault.Background(background).Foreground(textColor(background))
 		if index := column - start; index >= 0 && index < len(runes) {
 			character = runes[index]
+			if partial >= 4 {
+				// the text needs one background: the one of the larger part
+				style = tcell.StyleDefault.Background(filled).Foreground(textColor(filled))
+			}
+		} else if partial > 0 {
+			character = partialBlocks[partial-1]
+			style = style.Foreground(filled)
 		}
 		screen.SetContent(x+column, y, character, nil, style)
 	}
 }
 
-// filledCells returns how many of the cells of a bar of the given width are filled by percent.
-func filledCells(percent float64, width int) int {
+// filledEighths returns how many eighths of the cells of a bar of the given width are filled by percent.
+func filledEighths(percent float64, width int) int {
 	percent = min(max(percent, 0), 100)
-	return int(percent / 100 * float64(width))
+	return int(percent / 100 * float64(8*width))
+}
+
+// textColor returns the color of text that is readable on the background: dark on light ones, light on dark ones.
+func textColor(background tcell.Color) tcell.Color {
+	colors := theme.Colors.Activity
+	r, g, b := background.RGB()
+	if r < 0 {
+		return colors.BarLightText
+	}
+	// the perceived brightness (Rec. 709 weights)
+	if 0.2126*float64(r)+0.7152*float64(g)+0.0722*float64(b) > 0.4*255 {
+		return colors.BarDarkText
+	}
+	return colors.BarLightText
 }
 
 // formatLabels returns the label in front of the progress bar of each activity: what runs on which pool, aligned

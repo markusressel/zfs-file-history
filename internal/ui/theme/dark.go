@@ -152,15 +152,20 @@ var (
 		Activity: ActivityColors{
 			Border: PrimaryMuted,
 			// darker than BarTrack, so the empty part of the bars stays visible
-			Background:    PanelBackground,
-			Kind:          Accent,
-			Pool:          tcell.ColorWhite,
-			Remaining:     tcell.ColorLightGray,
-			BarFilled:     Accent,
-			BarFilledText: OnPrimary,
+			Background: PanelBackground,
+			Kind:       Accent,
+			Pool:       tcell.ColorWhite,
+			Remaining:  tcell.ColorLightGray,
+			// from a deep to a light orange, all light enough for BarDarkText
+			BarFilled: []GradientStop{
+				{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xCC5500},
+				{Position: 0.6, Color: Accent},
+				{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFFB84D},
+			},
+			BarDarkText: OnPrimary,
 			// darker than Secondary (e.g. the version in the header) and Hover, so it does not look like either
 			BarTrack:        tcell.ColorIsRGB | tcell.ColorValid | 0x262B31,
-			BarTrackText:    OnSecondary,
+			BarLightText:    OnSecondary,
 			HoverBackground: Hover,
 		},
 		Alert: AlertColors{

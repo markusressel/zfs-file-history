@@ -54,9 +54,11 @@ of the code.
     shown below the header of every page. One `Monitor` for the application (loads `zpool status` of all pools,
     every 5 s while something runs, every minute otherwise, and on the zfs emitters; the pool status pane takes the
     progress of a scrub from these loads, see `OnStatusesLoaded`), one `Bar` per page (a panel with
-    its own border and background colors, no height while nothing runs; a click shows the pool on the pools page). The progress bar is drawn cell by cell with the
-    progress, amount and rate centered in it (padded to fixed widths, so the text does not move; in the text color
-    of the background of each cell), the time left in an aligned column behind it. zpool does not estimate the time
+    its own border and background colors, no height while nothing runs; a click shows the pool on the pools page). The progress bar fills the line (1 column of padding)
+    and is drawn cell by cell: the filled part in the gradient `theme.Colors.Activity.BarFilled` by column, ending
+    with a partly filled cell in eighths (`▏`…`▉`), the progress, amount and rate centered in it (padded to fixed
+    widths, so the text does not move; dark or light text by the brightness of each cell), the time left in an
+    aligned column behind it. zpool does not estimate the time
     left of a TRIM, `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
     The same package has the `AlertBar` (above the activities): the problems of the pools (`PoolStatus.Alerts`: a
     state other than ONLINE, data errors, unusable devices or spares, device errors), most severe first, from the
