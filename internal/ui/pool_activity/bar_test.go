@@ -380,3 +380,42 @@ func TestBar_Click(t *testing.T) {
 	assert.False(t, mouse(t, app, bar, tview.MouseLeftClick, 5, 1))
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank"}, clicked) })
 }
+
+func TestMonitor_OnStatusesLoaded(t *testing.T) {
+	app, monitor, _, fake, _ := setupTest(t, nil)
+	require.Eventually(t, func() bool { return fake.getLoads() == 1 }, 2*time.Second, 10*time.Millisecond)
+
+	var mu sync.Mutex
+	var loaded [][]string
+	testutil.OnUiThread(t, app, func() {
+		monitor.OnStatusesLoaded(func(statuses []*zfs.PoolStatus) {
+			var names []string
+			for _, status := range statuses {
+				names = append(names, status.Name)
+			}
+			mu.Lock()
+			loaded = append(loaded, names)
+			mu.Unlock()
+		})
+	})
+	get := func() [][]string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([][]string{}, loaded...)
+	}
+
+	// every load, also if the activities did not change
+	fake.set([]*zfs.PoolStatus{idle("tank"), scrubbing("backup", 10)}, nil)
+	testutil.OnUiThread(t, app, monitor.Refresh)
+	require.Eventually(t, func() bool { return len(get()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return len(get()) >= 2 }, 2*time.Second, 10*time.Millisecond, "reloaded while the scrub runs")
+	assert.Equal(t, []string{"tank", "backup"}, get()[0])
+
+	// not if they could not be loaded
+	fake.set(nil, errors.New("zpool failed"))
+	loads := fake.getLoads()
+	require.Eventually(t, func() bool { return fake.getLoads() > loads }, 2*time.Second, 10*time.Millisecond)
+	count := len(get())
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, count, len(get()))
+}

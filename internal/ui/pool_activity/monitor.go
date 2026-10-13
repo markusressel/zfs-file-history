@@ -24,17 +24,20 @@ var (
 	idleRefreshInterval   = time.Minute
 )
 
-// Monitor knows the operations running on all pools, see zfs.PoolStatus.Activities. It reloads them periodically,
-// and on Refresh. One for the whole application, shown by a Bar on each page.
+// Monitor knows the operations running on all pools, see zfs.PoolStatus.Activities. It reloads the status of all
+// pools periodically, and on Refresh. One for the whole application, shown by a Bar on each page. Others can use
+// the loaded statuses too (see OnStatusesLoaded), so they do not have to load them again while something runs.
 type Monitor struct {
 	application *tview.Application
-	loader      *uiutil.DataLoader[[]zfs.PoolActivity]
+	loader      *uiutil.DataLoader[[]*zfs.PoolStatus]
 
 	// All fields below are only accessed on the UI thread.
 
 	activities []zfs.PoolActivity
 	// listeners are called when the activities changed, see OnChanged
 	listeners []func()
+	// statusListeners are called with the statuses of every load, see OnStatusesLoaded
+	statusListeners []func(statuses []*zfs.PoolStatus)
 	// refreshTimer reloads the activities, see scheduleRefresh
 	refreshTimer *time.Timer
 }
@@ -42,13 +45,11 @@ type Monitor struct {
 // NewMonitor returns a monitor without activities, until the first Refresh.
 func NewMonitor(application *tview.Application) *Monitor {
 	monitor := &Monitor{application: application}
-	monitor.loader = uiutil.NewDataLoader[[]zfs.PoolActivity](application).
-		OnLoad(func(activities []zfs.PoolActivity) {
-			monitor.setActivities(activities)
-		}).
+	monitor.loader = uiutil.NewDataLoader[[]*zfs.PoolStatus](application).
+		OnLoad(monitor.setStatuses).
 		OnError(func(err error) {
 			// e.g. zpool is not installed: there is nothing to show
-			monitor.setActivities(nil)
+			monitor.setStatuses(nil)
 		})
 	return monitor
 }
@@ -57,16 +58,8 @@ func NewMonitor(application *tview.Application) *Monitor {
 // Must be called on the UI thread.
 func (monitor *Monitor) Refresh() {
 	monitor.stopRefresh()
-	monitor.loader.LoadQuietly(func(ctx context.Context) ([]zfs.PoolActivity, error) {
-		statuses, err := loadPoolStatuses()
-		if err != nil {
-			return nil, err
-		}
-		var activities []zfs.PoolActivity
-		for _, status := range statuses {
-			activities = append(activities, status.Activities()...)
-		}
-		return activities, nil
+	monitor.loader.LoadQuietly(func(ctx context.Context) ([]*zfs.PoolStatus, error) {
+		return loadPoolStatuses()
 	})
 }
 
@@ -81,13 +74,30 @@ func (monitor *Monitor) OnChanged(listener func()) {
 	monitor.listeners = append(monitor.listeners, listener)
 }
 
-// setActivities shows the loaded activities, and schedules the next reload. Runs on the UI thread.
-func (monitor *Monitor) setActivities(activities []zfs.PoolActivity) {
+// OnStatusesLoaded adds a function that is called on the UI thread with the statuses of all pools whenever they
+// were loaded (every few seconds while something runs, see activeRefreshInterval), e.g. to show the progress of a
+// scrub elsewhere. Not called if they could not be loaded. Must be called on the UI thread.
+func (monitor *Monitor) OnStatusesLoaded(listener func(statuses []*zfs.PoolStatus)) {
+	monitor.statusListeners = append(monitor.statusListeners, listener)
+}
+
+// setStatuses shows the activities of the loaded statuses (nil: none, e.g. they could not be loaded), and schedules
+// the next reload. Runs on the UI thread.
+func (monitor *Monitor) setStatuses(statuses []*zfs.PoolStatus) {
+	var activities []zfs.PoolActivity
+	for _, status := range statuses {
+		activities = append(activities, status.Activities()...)
+	}
 	changed := !slices.Equal(activities, monitor.activities)
 	monitor.activities = activities
 	if changed {
 		for _, listener := range monitor.listeners {
 			listener()
+		}
+	}
+	if statuses != nil {
+		for _, listener := range monitor.statusListeners {
+			listener(statuses)
 		}
 	}
 	monitor.scheduleRefresh()

@@ -78,6 +78,14 @@ func NewPoolPage(application *tview.Application, messages *status_message.Center
 		}
 	})
 
+	// the activity monitor reloads all pools every few seconds while a scrub runs: its status is shown from there,
+	// instead of loading it again
+	activities.OnStatusesLoaded(func(statuses []*zfs.PoolStatus) {
+		for _, status := range statuses {
+			poolStatus.ShowStatus(status)
+		}
+	})
+
 	poolPage.layout = poolPage.createLayout()
 
 	// e.g. after F5, or a change reported by the ZFS event watcher (see zfs.WatchZpoolEvents)

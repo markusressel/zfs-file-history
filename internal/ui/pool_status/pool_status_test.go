@@ -83,9 +83,7 @@ func TestCapitalize(t *testing.T) {
 type fakeLoader struct {
 	mu    sync.Mutex
 	loads []string
-	// scanning makes the loaded status of the pool report a running scrub
-	scanning map[string]bool
-	fail     map[string]bool
+	fail  map[string]bool
 }
 
 func (f *fakeLoader) load(name string) (*zfs.PoolStatus, error) {
@@ -102,10 +100,6 @@ func (f *fakeLoader) load(name string) (*zfs.PoolStatus, error) {
 		Errors:       "No known data errors",
 		Devices:      []*zfs.PoolDevice{{Name: name, State: zfs.PoolStateOnline}},
 	}
-	if f.scanning[name] {
-		status.Scan = "scrub in progress since Tue Oct 13 10:00:01 2026"
-		status.ScanProgress = 42
-	}
 	return status, nil
 }
 
@@ -113,12 +107,6 @@ func (f *fakeLoader) getLoads() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string{}, f.loads...)
-}
-
-func (f *fakeLoader) setScanning(name string, scanning bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.scanning[name] = scanning
 }
 
 // recordedStatuses are the names of the pools of the StatusLoadedEvents ("" for none).
@@ -134,7 +122,7 @@ func (r *recordedStatuses) get() []string {
 }
 
 func setupTest(t *testing.T) (*tview.Application, *PoolStatusComponent, *fakeLoader, *recordedStatuses) {
-	fake := &fakeLoader{scanning: map[string]bool{}, fail: map[string]bool{}}
+	fake := &fakeLoader{fail: map[string]bool{}}
 	original := loadPoolStatus
 	loadPoolStatus = fake.load
 	t.Cleanup(func() { loadPoolStatus = original })
@@ -212,44 +200,28 @@ func TestPoolStatus_LoadError(t *testing.T) {
 	assert.Contains(t, text, "Could not load the status: zpool status failed")
 }
 
-func TestPoolStatus_RefreshesWhileScanning(t *testing.T) {
-	original := scanRefreshInterval
-	scanRefreshInterval = 20 * time.Millisecond
-	t.Cleanup(func() { scanRefreshInterval = original })
-	app, poolStatus, fake, _ := setupTest(t)
-	fake.setScanning("tank", true)
-
-	testutil.OnUiThread(t, app, func() { poolStatus.SetPool("tank") })
-	require.Eventually(t, func() bool { return len(fake.getLoads()) >= 3 }, 2*time.Second, 10*time.Millisecond,
-		"reloaded while the scrub runs")
-	_, text := displayed(t, app, poolStatus)
-	assert.Contains(t, text, "42.0%", "with its progress")
-
-	// once it is done, it is not reloaded anymore
-	fake.setScanning("tank", false)
-	require.Eventually(t, func() bool {
-		_, text := displayed(t, app, poolStatus)
-		return !strings.Contains(text, "42.0%")
-	}, 2*time.Second, 10*time.Millisecond)
-	loads := len(fake.getLoads())
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, loads, len(fake.getLoads()))
-}
-
-func TestPoolStatus_ScanRefreshStopsWhenAnotherPoolIsSelected(t *testing.T) {
-	original := scanRefreshInterval
-	scanRefreshInterval = 50 * time.Millisecond
-	t.Cleanup(func() { scanRefreshInterval = original })
+func TestPoolStatus_ShowStatus(t *testing.T) {
 	app, poolStatus, fake, statuses := setupTest(t)
-	fake.setScanning("tank", true)
-
 	testutil.OnUiThread(t, app, func() { poolStatus.SetPool("tank") })
 	require.Eventually(t, func() bool { return len(statuses.get()) == 1 }, 2*time.Second, 10*time.Millisecond)
-	testutil.OnUiThread(t, app, func() { poolStatus.SetPool("rpool") })
-	require.Eventually(t, func() bool { return len(statuses.get()) == 2 }, 2*time.Second, 10*time.Millisecond)
 
-	time.Sleep(200 * time.Millisecond)
-	assert.Equal(t, []string{"tank", "rpool"}, fake.getLoads())
+	// e.g. the progress of a scrub, loaded by the activity monitor: shown without loading it again
+	scrubbing := &zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: 42,
+		Scan: "scrub in progress since Tue Oct 13 10:00:01 2026\n0B repaired, 42.00% done"}
+	testutil.OnUiThread(t, app, func() { poolStatus.ShowStatus(scrubbing) })
+	require.Eventually(t, func() bool { return len(statuses.get()) == 2 }, 2*time.Second, 10*time.Millisecond)
+	_, text := displayed(t, app, poolStatus)
+	assert.Contains(t, text, "42.0%")
+	assert.Equal(t, []string{"tank"}, fake.getLoads())
+
+	// the statuses of other pools are ignored, and nothing is loaded periodically
+	testutil.OnUiThread(t, app, func() {
+		poolStatus.ShowStatus(&zfs.PoolStatus{Name: "rpool", ScanProgress: -1})
+		poolStatus.ShowStatus(nil)
+	})
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, []string{"tank", "tank"}, statuses.get())
+	assert.Equal(t, []string{"tank"}, fake.getLoads())
 }
 
 func TestPoolStatus_Focus(t *testing.T) {
