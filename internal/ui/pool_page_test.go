@@ -29,7 +29,8 @@ func newPoolPageApp(t *testing.T, width int, height int) (*tview.Application, *P
 	return app, page
 }
 
-// the pools, above the status of the selected one, above its devices
+// the pools, above the status of the selected one, above its devices (until the status is loaded, see
+// TestPoolPage_ArrangedByTheAvailableWidth)
 func TestPoolPage_Layout(t *testing.T) {
 	app, page := newPoolPageApp(t, 120, 40)
 
@@ -44,6 +45,57 @@ func TestPoolPage_Layout(t *testing.T) {
 	assert.Less(t, poolsY, statusY)
 	assert.Less(t, statusY, devicesY)
 	assert.Positive(t, devicesHeight)
+}
+
+// rects returns the positions and sizes of the pools, the status and the devices after drawing.
+func rects(t *testing.T, app *tview.Application, page *PoolPage) (pools [4]int, status [4]int, devices [4]int) {
+	testutil.OnUiThread(t, app, func() {
+		app.ForceDraw()
+		pools[0], pools[1], pools[2], pools[3] = page.poolBrowser.GetLayout().GetRect()
+		status[0], status[1], status[2], status[3] = page.poolStatus.GetLayout().GetRect()
+		devices[0], devices[1], devices[2], devices[3] = page.poolDevices.GetLayout().GetRect()
+	})
+	return pools, status, devices
+}
+
+// Like the dataset page: the pools next to the status and the devices, if there is enough space for them. If not,
+// stacked. The pools fit their content.
+func TestPoolPage_ArrangedByTheAvailableWidth(t *testing.T) {
+	devices := &zfs.PoolStatus{Name: "tank", Devices: []*zfs.PoolDevice{
+		{Name: "tank", State: zfs.PoolStateOnline},
+		{Name: "/dev/disk/by-id/ata-WDC_WD40EFRX-68N32N0_WD-WCC7K0000001", Depth: 1, State: zfs.PoolStateOnline},
+	}}
+	for _, test := range []struct {
+		width   int
+		stacked bool
+	}{{100, true}, {200, false}} {
+		t.Run(fmt.Sprintf("width %d", test.width), func(t *testing.T) {
+			app, page := newPoolPageApp(t, test.width, 40)
+			testutil.OnUiThread(t, app, func() { page.poolDevices.SetStatus(devices) })
+			poolsWidth, poolsHeight := 0, 0
+			testutil.OnUiThread(t, app, func() { poolsWidth, poolsHeight = page.poolBrowser.ContentSize() })
+
+			pools, status, devicesRect := rects(t, app, page)
+			if test.stacked {
+				assert.Less(t, pools[1], status[1], "above")
+				assert.Equal(t, test.width, pools[2])
+				assert.Equal(t, poolsHeight, pools[3], "fits its content")
+			} else {
+				assert.Equal(t, pools[1], status[1], "next to each other")
+				assert.Less(t, pools[0], status[0])
+				assert.Equal(t, poolsWidth, pools[2], "fits its content")
+			}
+			assert.Less(t, status[1], devicesRect[1], "the status is always above the devices")
+		})
+	}
+}
+
+// Until the status of a pool is loaded, its width is not known: the arrangement is kept, instead of switching back
+// and forth while starting.
+func TestPoolPage_KeepsTheArrangementWhileLoading(t *testing.T) {
+	app, page := newPoolPageApp(t, 300, 40)
+	pools, status, _ := rects(t, app, page)
+	assert.Less(t, pools[1], status[1], "stacked")
 }
 
 // like on the dataset page: cycling the focus must not change the height of the shortcut map

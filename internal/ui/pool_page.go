@@ -12,8 +12,9 @@ import (
 	"github.com/rivo/tview"
 )
 
-// PoolPage is the pool page: the pools, above the status and the devices of the selected one (like "zpool status").
-// The panes are stacked, as the status and the device names are wide.
+// PoolPage is the pool page: the pools, next to the status and the devices of the selected one (like "zpool
+// status"), like the dataset page. The status and the device names are wide, so if they do not fit next to the
+// pools, the panes are stacked instead (see isStacked).
 type PoolPage struct {
 	basePage
 	poolBrowser *pool_browser.PoolBrowserComponent
@@ -24,6 +25,13 @@ type PoolPage struct {
 	split       *uiutil.ResizableSplit
 	statusSplit *uiutil.ResizableSplit
 }
+
+const (
+	// poolsMaxPercent and statusMaxPercent are the maximum shares of the height of the pools and the status, when
+	// they fit their content: the panes below them keep the rest
+	poolsMaxPercent  = 50
+	statusMaxPercent = 60
+)
 
 func NewPoolPage(application *tview.Application, messages *status_message.Center) *PoolPage {
 	poolBrowser := pool_browser.NewPoolBrowser(application)
@@ -98,8 +106,23 @@ func (poolPage *PoolPage) createLayout() *tview.Flex {
 	poolPage.header = NewApplicationHeader(poolPage.application, poolPage.messages)
 	poolPageLayout.AddItem(poolPage.header.layout, 1, 0, false)
 
-	poolPage.statusSplit = poolPage.newSplit(poolPage.poolStatus.GetLayout(), poolPage.poolDevices.GetLayout(), 1, 1, true)
-	poolPage.split = poolPage.newSplit(poolPage.poolBrowser.GetLayout(), poolPage.statusSplit, 1, 4, true)
+	// the pools and the status fit their content, the devices get the rest (and scroll)
+	poolPage.statusSplit = poolPage.newSplit(poolPage.poolStatus.GetLayout(), poolPage.poolDevices.GetLayout(), 1, 1, true).
+		SetAutoSize(func(size int) int {
+			_, height := poolPage.poolStatus.ContentSize()
+			return uiutil.FitContent(size, height, statusMaxPercent)
+		})
+	poolPage.split = poolPage.newSplit(poolPage.poolBrowser.GetLayout(), poolPage.statusSplit, 1, 4, true).
+		SetProportions(false, 1, 2).
+		SetVerticalFunc(func(width int, _ int) bool { return poolPage.isStacked(width) }).
+		SetAutoSize(func(size int) int {
+			width, height := poolPage.poolBrowser.ContentSize()
+			if poolPage.split.IsVertical() {
+				return uiutil.FitContent(size, height, poolsMaxPercent)
+			}
+			// side by side, everything fits (see isStacked)
+			return width
+		})
 	poolPageLayout.AddItem(poolPage.split, 0, 1, true)
 	captureSplitDrags(poolPageLayout, poolPage.split, poolPage.statusSplit)
 
@@ -113,6 +136,19 @@ func (poolPage *PoolPage) createLayout() *tview.Flex {
 	poolPage.reserveShortcutMapHeight()
 
 	return poolPageLayout
+}
+
+// isStacked returns whether the pools are shown above the status and the devices, instead of next to them: if the
+// widest of them does not fit next to the pools in the given width.
+func (poolPage *PoolPage) isStacked(width int) bool {
+	statusWidth, _ := poolPage.poolStatus.ContentSize()
+	devicesWidth, _ := poolPage.poolDevices.ContentSize()
+	if statusWidth == 0 && devicesWidth == 0 {
+		// not loaded yet: keep the arrangement, instead of switching back and forth on startup
+		return poolPage.split.IsVertical()
+	}
+	poolsWidth, _ := poolPage.poolBrowser.ContentSize()
+	return width < poolsWidth+max(statusWidth, devicesWidth)
 }
 
 // Init loads the pools.

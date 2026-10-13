@@ -271,3 +271,21 @@ func TestPoolStatus_Focus(t *testing.T) {
 		assert.True(t, poolStatus.HasFocus())
 	})
 }
+
+// the size of the status, for the layout of the pool page
+func TestPoolStatus_ContentSize(t *testing.T) {
+	app, poolStatus, _, statuses := setupTest(t)
+	testutil.OnUiThread(t, app, func() {
+		width, height := poolStatus.ContentSize()
+		assert.Zero(t, width+height, "nothing loaded yet")
+	})
+
+	testutil.OnUiThread(t, app, func() { poolStatus.SetPool("tank") })
+	require.Eventually(t, func() bool { return len(statuses.get()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, app, func() {
+		width, height := poolStatus.ContentSize()
+		// " Errors:  No known data errors" and "State", plus the border
+		assert.Equal(t, len(" Errors:  No known data errors")+2, width)
+		assert.Equal(t, 2+2, height)
+	})
+}
