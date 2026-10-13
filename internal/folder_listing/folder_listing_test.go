@@ -67,6 +67,7 @@ func TestRead(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("abc"), 0o644))
 	require.NoError(t, os.Mkdir(filepath.Join(root, "dir"), 0o755))
 	require.NoError(t, os.Symlink("file", filepath.Join(root, "link")))
+	require.NoError(t, os.Mkdir(filepath.Join(root, ".zfs"), 0o755))
 
 	listing := Read(root)
 
@@ -76,6 +77,7 @@ func TestRead(t *testing.T) {
 	assert.Equal(t, Directory, listing.Entries["dir"].Type)
 	assert.Equal(t, Link, listing.Entries["link"].Type, "links are not followed")
 	assert.Equal(t, int64(3), listing.TotalSize())
+	assert.NotContains(t, listing.Entries, ".zfs", "a visible .zfs (snapdir=visible) is not listed")
 
 	assert.False(t, Read(filepath.Join(root, "missing")).Exists)
 }

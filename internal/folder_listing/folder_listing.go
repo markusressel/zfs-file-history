@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -94,6 +95,9 @@ func Read(path string) Listing {
 	}
 	listing := Listing{Exists: true, Entries: make(map[string]Entry, len(dirEntries))}
 	for _, dirEntry := range dirEntries {
+		if util.IsZfsControlDirectory(dirEntry.Name()) {
+			continue
+		}
 		info, err := dirEntry.Info()
 		if err != nil {
 			continue

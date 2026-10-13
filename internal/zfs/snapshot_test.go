@@ -138,6 +138,7 @@ func TestSnapshot_CloneRequiresAName(t *testing.T) {
 	snapshot := &Snapshot{Name: "daily-2026", FullName: "pool/data@daily-2026"}
 	assert.Error(t, snapshot.Clone(""))
 	assert.Error(t, snapshot.Clone("   "))
+	assert.Error(t, snapshot.Clone("-o"))
 }
 
 func TestSnapshot_PathsAndEqual(t *testing.T) {

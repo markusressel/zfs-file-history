@@ -43,17 +43,10 @@ func (entry PoolListEntry) TableRowId() string {
 	return entry.Name
 }
 
-// poolListProperties are the properties requested by ListPools, in the order parsePoolList expects them.
-var poolListProperties = []string{"name", "size", "allocated", "free", "fragmentation", "capacity", "dedupratio", "health"}
-
 // ListPools returns the listing properties of all pools on the system.
 // This executes "zpool list", so it must not be called on the UI thread.
 func ListPools() ([]*PoolListEntry, error) {
-	output, err := runZpool("list", "-H", "-p", "-o", strings.Join(poolListProperties, ","))
-	if err != nil {
-		return nil, err
-	}
-	return parsePoolList(output)
+	return backend.ListPools()
 }
 
 // parsePoolList parses the output of "zpool list -Hp -o <poolListProperties>".
@@ -256,24 +249,13 @@ func (status *PoolStatus) ScanFinished() (time.Time, bool) {
 	return finished, true
 }
 
-// poolStatusArgs are the arguments of "zpool status": exact numbers (-p) and the TRIM state of the devices (-t).
-var poolStatusArgs = []string{"status", "-p", "-t"}
-
 // GetPoolStatus returns the status of the pool with the given name.
 // This executes "zpool status", so it must not be called on the UI thread.
 func GetPoolStatus(name string) (*PoolStatus, error) {
 	if name == "" {
 		return nil, errors.New("cannot get the status of a pool with an empty name")
 	}
-	output, err := runZpool(append(poolStatusArgs, name)...)
-	if err != nil {
-		return nil, err
-	}
-	return parsePoolStatus(output)
-}
-
-func runZpool(args ...string) (string, error) {
-	return runCommand("zpool", args...)
+	return backend.PoolStatus(name)
 }
 
 // poolStatusFieldPattern matches the first line of a field of "zpool status", e.g. " state: ONLINE" or
@@ -286,11 +268,7 @@ var scanProgressPattern = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)% done`)
 // ListPoolStatuses returns the status of all pools on the system, see PoolStatus.
 // This executes "zpool status", so it must not be called on the UI thread.
 func ListPoolStatuses() ([]*PoolStatus, error) {
-	output, err := runZpool(poolStatusArgs...)
-	if err != nil {
-		return nil, err
-	}
-	return parsePoolStatuses(output)
+	return backend.PoolStatuses()
 }
 
 // noPoolsOutput is what "zpool status" prints if there are no pools.

@@ -628,7 +628,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) startAsyncDiffCalculation() {
 
 		loaded := PathVersionsLoaded{FolderPath: folderPath, Folder: folderVersions, Entry: fileEntry, EntryVersions: entryVersions}
 		if len(entriesToProcess) > 0 && entriesToProcess[0].Snapshot.ParentDataset != nil {
-			// may read a libzfs property, so not on the UI thread
+			// may read the mounts, so not on the UI thread
 			dataset := entriesToProcess[0].Snapshot.ParentDataset
 			loaded.DatasetName, loaded.DatasetPath = dataset.GetName(), dataset.Path
 		}

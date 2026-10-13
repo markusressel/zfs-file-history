@@ -54,7 +54,7 @@ func (s *historyScanner) scan(loadingMsgFunc func(string)) ([]*data.SnapshotBrow
 	}
 
 	slices.SortFunc(snapshots, func(a, b *zfs.Snapshot) int {
-		return a.GetCreationDate().Compare(b.GetCreationDate())
+		return a.Properties.CreationDate.Compare(b.Properties.CreationDate)
 	})
 
 	workingCopyStat, workingCopyErr := os.Lstat(s.filePath)

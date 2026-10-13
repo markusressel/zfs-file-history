@@ -1,9 +1,7 @@
 package zfs
 
 import (
-	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
@@ -64,12 +62,6 @@ func (e *PoolActionNeedsRootError) Command() []string {
 	return append(append([]string{ZpoolPath()}, e.Action.Args...), e.Pool)
 }
 
-// runPoolCommand and runSudoCommand run a command and return its output. Replaceable in tests.
-var (
-	runPoolCommand = runCommand
-	runSudoCommand = func(args ...string) (string, error) { return runCommand("sudo", args...) }
-)
-
 // RunPoolAction runs the action on the pool with the given name. Pool operations cannot be delegated to users like
 // dataset ones (zfs allow), so if zpool is denied, it is run again with "sudo -n", which works with the sudoers rule
 // of "setup --pool-actions" (or as root). This spawns processes, so it must not be called on the UI thread.
@@ -77,32 +69,7 @@ func RunPoolAction(action PoolAction, pool string) error {
 	if pool == "" || strings.HasPrefix(pool, "-") {
 		return fmt.Errorf("cannot %s: invalid pool name %q", action.Name, pool)
 	}
-	args := append(append([]string{}, action.Args...), pool)
-	_, err := runPoolCommand("zpool", args...)
-	if err == nil || !isPermissionDenied(err) {
-		return err
-	}
-
-	_, sudoErr := runSudoCommand(append([]string{"-n", ZpoolPath()}, args...)...)
-	if sudoErr == nil {
-		return nil
-	}
-	if strings.HasPrefix(sudoErr.Error(), "sudo:") || errors.Is(sudoErr, exec.ErrNotFound) {
-		// not allowed (e.g. no sudoers rule, so a password is required) or no sudo: the original error says more
-		return &PoolActionNeedsRootError{Action: action, Pool: pool, Cause: err}
-	}
-	// run by root, but zpool failed, e.g. "there is no active scrub"
-	return sudoErr
-}
-
-// ZpoolPath returns the path of the zpool command. Sudo needs the full path, which is also the one in the sudoers
-// rules, see SudoersRule.
-func ZpoolPath() string {
-	path, err := exec.LookPath("zpool")
-	if err != nil {
-		return "/usr/bin/zpool"
-	}
-	return path
+	return backend.RunPoolAction(action, pool)
 }
 
 // zpoolPaths are the paths zpool is installed at by the distributions, used in the sudoers rules.

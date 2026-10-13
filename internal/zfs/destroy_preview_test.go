@@ -33,19 +33,21 @@ func TestDestroyTarget(t *testing.T) {
 	b := &Snapshot{Name: "b", FullName: "pool/data@b"}
 	other := &Snapshot{Name: "c", FullName: "pool/other@c"}
 
-	target, err := destroyTarget([]*Snapshot{a})
+	dataset, names, err := destroyTarget([]*Snapshot{a})
 	require.NoError(t, err)
-	assert.Equal(t, "pool/data@a", target)
+	assert.Equal(t, "pool/data", dataset)
+	assert.Equal(t, []string{"a"}, names)
 
 	// several snapshots of the same dataset are destroyed together
-	target, err = destroyTarget([]*Snapshot{a, b})
+	dataset, names, err = destroyTarget([]*Snapshot{a, b})
 	require.NoError(t, err)
-	assert.Equal(t, "pool/data@a,b", target)
+	assert.Equal(t, "pool/data", dataset)
+	assert.Equal(t, []string{"a", "b"}, names)
 
-	_, err = destroyTarget([]*Snapshot{a, other})
+	_, _, err = destroyTarget([]*Snapshot{a, other})
 	assert.Error(t, err)
-	_, err = destroyTarget(nil)
+	_, _, err = destroyTarget(nil)
 	assert.Error(t, err)
-	_, err = destroyTarget([]*Snapshot{{FullName: "pool/data"}})
+	_, _, err = destroyTarget([]*Snapshot{{FullName: "pool/data"}})
 	assert.Error(t, err)
 }

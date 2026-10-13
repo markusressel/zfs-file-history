@@ -125,12 +125,7 @@ func ApplyDelegationChange(change DelegationChange) error {
 	if err := validateGrantee(change.Grantee); err != nil {
 		return err
 	}
-	for _, command := range change.Commands() {
-		if err := runZfsAsUser(command); err != nil {
-			return err
-		}
-	}
-	return nil
+	return wrapPermissionDenied(backend.ApplyDelegationChange(change))
 }
 
 // validateGrantee rejects grantees that would make the zfs commands ambiguous.

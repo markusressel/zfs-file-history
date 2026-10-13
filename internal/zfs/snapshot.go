@@ -6,16 +6,12 @@ import (
 	"io"
 	"os"
 	path2 "path"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
-
-	golibzfs "github.com/kraudcloud/go-libzfs"
-	gozfs "github.com/mistifyio/go-zfs/v4"
 )
 
 const (
@@ -56,42 +52,12 @@ type Snapshot struct {
 	FullName      string
 	Path          string
 	ParentDataset *Dataset
-
-	rawGozfsData    *gozfs.Dataset
-	rawGolibzfsData *golibzfs.Dataset
-	Properties      SnapshotProperties
+	// Properties are read with the snapshots, see Dataset.GetSnapshots
+	Properties SnapshotProperties
 }
 
 func (s *Snapshot) Equal(e Snapshot) bool {
 	return s.Name == e.Name && s.Path == e.Path
-}
-
-func NewSnapshot(name string, path string, parentDataset *Dataset, s *golibzfs.Dataset) *Snapshot {
-	fullName := fmt.Sprintf("%s@%s", parentDataset.GetName(), name)
-	snapshot := &Snapshot{
-		Name:            name,
-		FullName:        fullName,
-		Path:            path,
-		ParentDataset:   parentDataset,
-		rawGolibzfsData: s,
-	}
-
-	if s != nil {
-		snapshot.FetchDetails()
-		return snapshot
-	}
-
-	rawGoufsData, err := gozfs.Snapshots(fullName)
-	if err != nil {
-		logging.Error("NewSnapshot: gozfs snapshot failed: %s", err.Error())
-		return snapshot
-	} else if len(rawGoufsData) > 0 {
-		snapshot.rawGozfsData = rawGoufsData[0]
-	}
-
-	snapshot.FetchDetails()
-
-	return snapshot
 }
 
 // GetSnapshotPath returns the corresponding snapshot path of a file on the dataset
@@ -405,16 +371,13 @@ func (s *Snapshot) Clone(targetName string) error {
 	if strings.TrimSpace(targetName) == "" {
 		return errors.New("the name of the clone must not be empty")
 	}
-	snapshots, err := gozfs.Snapshots(s.FullName)
-	if err != nil {
-		return cleanZfsError(err)
+	if strings.HasPrefix(targetName, "-") {
+		// zfs would take it for an option
+		return fmt.Errorf("invalid name of the clone: %s", targetName)
 	}
-	if len(snapshots) == 0 {
-		return fmt.Errorf("snapshot not found: %s", s.FullName)
-	}
-	_, err = snapshots[0].Clone(targetName, nil)
+	err := backend.CloneSnapshot(s.FullName, targetName)
 	targetParent := path2.Dir(targetName)
-	return explainPermissionError(cleanZfsError(err), "clone the snapshot",
+	return explainPermissionError(err, "clone the snapshot",
 		PermissionGap{Dataset: datasetOfSnapshot(s.FullName), Permissions: []Permission{PermissionClone}},
 		PermissionGap{Dataset: targetParent, Permissions: []Permission{PermissionCreate, PermissionMount}},
 	)
@@ -435,139 +398,7 @@ func (s *Snapshot) Destroy(recursive bool, dependantClones bool) error {
 	return ds.DestroySnapshot(s.Name, recursive, dependantClones)
 }
 
-func (s *Snapshot) GetCreationDate() time.Time {
-	if s.rawGolibzfsData != nil {
-		prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropCreation)
-		if err == nil {
-			timestamp, err := strconv.ParseInt(prop.Value, 10, 64)
-			if err == nil {
-				return time.Unix(timestamp, 0)
-			}
-		}
-	}
-
-	if s.rawGozfsData == nil {
-		return time.Time{}
-	}
-	propValue, err := s.rawGozfsData.GetProperty("creation")
-	if err != nil {
-		logging.Error("Could not get creation property for %s: %s", s.FullName, err.Error())
-		return time.Time{}
-	}
-
-	timestamp, err := strconv.ParseInt(propValue, 10, 64)
-	if err != nil {
-		logging.Error("Could not parse creation property for %s: %s", s.FullName, err.Error())
-		return time.Time{}
-	}
-
-	return time.Unix(timestamp, 0)
-}
-
-func (s *Snapshot) GetUsed() uint64 {
-	if s.rawGolibzfsData == nil {
-		return 0
-	}
-	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUsed)
-	if err != nil {
-		logging.Error("Could not get used property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	used, err := strconv.ParseUint(prop.Value, 10, 64)
-	if err != nil {
-		logging.Error("Could not parse used property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	return used
-}
-
-func (s *Snapshot) GetReferenced() uint64 {
-	if s.rawGolibzfsData == nil {
-		return 0
-	}
-	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropReferenced)
-	if err != nil {
-		logging.Error("Could not get referenced property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	referenced, err := strconv.ParseUint(prop.Value, 10, 64)
-	if err != nil {
-		logging.Error("Could not parse referenced property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	return referenced
-}
-
-// GetWritten returns the space written to the dataset between the previous snapshot and this one.
-func (s *Snapshot) GetWritten() uint64 {
-	if s.rawGolibzfsData == nil {
-		return 0
-	}
-	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropWritten)
-	if err != nil {
-		logging.Error("Could not get written property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	written, err := strconv.ParseUint(prop.Value, 10, 64)
-	if err != nil {
-		logging.Error("Could not parse written property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	return written
-}
-
-func (s *Snapshot) GetRatio() float64 {
-	if s.rawGolibzfsData == nil {
-		return 0
-	}
-	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropRefratio)
-	if err != nil {
-		logging.Error("Could not get ratio property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	val, err := strconv.ParseFloat(prop.Value, 64)
-	if err != nil {
-		logging.Error("Could not parse ratio property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	return val
-}
-
-func (s *Snapshot) GetClones() uint64 {
-	if s.rawGolibzfsData == nil {
-		return 0
-	}
-	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropNumclones)
-	if err != nil {
-		logging.Error("Could not get clones property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	val, err := strconv.ParseUint(prop.Value, 10, 64)
-	if err != nil {
-		logging.Error("Could not parse clones property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	return val
-}
-
-// GetHolds returns the number of holds of the snapshot (see ListHolds for their tags).
-func (s *Snapshot) GetHolds() uint64 {
-	if s.rawGolibzfsData == nil {
-		return 0
-	}
-	prop, err := s.rawGolibzfsData.GetProperty(golibzfs.DatasetPropUserrefs)
-	if err != nil {
-		logging.Error("Could not get userrefs property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	val, err := strconv.ParseUint(prop.Value, 10, 64)
-	if err != nil {
-		logging.Error("Could not parse userrefs property for %s: %s", s.FullName, err.Error())
-		return 0
-	}
-	return val
-}
-
+// SnapshotProperties are the properties of a snapshot shown by the application, see Backend.SnapshotProperties.
 type SnapshotProperties struct {
 	CreationDate time.Time
 	Used         uint64
@@ -579,18 +410,6 @@ type SnapshotProperties struct {
 	Clones           uint64
 	// Holds is the number of holds ("userrefs"). A held snapshot cannot be destroyed.
 	Holds uint64
-}
-
-func (s *Snapshot) FetchDetails() {
-	s.Properties = SnapshotProperties{
-		CreationDate:     s.GetCreationDate(),
-		Used:             s.GetUsed(),
-		Referenced:       s.GetReferenced(),
-		Written:          s.GetWritten(),
-		CompressionRatio: s.GetRatio(),
-		Clones:           s.GetClones(),
-		Holds:            s.GetHolds(),
-	}
 }
 
 func syncFileProperties(dstPath string, stat os.FileInfo) error {

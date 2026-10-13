@@ -37,11 +37,7 @@ func (p Property) IsUserProperty() bool {
 // ListProperties returns all properties of the dataset, with human-readable values (e.g. "1.5G").
 // This spawns a zfs process, so it must not be called on the UI thread.
 func ListProperties(dataset string) ([]*Property, error) {
-	output, err := runZfs("get", "-H", "-o", "property,value,source", "all", dataset)
-	if err != nil {
-		return nil, err
-	}
-	return parseProperties(output)
+	return backend.ListProperties(dataset)
 }
 
 // parseProperties parses the output of "zfs get -H -o property,value,source", e.g.:
@@ -84,7 +80,7 @@ func SetProperty(dataset string, name string, value string) error {
 	if strings.ContainsAny(value, "\n\r") {
 		return fmt.Errorf("the value of %s must not contain line breaks", name)
 	}
-	return runZfsAsUser(SetPropertyCommand(dataset, name, value))
+	return wrapPermissionDenied(backend.SetProperty(dataset, name, value))
 }
 
 // InheritProperty removes the local value of the property, as the current user. If ZFS denies it, the returned
@@ -94,7 +90,7 @@ func InheritProperty(dataset string, name string) error {
 	if err := validatePropertyName(name); err != nil {
 		return err
 	}
-	return runZfsAsUser(InheritPropertyCommand(dataset, name))
+	return wrapPermissionDenied(backend.InheritProperty(dataset, name))
 }
 
 // maxUserPropertyNameLength is the maximum length of user property names, see zfsprops(7).
@@ -128,14 +124,11 @@ func validatePropertyName(name string) error {
 	return nil
 }
 
-// runZfsAsUser runs a zfs command (including the leading "zfs") as the current user. If ZFS denies it, the returned
-// error wraps ErrPermissionDenied.
-func runZfsAsUser(command []string) error {
-	if _, err := runZfs(command[1:]...); err != nil {
-		if isPermissionDenied(err) {
-			return fmt.Errorf("%w: %s", ErrPermissionDenied, err.Error())
-		}
-		return err
+// wrapPermissionDenied returns the error of a zfs command run as the current user, wrapping ErrPermissionDenied if
+// ZFS denied it.
+func wrapPermissionDenied(err error) error {
+	if err != nil && isPermissionDenied(err) {
+		return fmt.Errorf("%w: %s", ErrPermissionDenied, err.Error())
 	}
-	return nil
+	return err
 }

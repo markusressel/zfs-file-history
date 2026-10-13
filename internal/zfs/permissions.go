@@ -3,11 +3,8 @@ package zfs
 import (
 	"errors"
 	"fmt"
-	"os/user"
 	"slices"
 	"strings"
-
-	gozfs "github.com/mistifyio/go-zfs/v4"
 )
 
 // Permission is a ZFS permission that can be delegated to users with "zfs allow".
@@ -60,11 +57,11 @@ func (e *MissingPermissionsError) Error() string {
 // Returns nil if so, or a MissingPermissionsError with the permissions that are still missing.
 // This spawns zfs processes, so it must not be called on the UI thread.
 func (e *MissingPermissionsError) Verify() error {
-	who, err := currentIdentity()
+	who, err := backend.CurrentIdentity()
 	if err != nil {
 		return fmt.Errorf("cannot check the permissions: %w", err)
 	}
-	if who.isRoot() {
+	if who.IsRoot() {
 		return nil
 	}
 	stillMissing, err := findMissingPermissions(who, e.Missing)
@@ -76,7 +73,7 @@ func (e *MissingPermissionsError) Verify() error {
 	}
 	return &MissingPermissionsError{
 		Action:  e.Action,
-		User:    who.name,
+		User:    who.Name,
 		Missing: stillMissing,
 		Cause:   errors.New("the permissions are still missing"),
 	}
@@ -103,56 +100,32 @@ func joinPermissions(permissions []Permission) string {
 	return strings.Join(names, ",")
 }
 
-// identity is the user the permissions are checked for.
-type identity struct {
-	name   string
-	uid    string
-	groups []string
+// Identity is the user the permissions are checked for.
+type Identity struct {
+	Name   string
+	Uid    string
+	Groups []string
 }
 
-func (i identity) isRoot() bool {
-	return i.uid == "0"
+// IsRoot returns whether the user is root, who has all permissions without delegations.
+func (i Identity) IsRoot() bool {
+	return i.Uid == "0"
 }
-
-// Replaceable in tests.
-var (
-	currentIdentity = func() (identity, error) {
-		current, err := user.Current()
-		if err != nil {
-			return identity{}, err
-		}
-		result := identity{name: current.Username, uid: current.Uid}
-		groupIds, err := current.GroupIds()
-		if err == nil {
-			for _, groupId := range groupIds {
-				if group, err := user.LookupGroupId(groupId); err == nil {
-					result.groups = append(result.groups, group.Name)
-				}
-			}
-		}
-		return result, nil
-	}
-	// readDelegations returns the output of "zfs allow <dataset>", which lists the delegated permissions of the
-	// dataset and its ancestors. Anyone can read them.
-	readDelegations = func(dataset string) (string, error) {
-		return runZfs("allow", dataset)
-	}
-)
 
 // checkPermissions returns a MissingPermissionsError if the current user lacks one of the required permissions.
 // Used before operations that would otherwise appear to work, e.g. the dry run of a destroy succeeds without
 // permissions. If the permissions cannot be determined, nil is returned, so the operation itself reports the error.
 // This spawns zfs processes, so it must not be called on the UI thread.
 func checkPermissions(action string, required ...PermissionGap) error {
-	who, err := currentIdentity()
-	if err != nil || who.isRoot() {
+	who, err := backend.CurrentIdentity()
+	if err != nil || who.IsRoot() {
 		return nil
 	}
 	missing, err := findMissingPermissions(who, required)
 	if err != nil || len(missing) == 0 {
 		return nil
 	}
-	return &MissingPermissionsError{Action: action, User: who.name, Missing: missing}
+	return &MissingPermissionsError{Action: action, User: who.Name, Missing: missing}
 }
 
 // explainPermissionError turns err into a MissingPermissionsError if ZFS denied the operation because of missing
@@ -162,7 +135,7 @@ func explainPermissionError(err error, action string, required ...PermissionGap)
 	if err == nil || !isPermissionDenied(err) {
 		return err
 	}
-	who, identityErr := currentIdentity()
+	who, identityErr := backend.CurrentIdentity()
 	if identityErr != nil {
 		return err
 	}
@@ -171,7 +144,7 @@ func explainPermissionError(err error, action string, required ...PermissionGap)
 		// e.g. delegation is disabled on the pool, or an unknown requirement: name everything that is needed
 		missing = required
 	}
-	return &MissingPermissionsError{Action: action, User: who.name, Missing: missing, Cause: err}
+	return &MissingPermissionsError{Action: action, User: who.Name, Missing: missing, Cause: err}
 }
 
 // isPermissionDenied returns whether a zfs command failed because of missing permissions.
@@ -181,14 +154,14 @@ func isPermissionDenied(err error) bool {
 }
 
 // findMissingPermissions returns the required permissions the user does not have.
-func findMissingPermissions(who identity, required []PermissionGap) ([]PermissionGap, error) {
+func findMissingPermissions(who Identity, required []PermissionGap) ([]PermissionGap, error) {
 	var missing []PermissionGap
 	for _, gap := range required {
-		output, err := readDelegations(gap.Dataset)
+		delegations, err := backend.Delegations(gap.Dataset)
 		if err != nil {
 			return nil, err
 		}
-		granted := effectivePermissions(output, gap.Dataset, who)
+		granted := delegations.permissionsOf(who)
 		var lacking []Permission
 		for _, permission := range gap.Permissions {
 			if !granted[permission] {
@@ -202,10 +175,10 @@ func findMissingPermissions(who identity, required []PermissionGap) ([]Permissio
 	return missing, nil
 }
 
-// effectivePermissions returns the permissions the user has on dataset, given the output of "zfs allow <dataset>".
-func effectivePermissions(output string, dataset string, who identity) map[Permission]bool {
+// permissionsOf returns the permissions the user has on the dataset the delegations were listed for.
+func (d *Delegations) permissionsOf(who Identity) map[Permission]bool {
 	result := map[Permission]bool{}
-	for permission := range parseDelegations(output, dataset).grants(who) {
+	for permission := range d.grants(who) {
 		result[permission] = true
 	}
 	return result
@@ -227,14 +200,4 @@ func snapshotPermissionGaps(snapshotNames []string, permissions ...Permission) [
 		}
 	}
 	return gaps
-}
-
-// cleanZfsError reduces errors of go-zfs to the message zfs printed. go-zfs includes the exit status and the full
-// command line, e.g. `exit status 1: "/usr/bin/zfs snapshot pool@x" => cannot create snapshots : permission denied`.
-func cleanZfsError(err error) error {
-	var zfsError *gozfs.Error
-	if errors.As(err, &zfsError) && strings.TrimSpace(zfsError.Stderr) != "" {
-		return errors.New(strings.TrimSpace(zfsError.Stderr))
-	}
-	return err
 }

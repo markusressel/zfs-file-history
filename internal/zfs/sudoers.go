@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/util"
 )
 
@@ -231,33 +230,10 @@ func (file *SudoersFile) String() string {
 	return content.String()
 }
 
-// listSudoRules lists the commands the user may run with sudo ("sudo -l"). Without a password (-n), which works if
-// any of them is allowed without one. Unlike running a command, this is not logged. Replaceable in tests.
-var listSudoRules = func() (string, error) { return runSudoCommand("-n", "-l") }
-
-// AllowedSudoersRules returns the ids of the rules the user may use (all as root): the ones whose commands sudo
-// allows without a password, with the path zpool has here. It runs sudo, so it must not be called on the UI thread.
+// AllowedSudoersRules returns the ids of the rules the user may use (all as root). It runs sudo, so it must not be
+// called on the UI thread.
 func AllowedSudoersRules() map[string]bool {
-	allowed := map[string]bool{}
-	if isRoot() {
-		for _, rule := range SudoersRules {
-			allowed[rule.Id] = true
-		}
-		return allowed
-	}
-	output, err := listSudoRules()
-	if err != nil {
-		// e.g. "a password is required" if nothing is allowed without one, or no sudo
-		logging.Debug("Cannot list the sudo rules: %v", err)
-		return allowed
-	}
-	commands, all := parseNoPasswordCommands(output)
-	for _, rule := range SudoersRules {
-		allowed[rule.Id] = all || !slices.ContainsFunc(rule.allowed(ZpoolPath()), func(command string) bool {
-			return !commands[command]
-		})
-	}
-	return allowed
+	return backend.AllowedSudoersRules()
 }
 
 // parseNoPasswordCommands returns the commands that "sudo -l" says the user may run as root without a password, and

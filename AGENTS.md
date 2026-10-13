@@ -31,6 +31,13 @@ of the code.
 - `internal/zfs/`: everything ZFS. libzfs (`github.com/kraudcloud/go-libzfs`) for datasets and snapshots, the `zfs`
   and `zpool` commands (`runCommand`, `runZfs`, `runZpool`) for the rest. Parsers work on the text output
   (`zpool status -p`, `zpool list -Hp`, ...), not JSON (`-j` needs OpenZFS 2.3+). Sample outputs are in `testdata/`.
+- `internal/zfs/backend.go`: the functions of the package check their arguments and explain errors (missing
+  permissions), then call the `Backend`, which only does what is asked and returns Go types. `System`
+  (`system.go`, the libzfs handles in `system_libzfs.go`) is the backend of the system: the only code that runs
+  `zfs`, `zpool` or `sudo`, or calls libzfs (`TestOnlySystemRunsCommands`). `Dataset` and `Snapshot` read their
+  properties through it (a dataset all at once with the first getter, snapshots with `GetSnapshots`); the snapshot
+  names come from the `.zfs/snapshot` folder. `SetBackend` replaces the backend (e.g. in tests) before anything
+  runs. `.zfs` itself is never listed as a folder, also with `snapdir=visible` (`util.IsZfsControlDirectory`).
 - `internal/zfs/zfs_evemt_watcher.go`: follows `zpool events` and emits the emitters of `common.go`:
   `DatasetsLoaded` (snapshots created/destroyed, pools imported/exported, also after F5 via `RefreshZfsData`) and
   `PoolsChanged` (state changes, scrub/resilver/trim, vdev changes, `ereport.*`/`resource.*`; throttled to once a
