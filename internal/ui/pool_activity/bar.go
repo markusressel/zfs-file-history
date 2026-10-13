@@ -65,6 +65,7 @@ func NewBar(monitor *Monitor) *Bar {
 	bar.SetBorder(true)
 	uiutil.SetupWindow(bar.Box, "Activity")
 	bar.SetBorderColor(theme.Colors.Activity.Border)
+	bar.SetBackgroundColor(theme.Colors.Activity.Background)
 	monitor.OnChanged(bar.update)
 	return bar
 }
@@ -119,9 +120,6 @@ func (bar *Bar) update() {
 func (bar *Bar) Draw(screen tcell.Screen) {
 	bar.DrawForSubclass(screen, bar)
 	x, y, width, height := bar.GetInnerRect()
-	// only the inside: the border lines are in the middle of their cells, a background behind them would reach
-	// beyond them
-	fillBackground(screen, x, y, width, height, theme.Colors.Activity.Background)
 	activities := bar.monitor.Activities()
 	lines := layoutLines(activities, width)
 	for i, line := range lines {
@@ -194,16 +192,6 @@ func formatRemaining(remaining string) string {
 		return ""
 	}
 	return "  " + remaining + " to go"
-}
-
-// fillBackground fills the rectangle with the background color.
-func fillBackground(screen tcell.Screen, x int, y int, width int, height int, color tcell.Color) {
-	style := tcell.StyleDefault.Background(color)
-	for row := y; row < y+height; row++ {
-		for column := x; column < x+width; column++ {
-			screen.SetContent(column, row, ' ', nil, style)
-		}
-	}
 }
 
 // drawProgressBar draws a bar of the given width at x, y, filled by percent, with text written into its middle. Each
