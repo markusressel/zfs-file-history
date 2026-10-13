@@ -13,94 +13,33 @@
 
 # Features
 
-* 📁 **File browser:** Navigate datasets and snapshot contents in a terminal-based file explorer.
-* 🔍 **Dual Diff Comparison Modes:** Inspect file changes inside the history overlay using two modes:
-  * **vs Predecessor:** Chronological comparison showing how the file evolved over snapshot versions (Additions in
-    Green, Deletions in Red, baseline labeled as `Initial`).
-  * **vs Working Copy:** Direct comparison showing each snapshot version relative to your current local file, with
-    context-aware statuses (`Present` to restore, `Absent` to remove, `Modified`, or `Identical`).
-* 🩹 **Graceful Diff Fallbacks:** Diff views automatically fall back to `/dev/null` when files are missing on either
-  side (e.g. deleted locally or missing in a snapshot), showing clean addition/deletion diffs instead of CLI execution
-  errors.
-* 📂 **Folder history:** `h` on a folder (or on the header row for the current one) shows a timeline of the snapshots
-  in which its content changed (`+3 −1 ~2`), sparklines of its size and number of items over time, and the changed
-  entries of each snapshot, compared to the previous snapshot or to now (`d`). Restore single entries or the whole
-  folder from a snapshot, or open the history of an entry (`h`).
-* 🧭 **Overview:** Below the file browser, the current folder compared to the selected snapshot (`+2 −1 ~4`), a
-  sparkline of how many of its entries differ from now in each snapshot (to see how far back you have to go, and
-  since when it is unchanged), and one of the size of the selected file (its number of versions and last change).
-  The snapshot selected in the snapshot list is highlighted in them. `o` hides it to make room for the files, and
-  shows it again (remembered between runs).
-* 🕘 **Snapshot version lookup:** Move through snapshots to locate the required file revision. Snapshots in which a
-  new version of the selected file or folder starts are bright, the ones holding the same as the previous snapshot
-  are dimmed (without a selected entry: the snapshots in which the folder changed, or data was written to the
-  dataset). `v` shows only the snapshots with changes, like the histories (remembered per screen). `h` in the snapshot
-  list (or its action menu) opens the history of the selected file or folder at that snapshot.
-* 💾 **Session restore:** Quit and reopen zfs-file-history in the same directory (without a path) and it shows
-  the folder, page and focused list you left, with the same selections. The selected entry of each folder, the
-  selected snapshot of each dataset and the collapsed datasets are remembered between runs as well. Several running
-  instances do not overwrite each other's settings, the last one used is restored. `--fresh` (or
-  `restoreSession: false` in the configuration) starts in the given path or working directory instead.
-* ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
-* 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, pools,
-  the file and folder history and the dataset properties.
-  The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
-  see [State](#state)), `r` in the column dialog resets them.
-* 🔎 **Filtering:** Filter files, snapshots, datasets and pools as you type (`/` or `ctrl+f`), with glob patterns like `*.txt`.
-  The filter is edited like a shell prompt: `ctrl+←`/`ctrl+→` jump and `ctrl+Backspace`/`ctrl+Delete` delete whole
-  words, `ctrl+w`/`ctrl+u`/`ctrl+k` work as well.
-* 🌳 **Dataset overview:** Browse all datasets as a collapsible tree (`-`/`+`, `*` for all, like htop) or as a flat
-  list (`t`), unmounted datasets are hidden by default (`u`). Both choices are remembered between runs. The used
-  space is broken down into snapshots, the dataset itself, its children and its refreservation (sortable, to find the
-  datasets whose snapshots use the most space), colored by how big it is compared to the other datasets.
-* 🩺 **Pool status:** The pools page (`3`) lists all pools with their health, size, allocated and free space,
-  capacity, fragmentation and deduplication ratio (`zpool list`). Below it, the status of the selected pool, like
-  `zpool status`: what is wrong with it and what to do about it, the last or running scrub or resilver (with a
-  progress bar, updated while it runs), the data errors, and the tree of its devices with their state and their read,
-  write and checksum errors. Changes (a failing device, a finished scrub, ...) are shown as they happen, see
-  [One Time Setup](#one-time-setup). The dataset info box shows the health and the last scrub of the dataset's pool
-  as well.
-* ⚙️ **Dataset properties:** `e` in the dataset overview shows all ZFS properties of a dataset (`zfs get all`) with
-  their source, filterable and sortable. Change them (`zfs set`), add user properties (`module:property`, `a`), or
-  reset local values to the inherited or default ones and remove user properties (`zfs inherit`); with `sudo` if
-  needed.
-* 🔑 **ZFS permissions:** The `Perms` column of the dataset overview shows which delegated ZFS permissions
-  (`zfs allow`) you have on each dataset, e.g. `sdmh-----` for snapshot, destroy, mount and hold. `p` shows the
-  details: who grants each permission and all delegations of the dataset and its parents. There you can also grant
-  permissions to yourself or revoke them, for the dataset and its children (`zfs allow` / `zfs unallow`); the changes
-  are applied with `sudo` if needed. The dataset info box of the dataset overview lists your permissions as well.
-* ♻️ **Point-in-time restore:** Restore a selected file directly from a selected snapshot. Fully supports restoring
-  files that are absent in a snapshot by deleting the current working copy copy.
-* 🕰️ **Relative times:** `T` switches all times in tables between absolute dates and relative ones like
-  "3 minutes ago" (remembered between runs). Recent times count up live.
-* ⌨️ **Inline shortcuts:** The most used keys are shown at the bottom of each page and overlay, grouped and
-  color-coded: actions first, then view options, navigation and global keys. `?` (or `F1`) hides
-  them to make room in small terminals, and shows them again (remembered between runs).
-* 🧭 **Command menu:** `:` lists all actions of the focused list, the page and the global ones at the bottom of
-  the screen, with their keys, e.g. the actions of the selected file or snapshot or sorting by a column. Type to
-  filter (`res rec` finds "Restore directory recursively"), `Enter` runs the selected action.
-* 🖥️ **Responsive layout:** Dialogs and overlays automatically scale and reposition themselves during terminal resizing,
-  dynamically clamping to screen bounds to prevent clipping.
-* 🗃️ **Snapshot columns per screen:** On the files screen, the snapshot list is about the selected file or folder:
-  how it compares with now (`vs now`), what happened to it since the previous snapshot (`Change`: `+` created, `−`
-  deleted, `≠ +1.2 KiB` modified, with the change of its size or number of items), and its `Size` and `Modified` time
-  in each snapshot (which version it holds; the number of items for folders). On the datasets screen, it is about the
-  whole dataset: `Used`, `Written`, `Refer`. The changes of the folder's entries (`Folder changes`, `Folder vs now`,
-  e.g. `+3 −1 ~2`) can be added on both screens. All columns can be shown on both screens (`F2`), each screen
-  remembers its own.
-* 📏 **Written:** The `Written` column of the snapshot list shows how much was written between a snapshot and its
-  predecessor (`zfs get written`): `0 B` (dimmed) for snapshots in which nothing changed. `Used` and `Written` are
-  colored by how big they are compared to the other snapshots (logarithmically, so outliers do not hide the rest).
-  Deleting files writes
-  nothing; the snapshot right before a big deletion stands out in `Used` instead, as it is the only one still holding
-  the deleted data.
-* 🗂️ **Snapshot lifecycle actions:** Create, clone and destroy snapshots from within the UI.
-* 🔒 **Snapshot holds:** Hold snapshots (`zfs hold`, tag `zfs-file-history`) to protect them from being destroyed,
-  e.g. by automatic pruning while you investigate, and release them again. Only holds with this tag are ever
-  released, holds of other tools (e.g. replication) stay untouched. Held snapshots have a 🔒 in front of their name,
-  the `Holds` column shows the number of holds.
+* [x] Terminal based file browser for your datasets
+* [x] File history
+  * [x] Find the snapshots in which a file was changed
+  * [x] Diff against the previous version or your local file
+  * [x] Restore files and folders from any snapshot
+* [x] Folder history, including size and item count over time
+* [x] Snapshot management (create, clone, destroy, hold)
+* [x] Dataset overview
+  * [x] Tree view
+  * [x] Space usage breakdown
+  * [x] Edit properties
+  * [x] Manage delegated permissions
+* [x] Pool health and `zpool status`
+* [x] Live updates using zpool events
+* [x] Filter, sort and configure the columns of all lists
+* [x] Remembers your last session
+
+All important shortcuts are shown at the bottom of the screen, press `:` to see everything else.
 
 # How to use
+
+```shell
+# Open the current directory
+zfs-file-history
+# Open a specific directory
+zfs-file-history /path/to/folder
+```
 
 ## Installation
 
@@ -134,7 +73,7 @@ make deploy
 zfs-file-history can listen to zpool events to automatically update the UI when things change in the background.
 Unfortunately, due to the current design of ZFS, this requires root privileges.
 To avoid having to run zfs-file-history as root, a one-time setup command can be run as root, which creates
-a suders rule that lets your user run `zpool events` as root without requiring interactive permission approval.
+a sudoers rule that lets your user run `zpool events` as root without requiring interactive permission approval.
 
 ```shell
 sudo zfs-file-history setup
@@ -147,7 +86,7 @@ If a ZFS permission (delegation) is missing, zfs-file-history automatically give
 However, if you want to give these permissions in one swoop you can also run this one line:
 
 ```shell
-sudo zfs allow markus mount,snapshot,destroy,hold,release rpool/HOME/default/markus
+sudo zfs allow $USER mount,snapshot,destroy,hold,release <dataset>
 ```
 
 ## Configuration
@@ -163,7 +102,7 @@ Then configure zfs-file-history by creating a YAML configuration file in **one**
 * `./zfs-file-history.yaml`
 
 ```shell
-mkdir -P ~/.config/zfs-file-history
+mkdir -p ~/.config/zfs-file-history
 nano ~/.config/zfs-file-history/zfs-file-history.yaml
 ```
 
@@ -175,15 +114,11 @@ in [zfs-file-history.yaml](/zfs-file-history.yaml).
 ## State
 
 Besides the configuration file, which is only ever written by you, zfs-file-history remembers some UI settings
-(the columns and sort order of the tables, the tree view and hidden unmounted datasets of the dataset overview, the
-comparison mode of the file and folder history, relative times, hidden shortcuts and the hidden overview) and the
-last session (see Session restore above) in a state file:
+(like the columns and sort order of the tables) and your last session in a state file:
 
 * `$XDG_STATE_HOME/zfs-file-history/state.json`, by default `~/.local/state/zfs-file-history/state.json`
 
-It is written by the application and specific to the machine, so there is no need to copy it to other systems.
-Deleting it resets all remembered settings. If it was written by a newer version of zfs-file-history that this one cannot write, it is
-left as it is (changes are not saved) and a warning asks you to update.
+Deleting it resets all remembered settings. If you don't want to continue where you left off, start with `--fresh`.
 
 # Dependencies
 
