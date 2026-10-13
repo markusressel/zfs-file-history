@@ -22,8 +22,8 @@ var systemHelpers = []string{"runZfs", "runZpool", "runCommand", "runPoolCommand
 	"listSnapshotNames", "currentIdentity", "readDelegations", "listSudoRules", "isRoot", "datasetHandle",
 	"findSnapshotHandles"}
 
-// TestOnlySystemRunsCommands makes sure that nothing but System touches the pools of the system, so a virtual
-// Backend never does.
+// TestOnlySystemRunsCommands makes sure that nothing but System touches the pools of the system, so replacing the
+// Backend replaces all of it.
 func TestOnlySystemRunsCommands(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)

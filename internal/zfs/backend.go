@@ -5,8 +5,7 @@ import (
 )
 
 // Backend is where the datasets, snapshots and pools come from, and what changes them. System is the one of the
-// system (libzfs, the zfs and zpool commands); a virtual one has pools and datasets that only exist in memory, so
-// nothing of the system is touched (e.g. for the demo).
+// system (libzfs, the zfs and zpool commands); others (e.g. in tests) can replace it, see SetBackend.
 //
 // The functions of this package check their arguments and explain errors (e.g. missing permissions), the backend
 // only does what is asked. It speaks Go types, not the text output of the commands. All methods may block (they
