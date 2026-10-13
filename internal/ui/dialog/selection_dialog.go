@@ -22,6 +22,11 @@ type SelectionDialog struct {
 	actionChannel chan DialogActionId
 
 	optionTable *tview.Table
+	// checklist are the items above the options, nil if there is no checklist, see NewSelectionDialogWithChecklist
+	checklist      []*ChecklistItem
+	checklistTable *tview.Table
+	// checked is whether each item of the checklist was checked when the running action was selected, see Checked
+	checked []bool
 	// stopLoading stops the loading spinner of the running action, nil if no action is running.
 	// Only accessed on the UI thread.
 	stopLoading func()
@@ -84,7 +89,23 @@ func NewSelectionDialog(
 	handler func(dialog *SelectionDialog, action DialogActionId) error,
 	onComplete func(d *SelectionDialog, option *DialogOption, err error),
 ) *SelectionDialog {
+	return NewSelectionDialogWithChecklist(application, name, title, description, nil, options, handler, onComplete)
+}
+
+// NewSelectionDialogWithChecklist is NewSelectionDialog with a checklist between the description and the options,
+// e.g. to choose what an option applies to: the handler gets the checked items with Checked.
+func NewSelectionDialogWithChecklist(
+	application *tview.Application,
+	name string,
+	title string,
+	description string,
+	checklist []*ChecklistItem,
+	options []*DialogOption,
+	handler func(dialog *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	d := &SelectionDialog{
+		checklist:     checklist,
 		application:   application,
 		name:          name,
 		title:         title,
@@ -111,6 +132,8 @@ func (d *SelectionDialog) createLayout() {
 		}
 	}
 
+	maxOptWidth = max(maxOptWidth, checklistWidth(d.checklist))
+
 	actualTableRows := len(d.options)
 	if len(d.options) > 1 {
 		hasClose := false
@@ -131,6 +154,9 @@ func (d *SelectionDialog) createLayout() {
 		ExtraContentWidth: maxOptWidth,
 		StaticHeight:      1 + actualTableRows,
 	}
+	if len(d.checklist) > 0 {
+		constraints.StaticHeight += len(d.checklist) + 1
+	}
 
 	dialogWidth, _ := CalculateDialogSize(constraints)
 
@@ -150,10 +176,19 @@ func (d *SelectionDialog) createLayout() {
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	dialogContent.AddItem(textDescriptionView, descHeight, 0, false)
 	dialogContent.AddItem(tview.NewBox(), 1, 0, false)
+	if len(d.checklist) > 0 {
+		d.checklistTable = d.createChecklistTable()
+		dialogContent.AddItem(d.checklistTable, len(d.checklist), 0, false)
+		dialogContent.AddItem(tview.NewBox(), 1, 0, false)
+	}
 	dialogContent.AddItem(d.optionTable, actualTableRows, 0, true)
 
 	dialog := createModal(d.title, dialogContent, constraints)
-	dialog.SetInputCapture(createOptionDialogInputCapture(d.optionTable, d.options, d.selectAction, d.Close))
+	inputCapture := createOptionDialogInputCapture(d.optionTable, d.options, d.selectAction, d.Close)
+	if d.checklistTable != nil {
+		inputCapture = d.checklistInputCapture(inputCapture)
+	}
+	dialog.SetInputCapture(inputCapture)
 	d.layout = dialog
 }
 
@@ -195,6 +230,12 @@ func (d *SelectionDialog) selectAction(option *DialogOption) {
 	if option.Id == DialogCloseActionId {
 		d.Close()
 		return
+	}
+
+	// read by the handler in the background, see Checked
+	d.checked = make([]bool, len(d.checklist))
+	for i, item := range d.checklist {
+		d.checked[i] = item.Checked
 	}
 
 	// 1. Always trigger the loading state and background routine

@@ -224,23 +224,37 @@ func parseEventTime(line string) (time.Time, bool) {
 	return time.Unix(sec, nsec), true
 }
 
+// AddZpoolEventWatcherActor runs WatchZpoolEvents until the application shuts down. If the user may not watch the
+// events (see SudoersRuleEvents), it is started again once that was allowed (see SudoersChanged).
 func AddZpoolEventWatcherActor(g *run.Group, ctx context.Context) {
-	g.Add(func() error {
-		logging.Info("Starting ZFS event watcher...")
-
-		err := WatchZpoolEvents(ctx)
-
-		// If it crashed but the application ISN'T shutting down (ctx is not canceled)
-		if err != nil && ctx.Err() == nil {
-			logging.Warning("⚠️ Real-time updates disabled. Missing permissions to watch ZFS events.")
-			logging.Warning("Run 'sudo zfs-file-history setup' to enable real-time UI refreshes.")
+	// subscribed here, before the UI runs, as emitters are not safe to subscribe to while they emit
+	sudoersChanged := make(chan struct{}, 1)
+	SudoersChanged.Subscribe(func(struct{}) {
+		select {
+		case sudoersChanged <- struct{}{}:
+		default:
 		}
+	})
+	g.Add(func() error {
+		for {
+			logging.Info("Starting ZFS event watcher...")
+			err := WatchZpoolEvents(ctx)
+			if ctx.Err() != nil {
+				return nil
+			}
+			if err != nil {
+				logging.Warning("⚠️ Real-time updates disabled. Missing permissions to watch ZFS events: %v", err)
+				logging.Warning("Run 'sudo zfs-file-history setup --events' to enable real-time UI refreshes.")
+			}
 
-		// CRITICAL: Block until the application shuts down!
-		// If we return here, oklog/run will forcefully kill the UI and exit the app.
-		<-ctx.Done()
-
-		return nil
+			// Block until the application shuts down, or the user may watch the events now. If we return here,
+			// oklog/run stops the UI and exits the app.
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-sudoersChanged:
+			}
+		}
 	}, func(err error) {
 		logging.Debug("Stopping ZFS event watcher...")
 	})

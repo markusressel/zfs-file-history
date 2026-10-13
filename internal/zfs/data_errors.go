@@ -11,7 +11,7 @@ import (
 )
 
 // dataErrorsArgs are the arguments of "zpool status" that list the damaged files of all pools. Exactly these are
-// allowed by the sudoers rule of the setup command, see SudoersEventsRule.
+// allowed by the sudoers rule of the setup command, see SudoersRuleDataErrors.
 var dataErrorsArgs = []string{"status", "-p", "-v"}
 
 // dataErrorsDenied is what "zpool status -v" prints instead of the damaged files of a pool if the list needs root.
@@ -19,7 +19,7 @@ var dataErrorsArgs = []string{"status", "-p", "-v"}
 const dataErrorsDenied = "List of errors unavailable"
 
 // SetupDataErrorsHint tells how to allow listing the damaged files without starting the application as root.
-const SetupDataErrorsHint = "To see which files are damaged, run: sudo zfs-file-history setup"
+const SetupDataErrorsHint = "To see which files are damaged, run: sudo zfs-file-history setup --data-errors"
 
 // DataError is a damaged file or object listed by "zpool status -v", see ListDataErrors. ZFS lists an object once
 // per dataset or snapshot whose read failed; with the head_errlog feature (OpenZFS 2.2+) also every snapshot and

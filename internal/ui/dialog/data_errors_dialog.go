@@ -28,14 +28,16 @@ const dataErrorsWidth = 100
 
 // DataErrorsDialog lists the damaged files of all pools (see zfs.ListDataErrors): the ones in the file system first,
 // then the ones in snapshots, then the objects whose path ZFS does not know. Enter shows a file in the file browser,
-// f looks for the objects without a path in the snapshots.
+// f looks for the objects without a path in the snapshots, s offers to allow listing them if that needs root.
 type DataErrorsDialog struct {
 	application   *tview.Application
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
 	content       *tview.Flex
 	helpView      *tview.TextView
-	table         *tview.Table
+	// hintView shows the keys, see updateHint
+	hintView *tview.TextView
+	table    *tview.Table
 	// searchView shows the state of the search for the objects, see SetObjectSearch
 	searchView *tview.TextView
 	// onShow is called with the file to show, see NewDataErrorsDialog
@@ -44,6 +46,8 @@ type DataErrorsDialog struct {
 	onFind func()
 	// onClose is called when the dialog is closed, e.g. to stop the search, nil: nothing
 	onClose func()
+	// onSetup offers to allow listing the damaged files if that needs root, nil: not offered, see SetOnSetup
+	onSetup func()
 
 	// All fields below are only accessed on the UI thread.
 
@@ -83,17 +87,13 @@ func (d *DataErrorsDialog) createLayout(index *zfs.DataErrorIndex) {
 	d.searchView = tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetWordWrap(true)
 	d.searchView.SetTextColor(theme.Colors.Alert.Hint)
 
-	hint := "Enter: show the file, esc: close"
-	if d.onFind != nil {
-		hint = "Enter: show the file, f: find the objects in the snapshots, esc: close"
-	}
-	closeTextView := util.CreateAttentionTextView(hint)
+	d.hintView = util.CreateAttentionTextView("")
 
 	d.content = tview.NewFlex().SetDirection(tview.FlexRow)
 	d.content.AddItem(d.helpView, 1, 0, false)
 	d.content.AddItem(d.table, 0, 1, true)
 	d.content.AddItem(d.searchView, 0, 0, false)
-	d.content.AddItem(closeTextView, 1, 0, false)
+	d.content.AddItem(d.hintView, 1, 0, false)
 	// the explanation gets as many lines as it needs at the width of the dialog
 	d.content.SetDrawFunc(func(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 		d.content.ResizeItem(d.helpView, wrappedHeight(d.helpView.GetText(false), width-2)+1, 0)
@@ -110,7 +110,7 @@ func (d *DataErrorsDialog) createLayout(index *zfs.DataErrorIndex) {
 	dialog := createModal(dialogTitle, d.content, DialogSizeConstraints{
 		Title:             dialogTitle,
 		ExtraContentWidth: dataErrorsWidth,
-		StaticHeight:      rows + wrappedHeight(formatDataErrorsHelp(index), dataErrorsWidth-2) + 6,
+		StaticHeight:      rows + wrappedHeight(formatDataErrorsHelp(index, true), dataErrorsWidth-2) + 6,
 	})
 	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
@@ -119,6 +119,10 @@ func (d *DataErrorsDialog) createLayout(index *zfs.DataErrorIndex) {
 			return nil
 		case event.Key() == tcell.KeyRune && event.Rune() == 'f' && d.onFind != nil:
 			d.onFind()
+			return nil
+		case event.Key() == tcell.KeyRune && event.Rune() == 's' && d.canSetup():
+			d.Close()
+			d.onSetup()
 			return nil
 		}
 		return event
@@ -130,7 +134,8 @@ func (d *DataErrorsDialog) createLayout(index *zfs.DataErrorIndex) {
 // stays. Must be called on the UI thread.
 func (d *DataErrorsDialog) SetIndex(index *zfs.DataErrorIndex) {
 	d.index = index
-	d.helpView.SetText(tview.Escape(formatDataErrorsHelp(index)))
+	d.helpView.SetText(tview.Escape(formatDataErrorsHelp(index, d.canSetup())))
+	d.updateHint()
 
 	selected, _ := d.table.GetSelection()
 	d.table.Clear()
@@ -149,6 +154,31 @@ func (d *DataErrorsDialog) SetIndex(index *zfs.DataErrorIndex) {
 	if len(dataErrors) > 0 {
 		d.table.Select(min(max(selected, 1), len(dataErrors)), 0)
 	}
+}
+
+// SetOnSetup sets the function that offers to allow listing the damaged files (s) if that needs root, see
+// zfs.SudoersRuleDataErrors. It is called on the UI thread after the dialog was closed. Must be called on the UI
+// thread.
+func (d *DataErrorsDialog) SetOnSetup(onSetup func()) {
+	d.onSetup = onSetup
+	d.SetIndex(d.index)
+}
+
+// canSetup returns whether listing the damaged files needs root, and it can be allowed (s).
+func (d *DataErrorsDialog) canSetup() bool {
+	return d.onSetup != nil && d.index != nil && len(d.index.Unavailable) > 0
+}
+
+// updateHint shows the keys that can be used.
+func (d *DataErrorsDialog) updateHint() {
+	keys := []string{"Enter: show the file"}
+	if d.onFind != nil {
+		keys = append(keys, "f: find the objects in the snapshots")
+	}
+	if d.canSetup() {
+		keys = append(keys, "s: allow listing them")
+	}
+	d.hintView.SetText(util.CreateAttentionText(strings.Join(append(keys, "esc: close"), ", ")))
 }
 
 // SetObjectSearch shows the state of the search for the objects without a path in the snapshots. Must be called on
@@ -211,16 +241,21 @@ func (d *DataErrorsDialog) showRow(row int) {
 	}()
 }
 
-// formatDataErrorsHelp returns the explanation above the list, with the pools whose list needs root, and the ones
-// that do not report the errors for every snapshot.
-func formatDataErrorsHelp(index *zfs.DataErrorIndex) string {
+// formatDataErrorsHelp returns the explanation above the list, with the pools whose list needs root (and how to
+// allow it: with s if canSetup, else with the setup command), and the ones that do not report the errors for every
+// snapshot.
+func formatDataErrorsHelp(index *zfs.DataErrorIndex, canSetup bool) string {
 	text := dataErrorsHelp
 	if index == nil {
 		return text
 	}
 	if len(index.Unavailable) > 0 {
+		hint := zfs.SetupDataErrorsHint
+		if canSetup {
+			hint = "Press s to allow your user to list them."
+		}
 		text = fmt.Sprintf("The damaged files of %s can only be listed by root. %s\n%s",
-			strings.Join(index.Unavailable, ", "), zfs.SetupDataErrorsHint, text)
+			strings.Join(index.Unavailable, ", "), hint, text)
 	}
 	for _, pool := range index.WithoutHeadErrlog {
 		text += fmt.Sprintf("\n%s reports an error only for the dataset or snapshot whose read failed, not for every "+

@@ -72,26 +72,22 @@ make deploy
 
 ## One Time Setup
 
-### Background Event Listening
+### Root Permissions
 
-zfs-file-history can listen to zpool events to automatically update the UI when things change in the background.
-Unfortunately, due to the current design of ZFS, this requires root privileges.
-To avoid having to run zfs-file-history as root, a one-time setup command can be run as root, which creates
-a sudoers rule that lets your user run `zpool events` as root without requiring interactive permission approval.
-The same rule lets it list the damaged files of pools with data errors (`zpool status -v`), which also needs root.
+Some features need `zpool` commands that only root may run, ZFS cannot delegate them like dataset permissions:
+
+- **Live updates** (`zpool events`): new snapshots and changes of the pools show up right away.
+- **Damaged files** (`zpool status -v`): which files are damaged by data errors.
+- **Pool actions** (`zpool scrub`, `trim`, `clear`): scrubs, TRIMs and clearing the errors of a pool. Destroying,
+  exporting or upgrading pools is not offered by zfs-file-history at all.
+
+On the first start, zfs-file-history offers to allow them for your user (also later with "Set up permissions" in the
+command menu): it runs its setup command with sudo, which creates sudoers rules that let your user run exactly these
+commands without a password. The setup can also be run by hand; it asks for each rule, or takes them as flags:
 
 ```shell
 sudo zfs-file-history setup
-```
-
-### Pool Actions
-
-Scrubs, TRIMs and clearing the errors of a pool (`Enter` on the pools page) need root as well, ZFS cannot delegate
-them. zfs-file-history offers to run them once with sudo, or to allow them for your user, which is the same as adding
-`--pool-actions` to the setup. Destroying, exporting or upgrading pools is not offered by zfs-file-history at all.
-
-```shell
-sudo zfs-file-history setup --pool-actions
+sudo zfs-file-history setup --events --data-errors --pool-actions
 ```
 
 ### Permissions

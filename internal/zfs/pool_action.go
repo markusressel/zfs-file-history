@@ -33,7 +33,7 @@ var (
 	// PoolActionClear resets the error counters of the devices, and lets ZFS retry devices that failed.
 	PoolActionClear = PoolAction{Name: "clear the errors", Done: "Cleared the errors", Args: []string{"clear"}}
 
-	// PoolActions are all actions, e.g. for the sudoers rule of the setup command, see SudoersPoolActionRules.
+	// PoolActions are all actions, e.g. for the sudoers rule of the setup command, see SudoersRulePoolActions.
 	PoolActions = []PoolAction{PoolActionScrub, PoolActionPauseScrub, PoolActionCancelScrub, PoolActionTrim, PoolActionCancelTrim, PoolActionClear}
 )
 
@@ -96,7 +96,7 @@ func RunPoolAction(action PoolAction, pool string) error {
 }
 
 // ZpoolPath returns the path of the zpool command. Sudo needs the full path, which is also the one in the sudoers
-// rules, see SudoersPoolActionRules.
+// rules, see SudoersRule.
 func ZpoolPath() string {
 	path, err := exec.LookPath("zpool")
 	if err != nil {
@@ -107,29 +107,3 @@ func ZpoolPath() string {
 
 // zpoolPaths are the paths zpool is installed at by the distributions, used in the sudoers rules.
 var zpoolPaths = []string{"/usr/sbin/zpool", "/sbin/zpool", "/usr/bin/zpool"}
-
-// SudoersEventsRule returns the sudoers rule that allows the user to watch the zpool events (see WatchZpoolEvents)
-// and to list the damaged files of the pools (see ListDataErrors) without a password. Both only read. The arguments
-// are given exactly, so no others (e.g. "status -c", which runs scripts) are allowed.
-func SudoersEventsRule(user string) string {
-	commands := make([]string, 0, 2*len(zpoolPaths))
-	for _, path := range zpoolPaths {
-		commands = append(commands, path+" events -v -f", path+" "+strings.Join(dataErrorsArgs, " "))
-	}
-	return fmt.Sprintf("%s ALL=(root) NOPASSWD: %s\n", user, strings.Join(commands, ", "))
-}
-
-// SudoersPoolActionRules returns the sudoers rules that allow the user to run the pool actions (see PoolActions)
-// without a password. The pool name has to start with a letter, so no options can be given in its place. Further
-// arguments are harmless for scrub and trim, but would allow "clear -F" (which discards transactions), so clear
-// is denied with more than one argument (in sudoers, * also matches spaces, and the last matching rule wins).
-func SudoersPoolActionRules(user string) string {
-	var allowed, denied []string
-	for _, path := range zpoolPaths {
-		for _, action := range PoolActions {
-			allowed = append(allowed, fmt.Sprintf("%s %s [a-zA-Z]*", path, strings.Join(action.Args, " ")))
-		}
-		denied = append(denied, fmt.Sprintf("!%s %s * *", path, strings.Join(PoolActionClear.Args, " ")))
-	}
-	return fmt.Sprintf("%s ALL=(root) NOPASSWD: %s\n%s ALL=(root) %s\n", user, strings.Join(allowed, ", "), user, strings.Join(denied, ", "))
-}
