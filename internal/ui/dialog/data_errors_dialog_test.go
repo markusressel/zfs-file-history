@@ -82,14 +82,16 @@ func TestWrappedHeight(t *testing.T) {
 }
 
 func TestFormatDataErrorsHelp(t *testing.T) {
-	assert.Equal(t, dataErrorsHelp, formatDataErrorsHelp(nil))
-	help := formatDataErrorsHelp(zfs.NewDataErrorIndex(nil, []string{"rpool", "tank"}))
+	assert.Equal(t, dataErrorsHelp, formatDataErrorsHelp(nil, false))
+	help := formatDataErrorsHelp(zfs.NewDataErrorIndex(nil, []string{"rpool", "tank"}), false)
 	assert.Contains(t, help, "The damaged files of rpool, tank can only be listed by root.")
 	assert.Contains(t, help, zfs.SetupDataErrorsHint)
+	help = formatDataErrorsHelp(zfs.NewDataErrorIndex(nil, []string{"rpool"}), true)
+	assert.Contains(t, help, "Press s to allow your user to list them.")
 
 	index := zfs.NewDataErrorIndex(nil, nil)
 	index.WithoutHeadErrlog = []string{"rpool"}
-	help = formatDataErrorsHelp(index)
+	help = formatDataErrorsHelp(index, false)
 	assert.Contains(t, help, "rpool reports an error only for the dataset or snapshot whose read failed")
 	assert.Contains(t, help, "cannot be undone")
 	assert.Contains(t, help, "sudo zpool set feature@head_errlog=enabled rpool")
@@ -122,6 +124,24 @@ func TestDataErrorsDialog_FindAndUpdate(t *testing.T) {
 	dialog = NewDataErrorsDialog(app, index, nil, nil, nil)
 	event := tcell.NewEventKey(tcell.KeyRune, 'f', tcell.ModNone)
 	assert.Equal(t, event, dialog.layout.GetInputCapture()(event))
+}
+
+func TestDataErrorsDialog_Setup(t *testing.T) {
+	app := tview.NewApplication()
+	setups := 0
+	key := tcell.NewEventKey(tcell.KeyRune, 's', tcell.ModNone)
+
+	// the list is complete: nothing to allow
+	dialog := NewDataErrorsDialog(app, zfs.NewDataErrorIndex([]zfs.DataError{liveError}, nil), nil, nil, nil)
+	dialog.SetOnSetup(func() { setups++ })
+	assert.Equal(t, key, dialog.layout.GetInputCapture()(key))
+	assert.NotContains(t, dialog.hintView.GetText(true), "s: allow")
+
+	// needs root
+	dialog.SetIndex(zfs.NewDataErrorIndex(nil, []string{"rpool"}))
+	assert.Contains(t, dialog.hintView.GetText(true), "s: allow listing them")
+	assert.Nil(t, dialog.layout.GetInputCapture()(key))
+	assert.Equal(t, 1, setups)
 }
 
 func TestDataErrorsDialog_ShowsFile(t *testing.T) {

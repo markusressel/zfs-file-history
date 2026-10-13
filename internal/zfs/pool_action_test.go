@@ -103,21 +103,3 @@ func TestRunPoolAction_InvalidName(t *testing.T) {
 	assert.Error(t, RunPoolAction(PoolActionClear, "-F"))
 	assert.Empty(t, fake.commands)
 }
-
-func TestSudoersRules(t *testing.T) {
-	assert.Equal(t, "alice ALL=(root) NOPASSWD: /usr/sbin/zpool events -v -f, /usr/sbin/zpool status -p -v, "+
-		"/sbin/zpool events -v -f, /sbin/zpool status -p -v, /usr/bin/zpool events -v -f, /usr/bin/zpool status -p -v\n",
-		SudoersEventsRule("alice"))
-
-	rules := strings.Split(strings.TrimSpace(SudoersPoolActionRules("alice")), "\n")
-	require.Len(t, rules, 2)
-	for _, path := range zpoolPaths {
-		for _, action := range []string{"scrub", "scrub -p", "scrub -s", "trim", "trim -c", "clear"} {
-			assert.Contains(t, rules[0], " "+path+" "+action+" [a-zA-Z]*")
-		}
-		// the last rule wins: no further arguments for clear (e.g. -F)
-		assert.Contains(t, rules[1], "!"+path+" clear * *")
-	}
-	assert.True(t, strings.HasPrefix(rules[0], "alice ALL=(root) NOPASSWD: "))
-	assert.True(t, strings.HasPrefix(rules[1], "alice ALL=(root) !"))
-}

@@ -148,6 +148,13 @@ func (monitor *Monitor) RefreshDataErrors() {
 	monitor.Refresh()
 }
 
+// ReloadDataErrors is RefreshDataErrors without waiting for dataErrorsRefreshInterval, e.g. once the user was
+// allowed to list the damaged files. Must be called on the UI thread.
+func (monitor *Monitor) ReloadDataErrors() {
+	monitor.dataErrorsLoaded = time.Time{}
+	monitor.RefreshDataErrors()
+}
+
 // DataErrors returns the damaged files of all pools, nil if there are none (or they are not loaded yet). They are
 // loaded whenever the data errors of the pools changed (see zfs.PoolStatus.DataErrors), and on RefreshDataErrors.
 // Must be called on the UI thread.

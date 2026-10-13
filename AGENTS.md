@@ -18,9 +18,16 @@ of the code.
 
 ## Structure
 
-- `cmd/`: the cobra commands. `root.go` starts the UI, `setup.go` installs the sudoers rule for the event watcher
-  and the damaged files (`/etc/sudoers.d/zfs-file-history`, `sudo -n zpool events -v -f`, `zpool status -p -v`), and with `--pool-actions` the rules for the
-  pool actions (checked with `visudo` before installing).
+- `cmd/`: the cobra commands. `root.go` starts the UI, `setup.go` installs the sudoers rules of `zfs.SudoersRules`
+  (`/etc/sudoers.d/zfs-file-history`, checked with `visudo` before installing): `--events` (`zpool events -v -f`,
+  the event watcher), `--data-errors` (`zpool status -p -v`), `--pool-actions`. Without flags it asks for each rule.
+  It adds to the file (`zfs.SudoersFile`, which also reads the files of older versions), so it can run again.
+- `internal/zfs/sudoers.go`: the rules, and which ones the user has (`AllowedSudoersRules`: parses `sudo -n -l`,
+  which is not logged and needs no password once any rule has NOPASSWD; `sudo -l <command>` cannot be used, it
+  also succeeds for commands that need a password). The application offers the missing rules in
+  `dialog.NewSetupPermissionsDialog` (at the start if a read-only one is missing, unless "Don't ask again"; command
+  menu; `s` in the damaged files dialog), which runs `setup` with sudo in the terminal and emits `zfs.SudoersChanged`:
+  the event watcher starts again, the damaged files are reloaded.
 - `internal/zfs/`: everything ZFS. libzfs (`github.com/kraudcloud/go-libzfs`) for datasets and snapshots, the `zfs`
   and `zpool` commands (`runCommand`, `runZfs`, `runZpool`) for the rest. Parsers work on the text output
   (`zpool status -p`, `zpool list -Hp`, ...), not JSON (`-j` needs OpenZFS 2.3+). Sample outputs are in `testdata/`.
@@ -64,7 +71,8 @@ of the code.
     (millions of files per snapshot), newest snapshot first. The dialog also says how to enable `head_errlog`, but
     the application never runs it (one-way pool upgrade).
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). Shown with
-    `ShowDialogOnPages`.
+    `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
+    ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),
     horizontal scrolling, multi-selection, persisted column layouts, `ContentSize`.
   - `util/` (imported as `uiutil`): `DataLoader`, `Debouncer`, `SubscribeUI`, `LoadingContainer`, `ResizableSplit`,

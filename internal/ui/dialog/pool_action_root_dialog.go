@@ -109,12 +109,7 @@ func formatPoolActionNeedsRoot(needsRoot *zfs.PoolActionNeedsRootError, setup []
 	return description.String()
 }
 
-// setupPoolActionsCommand returns the command that allows the pool actions, run by root: the setup command of this
-// executable, see cmd/setup.go.
+// setupPoolActionsCommand returns the command that allows the pool actions, see setupCommand.
 func setupPoolActionsCommand() []string {
-	executable, err := executablePath()
-	if err != nil {
-		executable = "zfs-file-history"
-	}
-	return []string{executable, "setup", "--pool-actions"}
+	return setupCommand([]*zfs.SudoersRule{zfs.SudoersRulePoolActions})
 }

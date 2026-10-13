@@ -177,6 +177,31 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		switchTo(Pool)
 		poolPage.poolBrowser.SelectPool(pool)
 	}
+	// showSetupPermissions offers to allow the zpool commands that need root (see zfs.SudoersRules), from the command
+	// menu, or by itself (automatic) at the start if not all that only read are allowed: then only if nothing else
+	// is in front, and with the option to never ask again.
+	showSetupPermissions := func(automatic bool) {
+		neverAsk := state.Current.Toggle(setupPermissionsNeverAskToggle, false)
+		if automatic && neverAsk {
+			return
+		}
+		go func() {
+			allowed := allowedSudoersRules()
+			if automatic && !slices.ContainsFunc(zfs.SudoersRules, func(rule *zfs.SudoersRule) bool { return rule.ReadOnly && !allowed[rule.Id] }) {
+				return
+			}
+			application.QueueUpdateDraw(func() {
+				var onNeverAsk func()
+				if automatic {
+					if name, _ := pagesLayout.GetFrontPage(); !slices.Contains(switchablePages, util.Page(name)) {
+						return
+					}
+					onNeverAsk = func() { state.Current.SetToggle(setupPermissionsNeverAskToggle, true) }
+				}
+				dialog.ShowDialogOnPages(application, pagesLayout, dialog.NewSetupPermissionsDialog(application, allowed, onNeverAsk), nil)
+			})
+		}()
+	}
 	// the damaged files, from the alert of the data errors or the command menu; a file is shown in the file browser
 	var dataErrorsDialog *dialog.DataErrorsDialog
 	// shownDataErrorsDialog returns the dialog of the damaged files while it is shown, nil otherwise
@@ -207,6 +232,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			}
 		}, onFind, activities.CancelObjectSearch)
 		showObjectSearch(dataErrorsDialog)
+		dataErrorsDialog.SetOnSetup(func() { showSetupPermissions(false) })
 		dialog.ShowDialogOnPages(application, pagesLayout, dataErrorsDialog, nil)
 	}
 	activities.OnDataErrorsChanged(func() {
@@ -233,6 +259,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	// of the snapshots (e.g. one holding damaged files was destroyed), the damaged files are listed again.
 	util.SubscribeUI(zfs.DatasetsLoaded, application, func(_ struct{}) { activities.RefreshDataErrors() })
 	util.SubscribeUI(zfs.PoolsChanged, application, func(_ struct{}) { activities.Refresh() })
+	// e.g. the damaged files may be listed now
+	util.SubscribeUI(zfs.SudoersChanged, application, func(_ struct{}) { activities.ReloadDataErrors() })
 
 	if restored != nil && restored.Dataset != "" {
 		datasetPage.datasetBrowser.SelectOnLoad(restored.Dataset)
@@ -278,6 +306,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 				Run: func() { showMessageHistory(application, pagesLayout, messages) }},
 			shortcut_helper.ShortcutEntry{Name: "Damaged files", Description: "Show the files that ZFS reported as damaged (data errors)",
 				Group: shortcut_helper.GroupGlobal, Run: showDataErrors},
+			shortcut_helper.ShortcutEntry{Name: "Set up permissions", Description: "Allow your user to run the zpool commands that need root (live updates, damaged files, pool actions)",
+				Group: shortcut_helper.GroupGlobal, Run: func() { showSetupPermissions(false) }},
 			hideShortcuts.WithRun(toggleShortcuts),
 			shortcutQuit.WithRun(application.Stop).WithDescription("Exit the application"),
 		)
@@ -331,6 +361,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	datasetPage.Init(path)
 	poolPage.Init()
 	activities.Refresh()
+	showSetupPermissions(true)
 
 	application.SetRoot(pagesLayout, fullscreen).
 		SetFocus(mainPage.fileBrowser.GetLayout())
@@ -340,6 +371,13 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 
 	return application, mainPage, datasetPage
 }
+
+// setupPermissionsNeverAskToggle is the state toggle set when the user chose not to be offered the permissions at the
+// start again, see dialog.NewSetupPermissionsDialog.
+const setupPermissionsNeverAskToggle = "setupPermissionsNeverAsk"
+
+// allowedSudoersRules is replaceable in tests, so they never run sudo.
+var allowedSudoersRules = zfs.AllowedSudoersRules
 
 // existingFolderOf returns the nearest folder above the path that exists, and the name of the entry in it that
 // leads to the path, e.g. for a file that only exists in snapshots, in a folder that was deleted as well. This reads
