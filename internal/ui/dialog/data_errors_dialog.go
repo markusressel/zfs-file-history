@@ -190,14 +190,15 @@ func wrappedHeight(text string, width int) int {
 }
 
 // showRow closes the dialog and shows the file of the row, if it has one in the file system (or was found in a
-// snapshot). Runs on the UI thread.
+// snapshot, then with the snapshot). Runs on the UI thread.
 func (d *DataErrorsDialog) showRow(row int) {
 	dataError, ok := d.table.GetCell(row, 2).GetReference().(zfs.DataError)
 	if !ok || d.onShow == nil {
 		return
 	}
 	if dataError.LivePath == "" && len(dataError.Locations) > 0 {
-		dataError.LivePath = dataError.Locations[0].LivePath
+		// the newest snapshot it was found in
+		dataError.LivePath, dataError.Snapshot = dataError.Locations[0].LivePath, dataError.Locations[0].Snapshot
 	}
 	if dataError.LivePath == "" {
 		return

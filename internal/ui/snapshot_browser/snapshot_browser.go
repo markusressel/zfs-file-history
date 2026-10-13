@@ -51,6 +51,9 @@ type SnapshotBrowserComponent struct {
 	isRestoringSelection bool
 
 	selectLatestOnNextLoad bool
+	// selectOnNextLoad is the full name of the snapshot selected after the next load, "" if none, see
+	// SelectSnapshot. Only accessed on the UI thread.
+	selectOnNextLoad string
 
 	diffLoader *uiutil.DebouncedLoader
 
@@ -283,6 +286,10 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 			if snapshotBrowser.selectLatestOnNextLoad {
 				snapshotBrowser.SelectLatest()
 				snapshotBrowser.selectLatestOnNextLoad = false
+			}
+			if fullName := snapshotBrowser.selectOnNextLoad; fullName != "" {
+				snapshotBrowser.selectOnNextLoad = ""
+				snapshotBrowser.selectByFullName(fullName)
 			}
 
 			// ALWAYS emit the event after a load to ensure all components (like FileBrowser)
@@ -1113,6 +1120,28 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.Snap
 		return "", err
 	}
 	return name, nil
+}
+
+// SelectSnapshot selects the snapshot with the given full name (e.g. "tank/data@daily"), e.g. the one holding a
+// damaged file: right away if it is shown, and once the snapshots are loaded while a load runs (e.g. after the path
+// changed to the folder of the file, so call it after changing the path). Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) SelectSnapshot(fullName string) {
+	snapshotBrowser.selectOnNextLoad = ""
+	if snapshotBrowser.loader.IsLoading() {
+		// not kept without a load, so a later one does not change the selection
+		snapshotBrowser.selectOnNextLoad = fullName
+	}
+	snapshotBrowser.selectByFullName(fullName)
+}
+
+// selectByFullName selects the snapshot with the given full name, if it is shown. Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) selectByFullName(fullName string) {
+	for _, entry := range snapshotBrowser.GetEntries() {
+		if entry.Snapshot.FullName == fullName {
+			snapshotBrowser.tableContainer.Select(entry)
+			return
+		}
+	}
 }
 
 // SelectLatestOnNextLoad selects the latest snapshot after the next (re)load, e.g. after creating a snapshot.

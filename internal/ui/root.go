@@ -201,6 +201,10 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			switchTo(Main)
 			mainPage.focusComponent(mainPage.componentTitles[mainPage.fileBrowser])
 			mainPage.fileBrowser.SetPathWithSelection(existingFolderOf(dataError.LivePath))
+			// the damaged version, e.g. of a file that only exists in snapshots
+			if dataError.Snapshot != "" {
+				mainPage.snapshotBrowser.SelectSnapshot(dataError.SnapshotFullName())
+			}
 		}, onFind, activities.CancelObjectSearch)
 		showObjectSearch(dataErrorsDialog)
 		dialog.ShowDialogOnPages(application, pagesLayout, dataErrorsDialog, nil)
