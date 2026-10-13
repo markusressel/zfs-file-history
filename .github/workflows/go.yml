@@ -90,9 +90,11 @@ jobs:
         run: |
           sudo dpkg --add-architecture ${{ matrix.dpkg_arch }}
           # Replace the runner's ubuntu.sources with one pinned to amd64 only.
+          # archive.ubuntu.com, not the runner's Azure mirror: Multi-Arch: same packages (e.g. linux-libc-dev) need
+          # the same version for amd64 and the foreign arch, and the mirror can lag behind ports.ubuntu.com.
           sudo tee /etc/apt/sources.list.d/ubuntu.sources > /dev/null << 'EOF'
           Types: deb
-          URIs: http://azure.archive.ubuntu.com/ubuntu
+          URIs: http://archive.ubuntu.com/ubuntu
           Suites: noble noble-updates noble-backports noble-security
           Components: main restricted universe multiverse
           Architectures: amd64
@@ -100,8 +102,16 @@ jobs:
           EOF
           # Add ports.ubuntu.com for the foreign arch
           printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports\nSuites: noble noble-updates noble-security\nComponents: main restricted universe multiverse\nArchitectures: %s\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' "${{ matrix.dpkg_arch }}" | sudo tee /etc/apt/sources.list.d/ports-${{ matrix.dpkg_arch }}.sources
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.cross_pkg }} ${{ matrix.zfs_pkg }}
+          # retried: right after an update, the archive and ports can still differ for a few minutes
+          for attempt in 1 2 3; do
+            sudo apt-get update
+            if sudo apt-get install -y ${{ matrix.cross_pkg }} ${{ matrix.zfs_pkg }}; then
+              exit 0
+            fi
+            echo "Installing failed (attempt $attempt), retrying in 60 s"
+            sleep 60
+          done
+          exit 1
 
       - name: Checkout the repository
         uses: actions/checkout@v7
