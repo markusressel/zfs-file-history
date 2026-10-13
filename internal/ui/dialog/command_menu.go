@@ -81,6 +81,15 @@ func (menu *CommandMenu) createLayout() {
 			Background(theme.Colors.Layout.Table.SelectedBackground))
 	menu.list.SetSelectedFunc(func(row, column int) { menu.choose(row) })
 	util.IgnoreClicksBelowRows(menu.list)
+	ignoreClicksBelowRows := menu.list.GetMouseCapture()
+	menu.list.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action == tview.MouseLeftDown {
+			// the query keeps the focus (tview focuses the list when pressed), so typing and Esc keep working after
+			// clicking a command. The click still selects it, or runs it if it is selected already.
+			return tview.MouseConsumed, nil
+		}
+		return ignoreClicksBelowRows(action, event)
+	})
 
 	menu.input = tview.NewInputField().
 		SetLabel(":").

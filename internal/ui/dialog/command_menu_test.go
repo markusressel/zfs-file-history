@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -94,6 +95,49 @@ func TestCommandMenu_EscClosesWithoutRunning(t *testing.T) {
 	assert.Eventually(t, func() bool { return strings.Contains(menuScreenText(t, app, screen), "Refresh") },
 		3*time.Second, 20*time.Millisecond)
 
+	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	assert.Eventually(t, func() bool {
+		closed := false
+		testutil.OnUiThread(t, app, func() { closed = !pages.HasPage(string(CommandMenuPage)) && list.HasFocus() })
+		return closed
+	}, 3*time.Second, 20*time.Millisecond)
+	testutil.OnUiThread(t, app, func() { assert.False(t, ran) })
+}
+
+// Regression: clicking a command focused the list, so Esc and typing did nothing anymore.
+func TestCommandMenu_ClickKeepsTheFocusOnTheQuery(t *testing.T) {
+	app, screen, pages, list := startCommandMenuApp(t)
+
+	ran := false
+	menu := NewCommandMenu([]CommandSection{{Title: "Section", Commands: []shortcut_helper.ShortcutEntry{
+		{Name: "Refresh", Run: func() { ran = true }},
+		{Name: "Show diff", Run: func() { ran = true }},
+	}}})
+	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, menu, func() {}) })
+	app.QueueUpdateDraw(func() {})
+	var lines []string
+	require.Eventually(t, func() bool {
+		lines = strings.Split(menuScreenText(t, app, screen), "\n")
+		return slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "Show diff") })
+	}, 3*time.Second, 20*time.Millisecond)
+	clickY := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "Show diff") })
+	clickX := len([]rune(lines[clickY][:strings.Index(lines[clickY], "Show")]))
+
+	screen.InjectMouse(clickX, clickY, tcell.Button1, tcell.ModNone)
+	screen.InjectMouse(clickX, clickY, tcell.ButtonNone, tcell.ModNone)
+	require.Eventually(t, func() bool {
+		selected := ""
+		testutil.OnUiThread(t, app, func() { selected = menu.list.GetCell(menu.list.GetSelection()).Text })
+		return strings.Contains(selected, "Show")
+	}, 3*time.Second, 20*time.Millisecond, "the click selects the command")
+	testutil.OnUiThread(t, app, func() { assert.True(t, menu.input.HasFocus(), "the query keeps the focus") })
+
+	// typing still filters
+	typeText(screen, "ref")
+	assert.Eventually(t, func() bool { return !strings.Contains(menuScreenText(t, app, screen), "Show diff") },
+		3*time.Second, 20*time.Millisecond)
+
+	// Esc still closes
 	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
 	assert.Eventually(t, func() bool {
 		closed := false
