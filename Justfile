@@ -53,12 +53,14 @@ run: build
 # Deploy to custom bin directory
 deploy-custom: clean build
     mkdir -p ~/.custom/bin/
-    cp ./{{OUTPUT_BIN}} ~/.custom/bin/
+    install -m 755 ./{{OUTPUT_BIN}} ~/.custom/bin/.{{NAME}}.new
+    mv -f ~/.custom/bin/.{{NAME}}.new ~/.custom/bin/{{NAME}}
 
-# Deploy to /usr/local/bin
+# Deploy to /usr/local/bin. Copied next to the target and renamed over it: overwriting a running binary fails with
+# "Text file busy", a rename lets running instances keep the old one.
 deploy: clean build
-    sudo cp ./{{OUTPUT_BIN}} /usr/local/bin/
-    sudo chmod ug+x /usr/local/bin/{{NAME}}
+    sudo install -m 755 ./{{OUTPUT_BIN}} /usr/local/bin/.{{NAME}}.new
+    sudo mv -f /usr/local/bin/.{{NAME}}.new /usr/local/bin/{{NAME}}
 
 # Clean build artifacts
 clean:

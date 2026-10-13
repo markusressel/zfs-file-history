@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/state"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
@@ -21,6 +22,12 @@ var (
 	loadPoolStatuses = zfs.ListPoolStatuses
 	loadDataErrors   = zfs.ListDataErrors
 	findObjects      = zfs.FindObjects
+)
+
+// The settings of this package in state.Current.
+const (
+	stateNamespace       = "poolActivity"
+	stateKeyTimeLeftMode = "timeLeftMode"
 )
 
 // objectSearchRedrawInterval is how often the progress of the object search is shown, see FindObjects.
@@ -88,6 +95,8 @@ type Monitor struct {
 	objectSearch *ObjectSearch
 	// objectSearchListeners are called when the search progressed or ended, see OnObjectSearchChanged
 	objectSearchListeners []func()
+	// timeLeftMode is what the bars show of the time left, see CycleTimeLeftMode
+	timeLeftMode TimeLeftMode
 }
 
 // ObjectSearch is the state of the search for the damaged objects without a path in the snapshots, see
@@ -103,7 +112,10 @@ type ObjectSearch struct {
 
 // NewMonitor returns a monitor without activities, until the first Refresh.
 func NewMonitor(application *tview.Application) *Monitor {
-	monitor := &Monitor{application: application}
+	monitor := &Monitor{application: application, timeLeftMode: TimeLeftRemaining}
+	if mode, ok := state.Get[TimeLeftMode](state.Current, stateNamespace, stateKeyTimeLeftMode); ok && slices.Contains(timeLeftModes, mode) {
+		monitor.timeLeftMode = mode
+	}
 	monitor.loader = uiutil.NewDataLoader[[]*zfs.PoolStatus](application).
 		OnLoad(monitor.setStatuses).
 		OnError(func(err error) {
@@ -166,6 +178,18 @@ func (monitor *Monitor) DataErrors() *zfs.DataErrorIndex {
 // be called on the UI thread.
 func (monitor *Monitor) OnDataErrorsChanged(listener func()) {
 	monitor.dataErrorListeners = append(monitor.dataErrorListeners, listener)
+}
+
+// TimeLeftMode returns what the bars show of the time left of the activities. Must be called on the UI thread.
+func (monitor *Monitor) TimeLeftMode() TimeLeftMode {
+	return monitor.timeLeftMode
+}
+
+// CycleTimeLeftMode switches what the bars show of the time left of the activities to the next mode (the time left,
+// the ETA, both), and remembers it. The bars show it when they are drawn next. Must be called on the UI thread.
+func (monitor *Monitor) CycleTimeLeftMode() {
+	monitor.timeLeftMode = monitor.timeLeftMode.Next()
+	state.Set(state.Current, stateNamespace, stateKeyTimeLeftMode, monitor.timeLeftMode)
 }
 
 // Alerts returns the problems of the pools, most severe first, empty if all are healthy. Must be called on the UI

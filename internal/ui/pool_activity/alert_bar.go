@@ -39,7 +39,7 @@ func NewAlertBar(monitor *Monitor) *AlertBar {
 
 // SetOnClick sets the function called with the clicked alert. Must be called on the UI thread.
 func (bar *AlertBar) SetOnClick(onClick func(alert zfs.PoolAlert)) {
-	bar.onClickLine = func(line int) {
+	bar.onClickLine = func(line int, _ int) {
 		if alerts := bar.monitor.Alerts(); line < len(alerts) {
 			onClick(alerts[line])
 		}

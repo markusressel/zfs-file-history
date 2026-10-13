@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -40,22 +41,23 @@ func TestFormatLabels_EscapesNames(t *testing.T) {
 }
 
 func TestBarText(t *testing.T) {
-	activity := zfs.PoolActivity{Pool: "tank", Kind: "resilver", Progress: 31.77, Remaining: "02:10:31",
+	activity := zfs.PoolActivity{Pool: "tank", Kind: "resilver", Progress: 31.77,
+		Remaining: 2*time.Hour + 10*time.Minute + 31*time.Second, RemainingKnown: true,
 		Processed: "1.02T", Total: "3.21T", Rate: "294M/s"}
 	tests := []struct {
 		width    int
 		expected string
 	}{
-		{100, " 31.8%  1.02T / 3.21T   294M/s  02:10:31 to go"},
+		{100, " 31.8%  1.02T / 3.21T   294M/s  ⧗    2h 10m"},
 		// too narrow (with a space on each side): the amount is left out first, then the rate, then the time left
-		{40, " 31.8%   294M/s  02:10:31 to go"},
-		{25, " 31.8%  02:10:31 to go"},
+		{40, " 31.8%   294M/s  ⧗    2h 10m"},
+		{25, " 31.8%  ⧗    2h 10m"},
 		{10, " 31.8%"},
 		{3, "31.8%"},
 	}
 	for _, test := range tests {
 		t.Run(test.expected, func(t *testing.T) {
-			assert.Equal(t, test.expected, barText(activity, test.width))
+			assert.Equal(t, test.expected, barText(activity, test.width, TimeLeftRemaining))
 		})
 	}
 }
@@ -69,86 +71,124 @@ func TestBarText_StableLength(t *testing.T) {
 		{Progress: 100, Processed: "3.21T", Total: "3.21T", Rate: "1.10G/s"},
 	}
 	for _, activity := range values {
-		assert.Len(t, barText(activity, 100), len("100.0%  3.21T / 3.21T  1.10G/s"), "%+v", activity)
+		assert.Len(t, barText(activity, 100, TimeLeftRemaining), len("100.0%  3.21T / 3.21T  1.10G/s"), "%+v", activity)
 	}
 }
 
 func TestBarText_PartsNotKnown(t *testing.T) {
 	// e.g. a scrub that just started
-	assert.Equal(t, "  0.0%", barText(zfs.PoolActivity{Kind: "scrub"}, 80))
-	assert.Equal(t, " 12.0%  2.00G / 4.00G", barText(zfs.PoolActivity{Kind: "trim", Progress: 12, Processed: "2.00G", Total: "4.00G"}, 80))
+	assert.Equal(t, "  0.0%", barText(zfs.PoolActivity{Kind: "scrub"}, 80, TimeLeftRemaining))
+	assert.Equal(t, " 12.0%  2.00G / 4.00G", barText(zfs.PoolActivity{Kind: "trim", Progress: 12, Processed: "2.00G", Total: "4.00G"}, 80, TimeLeftRemaining))
 	// clamped
-	assert.Equal(t, "100.0%  1.00M/s", barText(zfs.PoolActivity{Progress: 150, Rate: "1.00M/s"}, 80))
+	assert.Equal(t, "100.0%  1.00M/s", barText(zfs.PoolActivity{Progress: 150, Rate: "1.00M/s"}, 80, TimeLeftRemaining))
 }
 
 // layoutActivities are a resilver with a time left, and a scrub without, on pools with names of different lengths.
 var layoutActivities = []zfs.PoolActivity{
-	{Pool: "tank", Kind: "resilver", Progress: 31.77, Remaining: "02:10:31", Processed: "1.02T", Total: "3.21T", Rate: "294M/s"},
+	{Pool: "tank", Kind: "resilver", Progress: 31.77, Remaining: 2*time.Hour + 10*time.Minute + 31*time.Second,
+		RemainingKnown: true, Processed: "1.02T", Total: "3.21T", Rate: "294M/s"},
 	{Pool: "backup", Kind: "scrub", Progress: 10, Processed: "200G", Total: "2.00T", Rate: "1.10G/s"},
 }
 
 func TestLayoutLines(t *testing.T) {
-	// label 19, time left "  02:10:31 to go" 16, padding 1: 44 for the bars
-	lines := layoutLines(layoutActivities, 80)
+	// label 19, time left "   ⧗    2h 10m " 15, padding 1: 45 for the bars
+	lines := layoutLines(layoutActivities, 80, TimeLeftRemaining)
 
 	require.Len(t, lines, 2)
 	for _, line := range lines {
 		assert.Equal(t, 19, line.barStart, "the bars start at the same column")
-		assert.Equal(t, 44, line.barWidth, "and end at the same column")
+		assert.Equal(t, 45, line.barWidth, "and end at the same column")
 	}
 	assert.Equal(t, " 31.8%  1.02T / 3.21T   294M/s", lines[0].barText, "the time left is behind the bar")
-	assert.Equal(t, "  02:10:31 to go", testutil.StripTags(lines[0].remaining))
+	assert.Equal(t, "   ⧗    2h 10m ", testutil.StripTags(lines[0].remaining))
 	assert.Equal(t, " 10.0%   200G / 2.00T  1.10G/s", lines[1].barText)
-	assert.Empty(t, lines[1].remaining)
+	assert.Equal(t, "   ⧗   --h --m ", testutil.StripTags(lines[1].remaining), "not known yet")
+}
+
+func TestLayoutLines_RemainingPlaceholder(t *testing.T) {
+	// Regression: a TRIM is only estimated after a while, the bar shrank once it was
+	trim := zfs.PoolActivity{Pool: "tank", Kind: "trim", Progress: 3}
+	unknown := layoutLines([]zfs.PoolActivity{trim}, 120, TimeLeftRemaining)
+	trim.Remaining, trim.RemainingKnown = 2*time.Hour+10*time.Minute+31*time.Second, true
+	known := layoutLines([]zfs.PoolActivity{trim}, 120, TimeLeftRemaining)
+
+	assert.Equal(t, known[0].barWidth, unknown[0].barWidth)
+	assert.Equal(t, "   ⧗   --h --m ", testutil.StripTags(unknown[0].remaining))
+	assert.Equal(t, "   ⧗    2h 10m ", testutil.StripTags(known[0].remaining))
+}
+
+func TestLayoutLines_LongTimeLeft(t *testing.T) {
+	// Regression: zpool status writes a time left of more than a day wider ("1 days 07:53:32"), the bar shrank then
+	scrub := zfs.PoolActivity{Pool: "tank", Kind: "scrub", Progress: 3, Remaining: 2 * time.Hour, RemainingKnown: true}
+	short := layoutLines([]zfs.PoolActivity{scrub}, 120, TimeLeftRemaining)
+	scrub.Remaining = 31*time.Hour + 53*time.Minute + 32*time.Second
+	long := layoutLines([]zfs.PoolActivity{scrub}, 120, TimeLeftRemaining)
+
+	assert.Equal(t, short[0].barWidth, long[0].barWidth)
+	assert.Equal(t, "   ⧗    1d 07h ", testutil.StripTags(long[0].remaining))
 }
 
 func TestLayoutLines_Wide(t *testing.T) {
-	// the bars do not get wider than maxBarWidth, the rest of the line stays empty
-	for _, line := range layoutLines(layoutActivities, 300) {
-		assert.Equal(t, maxBarWidth, line.barWidth)
+	// the bars fill the line, but for the time left and one column of padding: label 19, time left 15, padding 1
+	for _, line := range layoutLines(layoutActivities, 300, TimeLeftRemaining) {
+		assert.Equal(t, 300-19-15-1, line.barWidth)
 	}
 }
 
 func TestLayoutLines_Narrow(t *testing.T) {
-	// 19 + 16 + 1 leave 14 for the bars, less than minBarWidthWithRemaining: the time left goes into the bars
-	lines := layoutLines(layoutActivities, 50)
+	// 19 + 15 + 1 leave 15 for the bars, less than minBarWidthWithRemaining: the time left goes into the bars
+	lines := layoutLines(layoutActivities, 50, TimeLeftRemaining)
 
 	assert.Equal(t, 30, lines[0].barWidth)
 	assert.Empty(t, lines[0].remaining)
-	// with a space on each side, the rate does not fit anymore
-	assert.Equal(t, " 31.8%  02:10:31 to go", lines[0].barText)
+	// with a space on each side, the amount does not fit anymore
+	assert.Equal(t, " 31.8%   294M/s  ⧗    2h 10m", lines[0].barText)
 }
 
 func TestLayoutLines_NoTimeLeft(t *testing.T) {
-	// no column for it: label " Scrub  backup  " 16, padding 1
-	lines := layoutLines(layoutActivities[1:], 40)
+	// too narrow for the column of the placeholder: label " Scrub  backup  " 16, padding 1
+	lines := layoutLines(layoutActivities[1:], 40, TimeLeftRemaining)
 
 	assert.Equal(t, 40-16-1, lines[0].barWidth)
 	assert.Empty(t, lines[0].remaining)
 }
 
-func TestFilledCells(t *testing.T) {
-	assert.Equal(t, 0, filledCells(0, 10))
-	assert.Equal(t, 5, filledCells(50, 10))
-	assert.Equal(t, 9, filledCells(99.9, 10))
-	assert.Equal(t, 10, filledCells(100, 10))
-	assert.Equal(t, 0, filledCells(-5, 10))
-	assert.Equal(t, 10, filledCells(150, 10))
+func TestFilledEighths(t *testing.T) {
+	assert.Equal(t, 0, filledEighths(0, 10))
+	assert.Equal(t, 40, filledEighths(50, 10))
+	assert.Equal(t, 79, filledEighths(99.9, 10))
+	assert.Equal(t, 80, filledEighths(100, 10))
+	assert.Equal(t, 0, filledEighths(-5, 10))
+	assert.Equal(t, 80, filledEighths(150, 10))
 }
 
-func TestDrawProgressBar(t *testing.T) {
+func TestTextColor(t *testing.T) {
+	colors := theme.Colors.Activity
+	assert.Equal(t, colors.BarLightText, textColor(colors.BarTrack))
+	assert.Equal(t, colors.BarLightText, textColor(tcell.ColorDefault))
+	for _, stop := range colors.BarFilled {
+		assert.Equal(t, colors.BarDarkText, textColor(stop.Color), "the whole gradient takes the dark text")
+	}
+}
+
+// drawnBar draws a bar of width 10 at column 2 of a screen 20 columns wide, and returns its cells.
+func drawnBar(t *testing.T, percent float64, text string) []tcell.SimCell {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	require.NoError(t, screen.Init())
 	screen.SetSize(20, 1)
-
-	drawProgressBar(screen, 2, 0, 10, 50, " 50.0%  fast")
+	drawProgressBar(screen, 2, 0, 10, percent, text)
 	screen.Show()
+	cells, _, _ := screen.GetContents()
+	return cells
+}
 
-	cells, width, _ := screen.GetContents()
+func TestDrawProgressBar(t *testing.T) {
+	cells := drawnBar(t, 50, " 50.0%  fast")
+
 	var text strings.Builder
-	for x := 0; x < width; x++ {
-		if runes := cells[x].Runes; len(runes) > 0 {
-			text.WriteRune(runes[0])
+	for _, cell := range cells {
+		if len(cell.Runes) > 0 {
+			text.WriteRune(cell.Runes[0])
 		} else {
 			text.WriteRune(' ')
 		}
@@ -160,15 +200,38 @@ func TestDrawProgressBar(t *testing.T) {
 	for x := 2; x < 12; x++ {
 		foreground, background, _ := cells[x].Style.Decompose()
 		if x < 7 {
-			assert.Equal(t, colors.BarFilled, background, "filled at %d", x)
-			assert.Equal(t, colors.BarFilledText, foreground, "readable on the filled part at %d", x)
+			assert.Equal(t, uiutil.GradientColor(colors.BarFilled, float64(x-2)/9, 0), background, "the gradient at %d", x)
+			assert.Equal(t, colors.BarDarkText, foreground, "readable on the filled part at %d", x)
 		} else {
 			assert.Equal(t, colors.BarTrack, background, "not filled at %d", x)
-			assert.Equal(t, colors.BarTrackText, foreground, "readable on the track at %d", x)
+			assert.Equal(t, colors.BarLightText, foreground, "readable on the track at %d", x)
 		}
 	}
+	first, _, _ := cells[2].Style.Decompose()
+	_, last, _ := cells[6].Style.Decompose()
+	assert.NotEqual(t, first, last, "a gradient, not one color")
 	_, background, _ := cells[12].Style.Decompose()
 	assert.NotEqual(t, colors.BarTrack, background, "nothing drawn behind the bar")
+}
+
+func TestDrawProgressBar_PartialCell(t *testing.T) {
+	colors := theme.Colors.Activity
+	// 33% of 80 eighths: 26, so 3 cells and 2 eighths of the fourth
+	cells := drawnBar(t, 33, "")
+
+	assert.Equal(t, []rune("▎"), cells[5].Runes)
+	foreground, background, _ := cells[5].Style.Decompose()
+	assert.Equal(t, uiutil.GradientColor(colors.BarFilled, 3.0/9, 0), foreground)
+	assert.Equal(t, colors.BarTrack, background)
+	assert.Equal(t, []rune(" "), cells[6].Runes)
+
+	// text on the partly filled cell (28 eighths: 4 of the fourth): the background of the larger part, from half on the
+	// filled one
+	cells = drawnBar(t, 35, "1234567890")
+	assert.Equal(t, []rune("4"), cells[5].Runes)
+	foreground, background, _ = cells[5].Style.Decompose()
+	assert.Equal(t, uiutil.GradientColor(colors.BarFilled, 3.0/9, 0), background)
+	assert.Equal(t, colors.BarDarkText, foreground)
 }
 
 func TestDrawProgressBar_Centered(t *testing.T) {
@@ -201,7 +264,7 @@ func TestDrawProgressBar_NoWidth(t *testing.T) {
 
 	cells, _, _ := screen.GetContents()
 	_, background, _ := cells[0].Style.Decompose()
-	assert.NotEqual(t, theme.Colors.Activity.BarFilled, background)
+	assert.Equal(t, tcell.ColorDefault, background)
 }
 
 func TestKindTitle(t *testing.T) {
@@ -389,7 +452,7 @@ func mouse(t *testing.T, app *tview.Application, bar *Bar, action tview.MouseAct
 }
 
 func TestBar_Click(t *testing.T) {
-	app, _, bar, _, heights := setupTest(t, []*zfs.PoolStatus{scrubbing("tank", 10), scrubbing("backup", 20)})
+	app, monitor, bar, _, heights := setupTest(t, []*zfs.PoolStatus{scrubbing("tank", 10), scrubbing("backup", 20)})
 	require.Eventually(t, func() bool { return len(heights()) == 1 }, 2*time.Second, 10*time.Millisecond)
 	// laid out with the new height
 	testutil.OnUiThread(t, app, func() {})
@@ -405,14 +468,26 @@ func TestBar_Click(t *testing.T) {
 	assert.True(t, mouse(t, app, bar, tview.MouseMove, 5, 3), "highlights the line")
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, 1, bar.hovered) })
 	mouse(t, app, bar, tview.MouseLeftClick, 5, 3)
-	mouse(t, app, bar, tview.MouseLeftClick, 70, 2)
+	mouse(t, app, bar, tview.MouseLeftClick, 40, 2)
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank"}, clicked) })
+
+	// the time left (behind the bars, which end at 1 + 78 - 15 - 1): shows the ETA instead, and does not show the pool
+	mouse(t, app, bar, tview.MouseLeftClick, 63, 2)
+	testutil.OnUiThread(t, app, func() {
+		assert.Equal(t, TimeLeftEta, monitor.TimeLeftMode())
+		assert.Equal(t, []string{"backup", "tank"}, clicked)
+	})
+	mouse(t, app, bar, tview.MouseLeftClick, 62, 2)
+	testutil.OnUiThread(t, app, func() {
+		assert.Equal(t, TimeLeftEta, monitor.TimeLeftMode(), "the last column of the bar")
+		assert.Equal(t, []string{"backup", "tank", "tank"}, clicked)
+	})
 
 	// the border is no line
 	mouse(t, app, bar, tview.MouseLeftClick, 5, 1)
 	mouse(t, app, bar, tview.MouseLeftClick, 5, 4)
 	testutil.OnUiThread(t, app, func() {
-		assert.Equal(t, []string{"backup", "tank"}, clicked)
+		assert.Equal(t, []string{"backup", "tank", "tank"}, clicked)
 		assert.Equal(t, noLine, bar.hovered)
 	})
 
@@ -424,7 +499,42 @@ func TestBar_Click(t *testing.T) {
 	// e.g. a dialog in front
 	testutil.OnUiThread(t, app, func() { enabled = false })
 	assert.False(t, mouse(t, app, bar, tview.MouseLeftClick, 5, 2))
-	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank"}, clicked) })
+	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank", "tank"}, clicked) })
+}
+
+func TestBar_HoverHighlightsPart(t *testing.T) {
+	app, _, bar, _, heights := setupTest(t, []*zfs.PoolStatus{scrubbing("tank", 10)})
+	require.Eventually(t, func() bool { return len(heights()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, app, func() { bar.SetOnClick(func(zfs.PoolActivity) {}) })
+	colors := theme.Colors.Activity
+
+	// backgrounds of the label (column 2), the bar (column 30) and the time left field (column 77) of the line at 2
+	backgrounds := func() (label tcell.Color, progress tcell.Color, timeLeft tcell.Color) {
+		screen := tcell.NewSimulationScreen("UTF-8")
+		require.NoError(t, screen.Init())
+		screen.SetSize(80, 10)
+		testutil.OnUiThread(t, app, func() { bar.Draw(screen) })
+		screen.Show()
+		cells, width, _ := screen.GetContents()
+		background := func(x int) tcell.Color {
+			_, color, _ := cells[2*width+x].Style.Decompose()
+			return color
+		}
+		return background(2), background(30), background(77)
+	}
+
+	// Regression: the whole line was highlighted, also the time left, which does something else when clicked
+	assert.True(t, mouse(t, app, bar, tview.MouseMove, 30, 2))
+	label, progress, timeLeft := backgrounds()
+	assert.Equal(t, colors.HoverBackground, label, "the label of the pool")
+	assert.NotEqual(t, colors.HoverBackground, progress, "the bar has colors of its own")
+	assert.Equal(t, colors.RemainingBackground, timeLeft)
+
+	assert.True(t, mouse(t, app, bar, tview.MouseMove, 77, 2), "another part: drawn again")
+	assert.False(t, mouse(t, app, bar, tview.MouseMove, 76, 2), "the same part: not drawn again")
+	label, _, timeLeft = backgrounds()
+	assert.Equal(t, colors.Background, label)
+	assert.Equal(t, colors.RemainingHoverBackground, timeLeft)
 }
 
 func TestMonitor_OnStatusesLoaded(t *testing.T) {
