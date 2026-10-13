@@ -112,7 +112,7 @@ type ObjectSearch struct {
 
 // NewMonitor returns a monitor without activities, until the first Refresh.
 func NewMonitor(application *tview.Application) *Monitor {
-	monitor := &Monitor{application: application, timeLeftMode: TimeLeftRemaining}
+	monitor := &Monitor{application: application, timeLeftMode: TimeLeftBoth}
 	if mode, ok := state.Get[TimeLeftMode](state.Current, stateNamespace, stateKeyTimeLeftMode); ok && slices.Contains(timeLeftModes, mode) {
 		monitor.timeLeftMode = mode
 	}

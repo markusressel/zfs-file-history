@@ -462,6 +462,9 @@ func TestBar_Click(t *testing.T) {
 	testutil.OnUiThread(t, app, func() {
 		bar.SetOnClick(func(activity zfs.PoolActivity) { clicked = append(clicked, activity.Pool) })
 		bar.SetEnabledFunc(func() bool { return enabled })
+		assert.Equal(t, TimeLeftBoth, monitor.TimeLeftMode(), "the default")
+		// the positions below are the ones of the time left alone
+		monitor.timeLeftMode = TimeLeftRemaining
 		// the regions are added when drawn
 		app.ForceDraw()
 	})
@@ -517,10 +520,12 @@ func TestBar_Click(t *testing.T) {
 }
 
 func TestBar_HoverHighlightsPart(t *testing.T) {
-	app, _, bar, _, heights := setupTest(t, []*zfs.PoolStatus{scrubbing("tank", 10)})
+	app, monitor, bar, _, heights := setupTest(t, []*zfs.PoolStatus{scrubbing("tank", 10)})
 	require.Eventually(t, func() bool { return len(heights()) == 1 }, 2*time.Second, 10*time.Millisecond)
 	testutil.OnUiThread(t, app, func() {
 		bar.SetOnClick(func(zfs.PoolActivity) {})
+		// the positions below are the ones of the time left alone
+		monitor.timeLeftMode = TimeLeftRemaining
 		// the regions are added when drawn
 		app.ForceDraw()
 	})
