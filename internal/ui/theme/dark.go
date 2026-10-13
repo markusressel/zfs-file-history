@@ -129,6 +129,15 @@ var (
 			ReadOnly: tcell.ColorGray,
 			Hint:     tcell.ColorGray,
 		},
+		Pool: PoolColors{
+			Online:   tcell.ColorGreen,
+			Degraded: tcell.ColorYellow,
+			Faulted:  tcell.ColorRed,
+			Offline:  tcell.ColorGray,
+			Group:    Accent,
+			Errors:   tcell.ColorRed,
+			NoErrors: tcell.ColorGray,
+		},
 	}
 
 	Style = StyleStruct{

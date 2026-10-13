@@ -86,7 +86,13 @@ func parseHolds(output string) ([]Hold, error) {
 // runZfs runs the zfs command with the given arguments and returns its output.
 // If it fails, the error contains the message zfs printed, if any.
 func runZfs(args ...string) (string, error) {
-	output, err := exec.Command("zfs", args...).Output()
+	return runCommand("zfs", args...)
+}
+
+// runCommand runs the command with the given arguments and returns its output.
+// If it fails, the error contains the message the command printed, if any.
+func runCommand(name string, args ...string) (string, error) {
+	output, err := exec.Command(name, args...).Output()
 	if err != nil {
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) && len(strings.TrimSpace(string(exitError.Stderr))) > 0 {

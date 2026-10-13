@@ -61,8 +61,9 @@ func TestSessionRecorder(t *testing.T) {
 	recorder.setPath("/tank")
 	recorder.setFocus(Main, "Snapshots")
 	recorder.setDataset("tank/data")
+	recorder.setPool("tank")
 	saved, _ := state.Get[session](store, sessionNamespace, sessionKey)
-	assert.Equal(t, session{LaunchDir: "/home/user", Path: "/tank", Page: Main, Focus: "Snapshots", Dataset: "tank/data"}, saved)
+	assert.Equal(t, session{LaunchDir: "/home/user", Path: "/tank", Page: Main, Focus: "Snapshots", Dataset: "tank/data", Pool: "tank"}, saved)
 
 	// the focus of the other page does not apply
 	recorder.setPage(Dataset)
@@ -71,10 +72,10 @@ func TestSessionRecorder(t *testing.T) {
 	assert.Empty(t, saved.Focus)
 
 	// the values of a restored session are kept
-	restored := &session{LaunchDir: "/home/user", Path: "/tank", Dataset: "tank/data"}
+	restored := &session{LaunchDir: "/home/user", Path: "/tank", Dataset: "tank/data", Pool: "tank"}
 	newSessionRecorder(store, "/home/user", restored).setPage(Main)
 	saved, _ = state.Get[session](store, sessionNamespace, sessionKey)
-	assert.Equal(t, session{LaunchDir: "/home/user", Path: "/tank", Page: Main, Dataset: "tank/data"}, saved)
+	assert.Equal(t, session{LaunchDir: "/home/user", Path: "/tank", Page: Main, Dataset: "tank/data", Pool: "tank"}, saved)
 
 	// without a store, nothing is recorded
 	newSessionRecorder(nil, "/home/user", nil).setPath("/tank")

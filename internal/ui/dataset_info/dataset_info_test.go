@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
@@ -225,4 +226,71 @@ func TestResolveValueColor_Permissions(t *testing.T) {
 	assert.Equal(t, theme.Colors.Permissions.Granted, resolveValueColor("Permissions", "all (root)"))
 	assert.Equal(t, theme.Colors.Permissions.Unknown, resolveValueColor("Permissions", "unknown"))
 	assert.Equal(t, tcell.ColorGray, resolveValueColor("Permissions", "none"))
+}
+
+func TestFormatPoolSummary(t *testing.T) {
+	tests := []struct {
+		status   zfs.PoolStatus
+		expected string
+	}{
+		{zfs.PoolStatus{Name: "rpool", State: zfs.PoolStateOnline, ScanProgress: -1,
+			Scan: "scrub repaired 0B in 00:06:46 with 0 errors on Thu Oct  1 12:50:53 2026"},
+			"ONLINE · scrub 2026-10-01"},
+		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateDegraded, ScanProgress: 31.77,
+			Scan: "resilver in progress since Tue Oct 13 09:12:44 2026\n254G resilvered, 31.77% done"},
+			"DEGRADED · resilver 31.8%"},
+		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1,
+			Scan: "resilvered 254G in 02:10:31 with 0 errors on Tue Oct 13 11:23:15 2026"},
+			"ONLINE · resilver 2026-10-13"},
+		{zfs.PoolStatus{Name: "new", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "none requested"},
+			"ONLINE · never scrubbed"},
+		{zfs.PoolStatus{Name: "new", State: zfs.PoolStateOnline, ScanProgress: -1},
+			"ONLINE · never scrubbed"},
+		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "scrub canceled on Tue Oct 13 10:00:01 2026"},
+			"ONLINE · scrub canceled"},
+		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "scrub paused since Tue Oct 13 10:00:01 2026\nmore"},
+			"ONLINE · scrub paused"},
+		// other kinds of scans
+		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: 12.5, Scan: "error scrub in progress since Tue Oct 13 10:00:01 2026"},
+			"ONLINE · scan 12.5%"},
+		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "error scrub repaired 0B in 00:00:01 with 0 errors on Tue Oct 13 10:00:01 2026"},
+			"ONLINE · scan 2026-10-13"},
+	}
+	for _, test := range tests {
+		t.Run(test.expected, func(t *testing.T) {
+			assert.Equal(t, test.expected, formatPoolSummary(&test.status))
+		})
+	}
+}
+
+func TestPoolProperty(t *testing.T) {
+	original := loadPoolStatus
+	t.Cleanup(func() { loadPoolStatus = original })
+	var requested []string
+	loadPoolStatus = func(name string) (*zfs.PoolStatus, error) {
+		requested = append(requested, name)
+		if name == "broken" {
+			return nil, errors.New("zpool status failed")
+		}
+		return &zfs.PoolStatus{Name: name, State: zfs.PoolStateDegraded, ScanProgress: -1}, nil
+	}
+
+	// the pool of the dataset, colored by its state
+	assert.Equal(t, &DatasetInfoTableEntry{Name: "Pool", Value: "DEGRADED · never scrubbed", Color: theme.Colors.Pool.Degraded},
+		poolProperty("tank/data/home"))
+	assert.Equal(t, "DEGRADED · never scrubbed", poolProperty("tank").Value, "the root dataset")
+	assert.Equal(t, &DatasetInfoTableEntry{Name: "Pool", Value: "unknown", Color: theme.Colors.Permissions.Unknown},
+		poolProperty("broken/data"))
+	assert.Nil(t, poolProperty(""), "the name of the dataset is not known")
+	assert.Equal(t, []string{"tank", "tank", "broken"}, requested)
+}
+
+func TestFormatProperties_Color(t *testing.T) {
+	text := formatProperties([]*DatasetInfoTableEntry{
+		{Name: "Pool", Value: "tank · DEGRADED", Color: theme.Colors.Pool.Degraded},
+		{Name: "Mounted", Value: "yes"},
+	})
+	assert.Contains(t, text, txwidgets.ColorTag(theme.Colors.Pool.Degraded)+"tank · DEGRADED")
+	// chosen by the name and value
+	assert.Contains(t, text, txwidgets.ColorTag(tcell.ColorGreen)+"yes")
 }

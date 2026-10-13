@@ -1,0 +1,346 @@
+package pool_browser
+
+import (
+	"errors"
+	"sync"
+	"testing"
+	"time"
+	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/shortcut_helper"
+	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
+	"zfs-file-history/internal/zfs"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func names(entries []*zfs.PoolListEntry) []string {
+	var result []string
+	for _, entry := range entries {
+		result = append(result, entry.Name)
+	}
+	return result
+}
+
+func TestSortPoolEntries(t *testing.T) {
+	newEntries := func() []*zfs.PoolListEntry {
+		return []*zfs.PoolListEntry{
+			{Name: "tank", Health: "DEGRADED", Size: 300, Allocated: 100, Free: 200, Capacity: 33, Fragmentation: 5, DedupRatio: "1.00"},
+			{Name: "Backup", Health: "ONLINE", Size: 100, Allocated: 90, Free: 10, Capacity: 90, Fragmentation: -1, DedupRatio: "1.50"},
+			{Name: "rpool", Health: "ONLINE", Size: 200, Allocated: 20, Free: 180, Capacity: 10, Fragmentation: 40, DedupRatio: "1.00"},
+		}
+	}
+
+	tests := []struct {
+		column   *table.Column
+		inverted bool
+		expected []string
+	}{
+		{columnName, false, []string{"Backup", "rpool", "tank"}},
+		{columnName, true, []string{"tank", "rpool", "Backup"}},
+		// equal values fall back to the name
+		{columnHealth, false, []string{"tank", "Backup", "rpool"}},
+		{columnSize, false, []string{"Backup", "rpool", "tank"}},
+		{columnSize, true, []string{"tank", "rpool", "Backup"}},
+		{columnAllocated, false, []string{"rpool", "Backup", "tank"}},
+		{columnFree, false, []string{"Backup", "rpool", "tank"}},
+		{columnCapacity, false, []string{"rpool", "tank", "Backup"}},
+		// not known first
+		{columnFragmentation, false, []string{"Backup", "tank", "rpool"}},
+		{columnDedup, false, []string{"rpool", "tank", "Backup"}},
+		{columnDedup, true, []string{"Backup", "tank", "rpool"}},
+	}
+	for _, test := range tests {
+		t.Run(test.column.Title, func(t *testing.T) {
+			assert.Equal(t, test.expected, names(sortPoolEntries(newEntries(), test.column, test.inverted)))
+		})
+	}
+}
+
+func TestToTableCells(t *testing.T) {
+	entry := &zfs.PoolListEntry{Name: "tank", Health: "DEGRADED", Size: 1024, Allocated: 512, Free: 512, Capacity: 50, Fragmentation: -1, DedupRatio: "1.25"}
+
+	cells := toTableCells(0, tableColumns, entry)
+
+	require.Len(t, cells, len(tableColumns))
+	texts := map[*table.Column]string{}
+	for i, column := range tableColumns {
+		texts[column] = cells[i].Text
+	}
+	assert.Equal(t, "tank", texts[columnName])
+	assert.Equal(t, "DEGRADED", texts[columnHealth])
+	assert.Equal(t, uiutil.StableLengthHumanizedBytes(1024), texts[columnSize])
+	assert.Equal(t, uiutil.StableLengthHumanizedBytes(512), texts[columnAllocated])
+	assert.Equal(t, uiutil.StableLengthHumanizedBytes(512), texts[columnFree])
+	assert.Equal(t, "50%", texts[columnCapacity])
+	assert.Equal(t, "-", texts[columnFragmentation])
+	assert.Equal(t, "1.25x", texts[columnDedup])
+
+	assert.Equal(t, theme.Colors.Pool.Degraded, foreground(cells[1]))
+	assert.Equal(t, tview.AlignRight, cells[2].Align)
+
+	// fuller pools are warmer
+	empty := toTableCells(0, []*table.Column{columnCapacity}, &zfs.PoolListEntry{Capacity: 0})[0]
+	full := toTableCells(0, []*table.Column{columnCapacity}, &zfs.PoolListEntry{Capacity: 100})[0]
+	assert.Equal(t, theme.Colors.Magnitude[0].Color, foreground(empty))
+	assert.Equal(t, theme.Colors.Magnitude[len(theme.Colors.Magnitude)-1].Color, foreground(full))
+}
+
+func foreground(cell *tview.TableCell) tcell.Color {
+	color, _, _ := cell.Style.Decompose()
+	return color
+}
+
+func TestFormatPercent(t *testing.T) {
+	assert.Equal(t, "-", formatPercent(-1))
+	assert.Equal(t, "0%", formatPercent(0))
+	assert.Equal(t, "39%", formatPercent(39))
+}
+
+func TestFormatStatus(t *testing.T) {
+	entries := []*zfs.PoolListEntry{
+		{Name: "rpool", Health: zfs.PoolStateOnline},
+		{Name: "tank", Health: zfs.PoolStateDegraded},
+		{Name: "backup", Health: zfs.PoolStateFaulted},
+	}
+
+	assert.Equal(t, "Loading pools...", testutil.StripTags(formatStatus(nil, 0, false)))
+	assert.Equal(t, "0 pools", testutil.StripTags(formatStatus([]*zfs.PoolListEntry{}, 0, false)))
+	assert.Equal(t, "1 pool", testutil.StripTags(formatStatus(entries[:1], 1, false)))
+	assert.Equal(t, "3 pools · 2 not online", testutil.StripTags(formatStatus(entries, 3, false)))
+	assert.Equal(t, "1 of 3 pools · 2 not online", testutil.StripTags(formatStatus(entries, 1, true)))
+	// a filter matching all
+	assert.Equal(t, "3 of 3 pools · 2 not online", testutil.StripTags(formatStatus(entries, 3, true)))
+}
+
+func TestFindEntryToSelect(t *testing.T) {
+	entries := []*zfs.PoolListEntry{{Name: "rpool"}, {Name: "tank"}}
+	assert.Nil(t, findEntryToSelect(nil, "tank"))
+	assert.Same(t, entries[1], findEntryToSelect(entries, "tank"))
+	assert.Same(t, entries[0], findEntryToSelect(entries, "gone"))
+	assert.Same(t, entries[0], findEntryToSelect(entries, ""))
+}
+
+func setListPools(t *testing.T, f func() ([]*zfs.PoolListEntry, error)) {
+	original := listPools
+	listPools = f
+	t.Cleanup(func() { listPools = original })
+}
+
+// newBrowserApp creates a browser as the root of a running application.
+// The root is set before the event loop starts, like in CreateUi, to avoid racing with the first draw.
+func newBrowserApp(t *testing.T) (*tview.Application, *PoolBrowserComponent) {
+	app := tview.NewApplication()
+	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	browser := NewPoolBrowser(app)
+	app.SetRoot(browser.GetLayout(), true)
+	go func() { _ = app.Run() }()
+	t.Cleanup(app.Stop)
+	return app, browser
+}
+
+// recordedSelections are the names of the pools of the SelectedPoolChangedEvents ("" for none).
+type recordedSelections struct {
+	mu    sync.Mutex
+	names []string
+}
+
+func (r *recordedSelections) record(browser *PoolBrowserComponent) *recordedSelections {
+	browser.Events.Subscribe(func(event Event) {
+		if e, ok := event.(SelectedPoolChangedEvent); ok {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			name := ""
+			if e.Pool != nil {
+				name = e.Pool.Name
+			}
+			r.names = append(r.names, name)
+		}
+	})
+	return r
+}
+
+func (r *recordedSelections) get() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string{}, r.names...)
+}
+
+func TestPoolBrowser_RefreshLoadsAndSelects(t *testing.T) {
+	var mu sync.Mutex
+	pools := []*zfs.PoolListEntry{{Name: "tank", Health: "ONLINE"}, {Name: "rpool", Health: "ONLINE"}}
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return pools, nil
+	})
+	app, browser := newBrowserApp(t)
+	selections := (&recordedSelections{}).record(browser)
+
+	assert.False(t, browser.IsLoading())
+	testutil.OnUiThread(t, app, func() { browser.Refresh() })
+	assert.Eventually(t, func() bool { return len(selections.get()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	// sorted by name: the first one
+	assert.Equal(t, []string{"rpool"}, selections.get())
+
+	testutil.OnUiThread(t, app, func() {
+		assert.False(t, browser.IsLoading())
+		assert.Equal(t, "2 pools", testutil.StripTags(browser.tableContainer.GetFooter()))
+		browser.tableContainer.Select(browser.tableContainer.GetEntries()[1])
+		assert.Equal(t, "tank", browser.GetSelectedPool().Name)
+	})
+
+	// a reload keeps the selected pool
+	mu.Lock()
+	pools = []*zfs.PoolListEntry{{Name: "a", Health: "ONLINE"}, {Name: "rpool", Health: "ONLINE"}, {Name: "tank", Health: "DEGRADED"}}
+	mu.Unlock()
+	testutil.OnUiThread(t, app, func() { browser.Refresh() })
+	assert.Eventually(t, func() bool { return len(selections.get()) == 3 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"rpool", "tank", "tank"}, selections.get())
+	testutil.OnUiThread(t, app, func() {
+		assert.Equal(t, "3 pools · 1 not online", testutil.StripTags(browser.tableContainer.GetFooter()))
+	})
+
+	// no pools anymore: nothing selected
+	mu.Lock()
+	pools = nil
+	mu.Unlock()
+	testutil.OnUiThread(t, app, func() { browser.Refresh() })
+	assert.Eventually(t, func() bool { return len(selections.get()) == 4 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "", selections.get()[3])
+	testutil.OnUiThread(t, app, func() {
+		assert.Nil(t, browser.GetSelectedPool())
+		assert.Equal(t, "0 pools", testutil.StripTags(browser.tableContainer.GetFooter()))
+	})
+}
+
+func TestPoolBrowser_SelectOnLoad(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) {
+		return []*zfs.PoolListEntry{{Name: "rpool"}, {Name: "tank"}}, nil
+	})
+	app, browser := newBrowserApp(t)
+	selections := (&recordedSelections{}).record(browser)
+
+	testutil.OnUiThread(t, app, func() {
+		browser.SelectOnLoad("tank")
+		browser.Refresh()
+	})
+	assert.Eventually(t, func() bool { return len(selections.get()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"tank"}, selections.get())
+
+	// only once: afterwards, the selection is kept
+	testutil.OnUiThread(t, app, func() {
+		browser.tableContainer.Select(browser.tableContainer.GetEntries()[0])
+		browser.Refresh()
+	})
+	assert.Eventually(t, func() bool { return len(selections.get()) == 3 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"tank", "rpool", "rpool"}, selections.get())
+}
+
+func TestPoolBrowser_RefreshErrorIsReported(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) {
+		return nil, errors.New("zpool list failed")
+	})
+	app, browser := newBrowserApp(t)
+
+	statusEvents := make(chan PoolBrowserStatusEvent, 10)
+	browser.Events.Subscribe(func(event Event) {
+		if e, ok := event.(PoolBrowserStatusEvent); ok {
+			statusEvents <- e
+		}
+	})
+
+	testutil.OnUiThread(t, app, func() { browser.Refresh() })
+	select {
+	case e := <-statusEvents:
+		assert.Contains(t, e.Message.Message, "zpool list failed")
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected an error status event")
+	}
+	testutil.OnUiThread(t, app, func() {
+		assert.Equal(t, "Loading pools...", testutil.StripTags(browser.tableContainer.GetFooter()))
+	})
+}
+
+func TestPoolBrowser_Filter(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) {
+		return []*zfs.PoolListEntry{{Name: "rpool", Health: "ONLINE"}, {Name: "tank", Health: "ONLINE"}}, nil
+	})
+	app, browser := newBrowserApp(t)
+
+	testutil.OnUiThread(t, app, func() { browser.Refresh() })
+	assert.Eventually(t, func() bool {
+		var selected *zfs.PoolListEntry
+		testutil.OnUiThread(t, app, func() { selected = browser.GetSelectedPool() })
+		return selected != nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	testutil.OnUiThread(t, app, func() {
+		browser.tableContainer.SetFilterText("ta*")
+		assert.Equal(t, []string{"tank"}, names(browser.tableContainer.GetEntries()))
+		assert.Equal(t, "1 of 2 pools", testutil.StripTags(browser.tableContainer.GetFooter()))
+	})
+}
+
+func TestPoolBrowser_Focus(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) { return nil, nil })
+	app, browser := newBrowserApp(t)
+
+	testutil.OnUiThread(t, app, func() {
+		app.SetFocus(tview.NewBox())
+		assert.False(t, browser.HasFocus())
+		browser.Focus()
+		assert.True(t, browser.HasFocus())
+	})
+}
+
+func TestPoolBrowser_Shortcuts(t *testing.T) {
+	app := tview.NewApplication()
+	browser := NewPoolBrowser(app)
+
+	var keys []string
+	for _, shortcut := range browser.GetShortcutMap() {
+		keys = append(keys, shortcut.KeyCombo[0])
+		assert.NotNil(t, shortcut.Run, shortcut.Name)
+	}
+	assert.Equal(t, []string{"F2", "/"}, keys)
+	assert.NotEmpty(t, browser.GetCommands(), "sorting by each column")
+
+	// the columns dialog is shown on the dialog pages
+	pages := tview.NewPages()
+	browser.SetDialogPages(pages)
+	browser.GetShortcutMap()[0].Run()
+	assert.Equal(t, 1, pages.GetPageCount())
+	var _ shortcut_helper.CommandProvider = browser
+}
+
+func TestPoolBrowser_Keys(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) { return []*zfs.PoolListEntry{{Name: "rpool"}}, nil })
+	app, browser := newBrowserApp(t)
+	pages := tview.NewPages()
+	testutil.OnUiThread(t, app, func() {
+		browser.SetDialogPages(pages)
+		browser.Focus()
+		browser.Refresh()
+	})
+	require.Eventually(t, func() bool {
+		var selected *zfs.PoolListEntry
+		testutil.OnUiThread(t, app, func() { selected = browser.GetSelectedPool() })
+		return selected != nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// Enter on a pool does nothing (yet)
+	app.QueueEvent(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	// F2 opens the columns dialog
+	app.QueueEvent(tcell.NewEventKey(tcell.KeyF2, 0, tcell.ModNone))
+	assert.Eventually(t, func() bool {
+		count := 0
+		testutil.OnUiThread(t, app, func() { count = pages.GetPageCount() })
+		return count == 1
+	}, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, app, func() { assert.Equal(t, "rpool", browser.GetSelectedPool().Name) })
+}

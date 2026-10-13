@@ -42,17 +42,24 @@
   instances do not overwrite each other's settings, the last one used is restored. `--fresh` (or
   `restoreSession: false` in the configuration) starts in the given path or working directory instead.
 * ↕️ **Column-based sorting:** Sort table entries by any supported column in ascending or descending order.
-* 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, the
-  file and folder history and the dataset properties.
+* 🧱 **Configurable columns:** Select and order the columns of all tables (`F2`): files, snapshots, datasets, pools,
+  the file and folder history and the dataset properties.
   The columns and the sort order are remembered between runs (in `~/.local/state/zfs-file-history/state.json`,
   see [State](#state)), `r` in the column dialog resets them.
-* 🔎 **Filtering:** Filter files, snapshots and datasets as you type (`/` or `ctrl+f`), with glob patterns like `*.txt`.
+* 🔎 **Filtering:** Filter files, snapshots, datasets and pools as you type (`/` or `ctrl+f`), with glob patterns like `*.txt`.
   The filter is edited like a shell prompt: `ctrl+←`/`ctrl+→` jump and `ctrl+Backspace`/`ctrl+Delete` delete whole
   words, `ctrl+w`/`ctrl+u`/`ctrl+k` work as well.
 * 🌳 **Dataset overview:** Browse all datasets as a collapsible tree (`-`/`+`, `*` for all, like htop) or as a flat
   list (`t`), unmounted datasets are hidden by default (`u`). Both choices are remembered between runs. The used
   space is broken down into snapshots, the dataset itself, its children and its refreservation (sortable, to find the
   datasets whose snapshots use the most space), colored by how big it is compared to the other datasets.
+* 🩺 **Pool status:** The pools page (`3`) lists all pools with their health, size, allocated and free space,
+  capacity, fragmentation and deduplication ratio (`zpool list`). Below it, the status of the selected pool, like
+  `zpool status`: what is wrong with it and what to do about it, the last or running scrub or resilver (with a
+  progress bar, updated while it runs), the data errors, and the tree of its devices with their state and their read,
+  write and checksum errors. Changes (a failing device, a finished scrub, ...) are shown as they happen, see
+  [One Time Setup](#one-time-setup). The dataset info box shows the health and the last scrub of the dataset's pool
+  as well.
 * ⚙️ **Dataset properties:** `e` in the dataset overview shows all ZFS properties of a dataset (`zfs get all`) with
   their source, filterable and sortable. Change them (`zfs set`), add user properties (`module:property`, `a`), or
   reset local values to the inherited or default ones and remove user properties (`zfs inherit`); with `sudo` if
