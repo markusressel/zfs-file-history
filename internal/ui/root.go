@@ -9,6 +9,7 @@ import (
 	"zfs-file-history/internal/ui/dataset_browser"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
+	"zfs-file-history/internal/ui/pool_browser"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/util"
@@ -20,11 +21,12 @@ import (
 const (
 	Main    util.Page = "main"
 	Dataset util.Page = "dataset"
+	Pool    util.Page = "pool"
 )
 
 var (
 	shortcutCycleFocus = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Cycle focus", Description: "Focus the next list of the page", Group: shortcut_helper.GroupNavigation}
-	shortcutGoToPage   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"1", "2"}, Name: "Go to page", Group: shortcut_helper.GroupGlobal}
+	shortcutGoToPage   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"1", "2", "3"}, Name: "Go to page", Group: shortcut_helper.GroupGlobal}
 	shortcutCommands   = shortcut_helper.ShortcutEntry{KeyCombo: []string{":"}, Name: "Commands", Group: shortcut_helper.GroupGlobal}
 	shortcutQuit       = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("q")}, Name: "Quit", Group: shortcut_helper.GroupGlobal}
 )
@@ -42,12 +44,13 @@ func globalShortcuts() []shortcut_helper.ShortcutEntry {
 }
 
 // switchablePages are the pages cycled through with tab / shift+tab, in order.
-var switchablePages = []util.Page{Main, Dataset}
+var switchablePages = []util.Page{Main, Dataset, Pool}
 
 // pageTitles are the titles of the switchable pages, shown in the page indicator of the header.
 var pageTitles = map[util.Page]string{
 	Main:    "Files",
 	Dataset: "Datasets",
+	Pool:    "Pools",
 }
 
 // pageTitleWidth is the length of the longest page title, so the page indicator has the same width on all pages.
@@ -121,20 +124,23 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	}
 	mainPage := NewMainPage(application, messages, path)
 	datasetPage := NewDatasetPage(application, messages, path)
+	poolPage := NewPoolPage(application, messages)
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
-		AddPage(string(Dataset), datasetPage.layout, true, false)
+		AddPage(string(Dataset), datasetPage.layout, true, false).
+		AddPage(string(Pool), poolPage.layout, true, false)
 
 	mainPage.SetPages(pagesLayout)
 	datasetPage.SetPages(pagesLayout)
+	poolPage.SetPages(pagesLayout)
 
-	headers := map[util.Page]*ApplicationHeaderComponent{Main: mainPage.header, Dataset: datasetPage.header}
+	headers := map[util.Page]*ApplicationHeaderComponent{Main: mainPage.header, Dataset: datasetPage.header, Pool: poolPage.header}
 	for index, page := range switchablePages {
 		headers[page].SetPage(pageTitles[page], pageTitleWidth(), index+1, len(switchablePages))
 	}
 
-	pages := map[util.Page]switchablePage{Main: mainPage, Dataset: datasetPage}
+	pages := map[util.Page]switchablePage{Main: mainPage, Dataset: datasetPage, Pool: poolPage}
 	switchTo := func(page util.Page) {
 		pagesLayout.SwitchToPage(string(page))
 		recorder.setPage(page)
@@ -155,8 +161,16 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			recorder.setDataset(e.Dataset.Name)
 		}
 	})
+	poolPage.poolBrowser.Events.Subscribe(func(event pool_browser.Event) {
+		if e, ok := event.(pool_browser.SelectedPoolChangedEvent); ok && e.Pool != nil {
+			recorder.setPool(e.Pool.Name)
+		}
+	})
 	if restored != nil && restored.Dataset != "" {
 		datasetPage.datasetBrowser.SelectOnLoad(restored.Dataset)
+	}
+	if restored != nil && restored.Pool != "" {
+		poolPage.poolBrowser.SelectOnLoad(restored.Pool)
 	}
 	toggleShortcuts := func() {
 		shortcut_helper.ToggleShortcuts()
@@ -190,7 +204,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Alt("←")}, Name: "Previous page", Description: "Show the page on the left", Group: shortcut_helper.GroupGlobal,
 				Run: func() { switchTo(adjacentPage(switchablePages, front, true)) }},
 			shortcut_helper.ShortcutTimeFormat.WithRun(util.ToggleRelativeTimes),
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"F5"}, Name: "Refresh", Description: "Reload the datasets, snapshots and files",
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"F5"}, Name: "Refresh", Description: "Reload the pools, datasets, snapshots and files",
 				Group: shortcut_helper.GroupGlobal, Run: pages[front].refresh},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"m"}, Name: "Messages", Description: "Show all messages, e.g. errors", Group: shortcut_helper.GroupGlobal,
 				Run: func() { showMessageHistory(application, pagesLayout, messages) }},
@@ -220,7 +234,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		// ignore events, if some other page is open
 		name, _ := pagesLayout.GetFrontPage()
 		front := util.Page(name)
-		if front != Main && front != Dataset {
+		if !slices.Contains(switchablePages, front) {
 			return event
 		}
 
@@ -235,7 +249,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			showMessageHistory(application, pagesLayout, messages)
 		case (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight) && event.Modifiers()&tcell.ModAlt != 0 && !textInput:
 			switchTo(adjacentPage(switchablePages, front, event.Key() == tcell.KeyLeft))
-		case event.Key() == tcell.KeyRune && (event.Rune() == '1' || event.Rune() == '2') && !textInput:
+		case event.Key() == tcell.KeyRune && event.Rune() >= '1' && int(event.Rune()-'1') < len(switchablePages) && !textInput:
 			switchTo(switchablePages[event.Rune()-'1'])
 		default:
 			return event
@@ -245,6 +259,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 
 	mainPage.Init(path)
 	datasetPage.Init(path)
+	poolPage.Init()
 
 	application.SetRoot(pagesLayout, fullscreen).
 		SetFocus(mainPage.fileBrowser.GetLayout())

@@ -103,6 +103,24 @@ type Color struct {
 	Magnitude   []GradientStop
 	Permissions PermissionColors
 	Properties  PropertyColors
+	Pool        PoolColors
+}
+
+// PoolColors are used to show the health of pools and their devices.
+type PoolColors struct {
+	// Online is a healthy pool or device (also an available spare)
+	Online tcell.Color
+	// Degraded is a pool or device that still works, but with less redundancy (also a spare in use)
+	Degraded tcell.Color
+	// Faulted is a pool or device that does not work (faulted, unavailable, suspended)
+	Faulted tcell.Color
+	// Offline is a device taken offline or removed on purpose
+	Offline tcell.Color
+	// Group is the name of a group of devices, e.g. "logs"
+	Group tcell.Color
+	// Errors are read, write or checksum errors, NoErrors counters of 0
+	Errors   tcell.Color
+	NoErrors tcell.Color
 }
 
 // PropertyColors are used in the table of ZFS properties.

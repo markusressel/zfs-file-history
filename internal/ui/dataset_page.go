@@ -111,6 +111,11 @@ func NewDatasetPage(application *tview.Application, messages *status_message.Cen
 		}
 	})
 
+	// the health of the pool in the dataset info
+	uiutil.SubscribeUI(zfs.PoolsChanged, application, func(_ struct{}) {
+		datasetInfo.RefreshQuietly()
+	})
+
 	// e.g. granted in the missing permissions dialog, which can be shown on any page
 	uiutil.SubscribeUI(zfs.PermissionsChanged, application, func(_ struct{}) {
 		datasetBrowser.ReloadPermissions()

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
+	"zfs-file-history/internal/ui/pool_status"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -157,10 +159,16 @@ var loadDatasetInfo = func(request datasetInfoRequest) (*datasetInfoResult, erro
 type DatasetInfoTableEntry struct {
 	Name  string
 	Value string
+	// Color is the color of the value, or tcell.ColorDefault to choose it by the name and value (see
+	// resolveValueColor)
+	Color tcell.Color
 }
 
-// loadDatasetPermissions is replaceable in tests.
-var loadDatasetPermissions = zfs.LoadDatasetPermissions
+// loadDatasetPermissions and loadPoolStatus are replaceable in tests.
+var (
+	loadDatasetPermissions = zfs.LoadDatasetPermissions
+	loadPoolStatus         = zfs.GetPoolStatus
+)
 
 // newDatasetInfoResult reads all displayed properties of the dataset.
 // This calls into ZFS (and may spawn processes), so it must only be called in the background.
@@ -168,6 +176,10 @@ func newDatasetInfoResult(dataset *zfs.Dataset, titleName string) *datasetInfoRe
 	properties := collectProperties(dataset)
 	properties = append(properties, &DatasetInfoTableEntry{Name: "Permissions", Value: formatPermissions(loadDatasetPermissions(dataset.GetName()))})
 	sortProperties(properties)
+	// first: the most important, and the list may be cut off below
+	if pool := poolProperty(dataset.GetName()); pool != nil {
+		properties = append([]*DatasetInfoTableEntry{pool}, properties...)
+	}
 	return &datasetInfoResult{
 		dataset:    dataset,
 		title:      fmt.Sprintf("Dataset: %s", titleName),
@@ -192,6 +204,47 @@ func formatPermissions(permissions *zfs.DatasetPermissions, err error) string {
 		names = append(names, string(permission))
 	}
 	return strings.Join(names, ", ")
+}
+
+// poolProperty returns the health of the pool of the dataset (see formatPoolSummary), or nil if the name of the
+// dataset is not known. This executes "zpool status", so it must only be called in the background.
+func poolProperty(datasetName string) *DatasetInfoTableEntry {
+	poolName, _, _ := strings.Cut(datasetName, "/")
+	if poolName == "" {
+		return nil
+	}
+	status, err := loadPoolStatus(poolName)
+	if err != nil {
+		return &DatasetInfoTableEntry{Name: "Pool", Value: "unknown", Color: theme.Colors.Permissions.Unknown}
+	}
+	return &DatasetInfoTableEntry{Name: "Pool", Value: formatPoolSummary(status), Color: pool_status.StateColor(status.State, tcell.ColorWhite)}
+}
+
+// formatPoolSummary returns the state of the pool and its last or running scrub (or resilver), short enough for
+// the width of the dataset info: the date it finished or its progress, e.g. "ONLINE · scrub 2026-10-01" or
+// "DEGRADED · resilver 31.8%". The name of the pool is the first part of the title.
+func formatPoolSummary(status *zfs.PoolStatus) string {
+	kind := status.ScanKind()
+	if kind == "" {
+		// e.g. an error scrub
+		kind = "scan"
+	}
+	scan := ""
+	finished, isFinished := status.ScanFinished()
+	switch {
+	case status.IsScanning():
+		scan = fmt.Sprintf("%s %.1f%%", kind, status.ScanProgress)
+	case isFinished:
+		scan = fmt.Sprintf("%s %s", kind, finished.Format(time.DateOnly))
+	case status.Scan == "" || status.Scan == "none requested":
+		scan = "never scrubbed"
+	default:
+		// e.g. "scrub canceled on Tue Oct 13 10:00:01 2026" or "scrub paused since ...", without the date
+		scan, _, _ = strings.Cut(status.Scan, "\n")
+		scan, _, _ = strings.Cut(scan, " on ")
+		scan, _, _ = strings.Cut(scan, " since ")
+	}
+	return status.State + " · " + scan
 }
 
 func collectProperties(dataset *zfs.Dataset) []*DatasetInfoTableEntry {
@@ -271,7 +324,10 @@ func formatProperties(properties []*DatasetInfoTableEntry) string {
 	keyColorTag := txwidgets.ColorTag(theme.Colors.Layout.Table.Accent)
 	var out strings.Builder
 	for _, prop := range properties {
-		valueColor := resolveValueColor(prop.Name, prop.Value)
+		valueColor := prop.Color
+		if valueColor == tcell.ColorDefault {
+			valueColor = resolveValueColor(prop.Name, prop.Value)
+		}
 		valueColorTag := txwidgets.ColorTag(valueColor)
 
 		out.WriteString(fmt.Sprintf(" %s%*s:[-]  %s%s[-]\n",

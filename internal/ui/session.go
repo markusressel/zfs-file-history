@@ -40,6 +40,8 @@ type session struct {
 	Focus string `json:"focus,omitempty"`
 	// Dataset is the name of the dataset selected on the dataset page
 	Dataset string `json:"dataset,omitempty"`
+	// Pool is the name of the pool selected on the pool page
+	Pool string `json:"pool,omitempty"`
 }
 
 // sessionToRestore returns the last session saved in store, if it is to be restored for start, otherwise nil.
@@ -114,6 +116,10 @@ func (recorder *sessionRecorder) setFocus(page util.Page, title string) {
 
 func (recorder *sessionRecorder) setDataset(name string) {
 	recorder.update(func(current *session) { current.Dataset = name })
+}
+
+func (recorder *sessionRecorder) setPool(name string) {
+	recorder.update(func(current *session) { current.Pool = name })
 }
 
 // restoreSession shows the page of the restored session and focuses its component. Must be called on the UI

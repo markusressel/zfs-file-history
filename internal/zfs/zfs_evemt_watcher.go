@@ -14,7 +14,12 @@ import (
 	"github.com/oklog/run"
 )
 
-// WatchZpoolEvents spawns `zpool events -v -f` and listens for snapshot changes in real-time.
+// poolsChangedThrottle is the most often PoolsChanged is emitted, see WatchZpoolEvents.
+const poolsChangedThrottle = time.Second
+
+// WatchZpoolEvents spawns `zpool events -v -f` and listens for changes in real-time: of the snapshots (and pools
+// created, destroyed, imported or exported), which reload all ZFS data (see RefreshZfsData), and of the state of
+// the pools, which only reload the pools (see PoolsChanged).
 func WatchZpoolEvents(ctx context.Context) error {
 	zpoolPath, err := exec.LookPath("zpool")
 	if err != nil {
@@ -33,6 +38,7 @@ func WatchZpoolEvents(ctx context.Context) error {
 	}
 
 	var updateTimer *time.Timer
+	var poolsTimer *time.Timer
 	var updateMtx sync.Mutex
 
 	debouncedUpdate := func() {
@@ -49,11 +55,29 @@ func WatchZpoolEvents(ctx context.Context) error {
 		})
 	}
 
+	// Throttled instead of debounced: a failing device can report errors continuously, which would postpone a
+	// debounced update forever.
+	throttledPoolsUpdate := func() {
+		updateMtx.Lock()
+		defer updateMtx.Unlock()
+
+		if poolsTimer != nil {
+			// an update is pending already
+			return
+		}
+		poolsTimer = time.AfterFunc(poolsChangedThrottle, func() {
+			updateMtx.Lock()
+			poolsTimer = nil
+			updateMtx.Unlock()
+			PoolsChanged.Emit(struct{}{})
+		})
+	}
+
 	// Capture the exact time the watcher starts to filter out old backlog events
 	startTime := time.Now()
 
 	// Parse the stream and pass the startTime to filter the backlog
-	parseZpoolEvents(stdout, startTime, debouncedUpdate)
+	parseZpoolEvents(stdout, startTime, debouncedUpdate, throttledPoolsUpdate)
 
 	if err := cmd.Wait(); err != nil {
 		return err
@@ -62,45 +86,106 @@ func WatchZpoolEvents(ctx context.Context) error {
 	return nil
 }
 
-// parseZpoolEvents reads from an io.Reader and triggers onUpdate for snapshot events.
-func parseZpoolEvents(reader io.Reader, startTime time.Time, onUpdate func()) {
+// poolEventClasses are the classes of the events about the state of pools and their devices (see zpool-events(8)),
+// besides the ones with poolEventClassPrefixes.
+var poolEventClasses = map[string]bool{
+	"sysevent.fs.zfs.statechange":     true,
+	"sysevent.fs.zfs.config_sync":     true,
+	"sysevent.fs.zfs.pool_reguid":     true,
+	"sysevent.fs.zfs.vdev_add":        true,
+	"sysevent.fs.zfs.vdev_attach":     true,
+	"sysevent.fs.zfs.vdev_autoexpand": true,
+	"sysevent.fs.zfs.vdev_check":      true,
+	"sysevent.fs.zfs.vdev_clear":      true,
+	"sysevent.fs.zfs.vdev_online":     true,
+	"sysevent.fs.zfs.vdev_remove":     true,
+	"sysevent.fs.zfs.vdev_remove_aux": true,
+	"sysevent.fs.zfs.vdev_remove_dev": true,
+	"sysevent.fs.zfs.vdev_spare":      true,
+}
+
+// poolEventClassPrefixes are the prefixes of the classes of the events about the state of pools: scrubs, resilvers
+// and trims starting, finishing and so on, the error reports (which count as read, write or checksum errors) and
+// the resource events (e.g. a device that was removed).
+var poolEventClassPrefixes = []string{
+	"sysevent.fs.zfs.scrub_",
+	"sysevent.fs.zfs.errorscrub_",
+	"sysevent.fs.zfs.resilver_",
+	"sysevent.fs.zfs.trim_",
+	"ereport.fs.zfs.",
+	"resource.fs.zfs.",
+}
+
+// poolListEventClasses are the classes of the events that change the pools, and with them the datasets.
+var poolListEventClasses = map[string]bool{
+	"sysevent.fs.zfs.pool_create":  true,
+	"sysevent.fs.zfs.pool_destroy": true,
+	"sysevent.fs.zfs.pool_import":  true,
+	"sysevent.fs.zfs.pool_export":  true,
+}
+
+// isPoolEvent returns whether the event of the class is about the state of a pool or its devices.
+func isPoolEvent(class string) bool {
+	if poolEventClasses[class] {
+		return true
+	}
+	for _, prefix := range poolEventClassPrefixes {
+		if strings.HasPrefix(class, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseZpoolEvents reads the output of `zpool events -v` from reader. For the events after startTime, it calls
+// onDatasetsChanged for snapshots created or destroyed and pools created, destroyed, imported or exported, and
+// onPoolsChanged for changes of the state of pools (see isPoolEvent).
+func parseZpoolEvents(reader io.Reader, startTime time.Time, onDatasetsChanged func(), onPoolsChanged func()) {
 	scanner := bufio.NewScanner(reader)
-	inHistoryEvent := false
+	// class is the class of the current event, from its first line, e.g. "sysevent.fs.zfs.history_event"
+	class := ""
 	isTargetAction := false
 	var eventTime time.Time
 
 	// Closure to handle the trigger logic cleanly (used for both empty lines and EOF)
 	triggerIfValid := func() {
-		if inHistoryEvent && isTargetAction && eventTime.After(startTime) {
-			onUpdate()
+		if class == "" || !eventTime.After(startTime) {
+			return
+		}
+		switch {
+		case class == "sysevent.fs.zfs.history_event" && isTargetAction, poolListEventClasses[class]:
+			onDatasetsChanged()
+		case isPoolEvent(class):
+			onPoolsChanged()
 		}
 	}
 
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+		rawLine := scanner.Text()
+		line := strings.TrimSpace(rawLine)
 
 		// Empty line marks the end of an event block
 		if line == "" {
 			triggerIfValid()
 
 			// Reset block state for the next event
-			inHistoryEvent = false
+			class = ""
 			isTargetAction = false
 			eventTime = time.Time{}
 			continue
 		}
 
-		if strings.Contains(line, "sysevent.fs.zfs.history_event") {
-			inHistoryEvent = true
+		// the first line of an event is not indented, e.g. "Jul  5 2026 00:55:17.359478925 sysevent.fs.zfs.history_event"
+		if !strings.HasPrefix(rawLine, " ") && !strings.HasPrefix(rawLine, "\t") {
+			fields := strings.Fields(line)
+			class = fields[len(fields)-1]
 			continue
 		}
 
-		if inHistoryEvent {
-			if isTargetZfsAction(line) {
-				isTargetAction = true
-			} else if parsedTime, ok := parseEventTime(line); ok {
-				eventTime = parsedTime
-			}
+		if isTargetZfsAction(line) {
+			isTargetAction = true
+		} else if parsedTime, ok := parseEventTime(line); ok {
+			eventTime = parsedTime
 		}
 	}
 
