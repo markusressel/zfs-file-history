@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -60,12 +61,17 @@ func NewBar(monitor *Monitor) *Bar {
 		enabled: func() bool { return true },
 		hovered: noLine,
 	}
+	// a panel of its own, which looks different from the views of the page: it is about all pools, not the page
+	bar.SetBorder(true)
+	uiutil.SetupWindow(bar.Box, "Activity")
+	bar.SetBorderColor(theme.Colors.Activity.Border)
+	bar.SetBackgroundColor(theme.Colors.Activity.Background)
 	monitor.OnChanged(bar.update)
 	return bar
 }
 
-// SetOnHeightChanged sets the function called with the height the bar needs (the number of activities) whenever it
-// changed, e.g. to resize it in its layout. Must be called on the UI thread.
+// SetOnHeightChanged sets the function called with the height the bar needs (the number of activities and the
+// border, 0 while nothing runs) whenever it changed, e.g. to resize it in its layout. Must be called on the UI thread.
 func (bar *Bar) SetOnHeightChanged(onHeightChanged func(height int)) *Bar {
 	bar.onHeightChanged = onHeightChanged
 	return bar
@@ -84,19 +90,25 @@ func (bar *Bar) SetEnabledFunc(enabled func() bool) *Bar {
 	return bar
 }
 
-// Height returns the number of lines the bar needs. Must be called on the UI thread.
+// Height returns the number of lines the bar needs, including the border (0 while nothing runs). Must be called on
+// the UI thread.
 func (bar *Bar) Height() int {
 	return bar.height
 }
 
 // update reports the new height after the activities changed. Runs on the UI thread.
 func (bar *Bar) update() {
-	height := len(bar.monitor.Activities())
+	lines := len(bar.monitor.Activities())
+	height := 0
+	if lines > 0 {
+		// the border
+		height = lines + 2
+	}
 	if height == bar.height {
 		return
 	}
 	bar.height = height
-	if bar.hovered >= height {
+	if bar.hovered >= lines {
 		bar.hovered = noLine
 	}
 	if bar.onHeightChanged != nil {

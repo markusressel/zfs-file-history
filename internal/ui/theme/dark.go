@@ -142,6 +142,9 @@ var (
 			NoErrors: tcell.ColorGray,
 		},
 		Activity: ActivityColors{
+			Border: PrimaryMuted,
+			// darker than BarTrack, so the empty part of the bars stays visible
+			Background:    tcell.ColorIsRGB | tcell.ColorValid | 0x16191C,
 			Kind:          Accent,
 			Pool:          tcell.ColorWhite,
 			Remaining:     tcell.ColorLightGray,

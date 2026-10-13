@@ -109,6 +109,9 @@ type Color struct {
 
 // ActivityColors are used by the bar below the header that shows the operations running on the pools, e.g. a scrub.
 type ActivityColors struct {
+	// Border and Background set the panel apart from the views of the page
+	Border     tcell.Color
+	Background tcell.Color
 	// Kind is what runs, e.g. "Scrub"
 	Kind tcell.Color
 	// Pool is the name of the pool it runs on

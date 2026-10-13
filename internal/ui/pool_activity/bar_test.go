@@ -306,13 +306,14 @@ func TestBar_ShowsRunningOperations(t *testing.T) {
 	app, monitor, bar, _, heights := setupTest(t, []*zfs.PoolStatus{idle("rpool"), scrubbing("tank", 42)})
 
 	require.Eventually(t, func() bool { return len(heights()) == 1 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, []int{1}, heights())
+	// one line, and the border
+	assert.Equal(t, []int{3}, heights())
 	testutil.OnUiThread(t, app, func() {
 		assert.Equal(t, []zfs.PoolActivity{{Pool: "tank", Kind: "scrub", Progress: 42}}, monitor.Activities())
-		assert.Equal(t, 1, bar.Height())
+		assert.Equal(t, 3, bar.Height())
 		_, y, _, height := bar.GetRect()
 		assert.Equal(t, 1, y, "below the header")
-		assert.Equal(t, 1, height)
+		assert.Equal(t, 3, height)
 	})
 }
 
@@ -331,12 +332,12 @@ func TestMonitor_RefreshesWhileRunning(t *testing.T) {
 	app, monitor, _, fake, heights := setupTest(t, []*zfs.PoolStatus{scrubbing("tank", 10), scrubbing("backup", 20)})
 
 	require.Eventually(t, func() bool { return len(heights()) == 1 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, []int{2}, heights())
+	assert.Equal(t, []int{4}, heights())
 
 	// reloaded after activeRefreshInterval: the progress is updated, the height only changes once one finished
 	fake.set([]*zfs.PoolStatus{scrubbing("tank", 60), idle("backup")}, nil)
 	require.Eventually(t, func() bool { return len(heights()) == 2 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, []int{2, 1}, heights())
+	assert.Equal(t, []int{4, 3}, heights())
 	testutil.OnUiThread(t, app, func() {
 		assert.Equal(t, []zfs.PoolActivity{{Pool: "tank", Kind: "scrub", Progress: 60}}, monitor.Activities())
 	})
@@ -344,7 +345,7 @@ func TestMonitor_RefreshesWhileRunning(t *testing.T) {
 	// all done: hidden, and no more reloads (until idleRefreshInterval)
 	fake.set([]*zfs.PoolStatus{idle("tank"), idle("backup")}, nil)
 	require.Eventually(t, func() bool { return len(heights()) == 3 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, []int{2, 1, 0}, heights())
+	assert.Equal(t, []int{4, 3, 0}, heights())
 	loads := fake.getLoads()
 	time.Sleep(5 * activeRefreshInterval)
 	assert.Equal(t, loads, fake.getLoads())
@@ -357,7 +358,7 @@ func TestMonitor_Error(t *testing.T) {
 	// e.g. zpool is gone: nothing is shown
 	fake.set(nil, errors.New("zpool failed"))
 	require.Eventually(t, func() bool { return len(heights()) == 2 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, []int{1, 0}, heights())
+	assert.Equal(t, []int{3, 0}, heights())
 	testutil.OnUiThread(t, app, func() { assert.Empty(t, monitor.Activities()) })
 }
 
@@ -396,20 +397,29 @@ func TestBar_Click(t *testing.T) {
 		bar.SetEnabledFunc(func() bool { return enabled })
 	})
 
-	// the bar starts at line 1, below the header
-	assert.True(t, mouse(t, app, bar, tview.MouseMove, 5, 2), "highlights the line")
+	// the bar starts at line 1, below the header, its lines below its border at line 2
+	assert.True(t, mouse(t, app, bar, tview.MouseMove, 5, 3), "highlights the line")
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, 1, bar.hovered) })
-	mouse(t, app, bar, tview.MouseLeftClick, 5, 2)
-	mouse(t, app, bar, tview.MouseLeftClick, 70, 1)
+	mouse(t, app, bar, tview.MouseLeftClick, 5, 3)
+	mouse(t, app, bar, tview.MouseLeftClick, 70, 2)
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank"}, clicked) })
 
+	// the border is no line
+	mouse(t, app, bar, tview.MouseLeftClick, 5, 1)
+	mouse(t, app, bar, tview.MouseLeftClick, 5, 4)
+	testutil.OnUiThread(t, app, func() {
+		assert.Equal(t, []string{"backup", "tank"}, clicked)
+		assert.Equal(t, noLine, bar.hovered)
+	})
+
 	// outside: the highlight goes away
-	assert.True(t, mouse(t, app, bar, tview.MouseMove, 5, 5))
+	mouse(t, app, bar, tview.MouseMove, 5, 3)
+	assert.True(t, mouse(t, app, bar, tview.MouseMove, 5, 7))
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, noLine, bar.hovered) })
 
 	// e.g. a dialog in front
 	testutil.OnUiThread(t, app, func() { enabled = false })
-	assert.False(t, mouse(t, app, bar, tview.MouseLeftClick, 5, 1))
+	assert.False(t, mouse(t, app, bar, tview.MouseLeftClick, 5, 2))
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, []string{"backup", "tank"}, clicked) })
 }
 
