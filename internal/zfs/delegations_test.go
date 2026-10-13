@@ -55,7 +55,7 @@ func TestLoadDatasetPermissions(t *testing.T) {
 }
 
 func TestDatasetPermissions_RootHasAll(t *testing.T) {
-	stubPermissions(t, identity{name: "root", uid: "0"}, "")
+	stubPermissions(t, Identity{Name: "root", Uid: "0"}, "")
 
 	permissions, err := LoadDatasetPermissions("pool/data")
 

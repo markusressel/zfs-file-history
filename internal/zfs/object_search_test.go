@@ -23,7 +23,7 @@ func setupSnapshotTree(t *testing.T, snapshots map[string][]string, order []stri
 		}
 	}
 	originalMounts, originalSnapshots := readZfsMounts, listSnapshotNames
-	readZfsMounts = func() ([]zfsMount, error) { return []zfsMount{{Name: "tank/home", Mountpoint: mountpoint}}, nil }
+	readZfsMounts = func() ([]Mount, error) { return []Mount{{Name: "tank/home", Mountpoint: mountpoint}}, nil }
 	listSnapshotNames = func(dataset string) ([]string, error) { return order, nil }
 	t.Cleanup(func() { readZfsMounts, listSnapshotNames = originalMounts, originalSnapshots })
 	return mountpoint

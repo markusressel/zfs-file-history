@@ -144,7 +144,7 @@ func parseDelegations(output string, dataset string) *Delegations {
 }
 
 // appliesTo returns whether the delegation applies to the user on the dataset the delegations were listed for.
-func (d *Delegations) appliesTo(delegation Delegation, who identity) bool {
+func (d *Delegations) appliesTo(delegation Delegation, who Identity) bool {
 	isSelf := delegation.Dataset == d.Dataset
 	switch delegation.Scope {
 	case ScopeLocal:
@@ -164,15 +164,15 @@ func (d *Delegations) appliesTo(delegation Delegation, who identity) bool {
 	case WhoEveryone:
 		return true
 	case WhoUser:
-		return delegation.Who == who.name || delegation.Who == who.uid
+		return delegation.Who == who.Name || delegation.Who == who.Uid
 	case WhoGroup:
-		return slices.Contains(who.groups, delegation.Who)
+		return slices.Contains(who.Groups, delegation.Who)
 	}
 	return false
 }
 
 // grants returns the permissions the user has on the dataset, with the delegations granting them.
-func (d *Delegations) grants(who identity) map[Permission][]Grant {
+func (d *Delegations) grants(who Identity) map[Permission][]Grant {
 	result := map[Permission][]Grant{}
 	var add func(names []string, grant Grant, depth int)
 	add = func(names []string, grant Grant, depth int) {
@@ -239,26 +239,25 @@ func (p *DatasetPermissions) KnownGranted() []Permission {
 
 // IsCurrentUserRoot returns whether the application runs as root, who has all permissions without delegations.
 func IsCurrentUserRoot() bool {
-	who, err := currentIdentity()
-	return err == nil && who.isRoot()
+	who, err := backend.CurrentIdentity()
+	return err == nil && who.IsRoot()
 }
 
 // LoadDatasetPermissions reads the delegations of the dataset ("zfs allow") and determines what the current user may
 // do on it. This spawns a zfs process, so it must not be called on the UI thread.
 func LoadDatasetPermissions(dataset string) (*DatasetPermissions, error) {
-	who, err := currentIdentity()
+	who, err := backend.CurrentIdentity()
 	if err != nil {
 		return nil, err
 	}
-	output, err := readDelegations(dataset)
+	delegations, err := backend.Delegations(dataset)
 	if err != nil {
 		return nil, err
 	}
-	delegations := parseDelegations(output, dataset)
 	return &DatasetPermissions{
 		Dataset:     dataset,
-		User:        who.name,
-		IsRoot:      who.isRoot(),
+		User:        who.Name,
+		IsRoot:      who.IsRoot(),
 		Delegations: delegations,
 		Grants:      delegations.grants(who),
 	}, nil

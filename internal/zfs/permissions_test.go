@@ -30,13 +30,13 @@ Local+Descendent permissions:
 	everyone userprop
 `
 
-var alice = identity{name: "alice", uid: "1001", groups: []string{"alice", "staff"}}
+var alice = Identity{Name: "alice", Uid: "1001", Groups: []string{"alice", "staff"}}
 
 func TestEffectivePermissions(t *testing.T) {
 	tests := []struct {
 		name     string
 		dataset  string
-		who      identity
+		who      Identity
 		expected []Permission
 	}{
 		{
@@ -58,13 +58,13 @@ func TestEffectivePermissions(t *testing.T) {
 		{
 			name:     "other user",
 			dataset:  "pool/data/child",
-			who:      identity{name: "bob", uid: "1002"},
+			who:      Identity{Name: "bob", Uid: "1002"},
 			expected: []Permission{"release", "userprop"},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := effectivePermissions(testDelegations, test.dataset, test.who)
+			result := parseDelegations(testDelegations, test.dataset).permissionsOf(test.who)
 			var granted []Permission
 			for permission := range result {
 				granted = append(granted, permission)
@@ -75,25 +75,25 @@ func TestEffectivePermissions(t *testing.T) {
 }
 
 func TestEffectivePermissions_NoDelegations(t *testing.T) {
-	assert.Empty(t, effectivePermissions("", "pool/data", alice))
+	assert.Empty(t, parseDelegations("", "pool/data").permissionsOf(alice))
 }
 
 func TestEffectivePermissions_OnlyAncestorsApply(t *testing.T) {
 	output := "---- Permissions on pool/data2 ----\nLocal+Descendent permissions:\n\tuser alice hold\n"
-	assert.Empty(t, effectivePermissions(output, "pool/data", alice), "pool/data2 is not an ancestor of pool/data")
+	assert.Empty(t, parseDelegations(output, "pool/data").permissionsOf(alice), "pool/data2 is not an ancestor of pool/data")
 }
 
 func TestEffectivePermissions_SetCycle(t *testing.T) {
 	output := "---- Permissions on pool ----\nPermission sets:\n\t@a hold,@b\n\t@b @a\nLocal+Descendent permissions:\n\tuser alice @a\n"
-	assert.Equal(t, map[Permission]bool{"hold": true}, effectivePermissions(output, "pool/data", alice))
+	assert.Equal(t, map[Permission]bool{"hold": true}, parseDelegations(output, "pool/data").permissionsOf(alice))
 }
 
 // stubPermissions replaces the current user and the delegations read from zfs.
-func stubPermissions(t *testing.T, who identity, delegations string) *[]string {
+func stubPermissions(t *testing.T, who Identity, delegations string) *[]string {
 	originalIdentity, originalRead := currentIdentity, readDelegations
 	t.Cleanup(func() { currentIdentity, readDelegations = originalIdentity, originalRead })
 	var read []string
-	currentIdentity = func() (identity, error) { return who, nil }
+	currentIdentity = func() (Identity, error) { return who, nil }
 	readDelegations = func(dataset string) (string, error) {
 		read = append(read, dataset)
 		return delegations, nil
@@ -119,7 +119,7 @@ func TestCheckPermissions(t *testing.T) {
 }
 
 func TestCheckPermissions_RootIsNotChecked(t *testing.T) {
-	read := stubPermissions(t, identity{name: "root", uid: "0"}, "")
+	read := stubPermissions(t, Identity{Name: "root", Uid: "0"}, "")
 	assert.NoError(t, checkPermissions("destroy the snapshot", PermissionGap{"pool/data", destroyPermissions}))
 	assert.Empty(t, *read)
 }
@@ -219,7 +219,7 @@ func TestMissingPermissionsError_Verify(t *testing.T) {
 	assert.NoError(t, missing.Verify())
 
 	// root has all permissions
-	stubPermissions(t, identity{name: "root", uid: "0"}, "")
+	stubPermissions(t, Identity{Name: "root", Uid: "0"}, "")
 	assert.NoError(t, missing.Verify())
 }
 

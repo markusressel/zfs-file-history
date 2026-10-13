@@ -21,32 +21,18 @@ type DestroyPreview struct {
 // would be freed by destroying them together is reported (which can be more than the sum of the single snapshots).
 // This spawns zfs processes, so it must not be called on the UI thread.
 func PreviewDestroySnapshots(snapshots []*Snapshot, recursive bool, dependantClones bool) (*DestroyPreview, error) {
-	target, err := destroyTarget(snapshots)
+	dataset, names, err := destroyTarget(snapshots)
 	if err != nil {
 		return nil, err
 	}
 	// the dry run succeeds without permissions, so the destroy would only fail after the confirmation
 	if err := checkPermissions(destroyAction(len(snapshots)), PermissionGap{
-		Dataset:     datasetOfSnapshot(snapshots[0].FullName),
+		Dataset:     dataset,
 		Permissions: destroyPermissions,
 	}); err != nil {
 		return nil, err
 	}
-
-	args := []string{"destroy", "-n", "-v", "-p"}
-	if recursive {
-		args = append(args, "-r")
-	}
-	if dependantClones {
-		args = append(args, "-R")
-	}
-	args = append(args, target)
-
-	output, err := runZfs(args...)
-	if err != nil {
-		return nil, err
-	}
-	return parseDestroyPreview(output)
+	return backend.PreviewDestroySnapshots(dataset, names, recursive, dependantClones)
 }
 
 // destroyPermissions are the permissions needed to destroy snapshots.
@@ -59,27 +45,28 @@ func destroyAction(count int) string {
 	return "destroy the snapshots"
 }
 
-// destroyTarget returns the argument for "zfs destroy" for the given snapshots, e.g. "pool/data@a,b".
-func destroyTarget(snapshots []*Snapshot) (string, error) {
+// destroyTarget returns the dataset of the given snapshots and their names (behind the "@"), e.g. "pool/data" and
+// ["a", "b"]. They must all belong to the same dataset.
+func destroyTarget(snapshots []*Snapshot) (dataset string, names []string, err error) {
 	if len(snapshots) == 0 {
-		return "", errors.New("no snapshots to destroy")
+		return "", nil, errors.New("no snapshots to destroy")
 	}
 
 	datasetName := ""
-	names := make([]string, 0, len(snapshots))
+	names = make([]string, 0, len(snapshots))
 	for _, snapshot := range snapshots {
 		snapshotDataset, snapshotName, found := strings.Cut(snapshot.FullName, "@")
 		if !found || snapshotDataset == "" || snapshotName == "" {
-			return "", fmt.Errorf("invalid snapshot name: %s", snapshot.FullName)
+			return "", nil, fmt.Errorf("invalid snapshot name: %s", snapshot.FullName)
 		}
 		if datasetName == "" {
 			datasetName = snapshotDataset
 		} else if datasetName != snapshotDataset {
-			return "", fmt.Errorf("snapshots of different datasets: %s and %s", datasetName, snapshotDataset)
+			return "", nil, fmt.Errorf("snapshots of different datasets: %s and %s", datasetName, snapshotDataset)
 		}
 		names = append(names, snapshotName)
 	}
-	return datasetName + "@" + strings.Join(names, ","), nil
+	return datasetName, names, nil
 }
 
 // parseDestroyPreview parses the output of "zfs destroy -nvp", e.g.:

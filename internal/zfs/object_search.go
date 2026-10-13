@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -47,23 +46,6 @@ type ObjectSearchProgress struct {
 // objectSearchWorkers is the number of folders read at the same time while searching a snapshot.
 const objectSearchWorkers = 8
 
-// listSnapshotNames returns the names (behind the "@") of the snapshots of the dataset, the newest first.
-// Replaceable in tests.
-var listSnapshotNames = func(dataset string) ([]string, error) {
-	output, err := runZfs("list", "-H", "-o", "name", "-s", "creation", "-t", "snapshot", "-d", "1", dataset)
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		if _, name, ok := strings.Cut(line, "@"); ok {
-			names = append(names, name)
-		}
-	}
-	slices.Reverse(names)
-	return names, nil
-}
-
 // FindObjects looks for the damaged objects whose path ZFS does not know (e.g. "tank/data:<0x1c2a>", a file that
 // was deleted since) in the snapshots of their datasets, by their inode number: on ZFS, it is the object number.
 // The snapshots are searched from the newest to the oldest. Once an object was found, the older snapshots are only
@@ -75,7 +57,7 @@ var listSnapshotNames = func(dataset string) ([]string, error) {
 // file found this way is the damaged one only probably. progress is called from the goroutine of the search. It
 // reads whole snapshots, so it must not be called on the UI thread.
 func FindObjects(ctx context.Context, index *DataErrorIndex, progress func(ObjectSearchProgress)) (map[ObjectKey][]ObjectLocation, error) {
-	mounts, err := readZfsMounts()
+	mounts, err := backend.Mounts()
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +97,7 @@ func FindObjects(ctx context.Context, index *DataErrorIndex, progress func(Objec
 			// not mounted: not searched, so not in the result
 			continue
 		}
-		snapshots, err := listSnapshotNames(dataset)
+		snapshots, err := backend.ListSnapshotNames(dataset)
 		if err != nil {
 			return nil, err
 		}
@@ -198,7 +180,7 @@ func (index *DataErrorIndex) HasUnresolvedObjects() bool {
 }
 
 // mountpointOf returns where the dataset is mounted.
-func mountpointOf(dataset string, mounts []zfsMount) (string, bool) {
+func mountpointOf(dataset string, mounts []Mount) (string, bool) {
 	for _, mount := range mounts {
 		if mount.Name == dataset {
 			return mount.Mountpoint, true

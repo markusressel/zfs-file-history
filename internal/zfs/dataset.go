@@ -50,17 +50,13 @@ type Dataset struct {
 }
 
 func findDatasetNameByMountpoint(mountpoint string) (string, error) {
-	data, err := os.ReadFile("/proc/mounts")
+	mounts, err := backend.Mounts()
 	if err != nil {
 		return "", err
 	}
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[2] == "zfs" {
-			if gopath.Clean(fields[1]) == gopath.Clean(mountpoint) {
-				return fields[0], nil
-			}
+	for _, mount := range mounts {
+		if gopath.Clean(mount.Mountpoint) == gopath.Clean(mountpoint) {
+			return mount.Name, nil
 		}
 	}
 	return "", fmt.Errorf("no zfs mount found for mountpoint: %s", mountpoint)
@@ -446,26 +442,10 @@ func (entry DatasetListEntry) TableRowId() string {
 	return entry.Name
 }
 
-// datasetListProperties are the properties requested by ListAllDatasets, in the order parseDatasetList expects them.
-// The mountpoint is last, so it may contain any character but a newline.
-var datasetListProperties = []string{"name", "used", "available", "usedbysnapshots", "usedbydataset", "usedbychildren", "usedbyrefreservation", "mountpoint"}
-
 // ListAllDatasets returns the listing properties of all filesystem datasets on the system.
 // This executes "zfs list" and reads /proc/mounts, so it must not be called on the UI thread.
 func ListAllDatasets() ([]*DatasetListEntry, error) {
-	output, err := runZfs("list", "-H", "-p", "-t", "filesystem", "-o", strings.Join(datasetListProperties, ","))
-	if err != nil {
-		return nil, err
-	}
-
-	mountPaths := map[string]string{}
-	mounts, err := os.Open("/proc/mounts")
-	if err == nil {
-		mountPaths = parseZfsMountPaths(mounts)
-		_ = mounts.Close()
-	}
-
-	return parseDatasetList(output, mountPaths)
+	return backend.ListDatasets()
 }
 
 // parseDatasetList parses the output of "zfs list -Hp -o <datasetListProperties>". mountPaths maps the names of

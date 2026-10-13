@@ -1,9 +1,6 @@
 package zfs
 
 import (
-	"errors"
-	"os"
-	"os/exec"
 	"path"
 	"slices"
 	"strconv"
@@ -213,35 +210,13 @@ func (index *DataErrorIndex) DamagedInSnapshot(fullName string) int {
 	return index.bySnapshot[fullName]
 }
 
-// zfsMount is a mounted ZFS dataset or snapshot, see readZfsMounts.
-type zfsMount struct {
-	// Name is the name of the dataset, or the full name of the snapshot (snapshots are mounted below .zfs/snapshot
-	// when they are accessed)
-	Name       string
-	Mountpoint string
-}
-
-// readZfsMounts returns the mounted ZFS datasets and snapshots. Replaceable in tests.
-var readZfsMounts = func() ([]zfsMount, error) {
-	file, err := os.Open("/proc/mounts")
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var mounts []zfsMount
-	for name, mountpoint := range parseZfsMountPaths(file) {
-		mounts = append(mounts, zfsMount{Name: name, Mountpoint: mountpoint})
-	}
-	return mounts, nil
-}
-
 // parseDataError parses a damaged object listed by "zpool status -v" of the pool (see PoolStatus.ErrorEntries),
 // using the mounts to find its dataset and live path. The forms are:
 //   - "/home/user/file": a file in a mounted dataset (or in a snapshot mounted below .zfs/snapshot)
 //   - "tank/data@daily:/file": a file in a snapshot, "tank/data:/file" in a dataset that is not mounted
 //   - "tank/data:<0x1b>": an object whose path is not known, e.g. a deleted file
 //   - "<metadata>:<0x1b>", "<0x15>:<0x1b>": metadata, or an object in a dataset that is gone
-func parseDataError(pool string, entry string, mounts []zfsMount) DataError {
+func parseDataError(pool string, entry string, mounts []Mount) DataError {
 	dataError := DataError{Pool: pool, Entry: entry}
 	switch {
 	case strings.HasPrefix(entry, "<"):
@@ -280,8 +255,8 @@ func parseDataError(pool string, entry string, mounts []zfsMount) DataError {
 }
 
 // mountOf returns the mount the path is in: the one with the longest mountpoint that contains it.
-func mountOf(filePath string, mounts []zfsMount) (zfsMount, bool) {
-	var found zfsMount
+func mountOf(filePath string, mounts []Mount) (Mount, bool) {
+	var found Mount
 	ok := false
 	for _, mount := range mounts {
 		if isBelowOrSame(filePath, mount.Mountpoint) && (!ok || len(mount.Mountpoint) > len(found.Mountpoint)) {
@@ -315,24 +290,11 @@ func indexOfAny(text string, substrings ...string) int {
 // whose list still cannot be read are DataErrorIndex.Unavailable. This spawns processes, so it must not be called
 // on the UI thread.
 func ListDataErrors() (*DataErrorIndex, error) {
-	statuses, err := listDataErrorStatuses(false)
+	statuses, unavailable, err := backend.DataErrorStatuses()
 	if err != nil {
 		return nil, err
 	}
-	// root (also with sudo) gets the lists of all pools: a missing errors field has another reason then
-	var unavailable []string
-	if !isRoot() {
-		unavailable = deniedPools(statuses)
-	}
-	if len(unavailable) > 0 {
-		sudoStatuses, sudoErr := listDataErrorStatuses(true)
-		if sudoErr == nil {
-			statuses, unavailable = sudoStatuses, nil
-		} else if !strings.HasPrefix(sudoErr.Error(), "sudo:") && !errors.Is(sudoErr, exec.ErrNotFound) {
-			return nil, sudoErr
-		}
-	}
-	mounts, err := readZfsMounts()
+	mounts, err := backend.Mounts()
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +309,9 @@ func ListDataErrors() (*DataErrorIndex, error) {
 		}
 	}
 	index := NewDataErrorIndex(dataErrors, unavailable)
-	index.WithoutHeadErrlog = poolsWithoutHeadErrlog(withErrors)
+	if len(withErrors) > 0 {
+		index.WithoutHeadErrlog = backend.PoolsWithoutHeadErrlog(withErrors)
+	}
 	return index, nil
 }
 
@@ -360,43 +324,6 @@ const headErrlogFeature = "feature@head_errlog"
 func EnableHeadErrlogCommand(pool string) string {
 	return "sudo zpool set " + headErrlogFeature + "=enabled " + pool
 }
-
-// poolsWithoutHeadErrlog returns the pools of the given ones whose feature head_errlog is disabled. It needs no
-// root. Empty if it cannot be read (e.g. a version of ZFS without the feature).
-func poolsWithoutHeadErrlog(pools []string) []string {
-	if len(pools) == 0 {
-		return nil
-	}
-	output, err := runPoolCommand("zpool", append([]string{"get", "-H", "-o", "name,value", headErrlogFeature}, pools...)...)
-	if err != nil {
-		return nil
-	}
-	var disabled []string
-	for _, line := range strings.Split(output, "\n") {
-		if name, value, ok := strings.Cut(line, "\t"); ok && strings.TrimSpace(value) == "disabled" {
-			disabled = append(disabled, name)
-		}
-	}
-	return disabled
-}
-
-// listDataErrorStatuses returns the statuses of all pools with their damaged files, with "sudo -n" if asked to.
-func listDataErrorStatuses(sudo bool) ([]*PoolStatus, error) {
-	var output string
-	var err error
-	if sudo {
-		output, err = runSudoCommand(append([]string{"-n", ZpoolPath()}, dataErrorsArgs...)...)
-	} else {
-		output, err = runPoolCommand("zpool", dataErrorsArgs...)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return parsePoolStatuses(output)
-}
-
-// isRoot returns whether the application runs as root. Replaceable in tests.
-var isRoot = func() bool { return os.Geteuid() == 0 }
 
 // deniedPools returns the pools whose damaged files were not listed because it needs root: their errors field is
 // missing (see dataErrorsDenied). Only for the output of zpool run by another user than root.

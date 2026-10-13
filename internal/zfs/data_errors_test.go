@@ -11,7 +11,7 @@ import (
 
 // testMounts are the mounts of the damaged files in testdata/zpool-status-data-errors-verbose.txt: the home dataset
 // and one of its snapshots (mounted while accessed), rpool/data is not mounted.
-var testMounts = []zfsMount{
+var testMounts = []Mount{
 	{Name: "rpool/ROOT/ubuntu", Mountpoint: "/"},
 	{Name: "rpool/USERDATA/home", Mountpoint: "/home"},
 	{Name: "rpool/USERDATA/home@daily", Mountpoint: "/home/.zfs/snapshot/daily"},
@@ -140,7 +140,7 @@ func setupFakeDataErrors(t *testing.T, zpoolOutput string, sudoOutput string, su
 		fake.commands = append(fake.commands, "sudo "+strings.Join(args, " "))
 		return sudoOutput, sudoErr
 	}
-	readZfsMounts = func() ([]zfsMount, error) { return testMounts, nil }
+	readZfsMounts = func() ([]Mount, error) { return testMounts, nil }
 	originalRoot := isRoot
 	isRoot = func() bool { return false }
 	t.Cleanup(func() {
@@ -201,12 +201,12 @@ func TestPoolsWithoutHeadErrlog(t *testing.T) {
 	runPoolCommand = func(name string, args ...string) (string, error) {
 		return "rpool\tdisabled\ntank\tactive\nbackup\tenabled\n", nil
 	}
-	assert.Equal(t, []string{"rpool"}, poolsWithoutHeadErrlog([]string{"rpool", "tank", "backup"}))
-	assert.Nil(t, poolsWithoutHeadErrlog(nil))
+	assert.Equal(t, []string{"rpool"}, System{}.PoolsWithoutHeadErrlog([]string{"rpool", "tank", "backup"}))
+	assert.Nil(t, System{}.PoolsWithoutHeadErrlog(nil))
 
 	// e.g. a version of ZFS without the feature
 	runPoolCommand = func(name string, args ...string) (string, error) { return "", errors.New("bad property list") }
-	assert.Nil(t, poolsWithoutHeadErrlog([]string{"rpool"}))
+	assert.Nil(t, System{}.PoolsWithoutHeadErrlog([]string{"rpool"}))
 
 	assert.Equal(t, "sudo zpool set feature@head_errlog=enabled rpool", EnableHeadErrlogCommand("rpool"))
 }

@@ -1,9 +1,7 @@
 package zfs
 
 import (
-	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -28,15 +26,7 @@ func ListHolds(snapshotNames []string, recursive bool) ([]Hold, error) {
 	if len(snapshotNames) == 0 {
 		return nil, nil
 	}
-	args := []string{"holds", "-H", "-p"}
-	if recursive {
-		args = append(args, "-r")
-	}
-	output, err := runZfs(append(args, snapshotNames...)...)
-	if err != nil {
-		return nil, err
-	}
-	return parseHolds(output)
+	return backend.ListHolds(snapshotNames, recursive)
 }
 
 // HoldSnapshots adds a hold with HoldTag to the snapshots with the given full names.
@@ -46,7 +36,7 @@ func HoldSnapshots(snapshotNames []string) error {
 	if len(snapshotNames) == 0 {
 		return nil
 	}
-	_, err := runZfs(append([]string{"hold", HoldTag}, snapshotNames...)...)
+	err := backend.Hold(HoldTag, snapshotNames)
 	return explainPermissionError(err, "hold snapshots", snapshotPermissionGaps(snapshotNames, PermissionHold)...)
 }
 
@@ -57,7 +47,7 @@ func ReleaseSnapshots(snapshotNames []string) error {
 	if len(snapshotNames) == 0 {
 		return nil
 	}
-	_, err := runZfs(append([]string{"release", HoldTag}, snapshotNames...)...)
+	err := backend.Release(HoldTag, snapshotNames)
 	return explainPermissionError(err, "release holds", snapshotPermissionGaps(snapshotNames, PermissionRelease)...)
 }
 
@@ -81,24 +71,4 @@ func parseHolds(output string) ([]Hold, error) {
 		holds = append(holds, Hold{Snapshot: fields[0], Tag: fields[1], Created: time.Unix(timestamp, 0)})
 	}
 	return holds, nil
-}
-
-// runZfs runs the zfs command with the given arguments and returns its output.
-// If it fails, the error contains the message zfs printed, if any.
-func runZfs(args ...string) (string, error) {
-	return runCommand("zfs", args...)
-}
-
-// runCommand runs the command with the given arguments and returns its output.
-// If it fails, the error contains the message the command printed, if any.
-func runCommand(name string, args ...string) (string, error) {
-	output, err := exec.Command(name, args...).Output()
-	if err != nil {
-		var exitError *exec.ExitError
-		if errors.As(err, &exitError) && len(strings.TrimSpace(string(exitError.Stderr))) > 0 {
-			return "", errors.New(strings.TrimSpace(string(exitError.Stderr)))
-		}
-		return "", err
-	}
-	return string(output), nil
 }

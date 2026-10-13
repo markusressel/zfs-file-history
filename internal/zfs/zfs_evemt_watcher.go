@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"io"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,21 +16,10 @@ import (
 // poolsChangedThrottle is the most often PoolsChanged is emitted, see WatchZpoolEvents.
 const poolsChangedThrottle = time.Second
 
-// WatchZpoolEvents spawns `zpool events -v -f` and listens for changes in real-time: of the snapshots (and pools
-// created, destroyed, imported or exported), which reload all ZFS data (see RefreshZfsData), and of the state of
-// the pools, which only reload the pools (see PoolsChanged).
+// WatchZpoolEvents listens for changes in real-time (see Backend.WatchEvents, `zpool events -v -f` on the system):
+// of the snapshots (and pools created, destroyed, imported or exported), which reload all ZFS data (see
+// RefreshZfsData), and of the state of the pools, which only reload the pools (see PoolsChanged).
 func WatchZpoolEvents(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "sudo", "-n", ZpoolPath(), "events", "-v", "-f")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
 	var updateTimer *time.Timer
 	var poolsTimer *time.Timer
 	var updateMtx sync.Mutex
@@ -68,17 +56,7 @@ func WatchZpoolEvents(ctx context.Context) error {
 		})
 	}
 
-	// Capture the exact time the watcher starts to filter out old backlog events
-	startTime := time.Now()
-
-	// Parse the stream and pass the startTime to filter the backlog
-	parseZpoolEvents(stdout, startTime, debouncedUpdate, throttledPoolsUpdate)
-
-	if err := cmd.Wait(); err != nil {
-		return err
-	}
-
-	return nil
+	return backend.WatchEvents(ctx, debouncedUpdate, throttledPoolsUpdate)
 }
 
 // poolEventClasses are the classes of the events about the state of pools and their devices (see zpool-events(8)),
