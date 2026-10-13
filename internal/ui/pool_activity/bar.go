@@ -26,9 +26,10 @@ var kindTitles = map[string]string{
 
 // Bar shows the operations running on the pools (see Monitor), one line each: what runs on which pool, a progress
 // bar with the progress written into it, and the time left, e.g.
-// " Resilver  tank  [ 31.8%  1.02T / 3.21T  294M/s        ]  02:10:31 to go". The columns are aligned, so all bars
-// start and end at the same column. It has no height while nothing runs, see SetOnHeightChanged. A click on a line
-// runs the function set with SetOnClick.
+// " Resilver  tank  [ 31.8%  1.02T / 3.21T  294M/s        ]    2h 10m to go". The columns are aligned, so all bars
+// start and end at the same column. It has no height while nothing runs, see SetOnHeightChanged. A click on the time
+// left shows the ETA instead (see Monitor.CycleTimeLeftMode), a click on the rest of a line runs the function set with
+// SetOnClick.
 type Bar struct {
 	*linePanel
 	// monitor is only accessed on the UI thread
@@ -49,10 +50,18 @@ func NewBar(monitor *Monitor) *Bar {
 
 // SetOnClick sets the function called with the clicked activity. Must be called on the UI thread.
 func (bar *Bar) SetOnClick(onClick func(activity zfs.PoolActivity)) {
-	bar.onClickLine = func(line int) {
-		if activities := bar.monitor.Activities(); line < len(activities) {
-			onClick(activities[line])
+	bar.onClickLine = func(line int, column int) {
+		activities := bar.monitor.Activities()
+		if line >= len(activities) {
+			return
 		}
+		_, _, width, _ := bar.GetInnerRect()
+		layout := layoutLines(activities, width, bar.monitor.TimeLeftMode())[line]
+		if layout.remaining != "" && column >= layout.barStart+layout.barWidth {
+			bar.monitor.CycleTimeLeftMode()
+			return
+		}
+		onClick(activities[line])
 	}
 }
 
@@ -62,7 +71,7 @@ func (bar *Bar) Draw(screen tcell.Screen) {
 	x, y, width, height := bar.GetInnerRect()
 	activities := bar.monitor.Activities()
 	bar.drawHover(screen, theme.Colors.Activity.HoverBackground)
-	lines := layoutLines(activities, width)
+	lines := layoutLines(activities, width, bar.monitor.TimeLeftMode())
 	for i, line := range lines {
 		if i >= height {
 			break
@@ -83,23 +92,19 @@ type activityLine struct {
 	barStart int
 	barWidth int
 	barText  string
-	// remaining is the time left behind the bar (e.g. "  02:10:31 to go"), "" if it is written into the bar or not
-	// known
+	// remaining is the time left behind the bar (e.g. "    2h 10m to go"), "" if it is written into the bar
 	remaining string
 }
 
 // layoutLines lays out the lines of the activities for the given width: the labels (see formatLabels), the progress
-// bars, as wide as fits, and the time left behind them. All bars have the same width, so they
-// end at the same column, with space for the longest time left behind them (and one column of padding, like in
-// front of the labels). An activity whose time left is not known yet shows a placeholder of the same width (see
-// formatRemaining), so the bars do not shrink once it is (e.g. a TRIM, estimated after a while). If the bars would
+// bars, as wide as fits, and the time left behind them. All bars have the same width, so they end at the same
+// column, with space for the time left behind them (and one column of padding, like in front of the labels). The
+// time left (as chosen by mode) always has the same width (see formatTimeLeft), also while it is not known yet (e.g. a
+// TRIM, estimated after a while), so the bars do not change their width while an activity runs. If the bars would
 // get narrower than minBarWidthWithRemaining that way, the time left is written into the bars instead.
-func layoutLines(activities []zfs.PoolActivity, width int) []activityLine {
+func layoutLines(activities []zfs.PoolActivity, width int, mode TimeLeftMode) []activityLine {
 	labels, labelWidth := formatLabels(activities)
-	remainingWidth := 0
-	for _, activity := range activities {
-		remainingWidth = max(remainingWidth, utf8.RuneCountInString(formatRemaining(activity.Remaining)))
-	}
+	remainingWidth := utf8.RuneCountInString(formatRemaining(zfs.PoolActivity{}, mode))
 	barWidth := width - labelWidth - remainingWidth - 1
 	besideBar := barWidth >= minBarWidthWithRemaining
 	if !besideBar {
@@ -110,25 +115,18 @@ func layoutLines(activities []zfs.PoolActivity, width int) []activityLine {
 	for i, activity := range activities {
 		line := activityLine{label: labels[i], barStart: labelWidth, barWidth: barWidth}
 		if besideBar {
-			line.remaining = txwidgets.Span(theme.Colors.Activity.Remaining, "%s", formatRemaining(activity.Remaining))
-			activity.Remaining = ""
+			line.remaining = txwidgets.Span(theme.Colors.Activity.Remaining, "%s", formatRemaining(activity, mode))
+			activity.RemainingKnown = false
 		}
-		line.barText = barText(activity, barWidth)
+		line.barText = barText(activity, barWidth, mode)
 		lines = append(lines, line)
 	}
 	return lines
 }
 
-// remainingPlaceholder stands for a time left that is not known yet, as wide as most (e.g. "02:10:31").
-const remainingPlaceholder = "--:--:--"
-
-// formatRemaining returns the time left behind a progress bar, e.g. "  02:10:31 to go", with remainingPlaceholder
-// if not known.
-func formatRemaining(remaining string) string {
-	if remaining == "" {
-		remaining = remainingPlaceholder
-	}
-	return "  " + remaining + " to go"
+// formatRemaining returns the time left behind a progress bar, e.g. "    2h 10m to go", see formatTimeLeft.
+func formatRemaining(activity zfs.PoolActivity, mode TimeLeftMode) string {
+	return "  " + formatTimeLeft(activity, mode)
 }
 
 // partialBlocks are the characters of a cell filled from the left by 1 to 7 eighths, see drawProgressBar.
@@ -208,11 +206,11 @@ func formatLabels(activities []zfs.PoolActivity) (labels []string, width int) {
 }
 
 // barText returns the text written into the middle of the progress bar of the activity, for a bar of the given
-// width: the percentage, how much is done, how fast it goes and the time left, e.g. " 31.8%  1.02T / 3.21T  294M/s
-// 02:10:31 to go". The numbers are padded to the widest they get (sizes are printed with at most 3 digits by zpool,
+// width: the percentage, how much is done, how fast it goes and the time left, e.g.
+// " 31.8%  1.02T / 3.21T  294M/s    2h 10m to go". The numbers are padded to the widest they get (sizes are printed with at most 3 digits by zpool,
 // e.g. "1.02T" or "999G"), so the text does not move while they change. If it does not fit (with a space on each
 // side), the least important parts are left out: first the amount, then the rate, then the time left.
-func barText(activity zfs.PoolActivity, width int) string {
+func barText(activity zfs.PoolActivity, width int, mode TimeLeftMode) string {
 	percent := fmt.Sprintf("%5.1f%%", min(max(activity.Progress, 0), 100))
 	amount := ""
 	if activity.Processed != "" && activity.Total != "" {
@@ -223,8 +221,8 @@ func barText(activity zfs.PoolActivity, width int) string {
 		rate = fmt.Sprintf("%7s", activity.Rate)
 	}
 	remaining := ""
-	if activity.Remaining != "" {
-		remaining = activity.Remaining + " to go"
+	if activity.RemainingKnown {
+		remaining = formatTimeLeft(activity, mode)
 	}
 	// the parts in order of importance: the last one is left out first
 	candidates := [][]string{

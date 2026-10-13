@@ -297,7 +297,8 @@ func TestPoolStatus_Activities(t *testing.T) {
 		file     string
 		expected []PoolActivity
 	}{
-		"resilver": {"zpool-status-resilvering.txt", []PoolActivity{{Pool: "tank", Kind: "resilver", Progress: 31.77, Remaining: "02:10:31",
+		"resilver": {"zpool-status-resilvering.txt", []PoolActivity{{Pool: "tank", Kind: "resilver", Progress: 31.77,
+			Remaining: 2*time.Hour + 10*time.Minute + 31*time.Second, RemainingKnown: true,
 			Processed: "1.02T", Total: "3.21T", Rate: "294M/s"}}},
 		// nothing issued yet: the rate of scanning
 		"scrub without estimate": {"zpool-status-scrubbing.txt", []PoolActivity{{Pool: "backup", Kind: "scrub", Progress: 0,
@@ -329,8 +330,9 @@ func TestPoolStatus_Activities_OtherFields(t *testing.T) {
 
 	// a paused scrub does not run
 	assert.Equal(t, []PoolActivity{
-		{Pool: "tank", Kind: "remove", Progress: 42, Remaining: "0h48m", Processed: "2.10G", Total: "5.00G", Rate: "1.00M/s"},
-		{Pool: "tank", Kind: "expand", Progress: 26.97, Remaining: "0 days 07:53:32", Processed: "1.23T", Total: "4.56T", Rate: "123M/s"},
+		{Pool: "tank", Kind: "remove", Progress: 42, Remaining: 48 * time.Minute, RemainingKnown: true, Processed: "2.10G", Total: "5.00G", Rate: "1.00M/s"},
+		{Pool: "tank", Kind: "expand", Progress: 26.97, Remaining: 7*time.Hour + 53*time.Minute + 32*time.Second,
+			RemainingKnown: true, Processed: "1.23T", Total: "4.56T", Rate: "123M/s"},
 	}, status.Activities())
 }
 
@@ -352,7 +354,7 @@ func TestParsePoolStatus_Trim(t *testing.T) {
 	setNow(t, time.Date(2026, 10, 13, 11, 0, 1, 0, time.Local))
 	assert.True(t, status.IsTrimming())
 	assert.Equal(t, 50.0, status.TrimProgress())
-	assert.Equal(t, []PoolActivity{{Pool: "fast", Kind: "trim", Progress: 50, Remaining: "01:30:00"}}, status.Activities())
+	assert.Equal(t, []PoolActivity{{Pool: "fast", Kind: "trim", Progress: 50, Remaining: 90 * time.Minute, RemainingKnown: true}}, status.Activities())
 }
 
 func TestPoolStatus_TrimProgress(t *testing.T) {
@@ -447,9 +449,23 @@ func TestPoolStatus_TrimRemaining(t *testing.T) {
 	}
 }
 
-func TestFormatRemaining(t *testing.T) {
-	assert.Equal(t, "00:00:00", formatRemaining(0))
-	assert.Equal(t, "02:10:31", formatRemaining(2*time.Hour+10*time.Minute+31*time.Second+600*time.Millisecond))
-	assert.Equal(t, "23:59:59", formatRemaining(24*time.Hour-time.Second))
-	assert.Equal(t, "1 days 07:53:32", formatRemaining(31*time.Hour+53*time.Minute+32*time.Second))
+func TestParseRemaining(t *testing.T) {
+	tests := []struct {
+		text      string
+		remaining time.Duration
+		known     bool
+	}{
+		{"31.77% done, 02:10:31 to go", 2*time.Hour + 10*time.Minute + 31*time.Second, true},
+		{"31.77% done, 00:00:00 to go", 0, true},
+		{"31.77% done, 1 days 07:53:32 to go", 31*time.Hour + 53*time.Minute + 32*time.Second, true},
+		{"26.97% done, 0 days 07:53:32 to go", 7*time.Hour + 53*time.Minute + 32*time.Second, true},
+		{"42.00% done, 2h48m to go", 2*time.Hour + 48*time.Minute, true},
+		{"0.00% done, no estimated completion time", 0, false},
+		{"42.00% done, soon to go", 0, false},
+	}
+	for _, test := range tests {
+		remaining, known := parseRemaining(test.text)
+		assert.Equal(t, test.known, known, test.text)
+		assert.Equal(t, test.remaining, remaining, test.text)
+	}
 }

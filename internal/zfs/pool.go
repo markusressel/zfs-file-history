@@ -194,17 +194,6 @@ func (status *PoolStatus) TrimRemaining() (time.Duration, bool) {
 	return remaining, known
 }
 
-// formatRemaining formats a time left like zpool status does, e.g. "02:10:31" or "1 days 07:53:32".
-func formatRemaining(remaining time.Duration) string {
-	seconds := int64(remaining.Seconds())
-	days, seconds := seconds/86400, seconds%86400
-	clock := fmt.Sprintf("%02d:%02d:%02d", seconds/3600, seconds%3600/60, seconds%60)
-	if days > 0 {
-		return fmt.Sprintf("%d days %s", days, clock)
-	}
-	return clock
-}
-
 // TrimProgress returns how much of the running TRIM is done in percent (the average of the devices being trimmed),
 // or -1 if none is running.
 func (status *PoolStatus) TrimProgress() float64 {
@@ -436,8 +425,10 @@ type PoolActivity struct {
 	Kind string
 	// Progress is how much is done in percent
 	Progress float64
-	// Remaining is the estimated time left as printed by zpool status, e.g. "02:10:31", "" if not known
-	Remaining string
+	// Remaining is the estimated time left, if RemainingKnown. zpool status prints it in several formats (see
+	// parseRemaining), so it is up to the UI to show it in one.
+	Remaining      time.Duration
+	RemainingKnown bool
 	// Processed and Total are how much is done of how much as printed by zpool status (e.g. "1.02T" of "3.21T"),
 	// and Rate how fast it goes (e.g. "294M/s"). "" if not known (e.g. the rate of a paused scrub).
 	Processed string
@@ -454,21 +445,21 @@ func (status *PoolStatus) Activities() []PoolActivity {
 		if kind == "" {
 			kind = "scan"
 		}
-		activity := PoolActivity{Pool: status.Name, Kind: kind, Progress: status.ScanProgress, Remaining: parseRemaining(status.Scan)}
+		activity := PoolActivity{Pool: status.Name, Kind: kind, Progress: status.ScanProgress}
+		activity.Remaining, activity.RemainingKnown = parseRemaining(status.Scan)
 		activity.Processed, activity.Total, activity.Rate = parseAmounts(status.Scan)
 		activities = append(activities, activity)
 	}
 	if progress := status.TrimProgress(); progress >= 0 {
 		activity := PoolActivity{Pool: status.Name, Kind: "trim", Progress: progress}
 		// zpool status does not estimate the time left of a TRIM
-		if remaining, ok := status.TrimRemaining(); ok {
-			activity.Remaining = formatRemaining(remaining)
-		}
+		activity.Remaining, activity.RemainingKnown = status.TrimRemaining()
 		activities = append(activities, activity)
 	}
 	for _, other := range status.Other {
 		if strings.Contains(other.Value, "in progress") {
-			activity := PoolActivity{Pool: status.Name, Kind: other.Name, Progress: parseProgress(other.Value), Remaining: parseRemaining(other.Value)}
+			activity := PoolActivity{Pool: status.Name, Kind: other.Name, Progress: parseProgress(other.Value)}
+			activity.Remaining, activity.RemainingKnown = parseRemaining(other.Value)
 			activity.Processed, activity.Total, activity.Rate = parseAmounts(other.Value)
 			activities = append(activities, activity)
 		}
@@ -510,12 +501,31 @@ func parseAmounts(text string) (processed string, total string, rate string) {
 	return processed, total, rate
 }
 
-// parseRemaining returns the estimated time left of a running operation (see remainingPattern), "" if not known.
-func parseRemaining(text string) string {
-	if match := remainingPattern.FindStringSubmatch(text); match != nil {
-		return strings.TrimSpace(match[1])
+// remainingFormats are the formats of the time left printed by zpool status: a scrub or resilver ("02:10:31", "1 days
+// 07:53:32"), a raidz expansion ("0 days 07:53:32") and the removal of a device ("0h48m").
+var remainingFormats = []*regexp.Regexp{
+	regexp.MustCompile(`^(?:([0-9]+) days )?([0-9]+):([0-9]{2}):([0-9]{2})$`),
+	regexp.MustCompile(`^()([0-9]+)h([0-9]+)m()$`),
+}
+
+// parseRemaining returns the estimated time left of a running operation (see remainingPattern), false if not known
+// (e.g. "no estimated completion time", or a format not in remainingFormats).
+func parseRemaining(text string) (time.Duration, bool) {
+	match := remainingPattern.FindStringSubmatch(text)
+	if match == nil {
+		return 0, false
 	}
-	return ""
+	for _, format := range remainingFormats {
+		if parts := format.FindStringSubmatch(strings.TrimSpace(match[1])); parts != nil {
+			number := func(part string) time.Duration {
+				value, _ := strconv.Atoi(part)
+				return time.Duration(value)
+			}
+			return number(parts[1])*24*time.Hour + number(parts[2])*time.Hour + number(parts[3])*time.Minute +
+				number(parts[4])*time.Second, true
+		}
+	}
+	return 0, false
 }
 
 // parsePoolDevice parses a line of the config of "zpool status -p -t" (without the leading tab), e.g.
