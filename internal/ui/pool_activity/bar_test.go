@@ -100,7 +100,19 @@ func TestLayoutLines(t *testing.T) {
 	assert.Equal(t, " 31.8%  1.02T / 3.21T   294M/s", lines[0].barText, "the time left is behind the bar")
 	assert.Equal(t, "  02:10:31 to go", testutil.StripTags(lines[0].remaining))
 	assert.Equal(t, " 10.0%   200G / 2.00T  1.10G/s", lines[1].barText)
-	assert.Empty(t, lines[1].remaining)
+	assert.Equal(t, "  --:--:-- to go", testutil.StripTags(lines[1].remaining), "not known yet")
+}
+
+func TestLayoutLines_RemainingPlaceholder(t *testing.T) {
+	// Regression: a TRIM is only estimated after a while, the bar shrank once it was
+	trim := zfs.PoolActivity{Pool: "tank", Kind: "trim", Progress: 3}
+	unknown := layoutLines([]zfs.PoolActivity{trim}, 120)
+	trim.Remaining = "02:10:31"
+	known := layoutLines([]zfs.PoolActivity{trim}, 120)
+
+	assert.Equal(t, known[0].barWidth, unknown[0].barWidth)
+	assert.Equal(t, "  --:--:-- to go", testutil.StripTags(unknown[0].remaining))
+	assert.Equal(t, "  02:10:31 to go", testutil.StripTags(known[0].remaining))
 }
 
 func TestLayoutLines_Wide(t *testing.T) {
@@ -121,7 +133,7 @@ func TestLayoutLines_Narrow(t *testing.T) {
 }
 
 func TestLayoutLines_NoTimeLeft(t *testing.T) {
-	// no column for it: label " Scrub  backup  " 16, padding 1
+	// too narrow for the column of the placeholder: label " Scrub  backup  " 16, padding 1
 	lines := layoutLines(layoutActivities[1:], 40)
 
 	assert.Equal(t, 40-16-1, lines[0].barWidth)

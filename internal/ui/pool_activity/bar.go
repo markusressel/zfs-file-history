@@ -91,8 +91,9 @@ type activityLine struct {
 // layoutLines lays out the lines of the activities for the given width: the labels (see formatLabels), the progress
 // bars, as wide as fits, and the time left behind them. All bars have the same width, so they
 // end at the same column, with space for the longest time left behind them (and one column of padding, like in
-// front of the labels). If the bars would get narrower than minBarWidthWithRemaining that way, the time left is
-// written into the bars instead.
+// front of the labels). An activity whose time left is not known yet shows a placeholder of the same width (see
+// formatRemaining), so the bars do not shrink once it is (e.g. a TRIM, estimated after a while). If the bars would
+// get narrower than minBarWidthWithRemaining that way, the time left is written into the bars instead.
 func layoutLines(activities []zfs.PoolActivity, width int) []activityLine {
 	labels, labelWidth := formatLabels(activities)
 	remainingWidth := 0
@@ -100,7 +101,7 @@ func layoutLines(activities []zfs.PoolActivity, width int) []activityLine {
 		remainingWidth = max(remainingWidth, utf8.RuneCountInString(formatRemaining(activity.Remaining)))
 	}
 	barWidth := width - labelWidth - remainingWidth - 1
-	besideBar := remainingWidth > 0 && barWidth >= minBarWidthWithRemaining
+	besideBar := barWidth >= minBarWidthWithRemaining
 	if !besideBar {
 		barWidth = width - labelWidth - 1
 	}
@@ -109,9 +110,7 @@ func layoutLines(activities []zfs.PoolActivity, width int) []activityLine {
 	for i, activity := range activities {
 		line := activityLine{label: labels[i], barStart: labelWidth, barWidth: barWidth}
 		if besideBar {
-			if remaining := formatRemaining(activity.Remaining); remaining != "" {
-				line.remaining = txwidgets.Span(theme.Colors.Activity.Remaining, "%s", remaining)
-			}
+			line.remaining = txwidgets.Span(theme.Colors.Activity.Remaining, "%s", formatRemaining(activity.Remaining))
 			activity.Remaining = ""
 		}
 		line.barText = barText(activity, barWidth)
@@ -120,10 +119,14 @@ func layoutLines(activities []zfs.PoolActivity, width int) []activityLine {
 	return lines
 }
 
-// formatRemaining returns the time left behind a progress bar, e.g. "  02:10:31 to go", "" if not known.
+// remainingPlaceholder stands for a time left that is not known yet, as wide as most (e.g. "02:10:31").
+const remainingPlaceholder = "--:--:--"
+
+// formatRemaining returns the time left behind a progress bar, e.g. "  02:10:31 to go", with remainingPlaceholder
+// if not known.
 func formatRemaining(remaining string) string {
 	if remaining == "" {
-		return ""
+		remaining = remainingPlaceholder
 	}
 	return "  " + remaining + " to go"
 }

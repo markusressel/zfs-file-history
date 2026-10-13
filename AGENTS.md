@@ -58,7 +58,7 @@ of the code.
     and is drawn cell by cell: the filled part in the gradient `theme.Colors.Activity.BarFilled` by column, ending
     with a partly filled cell in eighths (`▏`…`▉`), the progress, amount and rate centered in it (padded to fixed
     widths, so the text does not move; dark or light text by the brightness of each cell), the time left in an
-    aligned column behind it. zpool does not estimate the time
+    aligned column behind it (`--:--:--` until it is known, so the bar does not shrink then). zpool does not estimate the time
     left of a TRIM, `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
     The same package has the `AlertBar` (above the activities): the problems of the pools (`PoolStatus.Alerts`: a
     state other than ONLINE, data errors, unusable devices or spares, device errors), most severe first, from the
