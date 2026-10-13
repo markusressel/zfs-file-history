@@ -97,6 +97,7 @@ func (d *DatasetPermissionsDialog) createLayout() {
 	d.summary = tview.NewTextView().SetDynamicColors(true)
 
 	d.table = tview.NewTable().SetSelectable(true, false)
+	util.IgnoreClicksBelowRows(d.table)
 	d.table.SetSelectedStyle(tcell.StyleDefault.
 		Foreground(theme.Colors.Layout.Table.SelectedForeground).
 		Background(theme.Colors.Layout.Table.SelectedBackground))

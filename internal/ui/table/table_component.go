@@ -112,6 +112,10 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	placeholder      string
 	placeholderColor tcell.Color
 
+	// headerWasSelected is whether the header row was selected (and focused) when the mouse button was pressed, see
+	// handleHeaderClick
+	headerWasSelected bool
+
 	lastSyncHeight int
 	resizeTimer    *time.Timer
 }
@@ -167,6 +171,19 @@ func (c *RowSelectionTable[T]) createLayout() {
 	table := tview.NewTable()
 
 	table.SetBorders(false)
+	uiutil.IgnoreClicksBelowRows(table)
+	ignoreClicksBelowRows := table.GetMouseCapture()
+	table.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		action, event = ignoreClicksBelowRows(action, event)
+		if event == nil {
+			return action, event
+		}
+		if action == tview.MouseLeftClick && c.isBesideTheColumns(event.Position()) {
+			// the empty space to the right of the rows, like the one below them: nothing to select
+			return tview.MouseConsumed, nil
+		}
+		return c.handleHeaderClick(action, event)
+	})
 
 	// fixed header row
 	table.SetFixed(1, 0)
@@ -557,19 +574,59 @@ func (c *RowSelectionTable[T]) Resort() {
 func (c *RowSelectionTable[T]) nextSortOrder() {
 	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
 	nextIndex := (currentIndex + 1) % len(c.columnSpec)
-	column := c.columnSpec[nextIndex]
-	c.SortBy(column, c.sortInverted)
-	c.updateTableContents()
-	c.notifyColumnLayoutChanged()
+	c.sortByColumnKeepingDirection(c.columnSpec[nextIndex])
 }
 
 func (c *RowSelectionTable[T]) previousSortOrder() {
 	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
 	nextIndex := (len(c.columnSpec) + currentIndex - 1) % len(c.columnSpec)
-	column := c.columnSpec[nextIndex]
+	c.sortByColumnKeepingDirection(c.columnSpec[nextIndex])
+}
+
+// sortByColumnKeepingDirection sorts by the column, in the current direction.
+func (c *RowSelectionTable[T]) sortByColumnKeepingDirection(column *Column) {
 	c.SortBy(column, c.sortInverted)
 	c.updateTableContents()
 	c.notifyColumnLayoutChanged()
+}
+
+// isBesideTheColumns returns whether the position is in the table, but to the right of its last column.
+func (c *RowSelectionTable[T]) isBesideTheColumns(x int, y int) bool {
+	if !c.table.InRect(x, y) {
+		return false
+	}
+	_, column := c.table.CellAt(x, y)
+	return column < 0
+}
+
+// handleHeaderClick handles clicks on the header row: like the keys, the first click selects it, the next ones
+// sort by the clicked column, or toggle the direction if it is the sort column already. Clicks elsewhere are
+// passed on. Runs as the mouse capture of the table.
+func (c *RowSelectionTable[T]) handleHeaderClick(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	x, y := event.Position()
+	switch action {
+	case tview.MouseLeftDown:
+		// before tview focuses the table: the click that selects the header must not sort as well
+		selectedRow, _ := c.table.GetSelection()
+		c.headerWasSelected = selectedRow == 0 && c.table.HasFocus()
+	case tview.MouseLeftClick:
+		if !c.table.InRect(x, y) || !c.headerWasSelected {
+			return action, event
+		}
+		row, column := c.table.CellAt(x, y)
+		columns := c.visibleColumns()
+		if row != 0 || column < 0 || column >= len(columns) {
+			return action, event
+		}
+		if columns[column] == c.sortByColumn {
+			c.toggleSortDirection()
+		} else {
+			c.sortByColumnKeepingDirection(columns[column])
+		}
+		return tview.MouseConsumed, nil
+	default:
+	}
+	return action, event
 }
 
 func (c *RowSelectionTable[T]) toggleSortDirection() {

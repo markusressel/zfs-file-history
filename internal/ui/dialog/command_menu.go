@@ -80,6 +80,7 @@ func (menu *CommandMenu) createLayout() {
 			Foreground(theme.Colors.Layout.Table.SelectedForeground).
 			Background(theme.Colors.Layout.Table.SelectedBackground))
 	menu.list.SetSelectedFunc(func(row, column int) { menu.choose(row) })
+	util.IgnoreClicksBelowRows(menu.list)
 
 	menu.input = tview.NewInputField().
 		SetLabel(":").
