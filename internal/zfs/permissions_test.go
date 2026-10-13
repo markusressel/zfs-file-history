@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	gozfs "github.com/mistifyio/go-zfs/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -171,19 +170,6 @@ func TestSnapshotPermissionGaps(t *testing.T) {
 		{"pool/a", []Permission{PermissionHold}},
 		{"pool/b", []Permission{PermissionHold}},
 	}, gaps)
-}
-
-func TestCleanZfsError(t *testing.T) {
-	zfsError := &gozfs.Error{
-		Err:    errors.New("exit status 1"),
-		Debug:  "/usr/bin/zfs snapshot pool@x",
-		Stderr: "cannot create snapshots : permission denied\n",
-	}
-	assert.EqualError(t, cleanZfsError(zfsError), "cannot create snapshots : permission denied")
-
-	other := errors.New("other")
-	assert.Same(t, other, cleanZfsError(other))
-	assert.NoError(t, cleanZfsError(nil))
 }
 
 func TestPreviewDestroySnapshots_ChecksPermissionsFirst(t *testing.T) {

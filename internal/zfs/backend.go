@@ -14,10 +14,25 @@ import (
 type Backend interface {
 	// Mounts returns the mounted ZFS datasets and snapshots.
 	Mounts() ([]Mount, error)
+	// Reload drops what the backend cached, so the next calls return the current state.
+	Reload()
 	// ListDatasets returns all filesystem datasets, with the paths they are mounted at.
 	ListDatasets() ([]*DatasetListEntry, error)
+	// DatasetProperties returns the datasetProperties of the dataset, with exact values ("zfs get -p"). Unknown
+	// ones are left out.
+	DatasetProperties(name string) (map[string]string, error)
 	// ListSnapshotNames returns the names (behind the "@") of the snapshots of the dataset, the newest first.
 	ListSnapshotNames(dataset string) ([]string, error)
+	// SnapshotProperties returns the properties of the snapshots (names behind the "@") of the dataset. Snapshots
+	// that cannot be read are left out.
+	SnapshotProperties(dataset string, names []string) map[string]SnapshotProperties
+	// CreateSnapshot creates the snapshot (name behind the "@") of the dataset, as the current user.
+	CreateSnapshot(dataset string, name string) error
+	// DestroySnapshot destroys the snapshot (name behind the "@") of the dataset, as the current user. With
+	// recursive also the ones with the same name of the descendants, with dependantClones also their clones.
+	DestroySnapshot(dataset string, name string, recursive bool, dependantClones bool) error
+	// CloneSnapshot creates the dataset target from the snapshot with the full name, as the current user.
+	CloneSnapshot(fullName string, target string) error
 	// ListProperties returns all properties of the dataset, with human-readable values.
 	ListProperties(dataset string) ([]*Property, error)
 	// SetProperty sets the property of the dataset as the current user.

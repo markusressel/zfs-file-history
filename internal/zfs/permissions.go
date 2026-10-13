@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	gozfs "github.com/mistifyio/go-zfs/v4"
 )
 
 // Permission is a ZFS permission that can be delegated to users with "zfs allow".
@@ -202,14 +200,4 @@ func snapshotPermissionGaps(snapshotNames []string, permissions ...Permission) [
 		}
 	}
 	return gaps
-}
-
-// cleanZfsError reduces errors of go-zfs to the message zfs printed. go-zfs includes the exit status and the full
-// command line, e.g. `exit status 1: "/usr/bin/zfs snapshot pool@x" => cannot create snapshots : permission denied`.
-func cleanZfsError(err error) error {
-	var zfsError *gozfs.Error
-	if errors.As(err, &zfsError) && strings.TrimSpace(zfsError.Stderr) != "" {
-		return errors.New(strings.TrimSpace(zfsError.Stderr))
-	}
-	return err
 }

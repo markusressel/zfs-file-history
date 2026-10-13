@@ -213,8 +213,8 @@ func (o *FileHistoryOverlay) createHistoryTable() *table.RowSelectionTable[data.
 		o.createTableCells,
 		func(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.SnapshotBrowserEntry {
 			sort.SliceStable(entries, func(i, j int) bool {
-				a := entries[i].Snapshot.GetCreationDate()
-				b := entries[j].Snapshot.GetCreationDate()
+				a := entries[i].Snapshot.Properties.CreationDate
+				b := entries[j].Snapshot.Properties.CreationDate
 				if inverted {
 					return a.Before(b)
 				}

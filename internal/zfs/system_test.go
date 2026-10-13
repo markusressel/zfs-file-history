@@ -19,11 +19,8 @@ var systemImports = []string{"os/exec", "github.com/kraudcloud/go-libzfs", "gith
 
 // systemHelpers are the functions of System that run processes or read the system, see systemImports.
 var systemHelpers = []string{"runZfs", "runZpool", "runCommand", "runPoolCommand", "runSudoCommand", "readZfsMounts",
-	"listSnapshotNames", "currentIdentity", "readDelegations", "listSudoRules", "isRoot"}
-
-// notYetMovedToSystem are the files that still use libzfs directly, until the datasets and snapshots are loaded
-// through the Backend as well.
-var notYetMovedToSystem = map[string]bool{"common.go": true, "dataset.go": true, "permissions.go": true, "snapshot.go": true}
+	"listSnapshotNames", "currentIdentity", "readDelegations", "listSudoRules", "isRoot", "datasetHandle",
+	"findSnapshotHandles"}
 
 // TestOnlySystemRunsCommands makes sure that nothing but System touches the pools of the system, so a virtual
 // Backend never does.
@@ -31,7 +28,7 @@ func TestOnlySystemRunsCommands(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
 	for _, file := range files {
-		if strings.HasSuffix(file, "_test.go") || strings.HasPrefix(file, "system") || notYetMovedToSystem[file] {
+		if strings.HasSuffix(file, "_test.go") || strings.HasPrefix(file, "system") {
 			continue
 		}
 		source, err := os.ReadFile(file)

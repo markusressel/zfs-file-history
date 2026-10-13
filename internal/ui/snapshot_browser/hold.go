@@ -164,6 +164,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) showHoldResult(result *holdResu
 		snapshotBrowser.showDialog(dialog.NewSuccessDialog(snapshotBrowser.application, title, formatHoldMessage(result, hold)), nil)
 		snapshotBrowser.ClearMultiSelection()
 	}
-	// reload the snapshot properties (number of holds), the cached libzfs handles are outdated
+	// reload the snapshot properties (number of holds), the cached ones are outdated
 	zfs.RefreshZfsData()
 }
