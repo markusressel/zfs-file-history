@@ -163,7 +163,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 	captureSplitDrags(mainPageLayout, mainPage.split)
 
 	// hidden with ? (see shortcut_helper.ToggleShortcuts)
-	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application).SetCollapsible()
+	shortcutMap := shortcut_helper.NewShortcutMap(mainPage.application).SetCollapsible().SetEnabledFunc(mainPage.isInFront)
 	shortcutMap.SetOnHeightChanged(func(height int) {
 		mainPageLayout.ResizeItem(shortcutMap.GetLayout(), height, 0)
 	})

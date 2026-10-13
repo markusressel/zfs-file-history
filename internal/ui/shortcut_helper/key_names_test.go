@@ -48,6 +48,8 @@ func checkKeyName(name string) string {
 func TestCheckKeyName(t *testing.T) {
 	for _, valid := range []string{"h", "H", "?", "*", "↑", "Enter", "Esc", "⭾", "F2", "ctrl+f", "shift+⭾", "shift+↑", "ctrl+Enter"} {
 		assert.Empty(t, checkKeyName(valid), valid)
+		_, ok := keyEvent(valid)
+		assert.True(t, ok, "valid names can be pressed: %s", valid)
 	}
 	for _, invalid := range []string{"Ctrl+r", "Shift+↑", "enter", "esc", "space", "pgup", "F13", "ctrl+enter", "Return"} {
 		assert.NotEmpty(t, checkKeyName(invalid), invalid)
@@ -79,6 +81,8 @@ func TestShortcutStyle(t *testing.T) {
 				t.Errorf("%s: key %q: %s", position, name, problem)
 			} else if slices.Contains(namedKeys, name) {
 				t.Errorf("%s: key %q: use the constant from key_names.go", position, name)
+			} else if _, ok := keyEvent(name); !ok {
+				t.Errorf("%s: key %q: cannot be pressed by clicking the shortcut (see keyEvent)", position, name)
 			}
 		}
 		ast.Inspect(file, func(node ast.Node) bool {

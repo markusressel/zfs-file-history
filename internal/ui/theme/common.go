@@ -206,6 +206,8 @@ type ShortcutMapColors struct {
 	Name           tcell.Color
 	// Separator is the color of the line between groups of shortcuts
 	Separator tcell.Color
+	// HoverBackground is the background of the entry (or key) below the mouse, which can be clicked
+	HoverBackground tcell.Color
 }
 
 func CreateTitleText(text string) string {

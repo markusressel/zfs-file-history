@@ -169,7 +169,7 @@ func (o *FolderHistoryOverlay) createLayout() {
 	o.details = tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetWordWrap(true)
 	o.details.SetDrawFunc(drawLeftDivider)
 	// hidden with ? (see shortcut_helper.ToggleShortcuts)
-	o.shortcuts = shortcut_helper.NewShortcutMap(o.application).SetCollapsible()
+	o.shortcuts = shortcut_helper.NewShortcutMap(o.application).SetCollapsible().SetEnabledFunc(o.isMainPageInFront)
 
 	left := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(o.modeView, 1, 0, false).

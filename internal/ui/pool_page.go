@@ -127,7 +127,7 @@ func (poolPage *PoolPage) createLayout() *tview.Flex {
 	captureSplitDrags(poolPageLayout, poolPage.split, poolPage.statusSplit)
 
 	// hidden with ? (see shortcut_helper.ToggleShortcuts)
-	shortcutMap := shortcut_helper.NewShortcutMap(poolPage.application).SetCollapsible()
+	shortcutMap := shortcut_helper.NewShortcutMap(poolPage.application).SetCollapsible().SetEnabledFunc(poolPage.isInFront)
 	shortcutMap.SetOnHeightChanged(func(height int) {
 		poolPageLayout.ResizeItem(shortcutMap.GetLayout(), height, 0)
 	})

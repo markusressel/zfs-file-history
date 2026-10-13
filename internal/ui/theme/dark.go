@@ -105,6 +105,7 @@ var (
 			GlobalKeyCombo:     tcell.ColorIsRGB | tcell.ColorValid | 0x9AA5B1,
 			Name:               tcell.ColorLightGray,
 			Separator:          Secondary,
+			HoverBackground:    tcell.ColorIsRGB | tcell.ColorValid | 0x3A434D,
 		},
 		Sparkline: SparklineColors{
 			Graph:              Accent,

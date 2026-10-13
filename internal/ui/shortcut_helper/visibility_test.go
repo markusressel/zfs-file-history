@@ -44,10 +44,10 @@ func TestToggleShortcuts(t *testing.T) {
 	assert.True(t, ShortcutsHidden())
 	assert.True(t, store.Toggle(toggleHideShortcuts, false), "remembered")
 	assert.Equal(t, 0, *pageHeight, "collapsible maps take no space")
-	assert.Empty(t, pageMap.shortcutEntriesTextView.GetText(false))
+	assert.Empty(t, pageMap.bar.entries)
 	assert.Equal(t, 0, pageMap.CalculateHeightForWidth(80))
 	assert.Positive(t, dialogMap.CalculateHeightForWidth(80), "dialogs keep their shortcuts")
-	assert.NotEmpty(t, dialogMap.shortcutEntriesTextView.GetText(false))
+	assert.NotEmpty(t, dialogMap.bar.entries)
 
 	// entries set while hidden are shown later
 	pageMap.SetEntries([]ShortcutEntry{{KeyCombo: []string{"x"}, Name: "Other"}})
@@ -55,7 +55,7 @@ func TestToggleShortcuts(t *testing.T) {
 	ToggleShortcuts()
 	assert.False(t, ShortcutsHidden())
 	assert.Positive(t, *pageHeight)
-	assert.Contains(t, pageMap.shortcutEntriesTextView.GetText(true), "Other")
+	assert.Contains(t, formatEntries(pageMap.bar.entries), "Other")
 
 	// loaded on the next start
 	ToggleShortcuts()
