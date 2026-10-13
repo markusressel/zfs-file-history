@@ -923,3 +923,35 @@ func TestTable_Resort(t *testing.T) {
 	assert.Equal(t, b, table.GetSelectedEntry(), "the selection is kept")
 	assert.Zero(t, selectionChanges, "the selection did not change")
 }
+
+func TestTable_ContentSize(t *testing.T) {
+	table, entries, _ := newWideTestTable(4)
+	table.Select(entries[0])
+
+	// 4 columns of 20 characters with spaces between them, plus the border, the padding and the scrollbar;
+	// 50 rows plus the header and the border
+	width, height := table.ContentSize()
+	assert.Equal(t, 83+5, width)
+	assert.Equal(t, 50+3, height)
+
+	// not while scrolled horizontally: the hidden columns still count
+	pressTableKey(table, tcell.KeyRight)
+	require.Equal(t, 1, table.columnOffset)
+	width, _ = table.ContentSize()
+	assert.Equal(t, 83+5, width)
+
+	// the placeholder of an empty table takes a row
+	table.SetData(nil)
+	_, height = table.ContentSize()
+	assert.Equal(t, 1+3, height)
+}
+
+func TestTable_ContentSizeIgnoresTheFilter(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	_, before := table.ContentSize()
+
+	table.SetFilterText("daily")
+	require.Len(t, table.GetEntries(), 2)
+	_, after := table.ContentSize()
+	assert.Equal(t, before, after, "the height counts the hidden entries as well")
+}

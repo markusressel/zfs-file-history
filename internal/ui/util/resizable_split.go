@@ -18,7 +18,11 @@ const (
 )
 
 // ResizableSplit shows two panes side by side (or one above the other, see NewVerticalResizableSplit). The boundary
-// between them can be dragged with the mouse; it is highlighted while hovered or dragged.
+// between them can be dragged with the mouse; it is highlighted while hovered or dragged. Double-clicking it goes
+// back to the initial sizes.
+//
+// Without a drag, the first pane can be sized to fit its content (see SetAutoSize), and the split can arrange the
+// panes depending on the available space (see SetVerticalFunc).
 //
 // Register MouseCapture on the top-level layout (e.g. the dialog), not on the split itself, so a drag is not lost
 // when the mouse leaves the split. All methods run on the UI thread.
@@ -31,6 +35,12 @@ type ResizableSplit struct {
 	vertical bool
 	// enabled returns whether the boundary reacts to the mouse, e.g. not while a dialog is shown above the split
 	enabled func() bool
+	// autoSize returns the size of the first pane, see SetAutoSize
+	autoSize func(size int) int
+	// verticalFunc returns whether the panes are arranged one above the other, see SetVerticalFunc
+	verticalFunc func(width int, height int) bool
+	// arrangements are the sizes of the panes side by side, and one above the other (see arrangement)
+	arrangements [2]splitArrangement
 
 	hovered    bool
 	dragging   bool
@@ -38,6 +48,17 @@ type ResizableSplit struct {
 	// trailingResize applies pendingPosition, the last position of a drag that was skipped by the throttling
 	trailingResize  *time.Timer
 	pendingPosition int
+}
+
+// splitArrangement are the sizes of the panes in one direction.
+type splitArrangement struct {
+	// firstProportion and secondProportion are the initial proportions of the panes
+	firstProportion  int
+	secondProportion int
+	// dragged is set once the boundary was dragged: the dragged proportions are kept, instead of the auto size
+	dragged                 bool
+	draggedFirstProportion  int
+	draggedSecondProportion int
 }
 
 // NewResizableSplit creates a split with the given initial proportions of the panes.
@@ -49,6 +70,8 @@ func NewResizableSplit(application *tview.Application, left tview.Primitive, rig
 		right:       right,
 		enabled:     func() bool { return true },
 	}
+	initial := splitArrangement{firstProportion: leftProportion, secondProportion: rightProportion}
+	split.arrangements = [2]splitArrangement{initial, initial}
 	split.AddItem(left, 0, leftProportion, true)
 	split.AddItem(right, 0, rightProportion, false)
 	return split
@@ -66,6 +89,100 @@ func NewVerticalResizableSplit(application *tview.Application, top tview.Primiti
 func (s *ResizableSplit) SetEnabledFunc(enabled func() bool) *ResizableSplit {
 	s.enabled = enabled
 	return s
+}
+
+// SetAutoSize sets a function that returns the size of the first pane (columns, or rows if vertical), given the
+// size of the split, e.g. the size of its content. It is called on every draw, so the pane follows its content and
+// the size of the terminal. 0 uses the proportions. Once the boundary was dragged, the dragged proportions are used
+// instead, until it is double-clicked.
+func (s *ResizableSplit) SetAutoSize(autoSize func(size int) int) *ResizableSplit {
+	s.autoSize = autoSize
+	return s
+}
+
+// SetVerticalFunc sets a function that returns whether the panes are arranged one above the other (or side by
+// side), given the size of the split. It is called on every draw. Both arrangements keep their own sizes, e.g. a
+// drag in one of them is kept when switching to the other one and back.
+func (s *ResizableSplit) SetVerticalFunc(vertical func(width int, height int) bool) *ResizableSplit {
+	s.verticalFunc = vertical
+	return s
+}
+
+// SetProportions sets the initial proportions of the panes one above the other (vertical), or side by side, for a
+// split that switches between them (see SetVerticalFunc).
+func (s *ResizableSplit) SetProportions(vertical bool, firstProportion int, secondProportion int) *ResizableSplit {
+	arrangement := &s.arrangements[arrangementIndex(vertical)]
+	arrangement.firstProportion, arrangement.secondProportion = firstProportion, secondProportion
+	return s
+}
+
+// IsVertical returns whether the panes are currently arranged one above the other.
+func (s *ResizableSplit) IsVertical() bool {
+	return s.vertical
+}
+
+func arrangementIndex(vertical bool) int {
+	if vertical {
+		return 1
+	}
+	return 0
+}
+
+// arrangement returns the sizes of the panes in the current direction.
+func (s *ResizableSplit) arrangement() *splitArrangement {
+	return &s.arrangements[arrangementIndex(s.vertical)]
+}
+
+// minPaneSize returns the minimum size of each pane, given the size of the split.
+func (s *ResizableSplit) minPaneSize(size int) int {
+	minSize := splitMinPaneWidth
+	if s.vertical {
+		minSize = splitMinPaneHeight
+	}
+	return min(minSize, size/2)
+}
+
+// arrange sets the direction and the sizes of the panes for the current size of the split, before it is drawn.
+func (s *ResizableSplit) arrange() {
+	_, _, width, height := s.GetRect()
+	if s.verticalFunc != nil {
+		if vertical := s.verticalFunc(width, height); vertical != s.vertical {
+			s.vertical = vertical
+			// the boundary moved: a drag (or its last position) does not apply anymore
+			s.hovered, s.dragging = false, false
+			if s.trailingResize != nil {
+				s.trailingResize.Stop()
+				s.trailingResize = nil
+			}
+			if vertical {
+				s.SetDirection(tview.FlexRow)
+			} else {
+				s.SetDirection(tview.FlexColumn)
+			}
+		}
+	}
+
+	size := width
+	if s.vertical {
+		size = height
+	}
+	arrangement := s.arrangement()
+	autoSize := 0
+	if s.autoSize != nil && !arrangement.dragged {
+		autoSize = s.autoSize(size)
+	}
+	switch {
+	case arrangement.dragged:
+		s.ResizeItem(s.left, 0, arrangement.draggedFirstProportion)
+		s.ResizeItem(s.right, 0, arrangement.draggedSecondProportion)
+	case autoSize > 0:
+		minSize := s.minPaneSize(size)
+		s.ResizeItem(s.left, max(minSize, min(autoSize, size-minSize)), 0)
+		s.ResizeItem(s.right, 0, 1)
+	default:
+		s.ResizeItem(s.left, 0, arrangement.firstProportion)
+		s.ResizeItem(s.right, 0, arrangement.secondProportion)
+	}
 }
 
 // boundary returns the two columns (rows if vertical) of the boundary: the last one of the first pane and the first
@@ -151,6 +268,11 @@ func (s *ResizableSplit) MouseCapture(action tview.MouseAction, event *tcell.Eve
 	}
 
 	onBoundary := s.isOnBoundary(x, y)
+	if action == tview.MouseLeftDoubleClick && onBoundary {
+		// back to the initial sizes (or the auto size), applied when it is drawn
+		s.arrangement().dragged = false
+		return tview.MouseConsumed, nil
+	}
 	if action == tview.MouseLeftDown && onBoundary {
 		s.dragging = true
 		s.lastResize = time.Now()
@@ -168,20 +290,27 @@ func (s *ResizableSplit) MouseCapture(action tview.MouseAction, event *tcell.Eve
 // resizeTo moves the boundary to the given column (row if vertical), keeping a minimum size for both panes.
 func (s *ResizableSplit) resizeTo(position int) {
 	splitX, splitY, width, height := s.GetRect()
-	start, size, minSize := splitX, width, splitMinPaneWidth
+	start, size := splitX, width
 	if s.vertical {
-		start, size, minSize = splitY, height, splitMinPaneHeight
+		start, size = splitY, height
 	}
-	minSize = min(minSize, size/2)
+	minSize := s.minPaneSize(size)
 	firstSize := max(minSize, min(position-start, size-minSize))
-	// as proportions, so the panes keep their ratio when the terminal is resized
-	s.ResizeItem(s.left, 0, firstSize)
-	s.ResizeItem(s.right, 0, size-firstSize)
+	// as proportions, so the panes keep their ratio when the terminal is resized. Applied when it is drawn.
+	arrangement := s.arrangement()
+	arrangement.dragged = true
+	arrangement.draggedFirstProportion, arrangement.draggedSecondProportion = firstSize, size-firstSize
 }
 
 // Draw draws the panes, and highlights the boundary while it is hovered or dragged.
 func (s *ResizableSplit) Draw(screen tcell.Screen) {
+	before, _ := s.boundary()
+	s.arrange()
 	s.Flex.Draw(screen)
+	if after, _ := s.boundary(); after != before && !s.dragging {
+		// moved away from the mouse, e.g. by the auto size: highlighted again once the mouse is on it
+		s.hovered = false
+	}
 	if !s.hovered && !s.dragging {
 		return
 	}

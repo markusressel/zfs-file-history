@@ -154,3 +154,153 @@ func TestResizableSplit_DropAppliesSkippedMove(t *testing.T) {
 	split.Draw(screen)
 	assert.Equal(t, 70, width(left), "applied when dropped")
 }
+
+func TestResizableSplit_AutoSize(t *testing.T) {
+	split, screen, left, right := newTestSplit(t)
+	autoSize := 30
+	var sizes []int
+	split.SetAutoSize(func(size int) int {
+		sizes = append(sizes, size)
+		return autoSize
+	})
+
+	split.Draw(screen)
+	assert.Equal(t, 30, width(left))
+	assert.Equal(t, 70, width(right))
+	assert.Equal(t, []int{100}, sizes, "given the width of the split")
+
+	// follows the content
+	autoSize = 40
+	split.Draw(screen)
+	assert.Equal(t, 40, width(left))
+
+	// not below the minimum width of either pane
+	autoSize = 95
+	split.Draw(screen)
+	assert.Equal(t, 100-splitMinPaneWidth, width(left))
+
+	// 0: the proportions
+	autoSize = 0
+	split.Draw(screen)
+	assert.Equal(t, 50, width(left))
+}
+
+func TestResizableSplit_DragReplacesTheAutoSizeUntilDoubleClicked(t *testing.T) {
+	split, screen, left, _ := newTestSplit(t)
+	split.SetAutoSize(func(size int) int { return 30 })
+	split.Draw(screen)
+	require.Equal(t, 30, width(left))
+
+	mouse(split, tview.MouseLeftDown, 30, tcell.Button1)
+	time.Sleep(splitResizeInterval)
+	mouse(split, tview.MouseMove, 60, tcell.Button1)
+	mouse(split, tview.MouseLeftUp, 60, tcell.ButtonNone)
+	split.Draw(screen)
+	assert.Equal(t, 60, width(left))
+
+	// kept as a proportion when the split is resized
+	split.SetRect(0, 0, 50, 10)
+	split.Draw(screen)
+	assert.Equal(t, 30, width(left))
+	split.SetRect(0, 0, 100, 10)
+	split.Draw(screen)
+
+	// double-clicked elsewhere: passed on
+	_, event := mouse(split, tview.MouseLeftDoubleClick, 10, tcell.ButtonNone)
+	assert.NotNil(t, event)
+	split.Draw(screen)
+	assert.Equal(t, 60, width(left))
+
+	// double-clicked on the boundary: back to the auto size
+	_, event = mouse(split, tview.MouseLeftDoubleClick, 60, tcell.ButtonNone)
+	assert.Nil(t, event, "consumed")
+	split.Draw(screen)
+	assert.Equal(t, 30, width(left))
+}
+
+func TestResizableSplit_DoubleClickRestoresTheProportions(t *testing.T) {
+	split, screen, left, _ := newTestSplit(t)
+
+	mouse(split, tview.MouseLeftDown, 50, tcell.Button1)
+	time.Sleep(splitResizeInterval)
+	mouse(split, tview.MouseMove, 70, tcell.Button1)
+	mouse(split, tview.MouseLeftUp, 70, tcell.ButtonNone)
+	split.Draw(screen)
+	require.Equal(t, 70, width(left))
+
+	mouse(split, tview.MouseLeftDoubleClick, 70, tcell.ButtonNone)
+	split.Draw(screen)
+	assert.Equal(t, 50, width(left))
+}
+
+// Switching between side by side and one above the other, depending on the size: each direction keeps its sizes.
+func TestResizableSplit_VerticalFunc(t *testing.T) {
+	split, screen, left, _ := newTestSplit(t)
+	height := func(box *tview.Box) int {
+		_, _, _, h := box.GetRect()
+		return h
+	}
+	split.SetProportions(true, 1, 4).
+		SetVerticalFunc(func(width int, height int) bool { return width < 80 })
+	split.Draw(screen)
+	require.False(t, split.IsVertical())
+
+	// side by side: dragged
+	mouse(split, tview.MouseLeftDown, 50, tcell.Button1)
+	time.Sleep(splitResizeInterval)
+	mouse(split, tview.MouseMove, 70, tcell.Button1)
+	mouse(split, tview.MouseLeftUp, 70, tcell.ButtonNone)
+	split.Draw(screen)
+	require.Equal(t, 70, width(left))
+
+	// narrow: one above the other, with the proportions of that direction
+	split.SetRect(0, 0, 60, 10)
+	split.Draw(screen)
+	assert.True(t, split.IsVertical())
+	assert.Equal(t, 60, width(left))
+	assert.Equal(t, 2, height(left))
+
+	// wide again: the dragged proportions are kept
+	split.SetRect(0, 0, 100, 10)
+	split.Draw(screen)
+	assert.False(t, split.IsVertical())
+	assert.Equal(t, 70, width(left))
+}
+
+// A drag position that is applied later (see the throttling) must not be applied after the direction changed.
+func TestResizableSplit_SwitchingTheDirectionDropsTheDrag(t *testing.T) {
+	split, screen, left, _ := newTestSplit(t)
+	vertical := false
+	split.SetVerticalFunc(func(int, int) bool { return vertical })
+
+	mouse(split, tview.MouseLeftDown, 50, tcell.Button1)
+	// skipped by the throttling, to be applied later
+	mouse(split, tview.MouseMove, 70, tcell.Button1)
+	require.NotNil(t, split.trailingResize)
+
+	vertical = true
+	split.Draw(screen)
+	assert.Nil(t, split.trailingResize)
+	assert.False(t, split.dragging)
+	assert.False(t, split.arrangement().dragged)
+	_, _, _, height := left.GetRect()
+	assert.Equal(t, 5, height, "the initial proportions")
+}
+
+// The boundary moved away from the mouse (e.g. by the auto size): it is not highlighted there.
+func TestResizableSplit_HoverEndsWhenTheBoundaryMoves(t *testing.T) {
+	split, screen, _, _ := newTestSplit(t)
+	autoSize := 50
+	split.SetAutoSize(func(int) int { return autoSize })
+	split.Draw(screen)
+	mouse(split, tview.MouseMove, 50, tcell.ButtonNone)
+	split.Draw(screen)
+	require.True(t, split.hovered)
+
+	autoSize = 30
+	split.Draw(screen)
+	assert.False(t, split.hovered)
+	_, style, _ := screen.Get(30, 5)
+	foreground, _, _ := style.Decompose()
+	assert.NotEqual(t, theme.Primary, foreground)
+}

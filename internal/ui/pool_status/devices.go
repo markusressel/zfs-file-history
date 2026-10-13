@@ -202,3 +202,9 @@ func (poolDevices *PoolDevicesComponent) Focus() {
 func (poolDevices *PoolDevicesComponent) GetLayout() *tview.TextView {
 	return poolDevices.textView
 }
+
+// ContentSize returns the size needed to show all of the text, including the border. Must be called on the UI
+// thread.
+func (poolDevices *PoolDevicesComponent) ContentSize() (width int, height int) {
+	return uiutil.TextViewContentSize(poolDevices.textView)
+}
