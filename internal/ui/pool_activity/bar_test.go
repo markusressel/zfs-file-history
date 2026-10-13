@@ -46,12 +46,12 @@ func TestBarText(t *testing.T) {
 		width    int
 		expected string
 	}{
-		{100, " 31.8%  1.02T / 3.21T  294M/s  02:10:31 to go"},
-		// too narrow: the amount is left out first, then the rate, then the time left
-		{40, " 31.8%  294M/s  02:10:31 to go"},
+		{100, " 31.8%  1.02T / 3.21T   294M/s  02:10:31 to go"},
+		// too narrow (with a space on each side): the amount is left out first, then the rate, then the time left
+		{40, " 31.8%   294M/s  02:10:31 to go"},
 		{25, " 31.8%  02:10:31 to go"},
 		{10, " 31.8%"},
-		{3, " 31.8%"},
+		{3, "31.8%"},
 	}
 	for _, test := range tests {
 		t.Run(test.expected, func(t *testing.T) {
@@ -60,12 +60,25 @@ func TestBarText(t *testing.T) {
 	}
 }
 
+func TestBarText_StableLength(t *testing.T) {
+	// the text does not move in the bar while the numbers change
+	values := []zfs.PoolActivity{
+		{Progress: 0, Processed: "0B", Total: "3.21T", Rate: "1M/s"},
+		{Progress: 4, Processed: "80G", Total: "3.21T", Rate: "12.3M/s"},
+		{Progress: 31.77, Processed: "1.02T", Total: "3.21T", Rate: "294M/s"},
+		{Progress: 100, Processed: "3.21T", Total: "3.21T", Rate: "1.10G/s"},
+	}
+	for _, activity := range values {
+		assert.Len(t, barText(activity, 100), len("100.0%  3.21T / 3.21T  1.10G/s"), "%+v", activity)
+	}
+}
+
 func TestBarText_PartsNotKnown(t *testing.T) {
 	// e.g. a scrub that just started
-	assert.Equal(t, " 0.0%", barText(zfs.PoolActivity{Kind: "scrub"}, 80))
+	assert.Equal(t, "  0.0%", barText(zfs.PoolActivity{Kind: "scrub"}, 80))
 	assert.Equal(t, " 12.0%  2.00G / 4.00G", barText(zfs.PoolActivity{Kind: "trim", Progress: 12, Processed: "2.00G", Total: "4.00G"}, 80))
 	// clamped
-	assert.Equal(t, " 100.0%  1.00M/s", barText(zfs.PoolActivity{Progress: 150, Rate: "1.00M/s"}, 80))
+	assert.Equal(t, "100.0%  1.00M/s", barText(zfs.PoolActivity{Progress: 150, Rate: "1.00M/s"}, 80))
 }
 
 // layoutActivities are a resilver with a time left, and a scrub without, on pools with names of different lengths.
@@ -83,9 +96,9 @@ func TestLayoutLines(t *testing.T) {
 		assert.Equal(t, 19, line.barStart, "the bars start at the same column")
 		assert.Equal(t, 44, line.barWidth, "and end at the same column")
 	}
-	assert.Equal(t, " 31.8%  1.02T / 3.21T  294M/s", lines[0].barText, "the time left is behind the bar")
+	assert.Equal(t, " 31.8%  1.02T / 3.21T   294M/s", lines[0].barText, "the time left is behind the bar")
 	assert.Equal(t, "  02:10:31 to go", testutil.StripTags(lines[0].remaining))
-	assert.Equal(t, " 10.0%  200G / 2.00T  1.10G/s", lines[1].barText)
+	assert.Equal(t, " 10.0%   200G / 2.00T  1.10G/s", lines[1].barText)
 	assert.Empty(t, lines[1].remaining)
 }
 
@@ -102,7 +115,8 @@ func TestLayoutLines_Narrow(t *testing.T) {
 
 	assert.Equal(t, 30, lines[0].barWidth)
 	assert.Empty(t, lines[0].remaining)
-	assert.Equal(t, " 31.8%  294M/s  02:10:31 to go", lines[0].barText)
+	// with a space on each side, the rate does not fit anymore
+	assert.Equal(t, " 31.8%  02:10:31 to go", lines[0].barText)
 }
 
 func TestLayoutLines_NoTimeLeft(t *testing.T) {
@@ -155,6 +169,24 @@ func TestDrawProgressBar(t *testing.T) {
 	}
 	_, background, _ := cells[12].Style.Decompose()
 	assert.NotEqual(t, colors.BarTrack, background, "nothing drawn behind the bar")
+}
+
+func TestDrawProgressBar_Centered(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	screen.SetSize(12, 1)
+
+	drawProgressBar(screen, 0, 0, 12, 0, "50.0%")
+	screen.Show()
+
+	cells, width, _ := screen.GetContents()
+	var text strings.Builder
+	for x := 0; x < width; x++ {
+		if runes := cells[x].Runes; len(runes) > 0 {
+			text.WriteRune(runes[0])
+		}
+	}
+	assert.Equal(t, "   50.0%    ", text.String())
 }
 
 func TestDrawProgressBar_NoWidth(t *testing.T) {

@@ -348,10 +348,11 @@ func TestParsePoolStatus_Trim(t *testing.T) {
 	assert.Equal(t, uint64(1), status.Devices[5].Checksum)
 	assert.Equal(t, "(100% trimmed, completed at Mon Oct 12 08:00:00 2026)", status.Devices[5].Trim)
 
-	// the average of the devices being trimmed
+	// the average of the devices being trimmed, the time left of the slowest one (started 1 hour ago, 40% done)
+	setNow(t, time.Date(2026, 10, 13, 11, 0, 1, 0, time.Local))
 	assert.True(t, status.IsTrimming())
 	assert.Equal(t, 50.0, status.TrimProgress())
-	assert.Equal(t, []PoolActivity{{Pool: "fast", Kind: "trim", Progress: 50}}, status.Activities())
+	assert.Equal(t, []PoolActivity{{Pool: "fast", Kind: "trim", Progress: 50, Remaining: "01:30:00"}}, status.Activities())
 }
 
 func TestPoolStatus_TrimProgress(t *testing.T) {
@@ -403,4 +404,52 @@ func TestParseAmounts(t *testing.T) {
 			assert.Equal(t, []string{test.processed, test.total, test.rate}, []string{processed, total, rate})
 		})
 	}
+}
+
+// setNow makes now return the given time.
+func setNow(t *testing.T, fixed time.Time) {
+	original := now
+	now = func() time.Time { return fixed }
+	t.Cleanup(func() { now = original })
+}
+
+func TestPoolStatus_TrimRemaining(t *testing.T) {
+	setNow(t, time.Date(2026, 10, 13, 12, 0, 0, 0, time.Local))
+	tests := map[string]struct {
+		trims     []string
+		remaining time.Duration
+		known     bool
+	}{
+		"none running":    {[]string{"(untrimmed)", "(100% trimmed, completed at Mon Oct 12 08:00:00 2026)"}, 0, false},
+		"no progress yet": {[]string{"(0% trimmed, started at Tue Oct 13 11:00:00 2026)"}, 0, false},
+		// 1 hour for 25%: 3 hours for the rest
+		"one device": {[]string{"(25% trimmed, started at Tue Oct 13 11:00:00 2026)"}, 3 * time.Hour, true},
+		"the slowest device": {[]string{
+			"(25% trimmed, started at Tue Oct 13 11:00:00 2026)",
+			"(50% trimmed, started at Tue Oct 13 11:00:00 2026)",
+			"(0% trimmed, started at Tue Oct 13 11:00:00 2026)",
+		}, 3 * time.Hour, true},
+		// single-digit days are padded with a space by zpool
+		"padded day":    {[]string{"(50% trimmed, started at Thu Oct  1 12:00:00 2026)"}, 12 * 24 * time.Hour, true},
+		"not a date":    {[]string{"(50% trimmed, started at someday)"}, 0, false},
+		"in the future": {[]string{"(50% trimmed, started at Wed Oct 14 12:00:00 2026)"}, 0, false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			status := &PoolStatus{}
+			for _, trim := range test.trims {
+				status.Devices = append(status.Devices, &PoolDevice{Name: "sda", State: PoolStateOnline, Trim: trim})
+			}
+			remaining, known := status.TrimRemaining()
+			assert.Equal(t, test.known, known)
+			assert.Equal(t, test.remaining, remaining)
+		})
+	}
+}
+
+func TestFormatRemaining(t *testing.T) {
+	assert.Equal(t, "00:00:00", formatRemaining(0))
+	assert.Equal(t, "02:10:31", formatRemaining(2*time.Hour+10*time.Minute+31*time.Second+600*time.Millisecond))
+	assert.Equal(t, "23:59:59", formatRemaining(24*time.Hour-time.Second))
+	assert.Equal(t, "1 days 07:53:32", formatRemaining(31*time.Hour+53*time.Minute+32*time.Second))
 }

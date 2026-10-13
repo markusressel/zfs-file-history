@@ -46,8 +46,9 @@ of the code.
     every 5 s while something runs, every minute otherwise, and on the zfs emitters; the pool status pane takes the
     progress of a scrub from these loads, see `OnStatusesLoaded`), one `Bar` per page (no height
     while nothing runs; a click shows the pool on the pools page). The progress bar is drawn cell by cell with the
-    progress, amount and rate written into it (in the text color of the background of each cell), the time left in
-    an aligned column behind it.
+    progress, amount and rate centered in it (padded to fixed widths, so the text does not move; in the text color
+    of the background of each cell), the time left in an aligned column behind it. zpool does not estimate the time
+    left of a TRIM, `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). Shown with
     `ShowDialogOnPages`.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),

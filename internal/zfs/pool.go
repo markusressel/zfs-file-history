@@ -163,7 +163,44 @@ var trimPattern = regexp.MustCompile(`\((?:[0-9]+% trimmed[^)]*|untrimmed|trim u
 
 // trimRunningPattern matches the TRIM state of a device that is being trimmed, e.g. "(12% trimmed, started at
 // ...)". Suspended or completed ones say "suspended at" or "completed at" instead.
-var trimRunningPattern = regexp.MustCompile(`^\(([0-9]+)% trimmed, started at`)
+var trimRunningPattern = regexp.MustCompile(`^\(([0-9]+)% trimmed, started at ([^)]+)\)`)
+
+// now is replaceable in tests.
+var now = time.Now
+
+// TrimRemaining estimates the time left of the running TRIM, which zpool status does not: from how long each device
+// has been trimmed and how much of it is done. The slowest device decides. Returns false if none is running, or no
+// device made progress yet.
+func (status *PoolStatus) TrimRemaining() (time.Duration, bool) {
+	var remaining time.Duration
+	known := false
+	for _, device := range status.Devices {
+		match := trimRunningPattern.FindStringSubmatch(device.Trim)
+		if match == nil {
+			continue
+		}
+		percent, _ := strconv.Atoi(match[1])
+		started, err := time.ParseInLocation("Mon Jan _2 15:04:05 2006", match[2], time.Local)
+		elapsed := now().Sub(started)
+		if err != nil || percent <= 0 || percent >= 100 || elapsed <= 0 {
+			continue
+		}
+		remaining = max(remaining, time.Duration(float64(elapsed)*float64(100-percent)/float64(percent)))
+		known = true
+	}
+	return remaining, known
+}
+
+// formatRemaining formats a time left like zpool status does, e.g. "02:10:31" or "1 days 07:53:32".
+func formatRemaining(remaining time.Duration) string {
+	seconds := int64(remaining.Seconds())
+	days, seconds := seconds/86400, seconds%86400
+	clock := fmt.Sprintf("%02d:%02d:%02d", seconds/3600, seconds%3600/60, seconds%60)
+	if days > 0 {
+		return fmt.Sprintf("%d days %s", days, clock)
+	}
+	return clock
+}
 
 // TrimProgress returns how much of the running TRIM is done in percent (the average of the devices being trimmed),
 // or -1 if none is running.
@@ -403,8 +440,12 @@ func (status *PoolStatus) Activities() []PoolActivity {
 		activities = append(activities, activity)
 	}
 	if progress := status.TrimProgress(); progress >= 0 {
+		activity := PoolActivity{Pool: status.Name, Kind: "trim", Progress: progress}
 		// zpool status does not estimate the time left of a TRIM
-		activities = append(activities, PoolActivity{Pool: status.Name, Kind: "trim", Progress: progress})
+		if remaining, ok := status.TrimRemaining(); ok {
+			activity.Remaining = formatRemaining(remaining)
+		}
+		activities = append(activities, activity)
 	}
 	for _, other := range status.Other {
 		if strings.Contains(other.Value, "in progress") {

@@ -182,8 +182,9 @@ func formatRemaining(remaining string) string {
 	return "  " + remaining + " to go"
 }
 
-// drawProgressBar draws a bar of the given width at x, y, filled by percent, with text written into it. Each cell
-// has the text color that is readable on its background, so the text stays readable where the filled part ends.
+// drawProgressBar draws a bar of the given width at x, y, filled by percent, with text written into its middle. Each
+// cell has the text color that is readable on its background, so the text stays readable where the filled part
+// ends.
 func drawProgressBar(screen tcell.Screen, x int, y int, width int, percent float64, text string) {
 	if width <= 0 {
 		return
@@ -191,14 +192,15 @@ func drawProgressBar(screen tcell.Screen, x int, y int, width int, percent float
 	filled := filledCells(percent, width)
 	colors := theme.Colors.Activity
 	runes := []rune(text)
+	start := max((width-len(runes))/2, 0)
 	for column := 0; column < width; column++ {
 		style := tcell.StyleDefault.Background(colors.BarTrack).Foreground(colors.BarTrackText)
 		if column < filled {
 			style = tcell.StyleDefault.Background(colors.BarFilled).Foreground(colors.BarFilledText)
 		}
 		character := ' '
-		if column < len(runes) {
-			character = runes[column]
+		if index := column - start; index >= 0 && index < len(runes) {
+			character = runes[index]
 		}
 		screen.SetContent(x+column, y, character, nil, style)
 	}
@@ -253,15 +255,20 @@ func formatLabels(activities []zfs.PoolActivity) (labels []string, width int) {
 	return labels, 1 + kindWidth + 2 + poolWidth + 2
 }
 
-// barText returns the text written into the progress bar of the activity, for a bar of the given width: the
-// percentage, how much is done, how fast it goes and the time left, e.g. " 31.8%  1.02T / 3.21T  294M/s  02:10:31
-// to go". If that is too long, the least important parts are left out: first the amount, then the rate, then the
-// time left.
+// barText returns the text written into the middle of the progress bar of the activity, for a bar of the given
+// width: the percentage, how much is done, how fast it goes and the time left, e.g. " 31.8%  1.02T / 3.21T  294M/s
+// 02:10:31 to go". The numbers are padded to the widest they get (sizes are printed with at most 3 digits by zpool,
+// e.g. "1.02T" or "999G"), so the text does not move while they change. If it does not fit (with a space on each
+// side), the least important parts are left out: first the amount, then the rate, then the time left.
 func barText(activity zfs.PoolActivity, width int) string {
-	percent := fmt.Sprintf("%.1f%%", min(max(activity.Progress, 0), 100))
+	percent := fmt.Sprintf("%5.1f%%", min(max(activity.Progress, 0), 100))
 	amount := ""
 	if activity.Processed != "" && activity.Total != "" {
-		amount = activity.Processed + " / " + activity.Total
+		amount = fmt.Sprintf("%5s / %5s", activity.Processed, activity.Total)
+	}
+	rate := ""
+	if activity.Rate != "" {
+		rate = fmt.Sprintf("%7s", activity.Rate)
 	}
 	remaining := ""
 	if activity.Remaining != "" {
@@ -269,18 +276,18 @@ func barText(activity zfs.PoolActivity, width int) string {
 	}
 	// the parts in order of importance: the last one is left out first
 	candidates := [][]string{
-		{percent, amount, activity.Rate, remaining},
-		{percent, activity.Rate, remaining},
+		{percent, amount, rate, remaining},
+		{percent, rate, remaining},
 		{percent, remaining},
 		{percent},
 	}
 	for _, parts := range candidates {
-		text := " " + joinNonEmpty(parts, "  ")
-		if utf8.RuneCountInString(text) <= width {
+		text := joinNonEmpty(parts, "  ")
+		if utf8.RuneCountInString(text)+2 <= width {
 			return text
 		}
 	}
-	return " " + percent
+	return strings.TrimSpace(percent)
 }
 
 // joinNonEmpty joins the parts that are not empty with the separator.
