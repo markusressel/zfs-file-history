@@ -58,6 +58,8 @@ func TestListFilesIn(t *testing.T) {
 	f2, _ := os.CreateTemp(tmpDir, "file2")
 	defer f1.Close()
 	defer f2.Close()
+	// a visible .zfs (snapdir=visible) is not listed
+	assert.NoError(t, os.Mkdir(tmpDir+"/.zfs", 0o755))
 
 	files, err := ListFilesIn(tmpDir)
 	assert.NoError(t, err)

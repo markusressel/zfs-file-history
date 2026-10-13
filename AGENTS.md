@@ -36,8 +36,8 @@ of the code.
   (`system.go`, the libzfs handles in `system_libzfs.go`) is the backend of the system: the only code that runs
   `zfs`, `zpool` or `sudo`, or calls libzfs (`TestOnlySystemRunsCommands`). `Dataset` and `Snapshot` read their
   properties through it (a dataset all at once with the first getter, snapshots with `GetSnapshots`); the snapshot
-  names come from the `.zfs/snapshot` folder. A virtual backend (pools and datasets in memory, for the demo) is
-  planned; `SetBackend` replaces it before anything runs.
+  names come from the `.zfs/snapshot` folder. `SetBackend` replaces the backend (e.g. in tests) before anything
+  runs. `.zfs` itself is never listed as a folder, also with `snapdir=visible` (`util.IsZfsControlDirectory`).
 - `internal/zfs/zfs_evemt_watcher.go`: follows `zpool events` and emits the emitters of `common.go`:
   `DatasetsLoaded` (snapshots created/destroyed, pools imported/exported, also after F5 via `RefreshZfsData`) and
   `PoolsChanged` (state changes, scrub/resilver/trim, vdev changes, `ereport.*`/`resource.*`; throttled to once a

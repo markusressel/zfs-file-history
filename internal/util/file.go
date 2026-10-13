@@ -17,6 +17,18 @@ func FileExists(path string) bool {
 	return statSnap != nil
 }
 
+// ZfsControlDirectory is the folder at the root of a dataset with its snapshots (".zfs/snapshot"). ZFS hides it,
+// unless snapdir=visible.
+const ZfsControlDirectory = ".zfs"
+
+// IsZfsControlDirectory returns whether the entry with the name is ZfsControlDirectory, which is not listed even if
+// it is visible: the application shows the snapshots as the versions of the files instead.
+func IsZfsControlDirectory(name string) bool {
+	return name == ZfsControlDirectory
+}
+
+// ListFilesIn returns the paths of the entries of the folder, without ZfsControlDirectory. Empty if it does not
+// exist.
 func ListFilesIn(path string) (result []string, err error) {
 	if _, err = os.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -31,6 +43,9 @@ func ListFilesIn(path string) (result []string, err error) {
 	}
 
 	for _, entry := range entries {
+		if IsZfsControlDirectory(entry.Name()) {
+			continue
+		}
 		result = append(result, path2.Join(path, entry.Name()))
 	}
 
