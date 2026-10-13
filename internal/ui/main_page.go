@@ -152,7 +152,7 @@ func (mainPage *MainPage) createLayout() *tview.Flex {
 
 	mainPage.header = NewApplicationHeader(mainPage.application, mainPage.messages)
 	mainPageLayout.AddItem(mainPage.header.layout, 1, 0, false)
-	mainPage.addActivityBar(mainPageLayout)
+	mainPage.addPoolPanels(mainPageLayout)
 
 	// the overview below the file browser describes its folder and selected entry
 	mainPage.leftLayout = tview.NewFlex().SetDirection(tview.FlexRow).

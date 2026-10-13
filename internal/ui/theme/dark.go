@@ -21,6 +21,14 @@ var (
 	OnSecondary = tcell.ColorWhite
 
 	OnBackground = tcell.ColorWhite
+
+	// PanelBackground is the background of the panels below the header (activities and alerts), which sets them apart
+	// from the views of the page
+	PanelBackground = tcell.ColorIsRGB | tcell.ColorValid | 0x16191C
+	// Degraded and Faulted are the colors of problems: something that still works with less redundancy, and something
+	// that does not work or lost data
+	Degraded = tcell.ColorYellow
+	Faulted  = tcell.ColorRed
 )
 
 var (
@@ -134,8 +142,8 @@ var (
 		},
 		Pool: PoolColors{
 			Online:   tcell.ColorGreen,
-			Degraded: tcell.ColorYellow,
-			Faulted:  tcell.ColorRed,
+			Degraded: Degraded,
+			Faulted:  Faulted,
 			Offline:  tcell.ColorGray,
 			Group:    Accent,
 			Errors:   tcell.ColorRed,
@@ -144,7 +152,7 @@ var (
 		Activity: ActivityColors{
 			Border: PrimaryMuted,
 			// darker than BarTrack, so the empty part of the bars stays visible
-			Background:    tcell.ColorIsRGB | tcell.ColorValid | 0x16191C,
+			Background:    PanelBackground,
 			Kind:          Accent,
 			Pool:          tcell.ColorWhite,
 			Remaining:     tcell.ColorLightGray,
@@ -153,6 +161,14 @@ var (
 			// darker than Secondary (e.g. the version in the header) and Hover, so it does not look like either
 			BarTrack:        tcell.ColorIsRGB | tcell.ColorValid | 0x262B31,
 			BarTrackText:    OnSecondary,
+			HoverBackground: Hover,
+		},
+		Alert: AlertColors{
+			Background:      PanelBackground,
+			Error:           Faulted,
+			Warning:         Degraded,
+			Pool:            tcell.ColorWhite,
+			Message:         tcell.ColorLightGray,
 			HoverBackground: Hover,
 		},
 	}

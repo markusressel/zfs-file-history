@@ -21,9 +21,6 @@ const maxBarWidth = 60
 // of next to it, see layoutLines.
 const minBarWidthWithRemaining = 20
 
-// noLine is the hovered line while the mouse is not on the bar.
-const noLine = -1
-
 // kindTitles are the titles of the kinds of activities that are not just capitalized, see kindTitle.
 var kindTitles = map[string]string{
 	"trim":   "TRIM",
@@ -37,32 +34,16 @@ var kindTitles = map[string]string{
 // start and end at the same column. It has no height while nothing runs, see SetOnHeightChanged. A click on a line
 // runs the function set with SetOnClick.
 type Bar struct {
-	*tview.Box
+	*linePanel
+	// monitor is only accessed on the UI thread
 	monitor *Monitor
-
-	// All fields below are only accessed on the UI thread.
-
-	height int
-	// onHeightChanged is called with the number of lines when it changed
-	onHeightChanged func(height int)
-	// onClick is called with the clicked activity, nil: lines cannot be clicked
-	onClick func(activity zfs.PoolActivity)
-	// enabled returns whether the lines can be clicked, e.g. not while a dialog is in front
-	enabled func() bool
-	// hovered is the index of the line below the mouse, noLine if none
-	hovered int
 }
 
 // NewBar returns a bar showing the activities of monitor. Must be called on the UI thread.
 func NewBar(monitor *Monitor) *Bar {
-	bar := &Bar{
-		Box:     tview.NewBox(),
-		monitor: monitor,
-		enabled: func() bool { return true },
-		hovered: noLine,
-	}
+	bar := &Bar{monitor: monitor}
+	bar.linePanel = newLinePanel(func() int { return len(monitor.Activities()) })
 	// a panel of its own, which looks different from the views of the page: it is about all pools, not the page
-	bar.SetBorder(true)
 	uiutil.SetupWindow(bar.Box, "Activity")
 	bar.SetBorderColor(theme.Colors.Activity.Border)
 	bar.SetBackgroundColor(theme.Colors.Activity.Background)
@@ -70,49 +51,12 @@ func NewBar(monitor *Monitor) *Bar {
 	return bar
 }
 
-// SetOnHeightChanged sets the function called with the height the bar needs (the number of activities and the
-// border, 0 while nothing runs) whenever it changed, e.g. to resize it in its layout. Must be called on the UI thread.
-func (bar *Bar) SetOnHeightChanged(onHeightChanged func(height int)) *Bar {
-	bar.onHeightChanged = onHeightChanged
-	return bar
-}
-
 // SetOnClick sets the function called with the clicked activity. Must be called on the UI thread.
-func (bar *Bar) SetOnClick(onClick func(activity zfs.PoolActivity)) *Bar {
-	bar.onClick = onClick
-	return bar
-}
-
-// SetEnabledFunc sets a function that returns whether the lines can be clicked, e.g. not while a dialog is in front
-// (tview hands mouse events to all pages, see rivo/tview#926). Must be called on the UI thread.
-func (bar *Bar) SetEnabledFunc(enabled func() bool) *Bar {
-	bar.enabled = enabled
-	return bar
-}
-
-// Height returns the number of lines the bar needs, including the border (0 while nothing runs). Must be called on
-// the UI thread.
-func (bar *Bar) Height() int {
-	return bar.height
-}
-
-// update reports the new height after the activities changed. Runs on the UI thread.
-func (bar *Bar) update() {
-	lines := len(bar.monitor.Activities())
-	height := 0
-	if lines > 0 {
-		// the border
-		height = lines + 2
-	}
-	if height == bar.height {
-		return
-	}
-	bar.height = height
-	if bar.hovered >= lines {
-		bar.hovered = noLine
-	}
-	if bar.onHeightChanged != nil {
-		bar.onHeightChanged(height)
+func (bar *Bar) SetOnClick(onClick func(activity zfs.PoolActivity)) {
+	bar.onClickLine = func(line int) {
+		if activities := bar.monitor.Activities(); line < len(activities) {
+			onClick(activities[line])
+		}
 	}
 }
 
@@ -121,16 +65,11 @@ func (bar *Bar) Draw(screen tcell.Screen) {
 	bar.DrawForSubclass(screen, bar)
 	x, y, width, height := bar.GetInnerRect()
 	activities := bar.monitor.Activities()
+	bar.drawHover(screen, theme.Colors.Activity.HoverBackground)
 	lines := layoutLines(activities, width)
 	for i, line := range lines {
 		if i >= height {
 			break
-		}
-		if i == bar.hovered && bar.onClick != nil {
-			style := tcell.StyleDefault.Background(theme.Colors.Activity.HoverBackground)
-			for column := x; column < x+width; column++ {
-				screen.SetContent(column, y+i, ' ', nil, style)
-			}
 		}
 		tview.Print(screen, line.label, x, y+i, width, tview.AlignLeft, tcell.ColorWhite)
 		drawProgressBar(screen, x+line.barStart, y+i, line.barWidth, activities[i].Progress, line.barText)
@@ -222,33 +161,6 @@ func drawProgressBar(screen tcell.Screen, x int, y int, width int, percent float
 func filledCells(percent float64, width int) int {
 	percent = min(max(percent, 0), 100)
 	return int(percent / 100 * float64(width))
-}
-
-// MouseHandler highlights the line below the mouse and reports a clicked one, see SetOnClick. The bar never takes
-// the focus.
-func (bar *Bar) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	return bar.WrapMouseHandler(func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		x, y := event.Position()
-		if bar.onClick == nil || !bar.enabled() || !bar.InRect(x, y) {
-			// e.g. moved away: tview only sends the events of other positions while the bar captures the mouse
-			changed := bar.hovered != noLine
-			bar.hovered = noLine
-			return changed, nil
-		}
-		_, top, _, _ := bar.GetInnerRect()
-		line := y - top
-		activities := bar.monitor.Activities()
-		if line < 0 || line >= len(activities) {
-			line = noLine
-		}
-		changed := line != bar.hovered
-		bar.hovered = line
-		if action == tview.MouseLeftClick && line != noLine {
-			bar.onClick(activities[line])
-		}
-		// captures the mouse while on the bar, to know when it leaves it
-		return changed || action == tview.MouseLeftDown || action == tview.MouseLeftClick, bar
-	})
 }
 
 // formatLabels returns the label in front of the progress bar of each activity: what runs on which pool, aligned

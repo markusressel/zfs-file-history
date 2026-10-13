@@ -22,9 +22,10 @@ type basePage struct {
 	header *ApplicationHeaderComponent
 	// messages are the messages of the whole application, shown in the header of each page
 	messages *status_message.Center
-	// activities are the operations running on the pools of the whole application, shown by activityBar below the
-	// header of each page
+	// activities are the operations running on the pools of the whole application and their problems, shown by
+	// alertBar and activityBar below the header of each page
 	activities  *pool_activity.Monitor
+	alertBar    *pool_activity.AlertBar
 	activityBar *pool_activity.Bar
 	// shortcutMap shows the shortcuts of the focused component, see updateShortcutMap
 	shortcutMap *shortcut_helper.ShortcutMapComponent
@@ -180,15 +181,25 @@ func (page *basePage) handleFocusKeys(event *tcell.EventKey) bool {
 	return true
 }
 
-// addActivityBar adds the bar with the operations running on the pools (e.g. a scrub) to the layout, below the
-// header. It has no height while nothing runs.
-func (page *basePage) addActivityBar(layout *tview.Flex) {
-	bar := pool_activity.NewBar(page.activities).SetEnabledFunc(page.isInFront)
-	bar.SetOnHeightChanged(func(height int) {
-		layout.ResizeItem(bar, height, 0)
+// addPoolPanels adds the bar with the problems of the pools (e.g. data errors) and the one with the operations
+// running on them (e.g. a scrub) to the layout, below the header. They have no height while there is nothing to
+// show.
+func (page *basePage) addPoolPanels(layout *tview.Flex) {
+	alertBar := pool_activity.NewAlertBar(page.activities)
+	alertBar.SetEnabledFunc(page.isInFront)
+	alertBar.SetOnHeightChanged(func(height int) {
+		layout.ResizeItem(alertBar, height, 0)
 	})
-	layout.AddItem(bar, bar.Height(), 0, false)
-	page.activityBar = bar
+	layout.AddItem(alertBar, alertBar.Height(), 0, false)
+	page.alertBar = alertBar
+
+	activityBar := pool_activity.NewBar(page.activities)
+	activityBar.SetEnabledFunc(page.isInFront)
+	activityBar.SetOnHeightChanged(func(height int) {
+		layout.ResizeItem(activityBar, height, 0)
+	})
+	layout.AddItem(activityBar, activityBar.Height(), 0, false)
+	page.activityBar = activityBar
 }
 
 // newSplit returns a split of two panes side by side (or one above the other), whose boundary can be dragged
