@@ -14,6 +14,7 @@ import (
 func TestSudoersRules(t *testing.T) {
 	events := sudoersRules("alice", false)
 	assert.Contains(t, events, "zpool events -v -f")
+	assert.Contains(t, events, "zpool status -p -v")
 	assert.NotContains(t, events, "scrub")
 
 	withActions := sudoersRules("alice", true)

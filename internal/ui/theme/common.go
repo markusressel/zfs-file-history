@@ -119,6 +119,10 @@ type AlertColors struct {
 	Pool tcell.Color
 	// Message describes the problem
 	Message tcell.Color
+	// Hint explains the problems, e.g. in the dialog of the damaged files
+	Hint tcell.Color
+	// Unknown is a damaged object whose location is not known, e.g. metadata
+	Unknown tcell.Color
 	// HoverBackground is the background of the line below the mouse, which can be clicked
 	HoverBackground tcell.Color
 }

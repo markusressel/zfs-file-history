@@ -56,6 +56,8 @@ func NewDatasetPage(application *tview.Application, messages *status_message.Cen
 	datasetPage.componentTitles = map[FocusableUiComponent]string{
 		datasetBrowser: "Datasets", datasetInfo: "Dataset info", snapshotBrowser: "Snapshots",
 	}
+	// the snapshots holding damaged files are marked, see pool_activity.Monitor.DataErrors
+	activities.OnDataErrorsChanged(func() { snapshotBrowser.SetDataErrors(activities.DataErrors()) })
 
 	// Loading the dataset info and the snapshots of the selected dataset waits until the selection rests, so
 	// holding an arrow key only moves the selection (like in the file browser).

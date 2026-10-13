@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -175,14 +177,62 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		switchTo(Pool)
 		poolPage.poolBrowser.SelectPool(pool)
 	}
+	// the damaged files, from the alert of the data errors or the command menu; a file is shown in the file browser
+	var dataErrorsDialog *dialog.DataErrorsDialog
+	// shownDataErrorsDialog returns the dialog of the damaged files while it is shown, nil otherwise
+	shownDataErrorsDialog := func() *dialog.DataErrorsDialog {
+		if dataErrorsDialog == nil || !pagesLayout.HasPage(string(dialog.DataErrorsDialogPage)) {
+			return nil
+		}
+		return dataErrorsDialog
+	}
+	showObjectSearch := func(d *dialog.DataErrorsDialog) {
+		if search := activities.ObjectSearch(); search != nil {
+			d.SetObjectSearch(search.Progress, search.Running, search.Err)
+		}
+	}
+	showDataErrors := func() {
+		index := activities.DataErrors()
+		var onFind func()
+		if index.HasUnresolvedObjects() {
+			onFind = activities.FindObjects
+		}
+		dataErrorsDialog = dialog.NewDataErrorsDialog(application, index, func(dataError zfs.DataError) {
+			switchTo(Main)
+			mainPage.focusComponent(mainPage.componentTitles[mainPage.fileBrowser])
+			mainPage.fileBrowser.SetPathWithSelection(existingFolderOf(dataError.LivePath))
+			// the damaged version, e.g. of a file that only exists in snapshots
+			if dataError.Snapshot != "" {
+				mainPage.snapshotBrowser.SelectSnapshot(dataError.SnapshotFullName())
+			}
+		}, onFind, activities.CancelObjectSearch)
+		showObjectSearch(dataErrorsDialog)
+		dialog.ShowDialogOnPages(application, pagesLayout, dataErrorsDialog, nil)
+	}
+	activities.OnDataErrorsChanged(func() {
+		if d := shownDataErrorsDialog(); d != nil {
+			d.SetIndex(activities.DataErrors())
+		}
+	})
+	activities.OnObjectSearchChanged(func() {
+		if d := shownDataErrorsDialog(); d != nil {
+			showObjectSearch(d)
+		}
+	})
 	for _, page := range []*basePage{&mainPage.basePage, &datasetPage.basePage, &poolPage.basePage} {
 		page.activityBar.SetOnClick(func(activity zfs.PoolActivity) { showPool(activity.Pool) })
-		page.alertBar.SetOnClick(func(alert zfs.PoolAlert) { showPool(alert.Pool) })
+		page.alertBar.SetOnClick(func(alert zfs.PoolAlert) {
+			if alert.Kind == zfs.PoolAlertDataErrors && activities.DataErrors() != nil {
+				showDataErrors()
+				return
+			}
+			showPool(alert.Pool)
+		})
 	}
-	// e.g. after F5, or a change reported by the ZFS event watcher (see zfs.WatchZpoolEvents)
-	refreshActivities := func(_ struct{}) { activities.Refresh() }
-	util.SubscribeUI(zfs.DatasetsLoaded, application, refreshActivities)
-	util.SubscribeUI(zfs.PoolsChanged, application, refreshActivities)
+	// e.g. after F5, or a change reported by the ZFS event watcher (see zfs.WatchZpoolEvents). After F5 and changes
+	// of the snapshots (e.g. one holding damaged files was destroyed), the damaged files are listed again.
+	util.SubscribeUI(zfs.DatasetsLoaded, application, func(_ struct{}) { activities.RefreshDataErrors() })
+	util.SubscribeUI(zfs.PoolsChanged, application, func(_ struct{}) { activities.Refresh() })
 
 	if restored != nil && restored.Dataset != "" {
 		datasetPage.datasetBrowser.SelectOnLoad(restored.Dataset)
@@ -226,6 +276,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 				Group: shortcut_helper.GroupGlobal, Run: pages[front].refresh},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"m"}, Name: "Messages", Description: "Show all messages, e.g. errors", Group: shortcut_helper.GroupGlobal,
 				Run: func() { showMessageHistory(application, pagesLayout, messages) }},
+			shortcut_helper.ShortcutEntry{Name: "Damaged files", Description: "Show the files that ZFS reported as damaged (data errors)",
+				Group: shortcut_helper.GroupGlobal, Run: showDataErrors},
 			hideShortcuts.WithRun(toggleShortcuts),
 			shortcutQuit.WithRun(application.Stop).WithDescription("Exit the application"),
 		)
@@ -287,6 +339,20 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	restoreSession(restored, pages, switchTo)
 
 	return application, mainPage, datasetPage
+}
+
+// existingFolderOf returns the nearest folder above the path that exists, and the name of the entry in it that
+// leads to the path, e.g. for a file that only exists in snapshots, in a folder that was deleted as well. This reads
+// the file system, but only up to a few folders, which are usually cached.
+func existingFolderOf(filePath string) (folder string, name string) {
+	folder, name = filepath.Dir(filePath), filepath.Base(filePath)
+	for folder != "/" && folder != "." {
+		if stat, err := os.Stat(folder); err == nil && stat.IsDir() {
+			break
+		}
+		folder, name = filepath.Dir(folder), filepath.Base(folder)
+	}
+	return folder, name
 }
 
 // showMessageHistory shows all messages, and marks them as seen. Must be called on the UI thread.

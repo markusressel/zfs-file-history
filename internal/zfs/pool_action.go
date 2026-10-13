@@ -108,12 +108,13 @@ func ZpoolPath() string {
 // zpoolPaths are the paths zpool is installed at by the distributions, used in the sudoers rules.
 var zpoolPaths = []string{"/usr/sbin/zpool", "/sbin/zpool", "/usr/bin/zpool"}
 
-// SudoersEventsRule returns the sudoers rule that allows the user to watch the zpool events without a password, see
-// WatchZpoolEvents.
+// SudoersEventsRule returns the sudoers rule that allows the user to watch the zpool events (see WatchZpoolEvents)
+// and to list the damaged files of the pools (see ListDataErrors) without a password. Both only read. The arguments
+// are given exactly, so no others (e.g. "status -c", which runs scripts) are allowed.
 func SudoersEventsRule(user string) string {
-	commands := make([]string, 0, len(zpoolPaths))
+	commands := make([]string, 0, 2*len(zpoolPaths))
 	for _, path := range zpoolPaths {
-		commands = append(commands, path+" events -v -f")
+		commands = append(commands, path+" events -v -f", path+" "+strings.Join(dataErrorsArgs, " "))
 	}
 	return fmt.Sprintf("%s ALL=(root) NOPASSWD: %s\n", user, strings.Join(commands, ", "))
 }

@@ -118,6 +118,9 @@ type PoolStatus struct {
 	ScanProgress float64
 	// Errors is the summary of the data errors, e.g. "No known data errors"
 	Errors string
+	// ErrorEntries are the damaged files and objects listed below Errors by "zpool status -v", as printed, e.g.
+	// "/home/user/file", "tank/data@daily:/file" or "<metadata>:<0x1b>". Empty without -v.
+	ErrorEntries []string
 	// Other are the fields not known otherwise (e.g. "remove" or "checkpoint"), in their order
 	Other []PoolStatusField
 	// Devices are the devices of the pool, in the order of the config (parents before their children)
@@ -334,6 +337,13 @@ func parsePoolStatuses(output string) ([]*PoolStatus, error) {
 			continue
 		}
 
+		// the damaged files of "zpool status -v" are indented by 8 spaces, which no field name is (they are aligned
+		// to 6 columns), and may look like a field (e.g. "tank:<0x0>")
+		if status != nil && current == &status.Errors && isErrorEntry(line) {
+			status.ErrorEntries = append(status.ErrorEntries, strings.TrimLeft(line, " \t"))
+			continue
+		}
+
 		if !strings.HasPrefix(line, "\t") {
 			match := poolStatusFieldPattern.FindStringSubmatch(line)
 			if match == nil {
@@ -394,6 +404,15 @@ func parsePoolStatuses(output string) ([]*PoolStatus, error) {
 		}
 	}
 	return statuses, nil
+}
+
+// errorEntryIndent is how the damaged files are indented by "zpool status -v".
+const errorEntryIndent = "        "
+
+// isErrorEntry returns whether a line within the errors field of zpool status is a damaged file of "zpool status
+// -v" (see PoolStatus.ErrorEntries), not a continuation of the summary or the next field.
+func isErrorEntry(line string) bool {
+	return strings.HasPrefix(line, errorEntryIndent)
 }
 
 // parseProgress returns the progress of a running operation in percent, e.g. 21.3 for "0B repaired, 21.30% done".

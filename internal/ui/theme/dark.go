@@ -169,6 +169,8 @@ var (
 			Warning:         Degraded,
 			Pool:            tcell.ColorWhite,
 			Message:         tcell.ColorLightGray,
+			Hint:            tcell.ColorLightGray,
+			Unknown:         tcell.ColorGray,
 			HoverBackground: Hover,
 		},
 	}

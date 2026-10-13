@@ -49,6 +49,10 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 				cellText = fmt.Sprintf("/%s", cellText)
 			}
 			cellColor = statusCellColor
+			if note, color, damaged := formatDamage(fileBrowser.dataErrors, entry); damaged {
+				cellText += "  " + note
+				cellColor = color
+			}
 		case columnType:
 			cellText = typeCellText
 			cellColor = typeCellColor

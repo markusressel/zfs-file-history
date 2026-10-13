@@ -211,14 +211,14 @@ func TestUseColumnLayout(t *testing.T) {
 	files.UseColumnLayout(FilesLayout)
 	datasets := NewSnapshotBrowser(tview.NewApplication())
 	datasets.UseColumnLayout(DatasetsLayout)
-	assert.Equal(t, "name,creation,diff,entryChange,entrySize,entryModified,holds", keys(files))
-	assert.Equal(t, "name,creation,used,written,referenced,holds", keys(datasets))
+	assert.Equal(t, "name,creation,diff,entryChange,entrySize,entryModified,holds,damaged", keys(files))
+	assert.Equal(t, "name,creation,used,written,referenced,holds,damaged", keys(datasets))
 
 	// a change on one page does not change the other
 	files.tableContainer.SetActiveColumns([]*table.Column{columnName, columnUsed})
 	datasets = NewSnapshotBrowser(tview.NewApplication())
 	datasets.UseColumnLayout(DatasetsLayout)
-	assert.Equal(t, "name,creation,used,written,referenced,holds", keys(datasets))
+	assert.Equal(t, "name,creation,used,written,referenced,holds,damaged", keys(datasets))
 
 	// taken over from before the pages had their own
 	legacy := state.Load(filepath.Join(t.TempDir(), "legacy.json"))

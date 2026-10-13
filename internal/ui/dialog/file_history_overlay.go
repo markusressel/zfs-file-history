@@ -78,6 +78,19 @@ type FileHistoryOverlay struct {
 	copyShortcutLabel    string
 	rightLayoutContainer *uiutil.LoadingContainer
 	loadingView          *uiutil.LoadingView
+	// dataErrors are the damaged files, to mark the damaged versions (nil: none), see SetDataErrors. Only accessed on
+	// the UI thread.
+	dataErrors *zfs.DataErrorIndex
+}
+
+// damagedVersionMarker marks the versions of the file that are damaged, behind the name of their snapshot.
+const damagedVersionMarker = "⚠ damaged"
+
+// SetDataErrors marks the versions of the file that ZFS reported as damaged (nil: none), so an intact one is
+// restored. Must be called on the UI thread.
+func (o *FileHistoryOverlay) SetDataErrors(index *zfs.DataErrorIndex) {
+	o.dataErrors = index
+	o.tableContainer.RenderCells()
 }
 
 var (
@@ -241,6 +254,10 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 		switch col {
 		case historyColumnName:
 			text = entry.Snapshot.Name
+			if o.dataErrors.IsDamaged(o.file.GetRealPath(), entry.Snapshot.FullName) {
+				text += "  " + damagedVersionMarker
+				color = theme.Colors.Alert.Error
+			}
 		case historyColumnDiff:
 			align = tview.AlignCenter
 			if o.currentDiffMode == diffModeWorkingCopy {

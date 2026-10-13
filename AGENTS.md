@@ -19,7 +19,7 @@ of the code.
 ## Structure
 
 - `cmd/`: the cobra commands. `root.go` starts the UI, `setup.go` installs the sudoers rule for the event watcher
-  (`/etc/sudoers.d/zfs-file-history`, `sudo -n zpool events -v -f`), and with `--pool-actions` the rules for the
+  and the damaged files (`/etc/sudoers.d/zfs-file-history`, `sudo -n zpool events -v -f`, `zpool status -p -v`), and with `--pool-actions` the rules for the
   pool actions (checked with `visudo` before installing).
 - `internal/zfs/`: everything ZFS. libzfs (`github.com/kraudcloud/go-libzfs`) for datasets and snapshots, the `zfs`
   and `zpool` commands (`runCommand`, `runZfs`, `runZpool`) for the rest. Parsers work on the text output
@@ -55,6 +55,14 @@ of the code.
     state other than ONLINE, data errors, unusable devices or spares, device errors), most severe first, from the
     loads of the `Monitor`. It comes up by itself when something is wrong. A failed load keeps the last alerts.
     Both bars share `linePanel` (height, hovered line, clicks).
+    The `Monitor` also loads the damaged files (`zfs.ListDataErrors`: `zpool status -p -v`, retried with `sudo -n`,
+    allowed by the rule of `setup`) into a `zfs.DataErrorIndex`, only when the data errors of the pools changed or on
+    `RefreshDataErrors` (F5, snapshot changes), not on every load (sudo logs every call). The file and snapshot
+    browsers mark them (`SetDataErrors`), `dialog.DataErrorsDialog` lists them (click on the alert, command menu).
+    Objects ZFS has no path for (`ds:<0x…>`) can be searched in the snapshots by their inode number (= object
+    number; `zfs.FindObjects`, `f` in the dialog): it reads the inodes from `getdents64`, no `lstat` per file
+    (millions of files per snapshot), newest snapshot first. The dialog also says how to enable `head_errlog`, but
+    the application never runs it (one-way pool upgrade).
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). Shown with
     `ShowDialogOnPages`.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),
