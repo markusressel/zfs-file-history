@@ -17,6 +17,9 @@ type Backend interface {
 	Reload()
 	// ListDatasets returns all filesystem datasets, with the paths they are mounted at.
 	ListDatasets() ([]*DatasetListEntry, error)
+	// ListChildDatasets returns the datasets (filesystems and volumes) and their direct children, without the paths
+	// they are mounted at.
+	ListChildDatasets(parents []string) ([]*DatasetListEntry, error)
 	// DatasetProperties returns the datasetProperties of the dataset, with exact values ("zfs get -p"). Unknown
 	// ones are left out.
 	DatasetProperties(name string) (map[string]string, error)

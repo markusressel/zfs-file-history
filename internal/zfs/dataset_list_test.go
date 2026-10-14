@@ -103,3 +103,44 @@ func TestParseDatasetList_Invalid(t *testing.T) {
 		})
 	}
 }
+
+// childListBackend lists the children of datasets, like "zfs list -d 1" with several datasets: each one and its
+// children, so a parent is listed twice.
+type childListBackend struct {
+	Backend
+	// parents are the datasets of the last call
+	parents []string
+}
+
+func (b *childListBackend) ListChildDatasets(parents []string) ([]*DatasetListEntry, error) {
+	b.parents = parents
+	children := map[string][]string{"tank": {"tank/a", "tank/b"}, "tank/a": {"tank/a/x", "tank/a/y"}}
+	var entries []*DatasetListEntry
+	for _, parent := range parents {
+		entries = append(entries, &DatasetListEntry{Name: parent})
+		for _, child := range children[parent] {
+			entries = append(entries, &DatasetListEntry{Name: child})
+		}
+	}
+	return entries, nil
+}
+
+func TestListDatasetsAlong(t *testing.T) {
+	fake := &childListBackend{}
+	original := backend
+	t.Cleanup(func() { SetBackend(original) })
+	SetBackend(fake)
+
+	entries, err := ListDatasetsAlong("tank/a/x")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"tank", "tank/a"}, fake.parents, "only the parents")
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name)
+	}
+	assert.Equal(t, []string{"tank", "tank/a", "tank/b", "tank/a/x", "tank/a/y"}, names, "each once")
+
+	entries, err = ListDatasetsAlong("tank")
+	require.NoError(t, err)
+	assert.Empty(t, entries, "a pool has no parents")
+}

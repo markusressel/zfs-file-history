@@ -1,16 +1,16 @@
 package dataset_info
 
 import (
-	"slices"
 	"strings"
 	"zfs-file-history/internal/zfs"
 )
 
-// datasetOffset returns the space before the dataset in the bar of its pool, false if a parent of it is not listed.
+// datasetOffset returns the space before the dataset in the bar of its pool, from its parents and their children
+// (see zfs.ListDatasetsAlong), false if a parent of it is not listed.
 // The bar shows the datasets of the pool in the order of their tree: the own space of each one (data, snapshots,
 // refreservation) before its children, siblings sorted by name. So every dataset keeps its place, and a child lies
-// within its parent: moving between them only moves the highlight. Datasets that are not listed (volumes, see
-// zfs.ListAllDatasets) come after the listed children of their parent.
+// within its parent: moving between them only moves the highlight. A dataset that is not listed (e.g. created since)
+// comes after the listed children of its parent.
 func datasetOffset(entries []*zfs.DatasetListEntry, name string) (uint64, bool) {
 	byName := make(map[string]*zfs.DatasetListEntry, len(entries))
 	children := map[string][]*zfs.DatasetListEntry{}
@@ -54,11 +54,4 @@ func parentOf(name string) (string, bool) {
 		return "", false
 	}
 	return name[:index], true
-}
-
-// poolDatasets returns the datasets of the pool from the listing of all datasets.
-func poolDatasets(entries []*zfs.DatasetListEntry, pool string) []*zfs.DatasetListEntry {
-	return slices.DeleteFunc(slices.Clone(entries), func(entry *zfs.DatasetListEntry) bool {
-		return entry.Name != pool && !strings.HasPrefix(entry.Name, pool+"/")
-	})
 }

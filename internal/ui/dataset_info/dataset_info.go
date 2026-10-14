@@ -185,11 +185,11 @@ type datasetFacts struct {
 	offsetKnown bool
 }
 
-// loadDatasetPermissions, loadPoolStatus and loadDatasets are replaceable in tests.
+// loadDatasetPermissions, loadPoolStatus and loadDatasetsAlong are replaceable in tests.
 var (
 	loadDatasetPermissions = zfs.LoadDatasetPermissions
 	loadPoolStatus         = zfs.GetPoolStatus
-	loadDatasets           = zfs.ListAllDatasets
+	loadDatasetsAlong      = zfs.ListDatasetsAlong
 )
 
 // newDatasetInfoResult reads all displayed values of the dataset.
@@ -232,11 +232,10 @@ func readPoolSpace(facts *datasetFacts, name string) {
 		facts.poolOffset, facts.offsetKnown = 0, true
 		return
 	}
-	all, err := loadDatasets()
+	entries, err := loadDatasetsAlong(name)
 	if err != nil {
 		return
 	}
-	entries := poolDatasets(all, facts.poolName)
 	for _, entry := range entries {
 		if entry.Name == facts.poolName {
 			facts.poolUsed, facts.poolAvailable, facts.poolSpaceKnown = entry.Used, entry.Available, true

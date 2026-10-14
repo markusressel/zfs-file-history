@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	gopath "path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -374,6 +375,33 @@ func (entry DatasetListEntry) TableRowId() string {
 // This executes "zfs list" and reads /proc/mounts, so it must not be called on the UI thread.
 func ListAllDatasets() ([]*DatasetListEntry, error) {
 	return backend.ListDatasets()
+}
+
+// ListDatasetsAlong returns the parents of the dataset (up to the pool) and their direct children, each once: the
+// dataset, its siblings and those of its parents. Only what is needed to place the dataset within its pool, which
+// is much faster than listing all datasets on a pool with many of them.
+// This executes "zfs list", so it must not be called on the UI thread.
+func ListDatasetsAlong(name string) ([]*DatasetListEntry, error) {
+	var parents []string
+	for i, char := range name {
+		if char == '/' {
+			parents = append(parents, name[:i])
+		}
+	}
+	if len(parents) == 0 {
+		return nil, nil
+	}
+	entries, err := backend.ListChildDatasets(parents)
+	if err != nil {
+		return nil, err
+	}
+	// a parent is listed as itself and as a child of its parent
+	seen := map[string]bool{}
+	return slices.DeleteFunc(entries, func(entry *DatasetListEntry) bool {
+		duplicate := seen[entry.Name]
+		seen[entry.Name] = true
+		return duplicate
+	}), nil
 }
 
 // parseDatasetList parses the output of "zfs list -Hp -o <datasetListProperties>". mountPaths maps the names of

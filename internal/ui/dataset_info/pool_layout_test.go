@@ -21,13 +21,11 @@ func testPool() []*zfs.DatasetListEntry {
 		{Name: "tank/a/y", Used: 5 * gib},
 		{Name: "tank/a", Used: 25 * gib, UsedByChildren: 20 * gib},
 		{Name: "tank/a/x", Used: 15 * gib},
-		{Name: "other", Used: 50 * gib},
 	}
 }
 
 func TestDatasetOffset(t *testing.T) {
-	entries := poolDatasets(testPool(), "tank")
-	assert.Len(t, entries, 5, "without the other pool")
+	entries := testPool()
 	tests := []struct {
 		name     string
 		expected uint64
@@ -39,8 +37,8 @@ func TestDatasetOffset(t *testing.T) {
 		{"tank/a/x", 15 * gib},
 		{"tank/a/y", 30 * gib},
 		{"tank/b", 35 * gib},
-		// not listed (a volume): after the listed children of its parent
-		{"tank/a/volume", 35 * gib},
+		// not listed (e.g. created since): after the listed children of its parent
+		{"tank/a/new", 35 * gib},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -56,7 +54,7 @@ func TestDatasetOffset(t *testing.T) {
 
 // Moving from a parent to its child only moves the highlight: the child is drawn within the cells of its parent.
 func TestFormatPoolBar_ChildWithinItsParent(t *testing.T) {
-	entries := poolDatasets(testPool(), "tank")
+	entries := testPool()
 	facts := func(name string, entry *zfs.DatasetListEntry) *datasetFacts {
 		offset, _ := datasetOffset(entries, name)
 		return &datasetFacts{
