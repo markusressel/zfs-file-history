@@ -42,6 +42,11 @@ var (
 
 			PageIndicatorBackground: PrimaryMuted,
 			PageIndicator:           OnPrimary,
+
+			PageNumberBackground: Secondary,
+			PageNumber:           OnSecondary,
+			// a lighter Secondary, so the hovered number stands out from the others
+			PageNumberHoverBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x6B7785,
 		},
 		Dialog: DialogColors{
 			Border:       Secondary,

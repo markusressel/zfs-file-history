@@ -29,6 +29,19 @@ func TestMessageHistoryKey(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { loading = datasetPage.datasetBrowser.IsLoading() })
 		return !loading
 	}, 10*time.Second, 20*time.Millisecond, "datasets loaded")
+	// without ZFS, loading the pools fails as well, possibly later than the datasets
+	inHistory := func(text string) (found bool) {
+		testutil.OnUiThread(t, app, func() {
+			for _, message := range messages.History() {
+				found = found || strings.Contains(message.Message, text)
+			}
+		})
+		return found
+	}
+	if inHistory("Could not load datasets") {
+		assert.Eventually(t, func() bool { return inHistory("Could not load pools") }, 10*time.Second, 20*time.Millisecond,
+			"pools loaded")
+	}
 	testutil.OnUiThread(t, app, func() {
 		messages.MarkRead()
 		messages.Dismiss()
