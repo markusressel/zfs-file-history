@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -173,12 +174,22 @@ type datasetFacts struct {
 	// poolName is the name of the pool, pool its status (nil if it could not be loaded)
 	poolName string
 	pool     *zfs.PoolStatus
+	// isPoolRoot is set for the root dataset of the pool, which holds all others
+	isPoolRoot bool
+	// poolUsed and poolAvailable are the used and available space of the root dataset of the pool, for the space of the
+	// whole pool, if poolSpaceKnown
+	poolUsed, poolAvailable uint64
+	poolSpaceKnown          bool
+	// poolOffset is the space before the dataset in the bar of the pool (see datasetOffset), if offsetKnown
+	poolOffset  uint64
+	offsetKnown bool
 }
 
-// loadDatasetPermissions and loadPoolStatus are replaceable in tests.
+// loadDatasetPermissions, loadPoolStatus and loadDatasetsAlong are replaceable in tests.
 var (
 	loadDatasetPermissions = zfs.LoadDatasetPermissions
 	loadPoolStatus         = zfs.GetPoolStatus
+	loadDatasetsAlong      = zfs.ListDatasetsAlong
 )
 
 // newDatasetInfoResult reads all displayed values of the dataset.
@@ -197,16 +208,40 @@ func newDatasetInfoResult(dataset *zfs.Dataset, titleName string) *datasetInfoRe
 		permissions: formatPermissions(loadDatasetPermissions(dataset.GetName())),
 	}
 	facts.poolName, _, _ = strings.Cut(dataset.GetName(), "/")
+	facts.isPoolRoot = facts.poolName == dataset.GetName()
 	if facts.poolName != "" {
 		if status, err := loadPoolStatus(facts.poolName); err == nil {
 			facts.pool = status
 		}
+	}
+	if facts.poolName != "" {
+		readPoolSpace(facts, dataset.GetName())
 	}
 	return &datasetInfoResult{
 		dataset: dataset,
 		title:   fmt.Sprintf("Dataset: %s", titleName),
 		facts:   facts,
 	}
+}
+
+// readPoolSpace reads the space of the pool and the place of the dataset in it, for the bar of the pool (see
+// formatPoolBar). This runs zfs list, so it must only be called in the background.
+func readPoolSpace(facts *datasetFacts, name string) {
+	if facts.isPoolRoot {
+		facts.poolUsed, facts.poolAvailable, facts.poolSpaceKnown = facts.used, facts.available, true
+		facts.poolOffset, facts.offsetKnown = 0, true
+		return
+	}
+	entries, err := loadDatasetsAlong(name)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.Name == facts.poolName {
+			facts.poolUsed, facts.poolAvailable, facts.poolSpaceKnown = entry.Used, entry.Available, true
+		}
+	}
+	facts.poolOffset, facts.offsetKnown = datasetOffset(entries, name)
 }
 
 // permissionsPerLine is the number of permissions on a line of the dataset info, see formatPermissions.
@@ -262,13 +297,103 @@ func formatPoolScan(status *zfs.PoolStatus) string {
 }
 
 const (
-	// fullWarning and fullError are how full a dataset is (used of used and available) from which it is a warning or
-	// an error: ZFS slows down when a pool gets full
+	// fullWarning and fullError are how full a pool (or a quota) is from which it is a warning or an error: ZFS slows
+	// down when a pool gets full, and nothing can be written once it (or the quota) is
 	fullWarning = 0.85
 	fullError   = 0.95
-	// spaceBarWidth is the width of the bar of the used space
+	// spaceBarWidth is the width of the bars of the used space
 	spaceBarWidth = 20
 )
+
+// poolSpace returns the used and the total space of the pool of the dataset. If the root dataset of the pool could
+// not be read, of the dataset alone (used and available), without the other datasets.
+func poolSpace(facts *datasetFacts) (used uint64, total uint64) {
+	if facts.poolSpaceKnown {
+		return facts.poolUsed, facts.poolUsed + facts.poolAvailable
+	}
+	return facts.used, facts.used + facts.available
+}
+
+// quotaSpace returns the used and the total space of the dataset if a quota (of it or a parent) leaves it less than
+// the pool has: then its available space is what is left of the quota. false if there is none, or it is not known.
+func quotaSpace(facts *datasetFacts) (used uint64, total uint64, limited bool) {
+	if !facts.poolSpaceKnown || facts.isPoolRoot || facts.available >= facts.poolAvailable {
+		return 0, 0, false
+	}
+	return facts.used, facts.used + facts.available, true
+}
+
+// fraction returns used of total, 0 if total is.
+func fraction(used uint64, total uint64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(used) / float64(total)
+}
+
+// fullState returns whether a pool or quota filled to the fraction is a warning or an error.
+func fullState(fraction float64) uiutil.InfoState {
+	switch {
+	case fraction >= fullError:
+		return uiutil.InfoError
+	case fraction >= fullWarning:
+		return uiutil.InfoWarning
+	default:
+		return uiutil.InfoNone
+	}
+}
+
+// formatPercent returns the fraction in percent, in the color of how full it is (see fullState).
+func formatPercent(fraction float64) string {
+	return txwidgets.Span(fullState(fraction).Color(), "%.0f%%", fraction*100)
+}
+
+// formatPoolBar returns the bar of the pool: what the dataset uses (its data, snapshots and children, in shades of
+// one color) at its place among the other datasets of the pool (see datasetOffset), and what is free. The dataset
+// alone would hide how full the pool is, e.g. a dataset of a few MiB on a pool that is almost full.
+func formatPoolBar(facts *datasetFacts) string {
+	used, total := poolSpace(facts)
+	if total == 0 {
+		return ""
+	}
+	colors := theme.Colors.Info
+	own := min(facts.used, used)
+	snapshots := min(facts.usedBySnapshots, own)
+	children := min(facts.usedByChildren, own-snapshots)
+	// the rest, also what a refreservation keeps
+	data := own - snapshots - children
+	// the other datasets before it in the tree (see datasetOffset), so it is shown where it lies within its parents
+	before := uint64(0)
+	if facts.poolSpaceKnown && facts.offsetKnown {
+		before = min(facts.poolOffset, used-own)
+	}
+	segments := []uiutil.BarSegment{
+		{Fraction: fraction(before, total), Color: colors.SpaceOthers},
+		{Fraction: fraction(data, total), Color: colors.SpaceData},
+		{Fraction: fraction(snapshots, total), Color: colors.SpaceSnapshots},
+		{Fraction: fraction(children, total), Color: colors.SpaceChildren},
+		{Fraction: fraction(used-own-before, total), Color: colors.SpaceOthers},
+	}
+	full := fraction(used, total)
+	return uiutil.InfoStackedBar(segments, spaceBarWidth) + " " + formatPercent(full) +
+		uiutil.InfoMuted(fmt.Sprintf(" of %s · %s free", uiutil.HumanizedBytes(total), uiutil.HumanizedBytes(total-used)))
+}
+
+// formatQuotaBar returns the bar of the quota that limits the dataset, "" if there is none (see quotaSpace).
+func formatQuotaBar(facts *datasetFacts) string {
+	used, total, limited := quotaSpace(facts)
+	if !limited || total == 0 {
+		return ""
+	}
+	full := fraction(used, total)
+	return uiutil.InfoBar(full, spaceBarWidth) + " " + formatPercent(full) +
+		uiutil.InfoMuted(fmt.Sprintf(" of %s quota · %s free", uiutil.HumanizedBytes(total), uiutil.HumanizedBytes(total-used)))
+}
+
+// swatch returns a square in the color, which tells the part of the bar a value is.
+func swatch(color tcell.Color) string {
+	return txwidgets.Span(color, "■") + " "
+}
 
 // poolState returns the state of the pool for the verdict: fine while it is online.
 func poolState(state string) uiutil.InfoState {
@@ -287,24 +412,29 @@ func poolState(state string) uiutil.InfoState {
 func formatInfo(facts *datasetFacts) string {
 	var info uiutil.InfoText
 	info.Verdict(verdict(facts)...)
-	if total := facts.used + facts.available; total > 0 {
-		fraction := float64(facts.used) / float64(total)
-		info.Line(uiutil.InfoBar(fraction, spaceBarWidth) + " " + uiutil.InfoValue(fmt.Sprintf("%.0f%%", fraction*100)) +
-			uiutil.InfoMuted(fmt.Sprintf(" of %s · %s free", uiutil.HumanizedBytes(total), uiutil.HumanizedBytes(facts.available))))
+	if bar := formatPoolBar(facts); bar != "" {
+		info.Line(bar)
+	}
+	if bar := formatQuotaBar(facts); bar != "" {
+		info.Line(bar)
 	}
 
+	colors := theme.Colors.Info
 	info.Section("Space")
 	if facts.kind == "volume" {
 		info.Field("Size", uiutil.InfoValue(uiutil.HumanizedBytes(facts.volSize)))
 	}
-	info.Field("Data", formatSize(facts.usedByDataset))
-	snapshots := formatSize(facts.usedBySnapshots)
+	info.Field("Data", swatch(colors.SpaceData)+formatSize(facts.usedByDataset))
+	snapshots := swatch(colors.SpaceSnapshots) + formatSize(facts.usedBySnapshots)
 	if facts.snapshotLimit > 0 {
 		snapshots += uiutil.InfoMuted(fmt.Sprintf(" · %d of %d snapshots", facts.snapshotCount, facts.snapshotLimit))
 	}
 	info.Field("Snapshots", snapshots)
 	if facts.usedByChildren > 0 {
-		info.Field("Children", formatSize(facts.usedByChildren))
+		info.Field("Children", swatch(colors.SpaceChildren)+formatSize(facts.usedByChildren))
+	}
+	if facts.poolSpaceKnown && !facts.isPoolRoot {
+		info.Field("Other datasets", swatch(colors.SpaceOthers)+formatSize(facts.poolUsed-min(facts.used, facts.poolUsed)))
 	}
 	info.Field("Compression", formatCompression(facts))
 
@@ -352,13 +482,18 @@ func verdict(facts *datasetFacts) []uiutil.InfoPart {
 	if facts.encrypted && facts.keyStatus != "available" {
 		parts = append(parts, uiutil.InfoPart{Text: "key not loaded", State: uiutil.InfoError})
 	}
-	if total := facts.used + facts.available; total > 0 {
-		fraction := float64(facts.used) / float64(total)
-		switch {
-		case fraction >= fullError:
-			parts = append(parts, uiutil.InfoPart{Text: fmt.Sprintf("%.0f%% full", fraction*100), State: uiutil.InfoError})
-		case fraction >= fullWarning:
-			parts = append(parts, uiutil.InfoPart{Text: fmt.Sprintf("%.0f%% full", fraction*100), State: uiutil.InfoWarning})
+	if used, total := poolSpace(facts); total > 0 {
+		if full := fraction(used, total); fullState(full) != uiutil.InfoNone {
+			text := fmt.Sprintf("%.0f%% full", full*100)
+			if facts.poolSpaceKnown {
+				text = "pool " + text
+			}
+			parts = append(parts, uiutil.InfoPart{Text: text, State: fullState(full)})
+		}
+	}
+	if used, total, limited := quotaSpace(facts); limited && total > 0 {
+		if full := fraction(used, total); fullState(full) != uiutil.InfoNone {
+			parts = append(parts, uiutil.InfoPart{Text: fmt.Sprintf("quota %.0f%% full", full*100), State: fullState(full)})
 		}
 	}
 	switch {

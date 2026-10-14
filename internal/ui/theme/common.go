@@ -131,6 +131,12 @@ type InfoColors struct {
 	// BarEmpty is the empty part of a bar, BarFilled its filled part by how full it is (from empty to full)
 	BarEmpty  tcell.Color
 	BarFilled []GradientStop
+	// SpaceData, SpaceSnapshots and SpaceChildren are the parts of the space a dataset uses in the bar of its pool
+	// (shades of one color, so they read as one dataset), SpaceOthers what the other datasets of the pool use
+	SpaceData      tcell.Color
+	SpaceSnapshots tcell.Color
+	SpaceChildren  tcell.Color
+	SpaceOthers    tcell.Color
 }
 
 // AlertColors are used by the panel below the header that shows the problems of the pools, e.g. data errors.

@@ -144,6 +144,15 @@ func (system System) ListDatasets() ([]*DatasetListEntry, error) {
 	return parseDatasetList(output, mountPaths)
 }
 
+func (System) ListChildDatasets(parents []string) ([]*DatasetListEntry, error) {
+	args := []string{"list", "-H", "-p", "-d", "1", "-t", "filesystem,volume", "-o", strings.Join(datasetListProperties, ","), "--"}
+	output, err := runZfs(append(args, parents...)...)
+	if err != nil {
+		return nil, err
+	}
+	return parseDatasetList(output, nil)
+}
+
 func (System) ListSnapshotNames(dataset string) ([]string, error) {
 	return listSnapshotNames(dataset)
 }

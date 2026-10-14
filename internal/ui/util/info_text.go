@@ -187,7 +187,7 @@ func InfoMuted(text string) string {
 	return txwidgets.Span(theme.Colors.Info.Muted, "%s", text)
 }
 
-// partialBarBlocks are the characters of a cell of a bar filled from the left by 1 to 7 eighths, see InfoBar.
+// partialBarBlocks are the characters of a cell of a bar filled from the left by 1 to 7 eighths, see InfoStackedBar.
 var partialBarBlocks = []rune("▏▎▍▌▋▊▉")
 
 // InfoBar returns a bar of the width filled to the fraction (0 to 1), in eighths of a cell, colored by how full it
@@ -195,24 +195,73 @@ var partialBarBlocks = []rune("▏▎▍▌▋▊▉")
 func InfoBar(fraction float64, width int) string {
 	fraction = min(max(fraction, 0), 1)
 	colors := theme.Colors.Info
-	filled := GradientColor(colors.BarFilled, fraction, colors.Ok)
-	eighths := int(fraction*float64(width*8) + 0.5)
-	if fraction > 0 && eighths == 0 {
-		// something is used, so something is shown
-		eighths = 1
+	return InfoStackedBar([]BarSegment{{Fraction: fraction, Color: GradientColor(colors.BarFilled, fraction, colors.Ok)}}, width)
+}
+
+// BarSegment is a part of a bar, see InfoStackedBar.
+type BarSegment struct {
+	// Fraction is how much of the bar it fills (0 to 1)
+	Fraction float64
+	Color    tcell.Color
+}
+
+// InfoStackedBar returns a bar of the width with the segments one after the other from the left, in eighths of a
+// cell, the rest empty (theme.Colors.Info.BarEmpty). A segment that is not empty fills at least an eighth, so it
+// shows. A cell shows two colors at most: a segment that starts and ends within a cell another one ends in is lost.
+func InfoStackedBar(segments []BarSegment, width int) string {
+	total := width * 8
+	// ends are where the segments end, in eighths from the left
+	ends := make([]int, len(segments))
+	sum, previous := 0.0, 0
+	for i, segment := range segments {
+		sum += max(segment.Fraction, 0)
+		end := min(int(sum*float64(total)+0.5), total)
+		if segment.Fraction > 0 {
+			// something is used, so something is shown
+			end = max(end, min(previous+1, total))
+		}
+		end = max(end, previous)
+		ends[i], previous = end, end
+	}
+	empty := theme.Colors.Info.BarEmpty
+	// colorAt returns the color of the eighth
+	colorAt := func(eighth int) tcell.Color {
+		for i, end := range ends {
+			if eighth < end {
+				return segments[i].Color
+			}
+		}
+		return empty
 	}
 	var bar strings.Builder
-	fullCells, partial := eighths/8, eighths%8
-	if fullCells > 0 {
-		bar.WriteString(txwidgets.ColorTag(filled) + strings.Repeat("█", fullCells))
+	lastTag := ""
+	write := func(tag string, block rune) {
+		if tag != lastTag {
+			bar.WriteString(tag)
+			lastTag = tag
+		}
+		bar.WriteRune(block)
 	}
-	empty := width - fullCells
-	if partial > 0 {
-		bar.WriteString(txwidgets.ColorsTag(filled, colors.BarEmpty) + string(partialBarBlocks[partial-1]))
-		empty--
-	}
-	if empty > 0 {
-		bar.WriteString(txwidgets.ColorsTag(colors.BarEmpty, colors.BarEmpty) + strings.Repeat(" ", empty))
+	for cell := range width {
+		left := colorAt(cell * 8)
+		// the first segment that ends within the cell splits it
+		split := 0
+		for _, end := range ends {
+			if end > cell*8 && end < cell*8+8 {
+				split = end - cell*8
+				break
+			}
+		}
+		switch {
+		case (split == 0 || colorAt(cell*8+split) == left) && left == empty:
+			// a space, so copied text has no blocks where nothing is
+			write(txwidgets.ColorsTag(empty, empty), ' ')
+			continue
+		case split == 0 || colorAt(cell*8+split) == left:
+			write(txwidgets.ColorsTag(left, left), '█')
+			continue
+		}
+		write(txwidgets.ColorsTag(left, colorAt(cell*8+split)), partialBarBlocks[split-1])
 	}
 	bar.WriteString("[-:-]")
 	return bar.String()
