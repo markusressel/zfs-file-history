@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"zfs-file-history/cmd/global"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
@@ -25,8 +24,8 @@ type ApplicationHeaderComponent struct {
 	unreadBadge *tview.TextView
 	// shortcutHint tells how to show the shortcuts while they are hidden, see UpdateShortcutHint
 	shortcutHint *tview.TextView
-	// pageIndicator shows the page and its position, e.g. "FILES 1/2", see SetPage
-	pageIndicator *tview.TextView
+	// pageTabs show the pages by their number and the title of the shown one, nil until SetPages
+	pageTabs *pageTabs
 }
 
 func NewApplicationHeader(application *tview.Application, messages *status_message.Center) *ApplicationHeaderComponent {
@@ -75,23 +74,14 @@ func (applicationHeader *ApplicationHeaderComponent) createLayout() {
 
 	shortcutHint := uiutil.CreateAttentionTextView(shortcutHintText)
 
-	pageIndicator := tview.NewTextView().
-		SetTextStyle(tcell.StyleDefault.Bold(true)).
-		SetTextColor(theme.Colors.Header.PageIndicator).
-		SetTextAlign(tview.AlignCenter)
-	pageIndicator.SetBackgroundColor(theme.Colors.Header.PageIndicatorBackground)
-
 	layout.AddItem(nameTextView, len(nameText), 0, false)
 	layout.AddItem(versionTextView, len(versionText), 0, false)
 	layout.AddItem(statusTextView, 0, 1, false)
 	// sized by updateMessages
 	layout.AddItem(unreadBadge, 0, 0, false)
-	// hidden until SetPage
-	layout.AddItem(pageIndicator, 0, 0, false)
-	// sized by UpdateShortcutHint
+	// sized by UpdateShortcutHint, the page tabs are inserted before it by SetPages
 	layout.AddItem(shortcutHint, 0, 0, false)
 
-	applicationHeader.pageIndicator = pageIndicator
 	applicationHeader.shortcutHint = shortcutHint
 
 	applicationHeader.statusTextView = statusTextView
@@ -113,19 +103,19 @@ func (applicationHeader *ApplicationHeaderComponent) UpdateShortcutHint() {
 	applicationHeader.layout.ResizeItem(applicationHeader.shortcutHint, width, 0)
 }
 
-// SetPage shows the title of the page the header belongs to and its position among the pages, e.g. "FILES 1/2".
-// The title is padded to titleWidth (the longest title of all pages), so the indicator has the same width on all
-// pages and the position is right-aligned in it.
-func (applicationHeader *ApplicationHeaderComponent) SetPage(title string, titleWidth int, number int, count int) {
-	text := formatPageIndicator(title, titleWidth, number, count)
-	applicationHeader.pageIndicator.SetText(text)
-	// one space on each side
-	applicationHeader.layout.ResizeItem(applicationHeader.pageIndicator, len(text)+2, 0)
-}
-
-// formatPageIndicator returns e.g. "FILES    1/2" for a titleWidth of 8.
-func formatPageIndicator(title string, titleWidth int, number int, count int) string {
-	return fmt.Sprintf("%-*s %d/%d", titleWidth, strings.ToUpper(title), number, count)
+// SetPages shows the pages as tabs (see pageTabs), titles in the order of their numbers, current the index of the
+// page the header belongs to. onSelect is called on the UI thread with the index of a clicked page, enabled returns
+// whether the tabs react to the mouse. Must be called once, on the UI thread.
+func (applicationHeader *ApplicationHeaderComponent) SetPages(titles []string, current int, onSelect func(index int), enabled func() bool) {
+	tabs := newPageTabs(titles, current, onSelect)
+	tabs.enabled = enabled
+	applicationHeader.pageTabs = tabs
+	// before the shortcut hint, the last item
+	layout := applicationHeader.layout
+	layout.RemoveItem(applicationHeader.shortcutHint)
+	layout.AddItem(tabs, tabs.width(), 0, false)
+	layout.AddItem(applicationHeader.shortcutHint, 0, 0, false)
+	applicationHeader.UpdateShortcutHint()
 }
 
 // updateMessages shows the current message and the number of unread warnings and errors. Must be called on the UI

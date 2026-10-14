@@ -59,21 +59,12 @@ func globalShortcuts() []shortcut_helper.ShortcutEntry {
 // switchablePages are the pages cycled through with tab / shift+tab, in order.
 var switchablePages = []util.Page{Main, Dataset, Pool, Disks}
 
-// pageTitles are the titles of the switchable pages, shown in the page indicator of the header.
+// pageTitles are the titles of the switchable pages, shown in the page tabs of the header.
 var pageTitles = map[util.Page]string{
 	Main:    "Files",
 	Dataset: "Datasets",
 	Pool:    "Pools",
 	Disks:   "Disks",
-}
-
-// pageTitleWidth is the length of the longest page title, so the page indicator has the same width on all pages.
-func pageTitleWidth() int {
-	width := 0
-	for _, page := range switchablePages {
-		width = max(width, len(pageTitles[page]))
-	}
-	return width
 }
 
 // adjacentPage returns the page after (or before, if reversed) current, wrapping around.
@@ -159,15 +150,22 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	diskPage.SetPages(pagesLayout)
 
 	headers := map[util.Page]*ApplicationHeaderComponent{Main: mainPage.header, Dataset: datasetPage.header, Pool: poolPage.header, Disks: diskPage.header}
-	for index, page := range switchablePages {
-		headers[page].SetPage(pageTitles[page], pageTitleWidth(), index+1, len(switchablePages))
-	}
-
 	pages := map[util.Page]switchablePage{Main: mainPage, Dataset: datasetPage, Pool: poolPage, Disks: diskPage}
 	switchTo := func(page util.Page) {
 		pagesLayout.SwitchToPage(string(page))
 		recorder.setPage(page)
 		pages[page].refreshShortcutMap()
+	}
+	titles := make([]string, len(switchablePages))
+	for index, page := range switchablePages {
+		titles[index] = pageTitles[page]
+	}
+	for index, page := range switchablePages {
+		// a click on a number does what its key does
+		headers[page].SetPages(titles, index, func(selected int) { switchTo(switchablePages[selected]) }, func() bool {
+			front, _ := pagesLayout.GetFrontPage()
+			return front == string(page)
+		})
 	}
 
 	// the session is restored on the next start, see Start.RestoreSession

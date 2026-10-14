@@ -10,8 +10,13 @@ type HeaderColors struct {
 	Name           tcell.Color
 	NameBackground tcell.Color
 
+	// PageIndicator is the tab of the shown page, with its title
 	PageIndicator           tcell.Color
 	PageIndicatorBackground tcell.Color
+	// PageNumber is the tab of another page, its number only, which can be clicked
+	PageNumber                tcell.Color
+	PageNumberBackground      tcell.Color
+	PageNumberHoverBackground tcell.Color
 
 	UpdateInterval           tcell.Color
 	UpdateIntervalBackground tcell.Color

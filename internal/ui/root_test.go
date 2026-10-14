@@ -172,7 +172,7 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 	waitFor("shortcuts hidden", shortcut_helper.ShortcutsHidden)
 }
 
-func TestPageIndicator(t *testing.T) {
+func TestPageTabs(t *testing.T) {
 	app, _, _ := createUi(t.TempDir(), true)
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
@@ -180,47 +180,51 @@ func TestPageIndicator(t *testing.T) {
 	go func() { _ = app.Run() }()
 	defer app.Stop()
 
+	headerLine := func() string { return strings.SplitN(screenText(t, app, screen), "\n", 2)[0] }
 	shows := func(text string) func() bool {
-		return func() bool { return strings.Contains(screenText(t, app, screen), text) }
+		return func() bool { return strings.HasSuffix(headerLine(), text) }
+	}
+	styleAt := func(x int) (style tcell.Style) {
+		testutil.OnUiThread(t, app, func() {
+			cells, _, _ := screen.GetContents()
+			style = cells[x].Style
+		})
+		return style
 	}
 
-	assert.Eventually(t, shows("FILES    1/4"), 3*time.Second, 20*time.Millisecond)
-
-	// bold, in the theme's colors
-	var style tcell.Style
-	testutil.OnUiThread(t, app, func() {
-		cells, width, _ := screen.GetContents()
-		for x := 0; x < width; x++ {
-			if runes := cells[x].Runes; len(runes) > 0 && runes[0] == 'F' && x+1 < width && cells[x+1].Runes[0] == 'I' {
-				style = cells[x].Style
-			}
-		}
-	})
-	foreground, background, attributes := style.Decompose()
+	// the title of the shown page padded to the longest one, so the tabs have the same width on all pages
+	require.Eventually(t, shows(" 1 FILES     2  3  4 "), 3*time.Second, 20*time.Millisecond)
+	line := headerLine()
+	foreground, background, attributes := styleAt(strings.Index(line, "FILES")).Decompose()
 	assert.Equal(t, theme.Colors.Header.PageIndicator, foreground)
 	assert.Equal(t, theme.Colors.Header.PageIndicatorBackground, background)
 	assert.NotZero(t, attributes&tcell.AttrBold, "bold")
+	numberX := strings.LastIndex(line, "3")
+	_, background, _ = styleAt(numberX).Decompose()
+	assert.Equal(t, theme.Colors.Header.PageNumberBackground, background)
 
+	// the keys work as before
 	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
-	assert.Eventually(t, shows("DATASETS 2/4"), 3*time.Second, 20*time.Millisecond)
-	assert.False(t, shows("FILES    1/4")())
-	screen.InjectKey(tcell.KeyRune, '3', tcell.ModNone)
-	assert.Eventually(t, shows("POOLS    3/4"), 3*time.Second, 20*time.Millisecond)
+	assert.Eventually(t, shows(" 1  2 DATASETS  3  4 "), 3*time.Second, 20*time.Millisecond)
 	screen.InjectKey(tcell.KeyRune, '4', tcell.ModNone)
-	assert.Eventually(t, shows("DISKS    4/4"), 3*time.Second, 20*time.Millisecond)
+	assert.Eventually(t, shows(" 1  2  3  4 DISKS    "), 3*time.Second, 20*time.Millisecond)
 	// there is no fifth page
 	screen.InjectKey(tcell.KeyRune, '5', tcell.ModNone)
 	time.Sleep(100 * time.Millisecond)
-	assert.True(t, shows("DISKS    4/4")())
-	screen.InjectKey(tcell.KeyRune, '1', tcell.ModNone)
-	assert.Eventually(t, shows("FILES    1/4"), 3*time.Second, 20*time.Millisecond)
-}
+	assert.True(t, shows(" 1  2  3  4 DISKS    ")())
 
-func TestPageIndicatorWidth(t *testing.T) {
-	assert.Equal(t, "FILES    1/2", formatPageIndicator("Files", 8, 1, 2), "the position is right-aligned")
-	assert.Equal(t, "DATASETS 2/2", formatPageIndicator("Datasets", 8, 2, 2))
-	assert.Equal(t, "POOLS    3/3", formatPageIndicator("Pools", 8, 3, 3))
-	assert.Equal(t, len("Datasets"), pageTitleWidth())
+	// the numbers can be clicked, the one below the mouse is highlighted
+	line = headerLine()
+	numberX = strings.LastIndex(line, "3")
+	screen.InjectMouse(numberX, 0, tcell.ButtonNone, tcell.ModNone)
+	assert.Eventually(t, func() bool {
+		_, background, _ := styleAt(numberX).Decompose()
+		return background == theme.Colors.Header.PageNumberHoverBackground
+	}, 3*time.Second, 20*time.Millisecond)
+	screen.InjectMouse(numberX, 0, tcell.Button1, tcell.ModNone)
+	screen.InjectMouse(numberX, 0, tcell.ButtonNone, tcell.ModNone)
+	assert.Eventually(t, shows(" 1  2  3 POOLS     4 "), 3*time.Second, 20*time.Millisecond)
+	assert.Equal(t, len(line), len(headerLine()), "the numbers behind the shown page stay where they are")
 }
 
 func TestRelativeTimesKey(t *testing.T) {
