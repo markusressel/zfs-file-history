@@ -431,3 +431,32 @@ func TestAttentionRank(t *testing.T) {
 	assert.Equal(t, 1, attentionRank(warning))
 	assert.Equal(t, 2, attentionRank(fine))
 }
+
+// Regression: reading the disks again (every 10 s while shown) selected the first disk while the header was selected,
+// and the first attribute while the header of the attributes was.
+func TestDiskBrowser_HeaderStaysSelected(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	headers := func() (disks bool, attributes bool) {
+		testutil.OnUiThread(t, dt.app, func() {
+			disks = dt.browser.tableContainer.GetSelectedEntry() == nil
+			attributes = dt.details.tableContainer.GetSelectedEntry() == nil
+		})
+		return disks, attributes
+	}
+
+	testutil.OnUiThread(t, dt.app, func() {
+		dt.details.tableContainer.SelectHeader()
+		dt.browser.SetStatuses(testStatuses())
+	})
+	disks, attributes := headers()
+	assert.False(t, disks)
+	assert.True(t, attributes, "header of the attributes")
+
+	testutil.OnUiThread(t, dt.app, func() {
+		dt.browser.tableContainer.SelectHeader()
+		dt.browser.SetStatuses(testStatuses())
+	})
+	disks, _ = headers()
+	assert.True(t, disks, "header of the disks")
+	assert.Empty(t, dt.attributeNames(), "no disk selected")
+}

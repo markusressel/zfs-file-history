@@ -270,6 +270,8 @@ func (browser *DiskBrowserComponent) render() {
 	if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
 		selected = entry.TableRowId()
 	}
+	// the header stays selected while the disks are read again, e.g. to sort by another column
+	headerSelected := selected == "" && !browser.tableContainer.IsEmpty()
 	browser.tableContainer.SetData(entries)
 	visible := browser.tableContainer.GetEntries()
 	var toSelect *DiskEntry
@@ -297,6 +299,12 @@ func (browser *DiskBrowserComponent) render() {
 				toSelect = entry
 			}
 		}
+	}
+	if toSelect == nil && headerSelected {
+		browser.tableContainer.SelectHeader()
+		browser.Events.Emit(SelectedDiskChangedEvent{Disk: nil})
+		browser.updateFooter()
+		return
 	}
 	if toSelect == nil && len(visible) > 0 {
 		toSelect = visible[0]

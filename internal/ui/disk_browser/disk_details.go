@@ -101,8 +101,8 @@ func (component *DiskDetailsComponent) SetDialogPages(pages *tview.Pages) {
 	component.dialogPages = pages
 }
 
-// SetDisk shows the details and the attributes of the disk, nil: none. The selected attribute, the sort order and
-// the filter are kept while the same disk is shown (e.g. read again). Must be called on the UI thread.
+// SetDisk shows the details and the attributes of the disk, nil: none. The selected attribute (or the header), the
+// sort order and the filter are kept while the same disk is shown (e.g. read again). Must be called on the UI thread.
 func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 	if entry == nil {
 		component.details.SetText("")
@@ -125,9 +125,14 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 	component.tableContainer.SetPlaceholder("No values read.", theme.Colors.Pool.Hint)
 	selected := component.tableContainer.GetSelectedEntry()
 	sameDisk := component.shownDisk == entry.TableRowId()
+	// the header stays selected while the same disk is read again, e.g. to sort by another column
+	headerSelected := sameDisk && selected == nil && !component.tableContainer.IsEmpty()
 	component.shownDisk = entry.TableRowId()
 	component.tableContainer.SetData(attributes)
 	component.tableContainer.SelectFirstIfExists()
+	if headerSelected && !component.tableContainer.IsEmpty() {
+		component.tableContainer.SelectHeader()
+	}
 	if sameDisk && selected != nil {
 		for _, attribute := range component.tableContainer.GetEntries() {
 			if attribute.TableRowId() == selected.TableRowId() {
