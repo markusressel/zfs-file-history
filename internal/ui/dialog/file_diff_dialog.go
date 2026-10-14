@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -53,8 +54,9 @@ func (d *FileDiffDialog) createLayout() {
 		}
 	}
 
-	textDescriptionView := tview.NewTextView().
-		SetDynamicColors(true).
+	// the diff is often longer than the dialog
+	textDescriptionView := scrollbar.NewTextView(d.application)
+	textDescriptionView.SetDynamicColors(true).
 		SetRegions(true).
 		SetChangedFunc(func() {
 			d.application.Draw()

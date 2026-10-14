@@ -8,6 +8,7 @@ import (
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/disk_browser"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -58,7 +59,7 @@ type PoolDevicesComponent struct {
 // DevicesView is the text view of the devices, which also draws the parts that can be clicked, see
 // PoolDevicesComponent.
 type DevicesView struct {
-	*tview.TextView
+	*scrollbar.TextView
 	devices *PoolDevicesComponent
 }
 
@@ -69,8 +70,9 @@ func NewPoolDevices(application *tview.Application, sampler disk.TemperatureSamp
 		application: application,
 		enabled:     func() bool { return true },
 	}
-	textView := tview.NewTextView().
-		SetDynamicColors(true).
+	// capped by the page on small terminals, see ContentSize
+	textView := scrollbar.NewTextView(application)
+	textView.SetDynamicColors(true).
 		SetWrap(false).
 		SetScrollable(true)
 	textView.SetBorder(true)
@@ -508,5 +510,10 @@ func (poolDevices *PoolDevicesComponent) GetLayout() *DevicesView {
 // ContentSize returns the size needed to show all of the text, including the border. Must be called on the UI
 // thread.
 func (poolDevices *PoolDevicesComponent) ContentSize() (width int, height int) {
-	return uiutil.TextViewContentSize(poolDevices.textView.TextView)
+	width, height = uiutil.TextViewContentSize(poolDevices.textView.TextView.TextView)
+	if width == 0 {
+		return 0, 0
+	}
+	// the scrollbar while not all lines fit
+	return width + poolDevices.textView.BarWidth(), height
 }

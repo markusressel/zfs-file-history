@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -18,7 +19,7 @@ import (
 
 type DatasetInfoComponent struct {
 	application *tview.Application
-	textView    *tview.TextView
+	textView    *scrollbar.TextView
 	container   *uiutil.LoadingContainer
 	loader      *uiutil.DataLoader[*datasetInfoResult]
 
@@ -47,8 +48,9 @@ func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 		application: application,
 	}
 
-	datasetInfo.textView = tview.NewTextView().
-		SetDynamicColors(true).
+	// capped by the page on small terminals, see ContentSize
+	datasetInfo.textView = scrollbar.NewTextView(application)
+	datasetInfo.textView.SetDynamicColors(true).
 		SetWrap(false).
 		SetScrollable(true)
 	datasetInfo.textView.SetBorder(true)
@@ -572,10 +574,10 @@ func (datasetInfo *DatasetInfoComponent) SetBorderColor(color tcell.Color) {
 // ContentSize returns the size needed to show all of the text, including the border and its padding. Must be called
 // on the UI thread.
 func (datasetInfo *DatasetInfoComponent) ContentSize() (width int, height int) {
-	width, height = uiutil.TextViewContentSize(datasetInfo.textView)
+	width, height = uiutil.TextViewContentSize(datasetInfo.textView.TextView)
 	if width == 0 {
 		return 0, 0
 	}
-	// the padding, see NewDatasetInfo
-	return width + 2, height
+	// the padding, see NewDatasetInfo, and the scrollbar while not all lines fit
+	return width + 2 + datasetInfo.textView.BarWidth(), height
 }

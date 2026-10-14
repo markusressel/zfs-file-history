@@ -8,6 +8,7 @@ import (
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -51,7 +52,7 @@ func (entry AttributeEntry) TableRowId() string {
 type DiskDetailsComponent struct {
 	application    *tview.Application
 	layout         *tview.Flex
-	details        *tview.TextView
+	details        *scrollbar.TextView
 	detailsView    *detailsView
 	tableContainer *table.RowSelectionTable[AttributeEntry]
 
@@ -71,7 +72,7 @@ type DiskDetailsComponent struct {
 // times changed (when the SMART values were read, "38 seconds ago"), like the tables do (see
 // uiutil.TimeFormatGeneration).
 type detailsView struct {
-	*tview.TextView
+	*scrollbar.TextView
 	component *DiskDetailsComponent
 }
 
@@ -92,7 +93,9 @@ func (view *detailsView) Draw(screen tcell.Screen) {
 func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	component := &DiskDetailsComponent{application: application}
 
-	component.details = tview.NewTextView().SetDynamicColors(true).SetWrap(false)
+	// the attributes below take the space they need, the details may not fit
+	component.details = scrollbar.NewTextView(application)
+	component.details.SetDynamicColors(true).SetWrap(false)
 	// a pane of its own like the path overview, which Tab skips: there is nothing to do in it
 	component.details.SetBorder(true)
 	component.details.SetBorderPadding(0, 0, 1, 1)
