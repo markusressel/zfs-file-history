@@ -1,8 +1,11 @@
 package disk_browser
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/ui/table"
@@ -143,9 +146,6 @@ func formatDetails(entry *DiskEntry) []string {
 	if report.Firmware != "" {
 		details = append(details, "firmware "+report.Firmware)
 	}
-	if report.Protocol != "" {
-		details = append(details, report.Protocol)
-	}
 	if report.Model != "" || len(details) > 0 {
 		value := txwidgets.Span(tcell.ColorWhite, "%s", report.Model)
 		if len(details) > 0 {
@@ -261,4 +261,44 @@ func formatCounter(column *table.Column, report disk.SmartReport) (string, tcell
 	default:
 		return humanize.Comma(value), tcell.ColorLightGray
 	}
+}
+
+// lettersDiskName matches the kernel names of disks numbered by letters: "sda" to "sdz", then "sdaa".
+var lettersDiskName = regexp.MustCompile(`^(sd|vd|hd|xvd)([a-z]+)$`)
+
+// compareDiskNames orders the kernel names of disks like lsblk: "sdb" before "sdaa", "nvme2n1" before "nvme10n1".
+func compareDiskNames(a string, b string) int {
+	if matchA, matchB := lettersDiskName.FindStringSubmatch(a), lettersDiskName.FindStringSubmatch(b); matchA != nil && matchB != nil && matchA[1] == matchB[1] {
+		return cmp.Or(cmp.Compare(len(matchA[2]), len(matchB[2])), cmp.Compare(matchA[2], matchB[2]))
+	}
+	// numbers by their value
+	for a != "" && b != "" {
+		numberA, restA := leadingNumber(a)
+		numberB, restB := leadingNumber(b)
+		switch {
+		case numberA >= 0 && numberB >= 0:
+			if result := cmp.Compare(numberA, numberB); result != 0 {
+				return result
+			}
+			a, b = restA, restB
+		case a[0] != b[0]:
+			return cmp.Compare(a[0], b[0])
+		default:
+			a, b = a[1:], b[1:]
+		}
+	}
+	return cmp.Compare(len(a), len(b))
+}
+
+// leadingNumber returns the number the text starts with and the rest, -1 if it starts with none.
+func leadingNumber(text string) (int, string) {
+	end := 0
+	for end < len(text) && text[end] >= '0' && text[end] <= '9' {
+		end++
+	}
+	number, err := strconv.Atoi(text[:end])
+	if end == 0 || err != nil {
+		return -1, text
+	}
+	return number, text[end:]
 }

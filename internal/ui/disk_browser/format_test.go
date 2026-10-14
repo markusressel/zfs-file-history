@@ -2,6 +2,7 @@ package disk_browser
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func TestFormatDetails(t *testing.T) {
 	assert.Equal(t, []string{
 		"sda  SATA HDD  in tank",
 		"  Devices:  ata-DISK_1-part1  in tank",
-		"  Disk:     WDC WD40EFRX  serial WD-1 · 4.0 TB · firmware 82.00A82 · ATA",
+		"  Disk:     WDC WD40EFRX  serial WD-1 · 4.0 TB · firmware 82.00A82",
 		"  Health:   PASSED",
 		"  Power on: 8,760 h (1.0 years)",
 		"  Read:     " + uiutil.FormatTime(readAt),
@@ -198,4 +199,10 @@ func TestFormatCounter(t *testing.T) {
 	text, _ := formatCounter(columnBad, report)
 	assert.Empty(t, text, "not read")
 	assert.Equal(t, int64(-1), counterOf(columnBad, report), "sorted first")
+}
+
+func TestCompareDiskNames(t *testing.T) {
+	names := []string{"sdaa", "nvme10n1", "sdb", "nvme2n1", "sda", "sdz", "nvme0n1", "vda"}
+	slices.SortFunc(names, compareDiskNames)
+	assert.Equal(t, []string{"nvme0n1", "nvme2n1", "nvme10n1", "sda", "sdb", "sdz", "sdaa", "vda"}, names)
 }

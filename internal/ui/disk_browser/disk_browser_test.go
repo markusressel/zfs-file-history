@@ -402,8 +402,8 @@ func TestSortDiskEntries(t *testing.T) {
 	assert.Equal(t, []string{"sdc", "sda", "sdb", "sdd"}, devices(sortDiskEntries(entries(), columnPool, false)))
 	assert.Equal(t, []string{"sdc", "sdb", "sda", "sdd"}, devices(sortDiskEntries(entries(), columnSmart, false)))
 	assert.Equal(t, []string{"sdc", "sda", "sdb", "sdd"}, devices(sortDiskEntries(entries(), columnHealth, false)))
-	// not known first
-	assert.Equal(t, []string{"sdd", "sdb", "sdc", "sda"}, devices(sortDiskEntries(entries(), columnHours, false)))
+	// not known first, equal ones by disk
+	assert.Equal(t, []string{"sdd", "sdb", "sda", "sdc"}, devices(sortDiskEntries(entries(), columnHours, false)))
 	assert.Equal(t, []string{"sdb", "sdd", "sda", "sdc"}, devices(sortDiskEntries(entries(), columnTemp, false)))
 }
 

@@ -256,7 +256,8 @@ func (browser *DiskBrowserComponent) setupTable() {
 			table.MatchesGlob(entry.Report.Serial, filterText)
 	})
 	t.SetFilterChangedCallback(browser.updateFooter)
-	t.SetColumnSpec(tableColumns, columnPool, false)
+	// like lsblk, the pools are in the groups (b)
+	t.SetColumnSpec(tableColumns, columnDisk, false)
 	t.SetActiveColumns(defaultColumns)
 	t.SetGroupings([]table.Grouping[DiskEntry]{
 		{Key: groupingType, Name: "type", GroupOf: func(entry *DiskEntry) table.Group { return entry.Kind() }},
@@ -713,7 +714,7 @@ func sortDiskEntries(entries []*DiskEntry, column *table.Column, inverted bool) 
 		case columnDevice:
 			result = strings.Compare(a.DeviceNames(), b.DeviceNames())
 		case columnDisk:
-			result = strings.Compare(a.Report.Disk, b.Report.Disk)
+			result = compareDiskNames(a.Report.Disk, b.Report.Disk)
 		case columnModel:
 			result = strings.Compare(a.Report.Model, b.Report.Model)
 		case columnSerial:
@@ -739,8 +740,7 @@ func sortDiskEntries(entries []*DiskEntry, column *table.Column, inverted bool) 
 			result = cmp.Compare(counterOf(column, a.Report), counterOf(column, b.Report))
 		}
 		if result == 0 {
-			result = cmp.Or(strings.Compare(a.PoolNames(), b.PoolNames()), strings.Compare(a.DeviceNames(), b.DeviceNames()),
-				strings.Compare(a.Report.Disk, b.Report.Disk))
+			result = cmp.Or(compareDiskNames(a.Report.Disk, b.Report.Disk), strings.Compare(a.PoolNames(), b.PoolNames()))
 		}
 		if inverted {
 			result = -result
