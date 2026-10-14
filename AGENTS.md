@@ -234,7 +234,8 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   line first (whether all is well, the dot in the color of the worst part), then the values in sections, labels dim
   and values bright (`theme.Colors.Info`). Color tells states, not the kind of a value; defaults that say nothing are
   left out; derived values (how full, how much compression saves, years instead of hours) beat raw ones; bars
-  (`InfoBar`) where a fill level reads faster.
+  (`InfoBar`) where a fill level reads faster. A part of a whole is shown in the whole (`InfoStackedBar`, e.g. a
+  dataset in its pool), the values below with a swatch of their color as the legend.
 - Packages must not import upwards: `uiutil` does not import `internal/zfs`, components do not import pages.
 
 ## Tests

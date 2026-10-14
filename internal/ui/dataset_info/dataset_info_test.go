@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -258,6 +259,8 @@ func homeFacts() *datasetFacts {
 		usedByDataset: 196 * gib, usedBySnapshots: 18 * gib, usedByChildren: 121 * gib, logicalUsed: 585 * gib,
 		permissions: "snapshot, mount", poolName: "rpool",
 		pool: &zfs.PoolStatus{Name: "rpool", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "none requested"},
+		// 200 GiB of other datasets
+		poolUsed: 536 * gib, poolAvailable: 258 * gib, poolSpaceKnown: true,
 	}
 }
 
@@ -269,19 +272,21 @@ func TestFormatInfo(t *testing.T) {
 	facts := homeFacts()
 	assert.Equal(t, []string{
 		"● mounted at /home",
-		"███████████▍         57% of 594 GiB · 258 GiB free",
+		// data, snapshots, children, other datasets, free
+		"█████▍██▌████▌       68% of 794 GiB · 258 GiB free",
 		"",
 		"Space",
-		"Data         196 GiB",
-		"Snapshots    18 GiB",
-		"Children     121 GiB",
-		"Compression  zstd · saves 249 GiB (1.90×)",
+		"Data            ■ 196 GiB",
+		"Snapshots       ■ 18 GiB",
+		"Children        ■ 121 GiB",
+		"Other datasets  ■ 200 GiB",
+		"Compression     zstd · saves 249 GiB (1.90×)",
 		"",
 		"Dataset",
-		"Pool         rpool ONLINE · never scrubbed",
-		"Created      5 years ago · " + facts.created.Format(time.DateOnly),
-		"Encryption   aes-256-gcm · key loaded",
-		"Permissions  snapshot, mount",
+		"Pool            rpool ONLINE · never scrubbed",
+		"Created         5 years ago · " + facts.created.Format(time.DateOnly),
+		"Encryption      aes-256-gcm · key loaded",
+		"Permissions     snapshot, mount",
 	}, infoLines(facts), "defaults that say nothing are left out (read-only, can mount)")
 	// the verdict is green: all is well
 	assert.True(t, strings.HasPrefix(formatInfo(facts), txwidgets.ColorTag(uiutil.InfoOk.Color())+"●"))
@@ -294,8 +299,13 @@ func TestFormatInfo_Verdict(t *testing.T) {
 		verdict string
 		state   uiutil.InfoState
 	}{
-		{"almost full", func(facts *datasetFacts) { facts.available = 30 * gib }, "● 92% full · mounted at /home", uiutil.InfoWarning},
-		{"full", func(facts *datasetFacts) { facts.available = 10 * gib }, "● 97% full · mounted at /home", uiutil.InfoError},
+		{"almost full pool", func(facts *datasetFacts) { facts.available, facts.poolAvailable = 90*gib, 90*gib },
+			"● pool 86% full · mounted at /home", uiutil.InfoWarning},
+		{"full pool", func(facts *datasetFacts) { facts.available, facts.poolAvailable = 20*gib, 20*gib },
+			"● pool 96% full · mounted at /home", uiutil.InfoError},
+		{"almost full quota", func(facts *datasetFacts) { facts.available = 30 * gib }, "● quota 92% full · mounted at /home", uiutil.InfoWarning},
+		{"full, pool unknown", func(facts *datasetFacts) { facts.available, facts.poolSpaceKnown = 10*gib, false },
+			"● 97% full · mounted at /home", uiutil.InfoError},
 		{"degraded pool", func(facts *datasetFacts) { facts.pool.State = zfs.PoolStateDegraded }, "● pool DEGRADED · mounted at /home", uiutil.InfoWarning},
 		{"key not loaded", func(facts *datasetFacts) { facts.keyStatus = "unavailable"; facts.mounted = "no" },
 			"● key not loaded · not mounted", uiutil.InfoError},
@@ -315,13 +325,54 @@ func TestFormatInfo_Verdict(t *testing.T) {
 	}
 }
 
+func TestFormatInfo_Quota(t *testing.T) {
+	facts := homeFacts()
+	// less than the pool has: a quota of 400 GiB
+	facts.available = 64 * gib
+	lines := infoLines(facts)
+	assert.Equal(t, "█████▍██▌████▌       68% of 794 GiB · 258 GiB free", lines[1], "the pool")
+	assert.Equal(t, "████████████████▊    84% of 400 GiB quota · 64 GiB free", lines[2], "and the quota")
+
+	facts.available = facts.poolAvailable + 10*gib
+	assert.NotContains(t, formatInfo(facts), "quota", "more than the pool has: a reservation, not a quota")
+}
+
+func TestFormatInfo_PoolRoot(t *testing.T) {
+	facts := homeFacts()
+	facts.isPoolRoot = true
+	facts.poolUsed = facts.used
+	lines := infoLines(facts)
+	assert.Equal(t, "██████▋▎███▍         57% of 594 GiB · 258 GiB free", lines[1])
+	assert.NotContains(t, lines, "Other datasets  ■ 0 B", "it holds all of them")
+	assert.Equal(t, "Data         ■ 196 GiB", lines[4])
+}
+
+func TestFormatInfo_PoolSpaceUnknown(t *testing.T) {
+	facts := homeFacts()
+	facts.poolSpaceKnown = false
+	lines := infoLines(facts)
+	assert.Equal(t, "██████▋▎███▍         57% of 594 GiB · 258 GiB free", lines[1], "of the dataset alone")
+	assert.Equal(t, "Data         ■ 196 GiB", lines[4], "no other datasets")
+}
+
+func TestFormatInfo_PoolBarColors(t *testing.T) {
+	facts := homeFacts()
+	text := formatInfo(facts)
+	colors := theme.Colors.Info
+	for _, color := range []tcell.Color{colors.SpaceData, colors.SpaceSnapshots, colors.SpaceChildren, colors.SpaceOthers} {
+		assert.Contains(t, text, txwidgets.Span(color, "■"), "a swatch for each part of the bar")
+		// as the text or the background of a cell (a part smaller than a cell)
+		assert.Contains(t, strings.Split(text, "\n")[1], strings.Trim(txwidgets.ColorTag(color), "[]"), "and the part")
+	}
+}
+
 func TestFormatInfo_NotMounted(t *testing.T) {
 	facts := homeFacts()
 	facts.mounted, facts.canMount = "no", "noauto"
 	lines := infoLines(facts)
 	// why it is not mounted
-	assert.Contains(t, lines, "Mount point  /home")
-	assert.Contains(t, lines, "Can mount    noauto")
+	assert.Contains(t, lines, "Mount point     /home")
+	assert.Contains(t, lines, "Can mount       noauto")
 }
 
 func TestFormatInfo_Unknown(t *testing.T) {
@@ -331,10 +382,10 @@ func TestFormatInfo_Unknown(t *testing.T) {
 	facts.usedBySnapshots = 0
 	facts.permissions = "unknown"
 	lines := infoLines(facts)
-	assert.Contains(t, lines, "Pool         rpool · unknown")
-	assert.Contains(t, lines, "Compression  off")
-	assert.Contains(t, lines, "Snapshots    0 B")
-	assert.Contains(t, lines, "Permissions  unknown")
+	assert.Contains(t, lines, "Pool            rpool · unknown")
+	assert.Contains(t, lines, "Compression     off")
+	assert.Contains(t, lines, "Snapshots       ■ 0 B")
+	assert.Contains(t, lines, "Permissions     unknown")
 	// dimmed: they say little
 	text := formatInfo(facts)
 	assert.Contains(t, text, uiutil.InfoMuted("off"))

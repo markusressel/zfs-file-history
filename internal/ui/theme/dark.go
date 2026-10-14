@@ -212,6 +212,12 @@ var (
 				{Position: 0.85, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFFB84D},
 				{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
 			},
+			// blue, unlike the states (green, yellow, red); the snapshots lighter, the children darker
+			SpaceData:      tcell.ColorIsRGB | tcell.ColorValid | 0x4A9EE0,
+			SpaceSnapshots: tcell.ColorIsRGB | tcell.ColorValid | 0xA5D2F7,
+			SpaceChildren:  tcell.ColorIsRGB | tcell.ColorValid | 0x2C6A9E,
+			// lighter than BarEmpty, so used and free space can be told apart
+			SpaceOthers: tcell.ColorIsRGB | tcell.ColorValid | 0x7A838C,
 		},
 		Alert: AlertColors{
 			Background:      PanelBackground,
