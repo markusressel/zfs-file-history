@@ -103,6 +103,9 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 			mainPage.showStatusMessage(e.Message)
 		case snapshot_browser.RequestHistoryEvent:
 			mainPage.showHistory(e.Entry, e.Snapshot.Snapshot)
+		case snapshot_browser.RolledBackEvent:
+			// the files of the dataset changed
+			fileBrowser.Refresh(false)
 		case snapshot_browser.FolderChangesLoaded:
 			pathOverview.SetFolderChanges(e.FolderPath, e.BySnapshot)
 		case snapshot_browser.PathVersionsLoaded:

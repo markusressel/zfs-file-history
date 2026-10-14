@@ -263,8 +263,7 @@ func (dataset *Dataset) CreateSnapshot(name string) error {
 	if datasetName == "" {
 		return errors.New("cannot create snapshot: no dataset metadata available")
 	}
-	return explainPermissionError(backend.CreateSnapshot(datasetName, name), "create a snapshot",
-		PermissionGap{Dataset: datasetName, Permissions: []Permission{PermissionSnapshot, PermissionMount}})
+	return CreateSnapshot(datasetName, name, false)
 }
 
 // DestroySnapshot destroys the snapshot of the dataset with the given name (behind the "@"), see
@@ -334,6 +333,13 @@ type DatasetListEntry struct {
 	Mountpoint string
 	// MountPath is the path the dataset is currently mounted at, or "" if it is not mounted.
 	MountPath string
+	// Origin is the full name of the snapshot the dataset was cloned from, "" if it is not a clone.
+	Origin string
+}
+
+// IsClone returns whether the dataset is a clone of a snapshot.
+func (entry DatasetListEntry) IsClone() bool {
+	return IsClone(entry.Origin)
 }
 
 func (entry DatasetListEntry) TableRowId() string {
@@ -361,8 +367,11 @@ func parseDatasetList(output string, mountPaths map[string]string) ([]*DatasetLi
 
 		entry := &DatasetListEntry{
 			Name:       fields[0],
-			Mountpoint: fields[7],
+			Mountpoint: fields[8],
 			MountPath:  mountPaths[fields[0]],
+		}
+		if IsClone(fields[7]) {
+			entry.Origin = fields[7]
 		}
 		sizes := []*uint64{&entry.Used, &entry.Available, &entry.UsedBySnapshots, &entry.UsedByDataset, &entry.UsedByChildren, &entry.UsedByRefreservation}
 		for i, size := range sizes {

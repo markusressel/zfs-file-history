@@ -17,6 +17,7 @@ const (
 	PermissionDiff     Permission = "diff"
 	PermissionHold     Permission = "hold"
 	PermissionMount    Permission = "mount"
+	PermissionPromote  Permission = "promote"
 	PermissionRelease  Permission = "release"
 	PermissionRollback Permission = "rollback"
 	PermissionSnapshot Permission = "snapshot"

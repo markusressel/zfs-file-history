@@ -58,6 +58,7 @@ func TestDatasetPermissionsDialog_Content(t *testing.T) {
 		"clone|c|✗",
 		"create|n|✗",
 		"rollback|b|✗",
+		"promote|p|✗",
 		"diff|f|✗",
 	}, tableRows(d))
 	assert.Equal(t, "What user alice may do on this dataset and its children:", d.summary.GetText(true))

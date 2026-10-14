@@ -48,6 +48,14 @@ of the code.
   then offers to run it once with sudo or to run `setup --pool-actions` (like `NewMissingPermissionsDialog` does
   for dataset permissions). Actions that lose data or make a pool unavailable (destroy, export, upgrade, `clear -F`) are deliberately
   not offered.
+- `internal/zfs/dataset_actions.go`: the actions on datasets that lose data (destroying a clone, rolling back) work
+  in two steps: a preview lists what would be lost without changing anything (dry run, newer snapshots, holds,
+  clones, permissions), the action takes the confirmed preview, checks everything again and refuses with
+  `ErrChangedSinceConfirmation` if anything differs. `-R` (destroys clones elsewhere) is never used. Only clones can
+  be destroyed (`DatasetListEntry.Origin`); with snapshots or child datasets only after a checkbox. Both are confirmed
+  by typing the full name (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action
+  dialog and command menu only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
+  UI tests replace the package variables.
 - `internal/state/`: the persisted state (`state.Current`): settings, table column layouts, selections, the session.
 - `internal/ui/`: the pages and the root.
   - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`; keys `1`-`3`), global keys, the session
@@ -119,7 +127,8 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   not of the dragged widget, so a drag is not lost when the mouse leaves it (`captureSplitDrags`). A primitive that
   needs to know when the mouse leaves it returns itself as the capturing primitive while the mouse is on it (see
   `clickable.Regions.HandleMouse`).
-- **Parts that are hovered and clicked use `clickable.Regions`** (the activity, alert and shortcut bars): `Draw`
+- **Parts that are hovered and clicked use `clickable.Regions`** (the activity, alert and shortcut bars, the parts
+  of a table footer: `uiutil.FooterPart`, e.g. "… unmounted hidden"): `Draw`
   adds each part where it draws it (`Reset`, `Add`, `DrawHover` at the end), the mouse handler calls `HandleMouse`.
   No second layout for hit testing. A region's `Key` identifies it across draws (regions with the same key are
   highlighted together); the last added region wins where they overlap. Regions exist once drawn: UI tests draw
@@ -172,6 +181,9 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 - Match the surrounding code: naming, receiver names (`poolPage`, `datasetInfo`, ...), file layout.
 - Escape text for tview with `tview.Escape`, or use `txwidgets.Span(color, format, args...)`, which escapes its
   arguments itself (do not escape twice).
+- Key information in dialog texts (names of datasets, snapshots, pools, sizes) stands out with `dialog.Highlight`, in
+  the dialogs that show style tags (`newTaggedSelectionDialog`, `NewConfirmByNameDialog`); what is lost for good with
+  `theme.Colors.Dialog.Danger`, and their confirmations have a red border (`SetDanger`).
 - New UI elements take their colors from the theme.
 - Packages must not import upwards: `uiutil` does not import `internal/zfs`, components do not import pages.
 

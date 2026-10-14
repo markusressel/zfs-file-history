@@ -44,8 +44,11 @@ var (
 			PageIndicator:           OnPrimary,
 		},
 		Dialog: DialogColors{
-			Border: Secondary,
-			Error:  tcell.ColorRed,
+			Border:       Secondary,
+			Error:        tcell.ColorRed,
+			Danger:       tcell.ColorRed,
+			DangerBorder: tcell.ColorRed,
+			Highlight:    Accent,
 			// a lighter Secondary, readable on the background
 			SectionTitle: tcell.ColorIsRGB | tcell.ColorValid | 0x8C99A6,
 		},
@@ -82,8 +85,9 @@ var (
 			},
 		},
 		Layout: LayoutColors{
-			Title:  Accent,
-			Border: Secondary,
+			Title:                 Accent,
+			Border:                Secondary,
+			FooterHoverBackground: Hover,
 			Table: LayoutTableColors{
 				Accent: Accent,
 

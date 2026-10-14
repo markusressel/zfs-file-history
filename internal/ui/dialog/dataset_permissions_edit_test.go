@@ -253,7 +253,7 @@ func TestDatasetPermissionsDialog_ApplyWithSudo(t *testing.T) {
 
 	et.press(tcell.KeyRune, 'a')
 	et.waitFor("confirmation", func() bool { return et.hasPage("ApplyDelegationsDialog") })
-	et.waitFor("sudo mentioned", func() bool { return strings.Contains(et.screenText(), "run with sudo") })
+	et.waitFor("sudo mentioned", func() bool { return strings.Contains(et.screenText(), "sudo (asks for your password)") })
 	et.press(tcell.KeyRune, '1')
 	et.press(tcell.KeyEnter, 0)
 

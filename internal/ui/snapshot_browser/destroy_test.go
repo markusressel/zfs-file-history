@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -193,7 +194,11 @@ func TestFormatDestroyDescription(t *testing.T) {
 		Destroyed: []string{"pool/data@a", "pool/data@b"},
 		Reclaim:   1536 * 1024 * 1024,
 	})
-	assert.Equal(t, "This frees 1.5 GiB and cannot be undone.\n\nWill be destroyed (2):\n  pool/data@a\n  pool/data@b", description)
+	shown := tview.NewTextView().SetDynamicColors(true).SetText(description).GetText(true)
+	assert.Equal(t, "This frees 1.5 GiB and cannot be undone.\n\nWill be destroyed (2):\n  pool/data@a\n  pool/data@b", shown)
+	// the names and the space stand out
+	assert.Contains(t, description, dialog.Highlight("pool/data@a"))
+	assert.Contains(t, description, dialog.Highlight("1.5 GiB"))
 
 	var many []string
 	for i := 0; i < 15; i++ {

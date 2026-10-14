@@ -54,7 +54,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	layout *tview.Flex
 	footer *uiutil.BorderFooter
-	table  *tview.Table
+	// footerEnabled returns whether the parts of the footer can be clicked, nil: always, see SetFooterEnabledFunc
+	footerEnabled func() bool
+	table         *tview.Table
 	// view is the table as placed in the layout, see tableView
 	view *tableView
 	// renderedTimeFormat is the uiutil.TimeFormatGeneration the cells were rendered with
@@ -314,6 +316,14 @@ func (c *RowSelectionTable[T]) createLayout() {
 	uiutil.SetupWindow(c.layout, "")
 	c.footer = uiutil.NewBorderFooter(c.layout.Box)
 	c.footer.SetLeftFunc(c.renderFilterFooter)
+	// the clickable parts of the footer (see SetFooterParts); on the layout, which gets the events of its border
+	c.layout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		enabled := c.footerEnabled == nil || c.footerEnabled()
+		if c.footer.HandleMouse(action, event, enabled) {
+			return tview.MouseConsumed, nil
+		}
+		return action, event
+	})
 }
 
 // syncScrollbar shows the scrollbar if not all rows fit, and updates its position.
@@ -472,6 +482,18 @@ func (c *RowSelectionTable[T]) renderFilterFooter(maxWidth int) string {
 // Must be called on the UI thread.
 func (c *RowSelectionTable[T]) SetFooter(text string) {
 	c.footer.SetText(text)
+}
+
+// SetFooterParts is SetFooter with parts that can be clicked, see uiutil.BorderFooter.SetParts.
+// Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetFooterParts(parts ...uiutil.FooterPart) {
+	c.footer.SetParts(parts...)
+}
+
+// SetFooterEnabledFunc sets a function that returns whether the parts of the footer can be clicked, e.g. not while
+// a dialog is in front (see rivo/tview#926).
+func (c *RowSelectionTable[T]) SetFooterEnabledFunc(enabled func() bool) {
+	c.footerEnabled = enabled
 }
 
 // GetFooter returns the text set with SetFooter.

@@ -38,7 +38,8 @@ var (
 	}
 	// listSnapshotNames returns the names (behind the "@") of the snapshots of the dataset, the newest first.
 	listSnapshotNames = func(dataset string) ([]string, error) {
-		output, err := runZfs("list", "-H", "-o", "name", "-s", "creation", "-t", "snapshot", "-d", "1", dataset)
+		// by createtxg, not creation: snapshots created in the same second are still in order
+		output, err := runZfs("list", "-H", "-o", "name", "-s", "createtxg", "-t", "snapshot", "-d", "1", dataset)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +128,7 @@ func (System) Mounts() ([]Mount, error) {
 
 // datasetListProperties are the properties requested by ListDatasets, in the order parseDatasetList expects them.
 // The mountpoint is last, so it may contain any character but a newline.
-var datasetListProperties = []string{"name", "used", "available", "usedbysnapshots", "usedbydataset", "usedbychildren", "usedbyrefreservation", "mountpoint"}
+var datasetListProperties = []string{"name", "used", "available", "usedbysnapshots", "usedbydataset", "usedbychildren", "usedbyrefreservation", "origin", "mountpoint"}
 
 func (system System) ListDatasets() ([]*DatasetListEntry, error) {
 	output, err := runZfs("list", "-H", "-p", "-t", "filesystem", "-o", strings.Join(datasetListProperties, ","))
@@ -247,7 +248,53 @@ func (System) PreviewDestroySnapshots(dataset string, snapshots []string, recurs
 	if err != nil {
 		return nil, err
 	}
-	return parseDestroyPreview(output)
+	return parseDestroyPreview(output, true)
+}
+
+func (System) RollbackSnapshot(dataset string, name string, destroyNewer bool) error {
+	_, err := runZfs(rollbackArgs(dataset, name, destroyNewer)...)
+	return err
+}
+
+// rollbackArgs returns the arguments of zfs for RollbackSnapshot. Never "-R", which would also destroy the clones of
+// the newer snapshots.
+func rollbackArgs(dataset string, name string, destroyNewer bool) []string {
+	args := []string{"rollback"}
+	if destroyNewer {
+		args = append(args, "-r")
+	}
+	return append(args, dataset+"@"+name)
+}
+
+func (System) PreviewDestroyDataset(name string, recursive bool) (*DestroyPreview, error) {
+	output, err := runZfs(destroyDatasetArgs(name, recursive, true)...)
+	if err != nil {
+		return nil, err
+	}
+	return parseDestroyPreview(output, false)
+}
+
+func (System) DestroyDataset(name string, recursive bool) error {
+	_, err := runZfs(destroyDatasetArgs(name, recursive, false)...)
+	return err
+}
+
+// destroyDatasetArgs returns the arguments of zfs for destroying the dataset, with dryRun only for listing what would
+// be destroyed ("-nvp"). Never "-R", which would also destroy the clones of its snapshots, wherever they are.
+func destroyDatasetArgs(name string, recursive bool, dryRun bool) []string {
+	args := []string{"destroy"}
+	if dryRun {
+		args = append(args, "-n", "-v", "-p")
+	}
+	if recursive {
+		args = append(args, "-r")
+	}
+	return append(args, name)
+}
+
+func (System) PromoteDataset(name string) error {
+	_, err := runZfs("promote", name)
+	return err
 }
 
 // poolListProperties are the properties requested by ListPools, in the order parsePoolList expects them.

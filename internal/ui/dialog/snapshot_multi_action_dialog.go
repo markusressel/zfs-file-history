@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"fmt"
+	"strings"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
@@ -70,11 +71,16 @@ func NewMultiSnapshotActionDialog(
 		},
 	)
 
-	return NewSelectionDialog(
+	highlighted := make([]string, 0, len(snapshotNames))
+	for _, name := range snapshotNames {
+		highlighted = append(highlighted, Highlight(name))
+	}
+	return newTaggedSelectionDialog(
 		application,
 		string(MultiSnapshotActionDialogPage),
 		localization.LocalizationSelectActionDialogTitle,
-		fmt.Sprintf("What do you want to do with '%v'?", snapshotNames),
+		fmt.Sprintf("What do you want to do with %s?", strings.Join(highlighted, ", ")),
+		nil,
 		dialogOptions,
 		asyncWork,
 		onComplete,

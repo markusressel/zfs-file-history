@@ -19,6 +19,7 @@ const (
 	SnapshotDialogHoldSnapshotActionId
 	SnapshotDialogReleaseSnapshotActionId
 	SnapshotDialogShowHistoryActionId
+	SnapshotDialogRollbackActionId
 )
 
 // NewSnapshotActionDialog creates the dialog with the actions for a snapshot. historyTarget is the file or folder
@@ -76,16 +77,23 @@ func NewSnapshotActionDialog(
 			Severity:    DialogSeverityDanger,
 		},
 		&DialogOption{
+			Id:          SnapshotDialogRollbackActionId,
+			Name:        fmt.Sprintf("⏪ Roll back to '%s'", snapshot.Snapshot.Name),
+			Description: "Reset the dataset to the snapshot, after listing what is lost and typing its name (zfs rollback)",
+			Severity:    DialogSeverityDanger,
+		},
+		&DialogOption{
 			Id:   DialogCloseActionId,
 			Name: localization.LocalizationCommonClose,
 		},
 	)
 
-	return NewSelectionDialog(
+	return newTaggedSelectionDialog(
 		application,
 		string(SnapshotActionDialogPage),
 		localization.LocalizationSelectActionDialogTitle,
-		fmt.Sprintf("What do you want to do with '%s'?", snapshot.Snapshot.Name),
+		fmt.Sprintf("What do you want to do with snapshot %s?", Highlight(snapshot.Snapshot.FullName)),
+		nil,
 		dialogOptions,
 		asyncWork,
 		onComplete,

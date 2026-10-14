@@ -204,5 +204,6 @@ func (datasetPage *DatasetPage) Init(path string) {
 func (datasetPage *DatasetPage) SetPages(pages *tview.Pages) {
 	datasetPage.basePage.SetPages(pages)
 	datasetPage.datasetBrowser.SetDialogPages(pages)
+	datasetPage.datasetBrowser.SetFooterEnabledFunc(datasetPage.isInFront)
 	datasetPage.snapshotBrowser.SetDialogPages(pages)
 }

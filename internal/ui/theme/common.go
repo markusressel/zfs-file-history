@@ -71,6 +71,12 @@ type DialogColors struct {
 	Border tcell.Color
 	// Error is the color of validation errors in input dialogs
 	Error tcell.Color
+	// Danger highlights what an action loses for good, e.g. "are lost" in the confirmation of a rollback
+	Danger tcell.Color
+	// Highlight makes the key information of dialog texts stand out, e.g. the names of datasets and snapshots
+	Highlight tcell.Color
+	// DangerBorder is the border of the confirmations of actions that lose data, e.g. destroying snapshots
+	DangerBorder tcell.Color
 	// SectionTitle is the color of the titles of the sections of lists, e.g. of the command menu
 	SectionTitle tcell.Color
 }
@@ -198,7 +204,9 @@ type PermissionColors struct {
 type LayoutColors struct {
 	Border tcell.Color
 	Title  tcell.Color
-	Table  LayoutTableColors
+	// FooterHoverBackground is the background of a part of the bottom border below the mouse, which can be clicked
+	FooterHoverBackground tcell.Color
+	Table                 LayoutTableColors
 }
 
 type LayoutTableColors struct {

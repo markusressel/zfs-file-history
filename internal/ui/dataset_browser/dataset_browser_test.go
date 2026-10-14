@@ -3,6 +3,7 @@ package dataset_browser
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -135,6 +136,15 @@ func findByName(entries []*zfs.DatasetListEntry, name string) *zfs.DatasetListEn
 		}
 	}
 	return nil
+}
+
+// statusText returns the text of the parts of the status.
+func statusText(parts []uiutil.FooterPart) string {
+	var text strings.Builder
+	for _, part := range parts {
+		text.WriteString(part.Text)
+	}
+	return text.String()
 }
 
 func TestDatasetBrowser_RefreshLoadsAndSelects(t *testing.T) {
@@ -317,11 +327,20 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	// on a data row, right and enter are consumed by the browser and don't change the sort order
+	// on a data row, right and enter are consumed by the browser and don't change the sort order: enter opens the
+	// actions
 	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectFirstIfExists() })
 	pressKey(tcell.KeyRight)
 	pressKey(tcell.KeyEnter)
 	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
+	hasActionDialog := func() bool {
+		shown := false
+		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage(string(dialog.DatasetActionDialogPage)) })
+		return shown
+	}
+	require.Eventually(t, hasActionDialog, 2*time.Second, 10*time.Millisecond)
+	pressKey(tcell.KeyEscape)
+	require.Eventually(t, func() bool { return !hasActionDialog() }, 2*time.Second, 10*time.Millisecond)
 
 	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 
@@ -366,14 +385,14 @@ func TestFormatStatus(t *testing.T) {
 		return textView.GetText(true)
 	}
 
-	assert.Equal(t, "Loading datasets...", plain(formatStatus(nil, 0, true, false)))
-	assert.Equal(t, "3 datasets", plain(formatStatus(entries, 3, false, false)))
-	assert.Equal(t, "1 of 3 datasets · 2 unmounted hidden", plain(formatStatus(entries, 1, true, false)))
-	assert.Equal(t, "0 datasets · 0 unmounted hidden", plain(formatStatus([]*zfs.DatasetListEntry{}, 0, true, false)))
+	assert.Equal(t, "Loading datasets...", plain(statusText(formatStatus(nil, 0, true, false, nil))))
+	assert.Equal(t, "3 datasets", plain(statusText(formatStatus(entries, 3, false, false, nil))))
+	assert.Equal(t, "1 of 3 datasets · 2 unmounted hidden", plain(statusText(formatStatus(entries, 1, true, false, nil))))
+	assert.Equal(t, "0 datasets · 0 unmounted hidden", plain(statusText(formatStatus([]*zfs.DatasetListEntry{}, 0, true, false, nil))))
 	// with an active filter, always "x of y", even if all datasets match
-	assert.Equal(t, "3 of 3 datasets", plain(formatStatus(entries, 3, false, true)))
-	assert.Equal(t, "1 dataset", plain(formatStatus(entries[1:2], 1, false, false)))
-	assert.Equal(t, "1 of 3 datasets · 2 unmounted hidden", plain(formatStatus(entries, 1, true, true)))
+	assert.Equal(t, "3 of 3 datasets", plain(statusText(formatStatus(entries, 3, false, true, nil))))
+	assert.Equal(t, "1 dataset", plain(statusText(formatStatus(entries[1:2], 1, false, false, nil))))
+	assert.Equal(t, "1 of 3 datasets · 2 unmounted hidden", plain(statusText(formatStatus(entries, 1, true, true, nil))))
 }
 
 func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
@@ -829,4 +848,73 @@ func hidePermissions(browser *DatasetBrowserComponent) {
 		}
 	}
 	browser.tableContainer.SetActiveColumns(columns)
+}
+
+// A click on "… unmounted hidden" in the bottom border shows the unmounted datasets again.
+func TestDatasetBrowser_ClickOnHiddenUnmountedShowsThem(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{
+			{Name: "rpool/a", MountPath: "/a"},
+			{Name: "rpool/b"},
+		}, nil
+	})
+	// like the application, so two clicks are not a double click
+	originalInterval := tview.DoubleClickInterval
+	tview.DoubleClickInterval = 0
+	t.Cleanup(func() { tview.DoubleClickInterval = originalInterval })
+	app, browser, screen := newBrowserApp(t)
+	screen.SetSize(100, 20)
+	app.EnableMouse(true)
+	testutil.OnUiThread(t, app, func() {
+		if !browser.IsHidingUnmounted() {
+			browser.ToggleHideUnmounted()
+		}
+		browser.Refresh(false)
+	})
+	t.Cleanup(func() { state.Current.SetToggle(toggleHideUnmounted, false) })
+
+	// the position of the text in the bottom border, once drawn
+	findText := func(text string) (x int, y int, found bool) {
+		testutil.OnUiThread(t, app, func() {
+			app.ForceDraw()
+			cells, width, height := screen.GetContents()
+			for row := 0; row < height && !found; row++ {
+				var line []rune
+				for column := 0; column < width; column++ {
+					if runes := cells[row*width+column].Runes; len(runes) > 0 {
+						line = append(line, runes[0])
+					} else {
+						line = append(line, ' ')
+					}
+				}
+				if index := strings.Index(string(line), text); index >= 0 {
+					x, y, found = len([]rune(string(line)[:index])), row, true
+				}
+			}
+		})
+		return x, y, found
+	}
+	var x, y int
+	require.Eventually(t, func() bool {
+		var found bool
+		x, y, found = findText("1 unmounted hidden")
+		return found
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// next to it, on the border: nothing
+	screen.InjectMouse(x-4, y, tcell.Button1, tcell.ModNone)
+	screen.InjectMouse(x-4, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.OnUiThread(t, app, func() {})
+	time.Sleep(50 * time.Millisecond)
+	assert.True(t, browser.IsHidingUnmounted())
+
+	screen.InjectMouse(x+2, y, tcell.Button1, tcell.ModNone)
+	screen.InjectMouse(x+2, y, tcell.ButtonNone, tcell.ModNone)
+	require.Eventually(t, func() bool {
+		hiding := true
+		testutil.OnUiThread(t, app, func() { hiding = browser.IsHidingUnmounted() })
+		return !hiding
+	}, 2*time.Second, 10*time.Millisecond)
+	_, _, found := findText("unmounted hidden")
+	assert.False(t, found)
 }

@@ -281,5 +281,6 @@ var KnownPermissions = []PermissionInfo{
 	{PermissionClone, 'c', "Clone snapshots (also needs create and mount on the target's parent)"},
 	{PermissionCreate, 'n', "Create new descendant datasets (also needs mount)"},
 	{PermissionRollback, 'b', "Roll back to a snapshot (also needs mount)"},
+	{PermissionPromote, 'p', "Promote clones (also needs mount, and promote and mount on the origin)"},
 	{PermissionDiff, 'f', "Show the changed files of a snapshot (zfs diff)"},
 }
