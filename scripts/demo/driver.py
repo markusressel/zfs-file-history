@@ -2,8 +2,9 @@
 """Runs zfs-file-history in a pty and types the keys of the demo, for "just demo-record" (asciinema rec --headless).
 
 The output of the application is passed through, so asciinema records it. The demo shows the files page, the search
-and the history of a file, the datasets page, the pools page with its actions, and the command menu. Run it while a
-scrub (or another pool operation) is running, so the activity panel is shown.
+and the history of a file, the datasets page, the pools page with its actions, and the command menu. It waits until a
+scrub (or another pool operation) runs, so the activity panel is shown (--without-activity does not); the time until
+then is not in the GIF, see Ready.
 
 The application starts with --fresh and an empty state (XDG_STATE_HOME is a temporary directory): without the
 selections, table layouts and toggles of earlier runs, every run of the demo is the same, and it does not change the
@@ -17,7 +18,7 @@ started. If a screen does not show up (a slow load, a dialog that did not open o
 application instead of typing the following keys into something else, and writes the reason into the error file.
 asciinema does not pass the exit code on, so "just demo-record" checks that file.
 
-usage: uv run driver.py <binary> <start directory> <error file>
+usage: uv run driver.py [--without-activity] <binary> <start directory> <error file>
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ from dataclasses import dataclass
 from typing import BinaryIO
 
 import pyte
+
+from prepare_cast import READY_MARKER
 
 UP, DOWN, RIGHT, LEFT = "\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D"
 TAB, ENTER, ESC = "\t", "\r", "\x1b"
@@ -72,9 +75,19 @@ class Key:
 
 @dataclass(frozen=True)
 class Wait:
-    """Waits until the pattern is on the screen, e.g. until the application has loaded."""
+    """Waits until the pattern is on the screen, e.g. until the application has loaded, at most timeout seconds
+    (WAIT_TIMEOUT if None)."""
 
     pattern: str
+    timeout: float | None = None
+
+
+@dataclass(frozen=True)
+class Ready:
+    """Waits until the application wrote nothing for quiet seconds (e.g. its layout settled after loading), and marks
+    the recording there: prepare_cast drops what was shown before, so the GIF starts with the application ready."""
+
+    quiet: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -97,13 +110,24 @@ class Search:
     delay: float = 0.0
 
 
-Step = Key | Wait | Search | Quit
+Step = Key | Wait | Ready | Search | Quit
+
+# how long the demo waits for an operation on a pool, e.g. until a scrub was started
+ACTIVITY_TIMEOUT = 300.0
+
+# an operation running on a pool, in the activity panel: its title, the pool and the progress, e.g. "Scrub  tank  31.8%"
+WAIT_FOR_ACTIVITY = Wait(
+    r"(Scrub|Resilver|TRIM|Device removal|RAIDZ expansion) +\S+ .*\d+(\.\d+)?%", timeout=ACTIVITY_TIMEOUT
+)
 
 # the demo
 SCRIPT: list[Step] = [
     # the files and their snapshots are loaded
     Wait(r"FILES +1/3"),
     Wait(r"\d+ snapshots"),
+    # the activity panel is shown (a scrub can be started after the demo, the time until then is not in the GIF)
+    WAIT_FOR_ACTIVITY,
+    Ready(),
     # through the files and the snapshots, then back to the files
     Key(DOWN, 3.0),
     Key(DOWN, 0.5),
@@ -120,7 +144,10 @@ SCRIPT: list[Step] = [
     # ends typing, the filter stays (if it did not, "h" is typed into it, and the history is not shown)
     Key(ENTER, 1.0, into=r"Filter: "),
     Key("h", 1.0, shows=r"History of 'README\.md'"),
-    Key(ESC, 3.0, hides=r"History of"),
+    # down the snapshots of the history (4 at the moment, an identical one and the versions before), slow enough to
+    # see what changed in each; more presses than snapshots only select the last one longer
+    *[Key(DOWN, 2.0 if i == 0 else 1.5, into=r"History of 'README\.md'") for i in range(5)],
+    Key(ESC, 2.0, hides=r"History of"),
     # datasets
     Key("2", 1.5, shows=r"DATASETS 2/3"),
     Key(DOWN, 2.0),
@@ -180,6 +207,8 @@ class Driver:
         self.stream = pyte.ByteStream(self.screen)
         # whether the application still runs (its output is not closed)
         self.running = True
+        # when the application last wrote something (time.monotonic)
+        self.last_output = time.monotonic()
 
     def screen_text(self) -> str:
         """Returns the text on the screen, without the spaces at the end of the lines (for messages)."""
@@ -209,17 +238,19 @@ class Driver:
             self.out.write(data)
             self.out.flush()
             self.stream.feed(data)
+            self.last_output = time.monotonic()
 
     def sleep(self, seconds: float) -> None:
         self.pump(time.monotonic() + seconds)
 
-    def wait(self, pattern: str, shown: bool = True) -> None:
-        """Waits until the pattern is on the screen (or no longer, if not shown), raises DemoFailed after
-        WAIT_TIMEOUT."""
-        deadline = time.monotonic() + WAIT_TIMEOUT
+    def wait(self, pattern: str, shown: bool = True, timeout: float | None = None) -> None:
+        """Waits until the pattern is on the screen (or no longer, if not shown), raises DemoFailed after timeout
+        seconds (WAIT_TIMEOUT if None)."""
+        timeout = WAIT_TIMEOUT if timeout is None else timeout
+        deadline = time.monotonic() + timeout
         while self.shows(pattern) != shown:
             if not self.running or time.monotonic() >= deadline:
-                raise self.failure(f"/{pattern}/ did not {'show up' if shown else 'go away'} within {WAIT_TIMEOUT:g} s")
+                raise self.failure(f"/{pattern}/ did not {'show up' if shown else 'go away'} within {timeout:g} s")
             self.pump(min(time.monotonic() + 0.1, deadline))
 
     def require(self, pattern: str, shown: bool, key: str) -> None:
@@ -235,7 +266,7 @@ class Driver:
 
     def run(self, step: Step) -> None:
         if isinstance(step, Wait):
-            self.wait(step.pattern)
+            self.wait(step.pattern, timeout=step.timeout)
         elif isinstance(step, Key):
             self.sleep(step.delay)
             # checked right before the key: the screen may have changed while sleeping
@@ -250,6 +281,14 @@ class Driver:
                 self.wait(step.shows)
             if step.hides is not None:
                 self.wait(step.hides, shown=False)
+        elif isinstance(step, Ready):
+            deadline = time.monotonic() + WAIT_TIMEOUT
+            while (quiet_until := self.last_output + step.quiet) > time.monotonic():
+                if not self.running or time.monotonic() >= deadline:
+                    raise self.failure(f"the application did not stop drawing within {WAIT_TIMEOUT:g} s")
+                self.pump(min(quiet_until, deadline))
+            self.out.write(READY_MARKER.encode())
+            self.out.flush()
         elif isinstance(step, Search):
             self.require(step.until, False, step.text)
             for length in range(1, len(step.text) + 1):
@@ -332,9 +371,15 @@ def main() -> None:
     parser.add_argument("binary", help="the zfs-file-history binary")
     parser.add_argument("start", help="the directory the application is started in")
     parser.add_argument("error_file", help="where the reason is written if the demo stops")
+    parser.add_argument(
+        "--without-activity",
+        action="store_true",
+        help=f"do not wait (up to {ACTIVITY_TIMEOUT:g} s) for an operation on a pool, e.g. a scrub, before the demo",
+    )
     args = parser.parse_args()
+    script = [step for step in SCRIPT if not (args.without_activity and step is WAIT_FOR_ACTIVITY)]
     # absolute, as the application is started in the start directory
-    ok = run_demo(os.path.abspath(args.binary), args.start, os.path.abspath(args.error_file), SCRIPT, sys.stdout.buffer)
+    ok = run_demo(os.path.abspath(args.binary), args.start, os.path.abspath(args.error_file), script, sys.stdout.buffer)
     sys.exit(0 if ok else 1)
 
 

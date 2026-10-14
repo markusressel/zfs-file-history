@@ -2,7 +2,7 @@
 
 import unittest
 
-from prepare_cast import END_OF_FRAME, LEAVE_ALTERNATE_SCREEN, NBSP, prepare_events
+from prepare_cast import END_OF_FRAME, LEAVE_ALTERNATE_SCREEN, NBSP, READY_MARKER, prepare_events
 
 FRAME = "\x1b[?2026hframe" + END_OF_FRAME
 TEARDOWN = "\x1b[?25h\x1b[H\x1b[2J"
@@ -36,6 +36,27 @@ class PrepareEventsTest(unittest.TestCase):
         )
 
         self.assertEqual([[0.1, "o", FRAME], [0.2, "o", FRAME]], events)
+
+    def test_starts_with_the_ready_application(self) -> None:
+        events = prepare_events(
+            [
+                [0.1, "o", "\x1b[?1049h"],
+                [0.3, "o", "loading"],
+                [0.5, "o", FRAME + READY_MARKER + "rest"],
+                [2.0, "o", FRAME],
+            ]
+        )
+
+        self.assertEqual(
+            [
+                [0.0, "o", "\x1b[?1049h"],
+                [0.0, "o", "loading"],
+                [0.0, "o", FRAME],
+                [0.0, "o", "rest"],
+                [2.0, "o", FRAME],
+            ],
+            events,
+        )
 
     def test_keeps_a_recording_in_which_the_application_did_not_quit(self) -> None:
         events = [[0.1, "o", FRAME], [0.2, "o", FRAME]]

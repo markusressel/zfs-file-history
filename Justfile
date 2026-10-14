@@ -35,8 +35,9 @@ coverage-html:
     go test -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out
 
-# Builds the CLI with explicit architecture/compiler environment variables
-build:
+# Builds the CLI with explicit architecture/compiler environment variables; REBUILD="" uses the build cache (-a
+# rebuilds all packages)
+build REBUILD="-a":
     @mkdir -p $(dirname {{OUTPUT_BIN}})
     CGO_ENABLED={{CGO_ENABLED}} GOOS={{GOOS}} GOARCH={{GOARCH}} CC={{CC}} \
     go build {{GO_FLAGS}} \
@@ -47,7 +48,7 @@ build:
         -X {{PACKAGE}}/cmd/global.Commit={{GIT_REV}} \
         -X {{NAME}}/cmd/global.Date={{DATE}} \
         -X {{PACKAGE}}/cmd/global.Date={{DATE}}" \
-        -a -tags netgo -o {{OUTPUT_BIN}} main.go
+        {{REBUILD}} -tags netgo -o {{OUTPUT_BIN}} main.go
 
 # Build and run the CLI
 run: build
@@ -69,13 +70,15 @@ deploy: clean build
 clean:
     go clean
     rm -f {{OUTPUT_BIN}}
-# Record the demo (scripts/demo/driver.py, its Python environment is managed by uv) with asciinema to bin/demo.cast;
-# run it while a scrub is running. Fails if a screen the demo waits for did not show up.
-demo-record: build demo-test
+# Record the demo (scripts/demo/driver.py, its Python environment is managed by uv) with asciinema to bin/demo.cast.
+# It waits until a scrub (or another operation on a pool) runs, which can be started after this; FLAGS go to the
+# driver (--without-activity: do not wait). Fails if a screen the demo waits for did not show up.
+demo-record *FLAGS: (build "") demo-test
     uv sync --quiet --frozen --project scripts/demo
     rm -f bin/demo.error
+    @echo "Recording: start a scrub now (e.g. zpool scrub <pool>), the demo waits up to 5 minutes for it"
     asciinema rec --headless --overwrite --window-size 179x42 --idle-time-limit 2 --quiet \
-        --command "uv run --quiet --frozen --project scripts/demo python scripts/demo/driver.py {{OUTPUT_BIN}} . bin/demo.error" bin/demo.cast
+        --command "uv run --quiet --frozen --project scripts/demo python scripts/demo/driver.py {{FLAGS}} {{OUTPUT_BIN}} . bin/demo.error" bin/demo.cast
     @if [ -s bin/demo.error ]; then cat bin/demo.error; exit 1; fi
 
 # Test and lint the demo driver (scripts/demo), without zfs-file-history
@@ -102,4 +105,4 @@ demo-gif: agg
     {{AGG}} --theme {{AGG_THEME}} --font-size 14 --idle-time-limit 2 --fps-cap 15 bin/demo-gif.cast screenshots/demo.gif
 
 # Record the demo and render it as screenshots/demo.gif
-demo: demo-record demo-gif
+demo *FLAGS: (demo-record FLAGS) demo-gif

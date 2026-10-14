@@ -3,13 +3,15 @@
 import io
 import json
 import os
+import re
 import stat
 import tempfile
 import textwrap
 import unittest
 
 import driver
-from driver import CTRL_Q, DOWN, ENTER, ESC, DemoFailed, Key, Quit, Search, Wait
+from driver import CTRL_Q, DOWN, ENTER, ESC, DemoFailed, Key, Quit, Ready, Search, Wait
+from prepare_cast import READY_MARKER
 
 # A fake application: shows "MAIN", Enter opens "DIALOG", Escape closes it, ctrl+q quits. "/" starts a search in
 # ENTRIES (shown as "Filter: <text>" and "<n> of 3 entries"), which Enter ends. Every key it receives is appended to
@@ -73,7 +75,8 @@ class DriverTest(unittest.TestCase):
         return path
 
     def run_script(self, script: list) -> bool:
-        return driver.run_demo(self.app, self.directory.name, self.error_file, script, io.BytesIO())
+        self.output = io.BytesIO()
+        return driver.run_demo(self.app, self.directory.name, self.error_file, script, self.output)
 
     def received_keys(self) -> list[str]:
         if not os.path.exists(self.keys):
@@ -144,6 +147,46 @@ class DriverTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("/Filter: / must be shown before typing 'R'", self.error())
         self.assertEqual([], self.received_keys())
+
+    def test_waits_as_long_as_the_step_says(self) -> None:
+        self.app = self.write_app("""\
+            #!/usr/bin/env python3
+            import time
+            print("MAIN", flush=True)
+            time.sleep(1.5)
+            print("LATER", flush=True)
+            time.sleep(60)
+        """)
+
+        # WAIT_TIMEOUT is 1 s in these tests
+        ok = self.run_script([Wait("MAIN"), Wait("LATER", timeout=5.0), Wait("never", timeout=0.2)])
+
+        self.assertFalse(ok)
+        self.assertIn("/never/ did not show up within 0.2 s", self.error())
+
+    def test_marks_when_the_application_is_ready(self) -> None:
+        self.assertTrue(self.run_script([Wait("MAIN"), Ready(quiet=0.2), Key(ENTER, shows="DIALOG"), Quit()]))
+
+        output = self.output.getvalue().decode()
+        self.assertEqual(1, output.count(READY_MARKER))
+        before, after = output.split(READY_MARKER)
+        self.assertIn("MAIN", before)
+        self.assertIn("DIALOG", after)
+
+    def test_stops_if_the_application_does_not_stop_drawing(self) -> None:
+        self.app = self.write_app("""\
+            #!/usr/bin/env python3
+            import time
+            while True:
+                print("MAIN", flush=True)
+                time.sleep(0.05)
+        """)
+
+        ok = self.run_script([Wait("MAIN"), Ready(quiet=0.2)])
+
+        self.assertFalse(ok)
+        self.assertIn("did not stop drawing", self.error())
+        self.assertNotIn(READY_MARKER, self.output.getvalue().decode())
 
     def test_stops_if_a_screen_does_not_show_up(self) -> None:
         ok = self.run_script([Wait("MAIN"), Key("x", shows="DIALOG"), Key(ENTER, shows="DIALOG")])
@@ -222,6 +265,18 @@ class CheckScriptTest(unittest.TestCase):
         for script in [[], [Key(DOWN), Wait("MAIN")]]:
             with self.subTest(script=script), self.assertRaisesRegex(DemoFailed, "must start with a Wait"):
                 driver.check_script(script)
+
+    def test_waits_for_the_activity_panel(self) -> None:
+        pattern = re.compile(driver.WAIT_FOR_ACTIVITY.pattern)
+        for line in [
+            " Scrub  rpool  [ 31.8%  1.02T / 3.21T  294M/s        ]   ⧗    2h 10m ",
+            " Resilver  tank  [ 5%  ]",
+            " RAIDZ expansion  tank  [ 99.9% ]",
+        ]:
+            with self.subTest(line=line):
+                self.assertIsNotNone(pattern.search(line))
+        self.assertIsNone(pattern.search(" zfs-file-history   2.3.0   FILES    1/3 "))
+        self.assertIn(driver.WAIT_FOR_ACTIVITY, driver.SCRIPT)
 
     def test_refuses_invalid_patterns(self) -> None:
         with self.assertRaisesRegex(DemoFailed, "invalid pattern"):
