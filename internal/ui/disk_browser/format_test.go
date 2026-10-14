@@ -10,6 +10,7 @@ import (
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -46,40 +47,87 @@ func ataReport() disk.SmartReport {
 	}
 }
 
+// detailsLines returns the lines of the details of the entry without style tags.
+func detailsLines(entry *DiskEntry) []string {
+	return strings.Split(testutil.StripTags(strings.Join(formatDetails(entry), "\n")), "\n")
+}
+
 func TestFormatDetails(t *testing.T) {
-	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "tank", Device: "/dev/disk/by-id/ata-DISK_1-part1"}}, Report: ataReport()}
+	report := ataReport()
+	report.Counters = disk.SmartCounters{WearPercent: -1, BytesWritten: 43_915_542_390_272}
+	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "tank", Device: "/dev/disk/by-id/ata-DISK_1-part1"}}, Report: report,
+		Reading: disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 40, Critical: 60}}}
+	assert.Equal(t, "sda · WDC WD40EFRX", detailsTitle(entry))
 	assert.Equal(t, []string{
-		"Type:     SATA HDD",
-		"Devices:  ata-DISK_1-part1  in tank",
-		"Model:    WDC WD40EFRX  serial WD-1 · 4.0 TB · firmware 82.00A82",
-		"Health:   PASSED",
-		"Power on: 8,760 h (1.0 years)",
-		"Read:     " + uiutil.FormatTime(readAt),
-		"Problems: 8 reallocated sectors",
-	}, strings.Split(testutil.StripTags(strings.Join(formatDetails(entry), "\n")), "\n"), "the attributes are in their own table")
+		"● 8 reallocated sectors · SATA HDD in tank",
+		"",
+		"Disk                                  Health",
+		"Type      SATA HDD                    Temp      █████▏       40°C · critical at 60°C",
+		"Pools     tank  ata-DISK_1-part1      Check     PASSED",
+		"Serial    WD-1                        Age       1.0 years · 8,760 h",
+		"Firmware  82.00A82                    Written   44 TB",
+		"Size      4.0 TB                      Problems  8 reallocated sectors",
+		"                                      Read      " + uiutil.FormatTime(readAt),
+	}, detailsLines(entry), "what it is next to its health, the attributes are in their own table")
+	// the verdict in the color of the problem
+	assert.True(t, strings.HasPrefix(formatDetails(entry)[0], txwidgets.ColorTag(uiutil.InfoWarning.Color())+"●"))
 
 	tests := []struct {
-		name   string
-		report disk.SmartReport
-		lines  []string
+		name    string
+		report  disk.SmartReport
+		verdict string
+		health  string
 	}{
 		{"asleep", disk.SmartReport{Disk: "sdb", Standby: true, CheckedAt: readAt},
-			[]string{"Type:     SSD", "Devices:  sdb  in tank", "SMART:    asleep, not woken up to read it"}},
+			"● health unknown: asleep · SSD in tank", "SMART  asleep, not woken up to read it"},
 		{"needs root", disk.SmartReport{Disk: "sdb", Err: disk.ErrSmartNeedsRoot},
-			[]string{"Type:     SSD", "Devices:  sdb  in tank", "SMART:    only root may read them: allow \"Disk health\" in the command menu (:)"}},
+			"● health unknown: SMART needs root · SSD in tank", "SMART  only root may read them: allow \"Disk health\" in the command menu (:)"},
 		{"no smartctl", disk.SmartReport{Disk: "sdb", Err: disk.ErrSmartctlMissing},
-			[]string{"Type:     SSD", "Devices:  sdb  in tank", "SMART:    not read: smartctl is not installed (smartmontools)"}},
+			"● health unknown · SSD in tank", "SMART  not read: smartctl is not installed (smartmontools)"},
 		{"other error", disk.SmartReport{Disk: "sdb", Err: errors.New("smartctl failed: no")},
-			[]string{"Type:     SSD", "Devices:  sdb  in tank", "Error:    smartctl failed: no"}},
-		{"failed, no hours", disk.SmartReport{Disk: "sdb", ReadAt: readAt, HealthKnown: true, PowerOnHours: -1},
-			[]string{"Type:     SSD", "Devices:  sdb  in tank", "Health:   FAILED", "Read:     " + uiutil.FormatTime(readAt)}},
+			"● health unknown · SSD in tank", "Error  smartctl failed: no"},
+		{"failed, no hours", disk.SmartReport{Disk: "sdb", ReadAt: readAt, HealthKnown: true, PowerOnHours: -1, Counters: disk.SmartCounters{WearPercent: -1, BytesWritten: -1}},
+			"● health check failed · SSD in tank", "Check  FAILED"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			entry := &DiskEntry{Devices: []PoolDevice{{Pool: "tank", Device: "sdb"}}, Report: test.report}
-			assert.Equal(t, test.lines, strings.Split(testutil.StripTags(strings.Join(formatDetails(entry), "\n")), "\n"))
+			lines := detailsLines(entry)
+			assert.Equal(t, test.verdict, lines[0])
+			assert.True(t, slices.ContainsFunc(lines, func(line string) bool { return strings.HasSuffix(line, test.health) }),
+				"%q in %q", test.health, lines)
 		})
 	}
+}
+
+func TestFormatDetailsTemperature(t *testing.T) {
+	reading := func(celsius float64, critical float64) disk.Reading {
+		return disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: celsius, Critical: critical}}
+	}
+	text := func(reading disk.Reading) string {
+		// without the bar
+		_, after, _ := strings.Cut(testutil.StripTags(formatDetailsTemperature(reading)), " ")
+		return strings.TrimSpace(after)
+	}
+	assert.Equal(t, "40°C · critical at 60°C", text(reading(40, 60)), "the limit, not a target")
+	assert.Equal(t, "62°C · 2°C above critical (60°C)", text(reading(62, 60)))
+	assert.Contains(t, formatDetailsTemperature(reading(62, 60)), txwidgets.ColorTag(uiutil.InfoError.Color())+" · 2°C above")
+	assert.Equal(t, "40°C", text(reading(40, 0)), "no critical temperature known")
+}
+
+func TestFormatDetails_Ssd(t *testing.T) {
+	report := healthy("nvme0n1")
+	report.Protocol = "NVMe"
+	report.Counters = disk.SmartCounters{WearPercent: 4, BytesWritten: -1}
+	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "bpool", Device: "nvme0n1p2"}, {Pool: "rpool", Device: "nvme0n1p3"}}, Report: report}
+	lines := detailsLines(entry)
+	assert.Equal(t, "● healthy · NVMe SSD in bpool, rpool", lines[0])
+	assert.True(t, strings.HasPrefix(formatDetails(entry)[0], txwidgets.ColorTag(uiutil.InfoOk.Color())+"●"))
+	text := strings.Join(lines, "\n")
+	assert.Contains(t, text, "Pools  bpool  nvme0n1p2")
+	assert.Contains(t, text, "       rpool  nvme0n1p3")
+	assert.Contains(t, text, "Wear   ▌            4% of its rated endurance")
+	assert.NotContains(t, text, "Temp", "no temperature read")
 }
 
 func TestSmartSummary(t *testing.T) {

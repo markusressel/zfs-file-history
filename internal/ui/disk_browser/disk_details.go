@@ -174,7 +174,7 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 func (component *DiskDetailsComponent) renderDetails() {
 	component.renderedTimeFormat = uiutil.TimeFormatGeneration()
 	lines := formatDetails(component.shownEntry)
-	uiutil.SetupWindow(component.details, component.shownEntry.Report.Disk)
+	uiutil.SetupWindow(component.details, detailsTitle(component.shownEntry))
 	component.details.SetText(strings.Join(lines, "\n"))
 	// and the border
 	component.layout.ResizeItem(component.detailsView, len(lines)+2, 0)

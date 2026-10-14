@@ -40,6 +40,10 @@ var datasetPropertyIds = map[string]golibzfs.Prop{
 	propOrigin:          golibzfs.DatasetPropOrigin,
 	propSnapshotLimit:   golibzfs.DatasetPropSnapshotLimit,
 	propSnapshotCount:   golibzfs.DatasetPropSnapshotCount,
+	propUsedByDataset:   golibzfs.DatasetPropUsedds,
+	propUsedBySnapshots: golibzfs.DatasetPropUsedsnap,
+	propUsedByChildren:  golibzfs.DatasetPropUsedchild,
+	propLogicalUsed:     golibzfs.DatasetPropLogicalused,
 }
 
 // Reload closes nothing (the handles may still be in use), but drops them, so they are opened again with the

@@ -30,3 +30,13 @@ func TestParseSnapshotProperties(t *testing.T) {
 	}, properties["daily"])
 	assert.Equal(t, SnapshotProperties{}, properties["weekly"])
 }
+
+// Regression: properties added to datasetProperties without a libzfs id were never read (0), unless the dataset
+// could not be opened.
+func TestDatasetPropertyIds(t *testing.T) {
+	for _, property := range datasetProperties {
+		_, ok := datasetPropertyIds[property]
+		assert.True(t, ok, property)
+	}
+	assert.Len(t, datasetPropertyIds, len(datasetProperties))
+}

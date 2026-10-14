@@ -112,6 +112,25 @@ type Color struct {
 	Pool        PoolColors
 	Activity    ActivityColors
 	Alert       AlertColors
+	Info        InfoColors
+}
+
+// InfoColors are the colors of the panes that describe one thing, e.g. the dataset info and the details of a disk
+// (see uiutil.InfoText): the values stand out, the labels do not, and only states are colored.
+type InfoColors struct {
+	// Label is the name of a value, Section the heading of a group of values
+	Label   tcell.Color
+	Section tcell.Color
+	// Value is a value, Muted one that says little (e.g. a default, a unit, an exact value behind a rounded one)
+	Value tcell.Color
+	Muted tcell.Color
+	// Ok, Warning and Error are the states, e.g. of the dot of the verdict line
+	Ok      tcell.Color
+	Warning tcell.Color
+	Error   tcell.Color
+	// BarEmpty is the empty part of a bar, BarFilled its filled part by how full it is (from empty to full)
+	BarEmpty  tcell.Color
+	BarFilled []GradientStop
 }
 
 // AlertColors are used by the panel below the header that shows the problems of the pools, e.g. data errors.

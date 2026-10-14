@@ -192,6 +192,24 @@ var (
 			BarLightText:    OnSecondary,
 			HoverBackground: Hover,
 		},
+		Info: InfoColors{
+			Label:   tcell.ColorGray,
+			Section: Accent,
+			Value:   tcell.ColorWhite,
+			Muted:   tcell.ColorGray,
+			Ok:      tcell.ColorGreen,
+			Warning: Degraded,
+			Error:   Faulted,
+			// a darker gray than the labels, so the bar stays visible
+			BarEmpty: tcell.ColorIsRGB | tcell.ColorValid | 0x3A4048,
+			// green while there is room, yellow when it gets full, red when (almost) full
+			BarFilled: []GradientStop{
+				{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x8CC98C},
+				{Position: 0.75, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x8CC98C},
+				{Position: 0.85, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFFB84D},
+				{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
+			},
+		},
 		Alert: AlertColors{
 			Background:      PanelBackground,
 			Error:           Faulted,
