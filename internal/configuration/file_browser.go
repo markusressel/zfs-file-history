@@ -25,8 +25,8 @@ type FileBrowserConfig struct {
 	FilterOnDirectoryChange FileBrowserFilterOnDirectoryChange `json:"filterOnDirectoryChange"`
 }
 
-// KeepsFilterOnDirectoryChange returns whether an active filter is kept when changing directories.
-// This is the default, also if the setting is empty.
+// KeepsFilterOnDirectoryChange returns whether an active filter is kept when changing directories. By default (also
+// if the setting is empty) it is cleared: the filter is for finding an entry, like in most file managers.
 func (c FileBrowserConfig) KeepsFilterOnDirectoryChange() bool {
-	return c.FilterOnDirectoryChange != FileBrowserFilterOnDirectoryChangeClear
+	return c.FilterOnDirectoryChange == FileBrowserFilterOnDirectoryChangeKeep
 }

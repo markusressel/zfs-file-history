@@ -172,7 +172,7 @@ func TestValidateConfig(t *testing.T) {
 }
 
 func TestKeepsFilterOnDirectoryChange(t *testing.T) {
-	assert.True(t, FileBrowserConfig{}.KeepsFilterOnDirectoryChange(), "keep is the default")
+	assert.False(t, FileBrowserConfig{}.KeepsFilterOnDirectoryChange(), "clear is the default")
 	assert.True(t, FileBrowserConfig{FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeKeep}.KeepsFilterOnDirectoryChange())
 	assert.False(t, FileBrowserConfig{FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeClear}.KeepsFilterOnDirectoryChange())
 }

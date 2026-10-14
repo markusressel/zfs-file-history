@@ -16,7 +16,7 @@ func TestInitConfigAndDefaults(t *testing.T) {
 	assert.Equal(t, DiffModeExternal, DiffMode(viper.GetString("Diff.Mode")))
 	assert.Equal(t, string(FileBrowserPermissionsFormatSymbolic), viper.GetString("FileBrowser.Permissions"))
 	assert.Equal(t, string(FileBrowserOwnerFormatName), viper.GetString("FileBrowser.Owner"))
-	assert.Equal(t, string(FileBrowserFilterOnDirectoryChangeKeep), viper.GetString("FileBrowser.FilterOnDirectoryChange"))
+	assert.Equal(t, string(FileBrowserFilterOnDirectoryChangeClear), viper.GetString("FileBrowser.FilterOnDirectoryChange"))
 	assert.Equal(t, "localhost", viper.GetString("Profiling.Host"))
 	assert.Equal(t, 6060, viper.GetInt("Profiling.Port"))
 
@@ -71,7 +71,7 @@ func TestFileBrowserConfig_KeepsFilterOnDirectoryChange(t *testing.T) {
 	assert.True(t, cfgKeep.KeepsFilterOnDirectoryChange())
 
 	cfgEmpty := FileBrowserConfig{}
-	assert.True(t, cfgEmpty.KeepsFilterOnDirectoryChange())
+	assert.False(t, cfgEmpty.KeepsFilterOnDirectoryChange(), "clear is the default")
 
 	cfgClear := FileBrowserConfig{
 		FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeClear,
