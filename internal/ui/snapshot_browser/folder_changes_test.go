@@ -231,3 +231,34 @@ func TestUseColumnLayout(t *testing.T) {
 	}
 	_ = legacy.Flush()
 }
+
+// Regression: a reset of the layout was undone by the next start, which took over the layout saved before the pages
+// had their own again.
+func TestUseColumnLayout_ResetIsKept(t *testing.T) {
+	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
+	state.Current = store
+	t.Cleanup(func() {
+		_ = store.Flush()
+		state.Current = nil
+	})
+	store.SetTableLayout(legacyLayoutStateKey, state.TableLayout{Columns: []string{"name", "holds"}, SortColumn: "name"})
+
+	files := NewSnapshotBrowser(tview.NewApplication())
+	files.UseColumnLayout(FilesLayout)
+	files.tableContainer.ResetColumnLayout()
+
+	// the next start
+	for _, layout := range []ColumnLayout{FilesLayout, DatasetsLayout} {
+		browser := NewSnapshotBrowser(tview.NewApplication())
+		browser.UseColumnLayout(layout)
+		var keys []string
+		for _, column := range browser.tableContainer.GetColumnSpec() {
+			keys = append(keys, column.Key)
+		}
+		if layout.stateKey == FilesLayout.stateKey {
+			assert.Equal(t, []string{"name", "creation", "diff", "entryChange", "entrySize", "entryModified", "holds", "damaged"}, keys, "the default columns")
+		} else {
+			assert.Equal(t, []string{"name", "holds"}, keys, "the other page took it over before")
+		}
+	}
+}
