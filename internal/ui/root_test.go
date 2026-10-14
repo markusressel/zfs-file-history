@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/dialog"
@@ -181,6 +182,11 @@ func TestPageTabs(t *testing.T) {
 	defer app.Stop()
 
 	headerLine := func() string { return strings.SplitN(screenText(t, app, screen), "\n", 2)[0] }
+	// column returns the column of the last text in the line: screenText has a rune per cell, and the header may
+	// show a message with other characters than ASCII (e.g. without ZFS)
+	column := func(line string, text string) int {
+		return utf8.RuneCountInString(line[:strings.LastIndex(line, text)])
+	}
 	shows := func(text string) func() bool {
 		return func() bool { return strings.HasSuffix(headerLine(), text) }
 	}
@@ -195,11 +201,11 @@ func TestPageTabs(t *testing.T) {
 	// the title of the shown page padded to the longest one, so the tabs have the same width on all pages
 	require.Eventually(t, shows(" 1 FILES     2  3  4 "), 3*time.Second, 20*time.Millisecond)
 	line := headerLine()
-	foreground, background, attributes := styleAt(strings.Index(line, "FILES")).Decompose()
+	foreground, background, attributes := styleAt(column(line, "FILES")).Decompose()
 	assert.Equal(t, theme.Colors.Header.PageIndicator, foreground)
 	assert.Equal(t, theme.Colors.Header.PageIndicatorBackground, background)
 	assert.NotZero(t, attributes&tcell.AttrBold, "bold")
-	numberX := strings.LastIndex(line, "3")
+	numberX := column(line, "3")
 	_, background, _ = styleAt(numberX).Decompose()
 	assert.Equal(t, theme.Colors.Header.PageNumberBackground, background)
 
@@ -215,7 +221,7 @@ func TestPageTabs(t *testing.T) {
 
 	// the numbers can be clicked, the one below the mouse is highlighted
 	line = headerLine()
-	numberX = strings.LastIndex(line, "3")
+	numberX = column(line, "3")
 	screen.InjectMouse(numberX, 0, tcell.ButtonNone, tcell.ModNone)
 	assert.Eventually(t, func() bool {
 		_, background, _ := styleAt(numberX).Decompose()
@@ -224,7 +230,7 @@ func TestPageTabs(t *testing.T) {
 	screen.InjectMouse(numberX, 0, tcell.Button1, tcell.ModNone)
 	screen.InjectMouse(numberX, 0, tcell.ButtonNone, tcell.ModNone)
 	assert.Eventually(t, shows(" 1  2  3 POOLS     4 "), 3*time.Second, 20*time.Millisecond)
-	assert.Equal(t, len(line), len(headerLine()), "the numbers behind the shown page stay where they are")
+	assert.Equal(t, utf8.RuneCountInString(line), utf8.RuneCountInString(headerLine()), "the numbers behind the shown page stay where they are")
 }
 
 func TestRelativeTimesKey(t *testing.T) {
