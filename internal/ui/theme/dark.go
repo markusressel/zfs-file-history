@@ -88,6 +88,9 @@ var (
 			Title:                 Accent,
 			Border:                Secondary,
 			FooterHoverBackground: Hover,
+			// unlike the selected row of a table (Accent), so both can be told apart
+			SelectionForeground: tcell.ColorWhite,
+			SelectionBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x264F78,
 			Table: LayoutTableColors{
 				Accent: Accent,
 

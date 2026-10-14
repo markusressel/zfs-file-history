@@ -238,7 +238,10 @@ type LayoutColors struct {
 	Title  tcell.Color
 	// FooterHoverBackground is the background of a part of the bottom border below the mouse, which can be clicked
 	FooterHoverBackground tcell.Color
-	Table                 LayoutTableColors
+	// SelectionForeground and SelectionBackground highlight text selected with the mouse, see util.TextSelection
+	SelectionForeground tcell.Color
+	SelectionBackground tcell.Color
+	Table               LayoutTableColors
 }
 
 type LayoutTableColors struct {

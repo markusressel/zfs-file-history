@@ -33,6 +33,7 @@
 * [x] Start, pause and cancel scrubs and TRIMs, clear pool errors
 * [x] Live updates using zpool events
 * [x] Filter, sort and configure the columns of all lists
+* [x] Copy any text with the mouse (drag, or double-click a word), also over SSH (needs a terminal with OSC 52)
 * [x] Remembers your last session
 
 All important shortcuts are shown at the bottom of the screen, press `:` to see everything else.
