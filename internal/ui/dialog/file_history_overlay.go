@@ -11,6 +11,7 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -58,7 +59,8 @@ type FileHistoryOverlay struct {
 	modeView       *tview.TextView
 	sparklines     *tview.Box
 	metadataView   *tview.TextView
-	diffView       *tview.TextView
+	// diffView shows the changes, or the text, of the selected version
+	diffView *scrollbar.TextView
 	// diffFooter shows the number of added and removed lines in the bottom border of the diff
 	diffFooter   *uiutil.BorderFooter
 	shortcutHelp *shortcut_helper.ShortcutMapComponent
@@ -148,13 +150,15 @@ func NewFileHistoryOverlay(
 		SetWrap(false)
 	overlay.metadataView.SetDrawFunc(drawLeftDivider)
 
-	overlay.diffView = tview.NewTextView().
-		SetDynamicColors(true).
+	// the text of a version is often longer than the view
+	overlay.diffView = scrollbar.NewTextView(application)
+	overlay.diffView.SetDynamicColors(true).
 		SetRegions(true).
 		SetChangedFunc(func() {
 			application.Draw()
 		})
 	overlay.diffView.SetBorder(true)
+	overlay.diffView.SetBorderPadding(0, 0, 1, 1)
 	uiutil.SetupWindow(overlay.diffView, " Changes ")
 	overlay.diffFooter = uiutil.NewBorderFooter(overlay.diffView.Box)
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"zfs-file-history/internal/logging"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -56,7 +57,7 @@ type DatasetPermissionsDialog struct {
 	summary     *tview.TextView
 	table       *tview.Table
 	details     *tview.TextView
-	delegations *tview.TextView
+	delegations *scrollbar.TextView
 }
 
 // NewDatasetPermissionsDialog creates the dialog. onChanged is called on the UI thread after the delegations were
@@ -103,7 +104,9 @@ func (d *DatasetPermissionsDialog) createLayout() {
 		Background(theme.Colors.Layout.Table.SelectedBackground))
 	d.table.SetSelectionChangedFunc(func(row, column int) { d.updateDetails(row) })
 	d.details = tview.NewTextView().SetWrap(true).SetWordWrap(true)
-	d.delegations = tview.NewTextView().SetDynamicColors(true)
+	// shrinks (and scrolls) on small terminals, see below
+	d.delegations = scrollbar.NewTextView(d.application)
+	d.delegations.SetDynamicColors(true)
 
 	d.refresh()
 	rows := d.table.GetRowCount()

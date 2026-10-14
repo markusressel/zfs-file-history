@@ -3,6 +3,7 @@ package pool_status
 import (
 	"context"
 	"strings"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -35,7 +36,7 @@ type PoolStatusComponent struct {
 	Events *util.Emitter[Event]
 
 	application *tview.Application
-	textView    *tview.TextView
+	textView    *scrollbar.TextView
 	container   *uiutil.LoadingContainer
 	loader      *uiutil.DataLoader[*zfs.PoolStatus]
 
@@ -51,8 +52,9 @@ func NewPoolStatus(application *tview.Application) *PoolStatusComponent {
 		application: application,
 	}
 
-	poolStatus.textView = tview.NewTextView().
-		SetDynamicColors(true).
+	// capped by the page on small terminals, see ContentSize
+	poolStatus.textView = scrollbar.NewTextView(application)
+	poolStatus.textView.SetDynamicColors(true).
 		SetWrap(false).
 		SetScrollable(true)
 	poolStatus.textView.SetBorder(true)
@@ -224,5 +226,10 @@ func (poolStatus *PoolStatusComponent) IsLoading() bool {
 // ContentSize returns the size needed to show all of the text, including the border. Must be called on the UI
 // thread.
 func (poolStatus *PoolStatusComponent) ContentSize() (width int, height int) {
-	return uiutil.TextViewContentSize(poolStatus.textView)
+	width, height = uiutil.TextViewContentSize(poolStatus.textView.TextView)
+	if width == 0 {
+		return 0, 0
+	}
+	// the scrollbar while not all lines fit
+	return width + poolStatus.textView.BarWidth(), height
 }

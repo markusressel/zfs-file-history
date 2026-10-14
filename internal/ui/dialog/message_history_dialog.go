@@ -3,6 +3,7 @@ package dialog
 import (
 	"fmt"
 	"strings"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/ui/util"
@@ -33,8 +34,9 @@ func NewMessageHistoryDialog(messages []*status_message.StatusMessage) *MessageH
 func (d *MessageHistoryDialog) createLayout(messages []*status_message.StatusMessage) {
 	dialogTitle := " 📜 Messages "
 
-	messagesView := tview.NewTextView().
-		SetDynamicColors(true).
+	// there may be more messages than lines; the dialog has a fixed size
+	messagesView := scrollbar.NewTextView(nil)
+	messagesView.SetDynamicColors(true).
 		SetWrap(true).
 		SetWordWrap(true)
 	messagesView.SetText(formatMessageHistory(messages))
