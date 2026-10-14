@@ -859,13 +859,14 @@ func TestTable_NewDataIsNotScrolledToTheEnd(t *testing.T) {
 	assert.Zero(t, rowOffset, "the first rows are shown")
 }
 
-func TestTable_Placeholder(t *testing.T) {
-	table, entries, _ := newWideTestTable(1)
+// newTextDrawer returns a function that draws the table (its layout at 40x12) and returns the text on the screen, a
+// line per row.
+func newTextDrawer(t *testing.T, table *RowSelectionTable[namedEntry]) func() string {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	require.NoError(t, screen.Init())
 	screen.SetSize(40, 12)
 	table.GetLayout().SetRect(0, 0, 40, 12)
-	screenText := func() string {
+	return func() string {
 		screen.Clear()
 		drawTableLayout(table, screen)
 		screen.Show()
@@ -881,6 +882,11 @@ func TestTable_Placeholder(t *testing.T) {
 		}
 		return text.String()
 	}
+}
+
+func TestTable_Placeholder(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	screenText := newTextDrawer(t, table)
 
 	table.SetPlaceholder("open /x: permission denied", tcell.ColorRed)
 	table.SetData([]*namedEntry{})
@@ -888,6 +894,31 @@ func TestTable_Placeholder(t *testing.T) {
 
 	table.SetData(entries)
 	assert.NotContains(t, screenText(), "permission denied", "not shown over rows")
+}
+
+func TestTable_NoMatchesForTheFilter(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	screenText := newTextDrawer(t, table)
+
+	table.SetFilterText("nothing")
+	text := screenText()
+	assert.Contains(t, text, "No matches for nothing")
+	lines := strings.Split(text, "\n")
+	row := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "No matches") })
+	// centered in the 9 rows below the border and the header (12 lines, without the bottom border)
+	assert.Equal(t, 2+4, row, "centered vertically:\n%s", text)
+
+	table.SetFilterText("daily")
+	assert.NotContains(t, screenText(), "No matches", "not shown while entries match")
+
+	// an empty table is not empty because of the filter
+	table.SetFilterText("nothing")
+	table.SetData([]*namedEntry{})
+	assert.NotContains(t, screenText(), "No matches")
+
+	// the placeholder (e.g. why the entries could not be loaded) says more
+	table.SetPlaceholder("open /x: permission denied", tcell.ColorRed)
+	assert.Contains(t, screenText(), "permission denied")
 }
 
 // values computed in the background (e.g. the diff states of files) are sorted once Resort is called, keeping the

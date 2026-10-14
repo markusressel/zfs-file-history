@@ -373,7 +373,7 @@ func (c *RowSelectionTable[T]) renderIfTimeFormatChanged() {
 
 // afterDraw draws what is drawn over the table. Runs while drawing.
 func (c *RowSelectionTable[T]) afterDraw(screen tcell.Screen) {
-	c.drawPlaceholder(screen)
+	c.drawEmptyState(screen)
 	c.redrawScrollbar(screen)
 }
 
@@ -389,20 +389,34 @@ func (c *RowSelectionTable[T]) GetPlaceholder() string {
 	return c.placeholder
 }
 
-// drawPlaceholder draws the placeholder centered below the header row, wrapped to the width of the table, if there
-// are no rows. Runs while drawing.
-func (c *RowSelectionTable[T]) drawPlaceholder(screen tcell.Screen) {
-	if c.placeholder == "" || len(c.entries) > 0 {
+// drawEmptyState draws why there are no rows, centered in the space of the rows: the placeholder (e.g. why they
+// could not be loaded, wrapped to the width of the table), or that no entry matches the filter. Runs while drawing.
+func (c *RowSelectionTable[T]) drawEmptyState(screen tcell.Screen) {
+	if len(c.entries) > 0 {
 		return
 	}
 	x, y, width, height := c.table.GetInnerRect()
-	// below the header row and an empty line
-	top := y + 2
-	for i, line := range tview.WordWrap(tview.Escape(c.placeholder), width) {
+	var lines []string
+	color := c.placeholderColor
+	switch {
+	case c.placeholder != "":
+		lines = tview.WordWrap(tview.Escape(c.placeholder), width)
+	case c.filterText != "" && len(c.allEntries) > 0:
+		colors := theme.Colors.Layout.Table
+		// cut off by Print if too long
+		lines = []string{fmt.Sprintf("No matches for %s%s[-]", txwidgets.ColorTag(colors.Accent), tview.Escape(c.filterText))}
+		color = colors.EmptyText
+	default:
+		return
+	}
+	// the rows start below the header row
+	rowsTop, rowsHeight := y+1, height-1
+	top := rowsTop + max((rowsHeight-len(lines))/2, 0)
+	for i, line := range lines {
 		if top+i >= y+height {
 			break
 		}
-		tview.Print(screen, line, x, top+i, width, tview.AlignCenter, c.placeholderColor)
+		tview.Print(screen, line, x, top+i, width, tview.AlignCenter, color)
 	}
 }
 

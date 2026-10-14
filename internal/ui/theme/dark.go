@@ -110,6 +110,7 @@ var (
 				TreeLines:              tcell.ColorIsRGB | tcell.ColorValid | 0x7D8A96,
 				TreeCollapsedIndicator: Primary,
 				ZeroSize:               tcell.ColorDarkGray,
+				EmptyText:              tcell.ColorGray,
 			},
 		},
 		ShortcutMap: ShortcutMapColors{

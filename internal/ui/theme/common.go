@@ -233,6 +233,8 @@ type LayoutTableColors struct {
 	// ZeroSize is the color of sizes of 0 in size columns (e.g. "Written" of snapshots in which nothing changed),
 	// dimmed so the others stand out; the others are colored with Colors.Magnitude
 	ZeroSize tcell.Color
+	// EmptyText is the text shown in place of the rows when no entry matches the filter
+	EmptyText tcell.Color
 }
 
 // SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the
