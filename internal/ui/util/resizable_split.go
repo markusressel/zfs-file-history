@@ -18,8 +18,9 @@ const (
 )
 
 // ResizableSplit shows two panes side by side (or one above the other, see NewVerticalResizableSplit). The boundary
-// between them can be dragged with the mouse; it is highlighted while hovered or dragged. Double-clicking it goes
-// back to the initial sizes.
+// between them can be dragged with the mouse; it is highlighted while hovered or dragged. A right click on it goes
+// back to the initial sizes (a double click cannot be used: tview's double clicks are disabled, see
+// tview.DoubleClickInterval in root.go).
 //
 // Without a drag, the first pane can be sized to fit its content (see SetAutoSize), and the split can arrange the
 // panes depending on the available space (see SetVerticalFunc).
@@ -94,7 +95,7 @@ func (s *ResizableSplit) SetEnabledFunc(enabled func() bool) *ResizableSplit {
 // SetAutoSize sets a function that returns the size of the first pane (columns, or rows if vertical), given the
 // size of the split, e.g. the size of its content. It is called on every draw, so the pane follows its content and
 // the size of the terminal. 0 uses the proportions. Once the boundary was dragged, the dragged proportions are used
-// instead, until it is double-clicked.
+// instead, until it is right-clicked.
 func (s *ResizableSplit) SetAutoSize(autoSize func(size int) int) *ResizableSplit {
 	s.autoSize = autoSize
 	return s
@@ -268,7 +269,7 @@ func (s *ResizableSplit) MouseCapture(action tview.MouseAction, event *tcell.Eve
 	}
 
 	onBoundary := s.isOnBoundary(x, y)
-	if action == tview.MouseLeftDoubleClick && onBoundary {
+	if action == tview.MouseRightClick && onBoundary {
 		// back to the initial sizes (or the auto size), applied when it is drawn
 		s.arrangement().dragged = false
 		return tview.MouseConsumed, nil

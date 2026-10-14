@@ -183,7 +183,7 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 - Panes there is nothing to do in (the path overview, the details of a disk) are not in `focusableComponents`, and a
   click does not focus them either (`uiutil.WithoutFocus` in their `MouseHandler`).
 - Panes are split with `uiutil.ResizableSplit` (via `basePage.newSplit`, registered with `captureSplitDrags`). The
-  boundary can be dragged; double-clicking it goes back to the automatic size.
+  boundary can be dragged; a right click on it goes back to the automatic size.
 - `SetAutoSize` sizes the first pane by its content on every draw (e.g. the dataset info and the pool status fit
   their text, capped with `uiutil.FitContent`). A drag overrides it, per direction.
 - `SetVerticalFunc` switches between side by side and stacked depending on the available space (the pools page:

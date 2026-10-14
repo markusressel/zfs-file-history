@@ -185,7 +185,7 @@ func TestResizableSplit_AutoSize(t *testing.T) {
 	assert.Equal(t, 50, width(left))
 }
 
-func TestResizableSplit_DragReplacesTheAutoSizeUntilDoubleClicked(t *testing.T) {
+func TestResizableSplit_DragReplacesTheAutoSizeUntilRightClicked(t *testing.T) {
 	split, screen, left, _ := newTestSplit(t)
 	split.SetAutoSize(func(size int) int { return 30 })
 	split.Draw(screen)
@@ -205,20 +205,22 @@ func TestResizableSplit_DragReplacesTheAutoSizeUntilDoubleClicked(t *testing.T) 
 	split.SetRect(0, 0, 100, 10)
 	split.Draw(screen)
 
-	// double-clicked elsewhere: passed on
-	_, event := mouse(split, tview.MouseLeftDoubleClick, 10, tcell.ButtonNone)
+	// right-clicked elsewhere: passed on
+	_, event := mouse(split, tview.MouseRightClick, 10, tcell.ButtonNone)
 	assert.NotNil(t, event)
 	split.Draw(screen)
 	assert.Equal(t, 60, width(left))
 
-	// double-clicked on the boundary: back to the auto size
-	_, event = mouse(split, tview.MouseLeftDoubleClick, 60, tcell.ButtonNone)
+	// right-clicked on the boundary: back to the auto size
+	_, event = mouse(split, tview.MouseRightClick, 60, tcell.ButtonNone)
 	assert.Nil(t, event, "consumed")
 	split.Draw(screen)
 	assert.Equal(t, 30, width(left))
 }
 
-func TestResizableSplit_DoubleClickRestoresTheProportions(t *testing.T) {
+// Regression: the sizes were restored by a double click, which tview never reports, because the application disables
+// its double clicks (tview.DoubleClickInterval = 0).
+func TestResizableSplit_RightClickRestoresTheProportions(t *testing.T) {
 	split, screen, left, _ := newTestSplit(t)
 
 	mouse(split, tview.MouseLeftDown, 50, tcell.Button1)
@@ -228,7 +230,7 @@ func TestResizableSplit_DoubleClickRestoresTheProportions(t *testing.T) {
 	split.Draw(screen)
 	require.Equal(t, 70, width(left))
 
-	mouse(split, tview.MouseLeftDoubleClick, 70, tcell.ButtonNone)
+	mouse(split, tview.MouseRightClick, 70, tcell.ButtonNone)
 	split.Draw(screen)
 	assert.Equal(t, 50, width(left))
 }
