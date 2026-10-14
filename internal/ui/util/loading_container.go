@@ -31,16 +31,19 @@ func (c *LoadingContainer) SetIsLoading(isLoading bool) {
 		return
 	}
 	c.isLoading = isLoading
+	// the new page is shown before the old one is hidden: without a visible page, tview's Pages.Focus marks the
+	// container itself as focused if it has the focus, which is never undone, so it would take the keys of the
+	// dialogs in front of it ever after (tview hands the keys to the first page that has the focus)
 	if isLoading {
 		c.loadingView.Start()
 		// Only hide the content, do not touch dynamic dialogs
-		c.HidePage(LoadingContainerContentPage)
 		c.ShowPage(LoadingContainerLoadingPage)
+		c.HidePage(LoadingContainerContentPage)
 	} else {
 		c.loadingView.Stop()
 		// Only hide the loading screen, do not touch dynamic dialogs
-		c.HidePage(LoadingContainerLoadingPage)
 		c.ShowPage(LoadingContainerContentPage)
+		c.HidePage(LoadingContainerLoadingPage)
 	}
 }
 

@@ -99,3 +99,21 @@ func TestLoadingContainer_SetBorderColorAndMessage(t *testing.T) {
 	containerBox.SetMessage("Another message")
 	assert.Equal(t, "Another message", containerBox.loadingView.message)
 }
+
+// Regression: switching between loading and content while the container has the focus left the container marked as
+// focused after the focus moved on (e.g. to a dialog), so its page took the keys of the dialog.
+func TestLoadingContainer_SwitchingKeepsNoStaleFocus(t *testing.T) {
+	app := tview.NewApplication()
+	content := tview.NewTable()
+	container := NewLoadingContainer(app, content, "Snapshots", "Loading...")
+	app.SetFocus(container)
+
+	container.SetIsLoading(true)
+	container.SetIsLoading(false)
+	assert.True(t, container.HasFocus())
+
+	// e.g. a dialog
+	app.SetFocus(tview.NewTable())
+
+	assert.False(t, container.HasFocus())
+}
