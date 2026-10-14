@@ -104,9 +104,8 @@ func (c *ScrollbarComponent) DrawFunc(screen tcell.Screen, x int, y int, width i
 		totalUnits = width * 2
 	}
 
-	scale := float64(totalUnits) / math.Max(1, float64(c.max-c.min))
-	barStart := float64(c.scrollPosition) * scale
-	barEnd := barStart + float64(c.barWidth)*scale
+	barStartUnit, barEndUnit := barUnits(totalUnits, c.min, c.max, c.scrollPosition, c.barWidth)
+	barStart, barEnd := float64(barStartUnit), float64(barEndUnit)
 
 	for i := 0; i < height; i++ {
 		if c.orientation == ScrollBarHorizontal {
@@ -169,6 +168,28 @@ func (c *ScrollbarComponent) DrawFunc(screen tcell.Screen, x int, y int, width i
 	}
 
 	return x, y, width, height
+}
+
+// barUnits returns where the bar starts and ends on a track of units (half cells): as long as the shown part
+// (barWidth) of all (min to max), but at least a cell, so it is always visible, and in whole units, so it looks the
+// same at both ends. It is placed within the room it can move in, so it touches the start of the track at the first
+// position and the end at the last one.
+func barUnits(units int, min int, max int, position int, barWidth int) (start int, end int) {
+	total := max - min
+	if total <= 0 || barWidth >= total {
+		return 0, units
+	}
+	length := int(math.Round(float64(barWidth) * float64(units) / float64(total)))
+	length = clamp(length, 2, units)
+	if scrollRange := total - barWidth; scrollRange > 0 {
+		start = int(math.Round(float64(position-min) * float64(units-length) / float64(scrollRange)))
+	}
+	start = clamp(start, 0, units-length)
+	return start, start + length
+}
+
+func clamp(value int, low int, high int) int {
+	return min(max(value, low), high)
 }
 
 // scrollbarStyle returns the style of a scrollbar cell. The background is set explicitly: with the terminal's default
