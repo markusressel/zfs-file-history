@@ -408,3 +408,17 @@ func TestCommandMenu_ContentWidthWithSwitches(t *testing.T) {
 	_, width := menu.contentSize()
 	assert.Equal(t, 10+1+3+1+4, width)
 }
+
+// The keys of the commands of an unfocused component are dimmed: they only work once it has the focus.
+func TestCommandMenu_UnfocusedKeysAreDimmed(t *testing.T) {
+	menu := NewCommandMenu([]CommandSection{
+		{Title: "Files", Commands: []shortcut_helper.ShortcutEntry{{Name: "Filter", KeyCombo: []string{"/"}, Group: shortcut_helper.GroupView, Run: func() {}}}},
+		{Title: "Snapshots", Unfocused: true, Commands: []shortcut_helper.ShortcutEntry{{Name: "Filter", KeyCombo: []string{"/"}, Group: shortcut_helper.GroupView, Run: func() {}}}},
+	})
+	keyColor := func(row int) tcell.Color {
+		color, _, _ := menu.list.GetCell(row, 1).Style.Decompose()
+		return color
+	}
+	assert.Equal(t, shortcut_helper.GroupView.KeyColor(), keyColor(1))
+	assert.Equal(t, tcell.ColorGray, keyColor(3))
+}

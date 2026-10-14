@@ -126,11 +126,41 @@ func (page *basePage) refreshShortcutMap() {
 	page.updateShortcutMap(page.focusedComponent())
 }
 
-// commandSections returns the commands of the focused component and of the page for the command menu (see
-// dialog.CommandMenu): the shortcuts that can be run (also the MenuOnly ones) and the commands of the component that
-// have no shortcut (see shortcut_helper.CommandProvider). The global ones are added by the root.
+// commandSections returns the commands of the components and of the page for the command menu (see
+// dialog.CommandMenu): the focused component first, then the page, then the other components, so their commands can
+// be found without knowing that focusing them shows them. The global ones are added by the root.
 func (page *basePage) commandSections() []dialog.CommandSection {
-	component := page.focusedComponent()
+	focused := page.focusedComponent()
+	sections := []dialog.CommandSection{{Title: page.componentTitles[focused], Commands: commandsOf(focused)}}
+	if page.pageShortcuts != nil {
+		sections = append(sections, dialog.CommandSection{Title: pageTitles[page.name] + " page", Commands: page.pageShortcuts()})
+	}
+	for _, component := range page.focusableComponents() {
+		if component == focused {
+			continue
+		}
+		commands := commandsOf(component)
+		for i, command := range commands {
+			run := command.Run
+			if run == nil || command.On != nil {
+				// a switch is switched where it is (also with Space, while the menu is open), it needs no focus
+				continue
+			}
+			// like after pressing its key there: its keys are shown at the bottom then
+			commands[i].Run = func() {
+				component.Focus()
+				page.updateShortcutMap(component)
+				run()
+			}
+		}
+		sections = append(sections, dialog.CommandSection{Title: page.componentTitles[component], Commands: commands, Unfocused: true})
+	}
+	return sections
+}
+
+// commandsOf returns the commands of the component: the shortcuts that can be run (also the MenuOnly ones) and the
+// commands that have no shortcut (see shortcut_helper.CommandProvider).
+func commandsOf(component FocusableUiComponent) []shortcut_helper.ShortcutEntry {
 	var commands []shortcut_helper.ShortcutEntry
 	if provider, ok := component.(shortcut_helper.ShortcutMapProvider); ok {
 		commands = provider.GetShortcutMap()
@@ -138,11 +168,7 @@ func (page *basePage) commandSections() []dialog.CommandSection {
 	if provider, ok := component.(shortcut_helper.CommandProvider); ok {
 		commands = append(commands, provider.GetCommands()...)
 	}
-	sections := []dialog.CommandSection{{Title: page.componentTitles[component], Commands: commands}}
-	if page.pageShortcuts != nil {
-		sections = append(sections, dialog.CommandSection{Title: pageTitles[page.name] + " page", Commands: page.pageShortcuts()})
-	}
-	return sections
+	return commands
 }
 
 func (page *basePage) CycleFocus(reversed bool) {

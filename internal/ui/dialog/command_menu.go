@@ -34,6 +34,9 @@ const (
 type CommandSection struct {
 	Title    string
 	Commands []shortcut_helper.ShortcutEntry
+	// Unfocused is set for the commands of a component that does not have the focus: running one focuses it. Their
+	// keys are dimmed, they only work once it has the focus.
+	Unfocused bool
 }
 
 // CommandMenu lists commands (shortcut entries that can be run, see shortcut_helper.ShortcutEntry.Run) and filters
@@ -120,7 +123,7 @@ func NewCommandMenu(sections []CommandSection) *CommandMenu {
 			}
 		}
 		if len(commands) > 0 {
-			menu.sections = append(menu.sections, CommandSection{Title: section.Title, Commands: commands})
+			menu.sections = append(menu.sections, CommandSection{Title: section.Title, Commands: commands, Unfocused: section.Unfocused})
 		}
 	}
 	menu.createLayout()
@@ -347,7 +350,7 @@ func (menu *CommandMenu) filter(query string) {
 			SetSelectable(false))
 		menu.rows = append(menu.rows, nil)
 		for _, match := range matches {
-			match.section = section.Title
+			match.section, match.unfocused = section.Title, section.Unfocused
 			row := len(menu.rows)
 			menu.setCommandRow(row, match)
 			menu.rows = append(menu.rows, &match)
@@ -379,8 +382,12 @@ func (menu *CommandMenu) setCommandRow(row int, match commandMatch) {
 		state = "  "
 	}
 	menu.list.SetCell(row, 0, tview.NewTableCell("  "+state+highlightMatch(match)+"  "))
+	keyColor := command.Group.KeyColor()
+	if match.unfocused {
+		keyColor = tcell.ColorGray
+	}
 	menu.list.SetCell(row, 1, tview.NewTableCell(tview.Escape(strings.Join(command.KeyCombo, " "))+"  ").
-		SetTextColor(command.Group.KeyColor()))
+		SetTextColor(keyColor))
 	menu.list.SetCell(row, 2, tview.NewTableCell(tview.Escape(command.Description)).
 		SetTextColor(tcell.ColorGray).
 		SetExpansion(1))
