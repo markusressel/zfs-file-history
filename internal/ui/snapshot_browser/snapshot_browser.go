@@ -221,15 +221,26 @@ const maxRememberedSelections = 200
 // legacyLayoutStateKey is where both pages saved their (shared) layout before they had their own.
 const legacyLayoutStateKey = "snapshotBrowser"
 
+// migrateLegacyLayout gives the layout saved before the pages had their own to the pages that have none, and removes
+// it: else it would be taken over again after a page's layout was reset (which removes the saved one).
+func migrateLegacyLayout(store *state.Store) {
+	legacy, ok := store.TableLayout(legacyLayoutStateKey)
+	if !ok {
+		return
+	}
+	for _, layout := range []ColumnLayout{FilesLayout, DatasetsLayout} {
+		if _, saved := store.TableLayout(layout.stateKey); !saved {
+			store.SetTableLayout(layout.stateKey, legacy)
+		}
+	}
+	store.DeleteTableLayout(legacyLayoutStateKey)
+}
+
 // UseColumnLayout shows the columns of the layout, or the ones saved for it, and saves the changes. A layout saved
 // before the pages had their own is taken over once. Must be called on the UI thread, once.
 func (snapshotBrowser *SnapshotBrowserComponent) UseColumnLayout(layout ColumnLayout) {
 	if store := state.Current; store != nil {
-		if _, saved := store.TableLayout(layout.stateKey); !saved {
-			if legacy, ok := store.TableLayout(legacyLayoutStateKey); ok {
-				store.SetTableLayout(layout.stateKey, legacy)
-			}
-		}
+		migrateLegacyLayout(store)
 	}
 	snapshotBrowser.tableContainer.SetActiveColumns(layout.columns)
 	snapshotBrowser.tableContainer.BindColumnLayout(state.Current, layout.stateKey, tableColumns)
