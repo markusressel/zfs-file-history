@@ -10,6 +10,7 @@ import (
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -459,4 +460,22 @@ func TestDiskBrowser_HeaderStaysSelected(t *testing.T) {
 	disks, _ = headers()
 	assert.True(t, disks, "header of the disks")
 	assert.Empty(t, dt.attributeNames(), "no disk selected")
+}
+
+// Regression: when the SMART values were read ("38 seconds ago") was only updated when the disks were read again,
+// every 10 seconds, instead of with the times of the tables (every second while they count seconds).
+func TestDiskDetails_ReadTimeUpdated(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	require.False(t, uiutil.IsRelativeTimes())
+	t.Cleanup(func() {
+		if uiutil.IsRelativeTimes() {
+			uiutil.ToggleRelativeTimes()
+		}
+	})
+	assert.NotContains(t, dt.detailsText(), " ago")
+
+	// changes the generation of the formatted times, like the time passing does
+	uiutil.ToggleRelativeTimes()
+	dt.screenText()
+	assert.Contains(t, dt.detailsText(), " ago")
 }

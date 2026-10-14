@@ -52,14 +52,34 @@ type DiskDetailsComponent struct {
 	application    *tview.Application
 	layout         *tview.Flex
 	details        *tview.TextView
+	detailsView    *detailsView
 	tableContainer *table.RowSelectionTable[AttributeEntry]
 
 	// All fields below are only accessed on the UI thread.
 
 	// shownDisk is the disk whose attributes are shown (its TableRowId), see SetDisk
 	shownDisk string
+	// shownEntry is the disk whose details are shown, nil: none
+	shownEntry *DiskEntry
+	// renderedTimeFormat is the uiutil.TimeFormatGeneration the details were rendered with
+	renderedTimeFormat uint64
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
 	dialogPages *tview.Pages
+}
+
+// detailsView is the text of the details as placed in the layout: drawing it renders the details again if formatted
+// times changed (when the SMART values were read, "38 seconds ago"), like the tables do (see
+// uiutil.TimeFormatGeneration).
+type detailsView struct {
+	*tview.TextView
+	component *DiskDetailsComponent
+}
+
+func (view *detailsView) Draw(screen tcell.Screen) {
+	if view.component.shownEntry != nil && view.component.renderedTimeFormat != uiutil.TimeFormatGeneration() {
+		view.component.renderDetails()
+	}
+	view.TextView.Draw(screen)
 }
 
 // NewDiskDetails returns the details of a disk. Must be called on the UI thread.
@@ -68,6 +88,7 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 
 	component.details = tview.NewTextView().SetDynamicColors(true).SetWrap(false)
 	component.details.SetBorderPadding(0, 0, 1, 1)
+	component.detailsView = &detailsView{TextView: component.details, component: component}
 
 	t := table.NewTableContainer[AttributeEntry](application, toAttributeCells, sortAttributes)
 	t.SetTitle("Attributes")
@@ -90,7 +111,7 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	component.tableContainer = t
 
 	component.layout = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(component.details, 0, 0, false).
+		AddItem(component.detailsView, 0, 0, false).
 		AddItem(t.GetLayout(), 0, 1, true)
 	return component
 }
@@ -104,19 +125,17 @@ func (component *DiskDetailsComponent) SetDialogPages(pages *tview.Pages) {
 // SetDisk shows the details and the attributes of the disk, nil: none. The selected attribute (or the header), the
 // sort order and the filter are kept while the same disk is shown (e.g. read again). Must be called on the UI thread.
 func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
+	component.shownEntry = entry
 	if entry == nil {
 		component.details.SetText("")
-		component.layout.ResizeItem(component.details, 0, 0)
+		component.layout.ResizeItem(component.detailsView, 0, 0)
 		component.shownDisk = ""
 		component.tableContainer.SetPlaceholder("No disk selected.", theme.Colors.Pool.Hint)
 		component.tableContainer.SetData([]*AttributeEntry{})
 		component.updateFooter()
 		return
 	}
-	lines := formatDetails(entry)
-	component.details.SetText(strings.Join(lines, "\n"))
-	// a line of space to the table
-	component.layout.ResizeItem(component.details, len(lines)+1, 0)
+	component.renderDetails()
 
 	var attributes []*AttributeEntry
 	for i, attribute := range entry.Report.Attributes {
@@ -141,6 +160,15 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 		}
 	}
 	component.updateFooter()
+}
+
+// renderDetails shows the details of the shown disk. Runs on the UI thread.
+func (component *DiskDetailsComponent) renderDetails() {
+	component.renderedTimeFormat = uiutil.TimeFormatGeneration()
+	lines := formatDetails(component.shownEntry)
+	component.details.SetText(strings.Join(lines, "\n"))
+	// a line of space to the table
+	component.layout.ResizeItem(component.detailsView, len(lines)+1, 0)
 }
 
 // updateFooter shows the number of attributes in the bottom border of the table. Runs on the UI thread.
