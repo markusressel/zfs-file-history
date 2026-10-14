@@ -164,6 +164,12 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   not of the dragged widget, so a drag is not lost when the mouse leaves it (`captureSplitDrags`). A primitive that
   needs to know when the mouse leaves it returns itself as the capturing primitive while the mouse is on it (see
   `clickable.Regions.HandleMouse`).
+- **Text selection** (`uiutil.TextSelection`, installed in `root.go`) has the mouse capture and the after draw
+  function of the application: a drag in a pane selects its text (clipped to the inner rect of the deepest primitive
+  at the start, found through the visible pages and flexes like `isDescendantOf`), a second click on the same cell
+  the word; copied on release with OSC 52 (`Screen.SetClipboard`). Down and clicks are passed on, a drag is not.
+  Drags that start on a border (split boundaries) are left to the page. tview's double clicks stay disabled
+  (`tview.DoubleClickInterval`), they would delay every click.
 - **Parts that are hovered and clicked use `clickable.Regions`** (the activity, alert and shortcut bars, the parts
   of a table footer: `uiutil.FooterPart`, e.g. "… unmounted hidden"): `Draw`
   adds each part where it draws it (`Reset`, `Add`, `DrawHover` at the end), the mouse handler calls `HandleMouse`.

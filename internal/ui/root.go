@@ -411,6 +411,9 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 
 	application.SetRoot(pagesLayout, fullscreen).
 		SetFocus(mainPage.fileBrowser.GetLayout())
+	util.InstallTextSelection(application, pagesLayout, func(text string) {
+		messages.Show(copiedMessage(text))
+	})
 	recorder.setPath(path)
 	mainPage.updateShortcutMap(mainPage.fileBrowser)
 	restoreSession(restored, pages, switchTo)
@@ -443,6 +446,21 @@ func existingFolderOf(filePath string) (folder string, name string) {
 func showMessageHistory(application *tview.Application, pages *tview.Pages, messages *status_message.Center) {
 	dialog.ShowDialogOnPages(application, pages, dialog.NewMessageHistoryDialog(messages.History()), nil)
 	messages.MarkRead()
+}
+
+// copiedMessageLength is how much of a copied line is shown in the message that says it was copied.
+const copiedMessageLength = 60
+
+// copiedMessage says that the text was copied to the clipboard: the text itself if it is one line (shortened), else
+// how many lines. The terminal may not support it (OSC 52), which cannot be found out.
+func copiedMessage(text string) *status_message.StatusMessage {
+	if lines := strings.Count(text, "\n") + 1; lines > 1 {
+		return status_message.NewSuccessStatusMessage(fmt.Sprintf("Copied %d lines", lines))
+	}
+	if runes := []rune(text); len(runes) > copiedMessageLength {
+		text = string(runes[:copiedMessageLength-1]) + "…"
+	}
+	return status_message.NewSuccessStatusMessage(fmt.Sprintf("Copied: %s", text))
 }
 
 // newerStateVersionMessage is the warning shown when the state file was written by a newer version of the

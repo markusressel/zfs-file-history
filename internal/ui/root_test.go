@@ -467,3 +467,10 @@ func TestComponentDialogsAreModal(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { fileBrowserFocused = mainPage.fileBrowser.HasFocus() })
 	assert.True(t, fileBrowserFocused)
 }
+
+func TestCopiedMessage(t *testing.T) {
+	assert.Equal(t, "Copied: /tank/data", copiedMessage("/tank/data").Message)
+	assert.Equal(t, "Copied 2 lines", copiedMessage("a\nb").Message)
+	long := copiedMessage(strings.Repeat("x", 100)).Message
+	assert.Equal(t, "Copied: "+strings.Repeat("x", copiedMessageLength-1)+"…", long, "shortened")
+}
