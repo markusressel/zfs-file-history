@@ -63,7 +63,9 @@ func TestCommandMenu_RunsTheChosenCommandOnceClosed(t *testing.T) {
 		// only shortcuts that can be run are commands
 		{Name: "Move", KeyCombo: []string{"↑"}},
 	}
-	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, []CommandSection{{Title: "Section", Commands: commands}}) })
+	testutil.OnUiThread(t, app, func() {
+		ShowCommandMenu(app, pages, []CommandSection{{Title: "Section", Commands: commands}}, &CommandMenuMemory{})
+	})
 	app.QueueUpdateDraw(func() {})
 
 	assert.Eventually(t, func() bool {
@@ -90,7 +92,9 @@ func TestCommandMenu_EscClosesWithoutRunning(t *testing.T) {
 
 	ran := false
 	commands := []shortcut_helper.ShortcutEntry{{Name: "Refresh", Run: func() { ran = true }}}
-	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, []CommandSection{{Title: "Section", Commands: commands}}) })
+	testutil.OnUiThread(t, app, func() {
+		ShowCommandMenu(app, pages, []CommandSection{{Title: "Section", Commands: commands}}, &CommandMenuMemory{})
+	})
 	app.QueueUpdateDraw(func() {})
 	assert.Eventually(t, func() bool { return strings.Contains(menuScreenText(t, app, screen), "Refresh") },
 		3*time.Second, 20*time.Millisecond)
@@ -187,7 +191,7 @@ func TestCommandMenu_ShowsSectionsAndDescriptions(t *testing.T) {
 		}},
 		{Title: "Global", Commands: []shortcut_helper.ShortcutEntry{{Name: "Quit", Run: func() {}}}},
 	}
-	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, sections) })
+	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, sections, &CommandMenuMemory{}) })
 	app.QueueUpdateDraw(func() {})
 
 	assert.Eventually(t, func() bool {
@@ -223,4 +227,198 @@ func TestSelectionDialog_OptionCommands(t *testing.T) {
 	assert.Equal(t, "Snapshot the dataset now", commands[0].Description)
 	assert.True(t, commands[0].MenuOnly)
 	assert.NotNil(t, commands[0].Run)
+}
+
+// listedNames returns the names of the listed commands.
+func listedNames(menu *CommandMenu) []string {
+	var names []string
+	for _, match := range menu.rows {
+		if match != nil {
+			names = append(names, match.command.Name)
+		}
+	}
+	return names
+}
+
+// While nothing is searched, the commands of the view are listed, not the ones only for searching; an entry with a
+// query leads to them.
+func TestCommandMenu_SearchOnlyCommands(t *testing.T) {
+	sorted := ""
+	menu := NewCommandMenu([]CommandSection{{Title: "Files", Commands: []shortcut_helper.ShortcutEntry{
+		{Name: "Folder history", Run: func() {}},
+		{Name: "Sort by…", Query: "sort"},
+		{Name: "Sort by Name", Run: func() { sorted = "name" }, SearchOnly: true},
+		{Name: "Sort by Size", Run: func() { sorted = "size" }, SearchOnly: true},
+	}}})
+	assert.Equal(t, []string{"Folder history", "Sort by…"}, listedNames(menu))
+
+	menu.input.SetText("size")
+	assert.Equal(t, []string{"Sort by Size"}, listedNames(menu), "found by searching")
+
+	menu.input.SetText("")
+	menu.choose(slices.IndexFunc(menu.rows, func(match *commandMatch) bool { return match != nil && match.command.Query != "" }))
+	assert.Nil(t, menu.Chosen(), "the menu stays")
+	assert.Equal(t, "sort ", menu.input.GetText())
+	assert.Equal(t, []string{"Sort by Name", "Sort by Size"}, listedNames(menu), "not itself")
+
+	row, _ := menu.list.GetSelection()
+	menu.choose(row)
+	require.NotNil(t, menu.Chosen())
+	menu.Chosen().Run()
+	assert.Equal(t, "name", sorted)
+}
+
+// Switches are listed by what they switch, with their state.
+func TestCommandMenu_Switches(t *testing.T) {
+	hidden := true
+	menu := NewCommandMenu([]CommandSection{{Title: "Datasets", Commands: []shortcut_helper.ShortcutEntry{
+		{Name: "Filter", Run: func() {}},
+		shortcut_helper.ShortcutEntry{Name: "Show unmounted", Description: "Show them as well", Run: func() {}}.
+			AsSwitch("Hide unmounted datasets", "Hide the datasets that are not mounted", func() bool { return hidden }),
+		shortcut_helper.ShortcutEntry{Name: "Tree view", Run: func() {}}.
+			AsSwitch("Tree view", "Children below their parent", func() bool { return false }),
+	}}})
+	cell := func(row int) string { return testutil.StripTags(menu.list.GetCell(row, 0).Text) }
+	assert.Equal(t, "    Filter  ", cell(1), "indented like the names of the switches")
+	assert.Equal(t, "  ● Hide unmounted datasets  ", cell(2))
+	assert.Equal(t, "  ○ Tree view  ", cell(3))
+	assert.Equal(t, "Hide the datasets that are not mounted", menu.list.GetCell(2, 2).Text)
+
+	menu.input.SetText("unmounted")
+	assert.Equal(t, []string{"Hide unmounted datasets"}, listedNames(menu))
+}
+
+func TestMenuSize(t *testing.T) {
+	tests := []struct {
+		name                       string
+		contentRows, contentWidth  int
+		screenWidth, screenHeight  int
+		expectedRows, expectedWide int
+	}{
+		{name: "fits", contentRows: 6, contentWidth: 60, screenWidth: 120, screenHeight: 40, expectedRows: 6, expectedWide: 64},
+		{name: "at least 10 rows and 100 columns", contentRows: 40, contentWidth: 200, screenWidth: 120, screenHeight: 16, expectedRows: 10, expectedWide: 100},
+		{name: "half of a high screen, 3/4 of a wide one", contentRows: 40, contentWidth: 200, screenWidth: 200, screenHeight: 60, expectedRows: 30, expectedWide: 150},
+		{name: "small screen: all of it", contentRows: 40, contentWidth: 200, screenWidth: 60, screenHeight: 10, expectedRows: 7, expectedWide: 60},
+		{name: "tiny screen: a row", contentRows: 40, contentWidth: 200, screenWidth: 20, screenHeight: 3, expectedRows: 1, expectedWide: 20},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rows, width := menuSize(test.contentRows, test.contentWidth, test.screenWidth, test.screenHeight)
+			assert.Equal(t, test.expectedRows, rows)
+			assert.Equal(t, test.expectedWide, width)
+		})
+	}
+}
+
+// Space switches the selected switch without closing the menu, while nothing is searched or after the selection was
+// moved; otherwise it is typed, as it separates the terms of the query.
+func TestCommandMenu_SpaceSwitches(t *testing.T) {
+	hidden, tree := false, false
+	menu := NewCommandMenu([]CommandSection{{Title: "Datasets", Commands: []shortcut_helper.ShortcutEntry{
+		shortcut_helper.ShortcutEntry{Name: "Hide unmounted", Run: func() { hidden = !hidden }}.
+			AsSwitch("Hide unmounted datasets", "", func() bool { return hidden }),
+		shortcut_helper.ShortcutEntry{Name: "Tree view", Run: func() { tree = !tree }}.
+			AsSwitch("Tree view", "", func() bool { return tree }),
+		{Name: "Filter", Run: func() {}},
+	}}})
+	space := func() *tcell.EventKey { return menu.handleKey(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone)) }
+	cell := func(row int) string { return testutil.StripTags(menu.list.GetCell(row, 0).Text) }
+
+	assert.Nil(t, space(), "nothing searched: switched")
+	assert.True(t, hidden)
+	assert.Nil(t, menu.Chosen(), "the menu stays")
+	assert.Equal(t, "  ● Hide unmounted datasets  ", cell(1))
+	assert.Equal(t, "Space: switch on/off", menu.hint.GetText())
+
+	menu.input.SetText("tree")
+	assert.NotNil(t, space(), "typed into the query")
+	assert.False(t, tree)
+	assert.Empty(t, menu.hint.GetText())
+
+	menu.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	assert.Nil(t, space(), "after moving the selection: switched")
+	assert.True(t, tree)
+
+	menu.input.SetText("")
+	menu.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	menu.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	assert.NotNil(t, space(), "not a switch")
+}
+
+// The command selected when the menu was closed is selected again when it is shown again, e.g. to switch a setting
+// back; also if its name is the one of a switch.
+func TestCommandMenu_RemembersTheSelection(t *testing.T) {
+	app, screen, pages, _ := startCommandMenuApp(t)
+	hidden := false
+	sections := func() []CommandSection {
+		return []CommandSection{{Title: "Datasets", Commands: []shortcut_helper.ShortcutEntry{
+			{Name: "Filter", Run: func() {}},
+			shortcut_helper.ShortcutEntry{Name: "Hide unmounted", Run: func() { hidden = !hidden }}.
+				AsSwitch("Hide unmounted datasets", "", func() bool { return hidden }),
+		}}}
+	}
+	memory := &CommandMenuMemory{}
+	frontPage := func() (name string) {
+		testutil.OnUiThread(t, app, func() { name, _ = pages.GetFrontPage() })
+		return name
+	}
+	waitFor := func(page string) {
+		require.Eventually(t, func() bool { return frontPage() == page }, 3*time.Second, 20*time.Millisecond)
+	}
+
+	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, sections(), memory) })
+	waitFor(string(CommandMenuPage))
+	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
+	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	waitFor("main")
+	require.Eventually(t, func() bool {
+		var on bool
+		testutil.OnUiThread(t, app, func() { on = hidden })
+		return on
+	}, 3*time.Second, 20*time.Millisecond)
+
+	var menu *CommandMenu
+	testutil.OnUiThread(t, app, func() {
+		menu = NewCommandMenu(sections())
+		menu.selectCommand(memory.section, memory.name)
+	})
+	var selected string
+	testutil.OnUiThread(t, app, func() {
+		row, _ := menu.list.GetSelection()
+		selected = menu.rows[row].command.Name
+	})
+	assert.Equal(t, "Hide unmounted datasets", selected)
+
+	other := &CommandMenuMemory{section: "Files", name: "Hide unmounted datasets"}
+	testutil.OnUiThread(t, app, func() {
+		menu = NewCommandMenu(sections())
+		menu.selectCommand(other.section, other.name)
+		row, _ := menu.list.GetSelection()
+		selected = menu.rows[row].command.Name
+	})
+	assert.Equal(t, "Filter", selected, "another section: the first command")
+}
+
+// Regression: the width of the mark of switches was counted in bytes (3), not columns (1).
+func TestCommandMenu_ContentWidthWithSwitches(t *testing.T) {
+	menu := NewCommandMenu([]CommandSection{{Title: "S", Commands: []shortcut_helper.ShortcutEntry{
+		shortcut_helper.ShortcutEntry{Name: "x", KeyCombo: []string{"u"}, Run: func() {}}.AsSwitch("Tree", "Desc", func() bool { return false }),
+	}}})
+	// "  ○ Tree  " + gap + "u  " + gap + "Desc"
+	_, width := menu.contentSize()
+	assert.Equal(t, 10+1+3+1+4, width)
+}
+
+// The keys of the commands of an unfocused component are dimmed: they only work once it has the focus.
+func TestCommandMenu_UnfocusedKeysAreDimmed(t *testing.T) {
+	menu := NewCommandMenu([]CommandSection{
+		{Title: "Files", Commands: []shortcut_helper.ShortcutEntry{{Name: "Filter", KeyCombo: []string{"/"}, Group: shortcut_helper.GroupView, Run: func() {}}}},
+		{Title: "Snapshots", Unfocused: true, Commands: []shortcut_helper.ShortcutEntry{{Name: "Filter", KeyCombo: []string{"/"}, Group: shortcut_helper.GroupView, Run: func() {}}}},
+	})
+	keyColor := func(row int) tcell.Color {
+		color, _, _ := menu.list.GetCell(row, 1).Style.Decompose()
+		return color
+	}
+	assert.Equal(t, shortcut_helper.GroupView.KeyColor(), keyColor(1))
+	assert.Equal(t, tcell.ColorGray, keyColor(3))
 }

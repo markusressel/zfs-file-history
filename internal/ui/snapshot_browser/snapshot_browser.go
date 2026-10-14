@@ -1237,8 +1237,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 	if selection := snapshotBrowser.GetSelection(); selection != nil {
 		shortcutMap = append(shortcutMap,
 			uiutil.TableComponentShortcutActions.WithRun(func() { snapshotBrowser.showDialog(snapshotBrowser.selectionActionDialog(), nil) }),
+			// named like in the action dialog and by ZFS
 			uiutil.TableComponentShortcutDelete.WithRun(func() { snapshotBrowser.openDeleteDialog(selection) }).OnlyInMenu().
-				WithDescription("Destroy the selected snapshot, after asking (zfs destroy)"),
+				WithName("Destroy").WithDescription("Destroy the selected snapshot, after asking (zfs destroy)"),
 		)
 		if target := snapshotBrowser.getHistoryTarget(); target != nil && !snapshotBrowser.HasMultiSelection() {
 			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History at snapshot",

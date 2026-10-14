@@ -100,12 +100,20 @@ func (c *RowSelectionTable[T]) GroupingCommands() []shortcut_helper.ShortcutEntr
 	if len(c.groupings) == 0 {
 		return nil
 	}
+	// only listed while searching, like the commands to sort; "Group by…" searches them
 	commands := []shortcut_helper.ShortcutEntry{{
+		Name:        "Group by…",
+		Description: "Choose how to group the entries",
+		Group:       shortcut_helper.GroupView,
+		Query:       "group",
+		MenuOnly:    true,
+	}, {
 		Name:        "Do not group",
 		Description: "Show the entries in one list",
 		Group:       shortcut_helper.GroupView,
 		Run:         func() { c.selectGrouping("") },
 		MenuOnly:    true,
+		SearchOnly:  true,
 	}}
 	for _, grouping := range c.groupings {
 		commands = append(commands, shortcut_helper.ShortcutEntry{
@@ -114,6 +122,7 @@ func (c *RowSelectionTable[T]) GroupingCommands() []shortcut_helper.ShortcutEntr
 			Group:       shortcut_helper.GroupView,
 			Run:         func() { c.selectGrouping(grouping.Key) },
 			MenuOnly:    true,
+			SearchOnly:  true,
 		})
 	}
 	return commands

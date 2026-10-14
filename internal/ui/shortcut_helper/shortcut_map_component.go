@@ -27,11 +27,39 @@ type ShortcutEntry struct {
 	Run func()
 	// MenuOnly entries are not shown in the shortcut map, only in the command menu
 	MenuOnly bool
+	// SearchOnly commands are only listed in the command menu while something is searched, e.g. one per column to
+	// sort by: listed always, they would push the commands of the shown view out of sight. An entry with a Query
+	// leads to them.
+	SearchOnly bool
+	// Query makes the entry a shortcut to a search of the command menu (e.g. "sort" for the SearchOnly commands to
+	// sort by a column): choosing it types the query instead of running something. It is only listed while nothing
+	// is searched. Needs no Run.
+	Query string
+	// On is set for an entry that switches something on and off (e.g. hiding the unmounted datasets): whether it is
+	// on. The command menu shows it as a switch with its state, named SwitchName (e.g. "Hide unmounted datasets")
+	// instead of Name, which tells what its key does now (e.g. "Show unmounted"). See AsSwitch.
+	On func() bool
+	// SwitchName and SwitchDescription replace Name and Description in the command menu, see On
+	SwitchName        string
+	SwitchDescription string
+}
+
+// AsSwitch returns the entry as a switch of the command menu, with its name and description there, and whether it
+// is on, see ShortcutEntry.On.
+func (entry ShortcutEntry) AsSwitch(name string, description string, on func() bool) ShortcutEntry {
+	entry.SwitchName, entry.SwitchDescription, entry.On = name, description, on
+	return entry
 }
 
 // WithRun returns the entry with Run set to run, so it is a command of the command menu.
 func (entry ShortcutEntry) WithRun(run func()) ShortcutEntry {
 	entry.Run = run
+	return entry
+}
+
+// WithName returns the entry with the name, e.g. a shared entry named as the action is called where it is used.
+func (entry ShortcutEntry) WithName(name string) ShortcutEntry {
+	entry.Name = name
 	return entry
 }
 
@@ -47,11 +75,12 @@ func (entry ShortcutEntry) OnlyInMenu() ShortcutEntry {
 	return entry
 }
 
-// Commands returns the entries that can be run, i.e. the ones of the command menu.
+// Commands returns the entries that can be run (or lead to a search, see ShortcutEntry.Query), i.e. the ones of the
+// command menu.
 func Commands(entries []ShortcutEntry) []ShortcutEntry {
 	var commands []ShortcutEntry
 	for _, entry := range entries {
-		if entry.Run != nil {
+		if entry.Run != nil || entry.Query != "" {
 			commands = append(commands, entry)
 		}
 	}

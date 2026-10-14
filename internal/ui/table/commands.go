@@ -13,9 +13,16 @@ func (c *RowSelectionTable[T]) StartFilter() {
 }
 
 // SortCommands returns commands for the command menu (see dialog.CommandMenu) to sort by each of the shown columns
-// and to flip the direction.
+// and to flip the direction. They are only listed while searching, there is one per column: "Sort by…" searches
+// them.
 func (c *RowSelectionTable[T]) SortCommands() []shortcut_helper.ShortcutEntry {
-	var commands []shortcut_helper.ShortcutEntry
+	commands := []shortcut_helper.ShortcutEntry{{
+		Name:        "Sort by…",
+		Description: "Choose the column to sort by",
+		Group:       shortcut_helper.GroupView,
+		Query:       "sort",
+		MenuOnly:    true,
+	}}
 	for _, column := range c.columnSpec {
 		commands = append(commands, shortcut_helper.ShortcutEntry{
 			Name:        "Sort by " + column.Title,
@@ -26,7 +33,8 @@ func (c *RowSelectionTable[T]) SortCommands() []shortcut_helper.ShortcutEntry {
 				c.updateTableContents()
 				c.notifyColumnLayoutChanged()
 			},
-			MenuOnly: true,
+			MenuOnly:   true,
+			SearchOnly: true,
 		})
 	}
 	return append(commands, shortcut_helper.ShortcutEntry{
@@ -35,5 +43,6 @@ func (c *RowSelectionTable[T]) SortCommands() []shortcut_helper.ShortcutEntry {
 		Group:       shortcut_helper.GroupView,
 		Run:         c.toggleSortDirection,
 		MenuOnly:    true,
+		SearchOnly:  true,
 	})
 }

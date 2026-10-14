@@ -50,7 +50,8 @@ func TestCommandMenuKey(t *testing.T) {
 	waitForText("Folder history")
 	typeText("overv")
 	waitForText("Files page")
-	waitForText("Hide overview")
+	// a switch, named by what it switches
+	waitForText("● Show overview")
 	clear(5)
 	typeText("go to")
 	waitForText("Global")
@@ -63,8 +64,8 @@ func TestCommandMenuKey(t *testing.T) {
 			util.ToggleRelativeTimes()
 		}
 	})
-	typeText("time f")
-	waitForText("Time format")
+	typeText("relative t")
+	waitForText("Relative times")
 	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
 
 	assert.Eventually(t, func() bool { return frontPage() == string(Main) }, 3*time.Second, 20*time.Millisecond)
@@ -94,4 +95,43 @@ func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
 		name, _ := mainPage.pages.GetFrontPage()
 		assert.Equal(t, string(Main), name)
 	})
+}
+
+// The commands of the components without the focus are listed as well, after the page; running one focuses its
+// component first, like after pressing its key there.
+func TestCommandSections_OtherComponents(t *testing.T) {
+	app, mainPage, _ := createUi(t.TempDir(), true)
+	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+
+	var titles []string
+	var unfocused []bool
+	var run func()
+	testutil.OnUiThread(t, app, func() {
+		mainPage.focusComponent("Files")
+		for _, section := range mainPage.commandSections() {
+			titles = append(titles, section.Title)
+			unfocused = append(unfocused, section.Unfocused)
+			if section.Title != "Snapshots" {
+				continue
+			}
+			for _, command := range section.Commands {
+				// not one that opens a dialog, which would take the focus
+				if command.Name == "Filter" {
+					run = command.Run
+				}
+			}
+		}
+	})
+	assert.Equal(t, []string{"Files", "Files page", "Snapshots"}, titles)
+	assert.Equal(t, []bool{false, false, true}, unfocused)
+	require.NotNil(t, run, "the filter of the snapshots")
+
+	var focused bool
+	testutil.OnUiThread(t, app, func() {
+		run()
+		focused = mainPage.snapshotBrowser.HasFocus()
+	})
+	assert.True(t, focused, "the snapshots got the focus")
 }
