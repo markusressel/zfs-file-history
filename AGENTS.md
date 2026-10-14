@@ -71,8 +71,9 @@ of the code.
   of `zpool status` to its disks (partitions, device mapper, md), `ReadTemperature` reads hwmon (NVMe, SATA with the
   kernel module drivetemp). Reading the temperature may reset the spin down timer of hard disks, so `Sampler` only
   reads hard disks while their I/O statistics (`/sys/block/<disk>/stat`, which never touch the disk) change, or when
-  asked to (a click on the temperature, `t`). The devices pane of the pools page samples only while it is drawn
-  (`DevicesView.Draw`, every 10 s), so nothing is read while another page is shown. The `Monitor` samples after each
+  asked to (a click on the temperature, `t`). The devices pane of the pools page and the disks page sample only while
+  they are drawn (`DevicesView.Draw`, `disk_browser.diskView.Draw`, every 10 s), so nothing is read while another
+  page is shown. The `Monitor` samples after each
   load of the statuses with the same `Sampler`, for the alert of disks at or above their critical temperature
   (`zfs.PoolAlertTemperature`); hard disks count as busy if their statistics changed within 90 s, longer than its
   idle interval. Tests use a fake `/dev` and `/sys`
@@ -80,19 +81,20 @@ of the code.
   `SmartReader` (`smart.go`) runs `sudo -n smartctl` (rule `--smart`), parses its JSON (ATA, NVMe, SCSI) into
   `SmartReport`s with `Problems` (failed health check, failing or important ATA attributes, NVMe critical warnings,
   media errors and wear), and keeps them: sudo logs every call. `-n standby` skips sleeping disks (their last report
-  is kept). The `Monitor` reads all disks every hour (alert `zfs.PoolAlertSmart`), the devices pane every 10 minutes
-  while drawn, `s` now; one `SmartReader` for both (`newSmartSource` in `root.go`). Enter or a click on the SMART
-  column shows `dialog.SmartDialog` (a sortable table of the disks, the details of the selected one, a table of its
-  attributes). Fixtures in `internal/disk/testdata` (the permission denied, ATA hot and healthy NVMe ones are from
+  is kept). The `Monitor` reads all disks every hour (alert `zfs.PoolAlertSmart`), the devices pane and the disks page
+  every 10 minutes while drawn, `s` now; one `SmartReader` for all (`newSmartSource` in `root.go`). The disks page
+  (`disk_page.go`, `internal/ui/disk_browser`) lists the disks of all pools (from the statuses of the `Monitor`),
+  the details and attributes of the selected one below; Enter or a click on the SMART column of the devices pane,
+  and a click on a temperature or SMART alert, show the disk there. Fixtures in `internal/disk/testdata` (the permission denied, ATA hot and healthy NVMe ones are from
   real systems).
 - `internal/state/`: the persisted state (`state.Current`): settings, table column layouts, selections, the session.
 - `internal/ui/`: the pages and the root.
-  - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`; keys `1`-`3`), global keys, the session
+  - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`, `Disks`; keys `1`-`4`), global keys, the session
     (`session.go`: page, focused component by title, dataset, pool).
   - `page_base.go`: `basePage`, shared by the pages: focusable components and their titles, focus cycling (Tab),
     the shortcut map, `newSplit`/`captureSplitDrags`, `isInFront`.
   - One package per component (`file_browser`, `snapshot_browser`, `dataset_browser`, `dataset_info`,
-    `pool_browser`, `pool_status`, ...). Components emit typed events (`Events *util.Emitter[Event]`), the page wires
+    `pool_browser`, `pool_status`, `disk_browser`, ...). Components emit typed events (`Events *util.Emitter[Event]`), the page wires
     them together.
   - `pool_activity/`: the operations running on the pools (scrub, resilver, TRIM, device removal, raidz expansion),
     shown below the header of every page. One `Monitor` for the application (loads `zpool status` of all pools,

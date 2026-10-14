@@ -9,7 +9,6 @@ import (
 	"time"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/testutil"
-	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
@@ -236,47 +235,6 @@ func TestFormatDevices_SpareWithoutTemperature(t *testing.T) {
 		" ├─ sdf  AVAIL",
 		" └─ sdg  INUSE                             currently in use",
 	}, lines)
-}
-
-func TestFormatTemperature(t *testing.T) {
-	text, color := formatTemperature(disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 20}})
-	assert.Equal(t, "20°C", text)
-	assert.Equal(t, theme.Colors.Pool.Temperature[0].Color, color)
-
-	_, color = formatTemperature(disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 61}})
-	assert.Equal(t, theme.Colors.Pool.Temperature[len(theme.Colors.Pool.Temperature)-1].Color, color)
-
-	_, color = formatTemperature(disk.Reading{IsDisk: true, Known: true, Idle: true, Temperature: disk.Temperature{Celsius: 61}})
-	assert.Equal(t, theme.Colors.Pool.TemperatureIdle, color, "may be outdated")
-
-	text, color = formatTemperature(disk.Reading{IsDisk: true, Idle: true})
-	assert.Equal(t, readTemperatureIcon, text)
-	assert.Equal(t, theme.Colors.Pool.ReadTemperature, color)
-
-	text, _ = formatTemperature(disk.Reading{})
-	assert.Empty(t, text)
-}
-
-func TestTemperaturePosition(t *testing.T) {
-	tests := []struct {
-		name        string
-		temperature disk.Temperature
-		expected    float64
-	}{
-		{"cool", disk.Temperature{Celsius: 20}, 0},
-		{"default warning", disk.Temperature{Celsius: 42.5}, 0.5},
-		{"warning of the disk", disk.Temperature{Celsius: 55, Warning: 85}, 0.5},
-		{"critical without warning", disk.Temperature{Celsius: 55, Critical: 85}, 0.5},
-		{"implausible warning", disk.Temperature{Celsius: 42.5, Warning: 10}, 0.5},
-		{"too hot", disk.Temperature{Celsius: 90, Warning: 85}, 1},
-		// Regression: Seagate IronWolf Pro (drivetemp) report a warning of 40 °C, everything above was red
-		{"critical before warning", disk.Temperature{Celsius: 50, Warning: 40, Critical: 60}, 25.0 / 35},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.InDelta(t, test.expected, temperaturePosition(test.temperature), 0.001)
-		})
-	}
 }
 
 // setupDevicesTest shows the devices of resilveringDevices with the readings of the sampler on a simulation screen.
@@ -520,31 +478,31 @@ func TestFormatDevices_SmartWithoutTemperatures(t *testing.T) {
 	assert.NotContains(t, text, "SMART")
 }
 
-// setupSmartTest shows the devices of resilveringDevices with the SMART reports of smart on pages, like on the pools
-// page.
-func setupSmartTest(t *testing.T, smart *fakeSmart) (*tview.Application, *PoolDevicesComponent, *tview.Pages, tcell.SimulationScreen) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
+// setupSmartTest shows the devices of resilveringDevices with the SMART reports of smart. showDisk is the last disk
+// shown on the disks page ("pool/device"), only accessed on the UI thread.
+func setupSmartTest(t *testing.T, smart *fakeSmart) (app *tview.Application, devices *PoolDevicesComponent, showDisk *string, screen tcell.SimulationScreen) {
+	app = tview.NewApplication()
+	screen = tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	app.EnableMouse(true)
 	screen.SetSize(120, 30)
-	devices := NewPoolDevices(app, &fakeSampler{}, smart)
-	pages := tview.NewPages().AddPage("devices", devices.GetLayout(), true, true)
-	devices.SetDialogPages(pages)
-	app.SetRoot(pages, true)
+	devices = NewPoolDevices(app, &fakeSampler{}, smart)
+	app.SetRoot(devices.GetLayout(), true)
 	go func() { _ = app.Run() }()
 	t.Cleanup(app.Stop)
+	shown := ""
 	testutil.OnUiThread(t, app, func() {
 		devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
+		devices.SetOnShowDisk(func(pool string, device string) { shown = pool + "/" + device })
 		devices.Focus()
 	})
 	app.QueueUpdateDraw(func() {})
-	return app, devices, pages, screen
+	return app, devices, &shown, screen
 }
 
 func TestPoolDevices_Smart(t *testing.T) {
 	smart := &fakeSmart{reports: map[string][]disk.SmartReport{"sda": {withProblems("sda", reallocated)}, "sdb": {healthy("sdb")}}}
-	app, devices, pages, screen := setupSmartTest(t, smart)
+	app, devices, showDisk, screen := setupSmartTest(t, smart)
 
 	// read while drawn, the ones older than smartInterval
 	require.Eventually(t, func() bool {
@@ -566,7 +524,7 @@ func TestPoolDevices_Smart(t *testing.T) {
 	require.Eventually(t, func() bool { return len(smart.reads()) == 2 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, time.Duration(0), smart.reads()[1])
 
-	// a click on the SMART values of sda shows the dialog
+	// a click on the SMART values of sda shows its disk on the disks page
 	var x, y int
 	testutil.OnUiThread(t, app, func() {
 		app.ForceDraw()
@@ -579,9 +537,9 @@ func TestPoolDevices_Smart(t *testing.T) {
 	screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
 	screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
 	require.Eventually(t, func() bool {
-		shown := false
-		testutil.OnUiThread(t, app, func() { shown = pages.HasPage(string(dialog.SmartDialogPage)) })
-		return shown
+		shown := ""
+		testutil.OnUiThread(t, app, func() { shown = *showDisk })
+		return shown == "tank/sda"
 	}, 2*time.Second, 10*time.Millisecond)
 }
 

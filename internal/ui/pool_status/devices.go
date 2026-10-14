@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/ui/clickable"
-	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/disk_browser"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -33,10 +33,6 @@ const (
 // temperatureWidth is the width of the temperature column, e.g. " 45°C".
 const temperatureWidth = 5
 
-// readTemperatureIcon is shown instead of the temperature of an idle hard disk that was not read, see
-// disk.Reading.Idle. A click reads it.
-const readTemperatureIcon = "⟳"
-
 // sampleInterval is how often the disks are sampled while the devices are shown, see disk.Sampler: whether hard
 // disks are busy is told by comparing their I/O statistics between two samples.
 const sampleInterval = 10 * time.Second
@@ -51,7 +47,7 @@ const smartInterval = 10 * time.Minute
 // The temperatures are only sampled while the devices are drawn (the pools page is shown), every sampleInterval.
 // Idle hard disks are not read, so they can spin down (see disk.Sampler): a click on their temperature, or t, reads
 // them. The SMART values are read while they are drawn as well, if older than smartInterval, or with s. A click on
-// them, or Enter, shows them in detail.
+// them, or Enter, shows them on the disks page.
 type PoolDevicesComponent struct {
 	application *tview.Application
 	textView    *DevicesView
@@ -81,8 +77,8 @@ type PoolDevicesComponent struct {
 	regions clickable.Regions
 	// enabled returns whether the fields can be clicked, e.g. not while a dialog is in front
 	enabled func() bool
-	// dialogPages are the pages the SMART dialog is shown on, see SetDialogPages
-	dialogPages *tview.Pages
+	// onShowDisk shows the disks of the device on the disks page, nil: not offered, see SetOnShowDisk
+	onShowDisk func(pool string, device string)
 	// onSetup offers to allow running smartctl with sudo, nil: not offered, see SetOnSetup
 	onSetup func()
 }
@@ -142,10 +138,10 @@ func NewPoolDevices(application *tview.Application, sampler disk.TemperatureSamp
 	return poolDevices
 }
 
-// SetDialogPages sets the pages the SMART dialog is shown on: the pages of the application, so it is modal for the
-// whole application. Must be called on the UI thread.
-func (poolDevices *PoolDevicesComponent) SetDialogPages(pages *tview.Pages) {
-	poolDevices.dialogPages = pages
+// SetOnShowDisk sets the function that shows the disks of a device of the pool (device "": the first one) with
+// their SMART values, on the disks page. Must be called on the UI thread.
+func (poolDevices *PoolDevicesComponent) SetOnShowDisk(onShowDisk func(pool string, device string)) {
+	poolDevices.onShowDisk = onShowDisk
 }
 
 // SetOnSetup sets the function that offers to allow running smartctl with sudo, offered while the SMART values
@@ -212,7 +208,7 @@ func (poolDevices *PoolDevicesComponent) footerParts() []uiutil.FooterPart {
 	}
 	if idle {
 		add(uiutil.FooterPart{
-			Text:    txwidgets.Span(theme.Colors.Pool.ReadTemperature, "%s idle, not read: t", readTemperatureIcon),
+			Text:    txwidgets.Span(theme.Colors.Pool.ReadTemperature, "%s idle, not read: t", disk_browser.ReadTemperatureIcon),
 			OnClick: poolDevices.ReadTemperatures,
 		})
 	}
@@ -267,18 +263,13 @@ func (poolDevices *PoolDevicesComponent) readSmart(devices []string, maxAge time
 	})
 }
 
-// ShowSmart shows the SMART values of the disks of the pool in a dialog, with the device with the given name selected
-// ("" for the first). Must be called on the UI thread.
-func (poolDevices *PoolDevicesComponent) ShowSmart(focus string) {
-	if poolDevices.dialogPages == nil || poolDevices.status == nil {
+// ShowSmart shows the disks of the device with the given name ("" for the first) with their SMART values, see
+// SetOnShowDisk. Must be called on the UI thread.
+func (poolDevices *PoolDevicesComponent) ShowSmart(device string) {
+	if poolDevices.onShowDisk == nil || poolDevices.status == nil {
 		return
 	}
-	var devices []dialog.SmartDevice
-	for _, name := range zfs.LeafDevices(poolDevices.status.Devices) {
-		devices = append(devices, dialog.SmartDevice{Name: name, Reports: poolDevices.smartReports[name]})
-	}
-	d := dialog.NewSmartDialog(poolDevices.application, poolDevices.status.Name, devices, focus, poolDevices.ReadSmart)
-	dialog.ShowDialogOnPages(poolDevices.application, poolDevices.dialogPages, d, nil)
+	poolDevices.onShowDisk(poolDevices.status.Name, device)
 }
 
 // hasDisks returns whether any device is stored on a disk, whose temperature can be read. Runs on the UI thread.
@@ -405,7 +396,7 @@ func (poolDevices *PoolDevicesComponent) GetShortcutMap() []shortcut_helper.Shor
 		shortcuts = append(shortcuts,
 			shortcut_helper.ShortcutEntry{
 				KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Disk health", Group: shortcut_helper.GroupAction,
-				Description: "Show the SMART values of the disks of the pool (also a click on them)",
+				Description: "Show the SMART values of the disks of the pool on the disks page (also a click on them)",
 				Run:         func() { poolDevices.ShowSmart("") },
 			},
 			shortcut_helper.ShortcutEntry{
@@ -462,7 +453,7 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 	showSmart := false
 	smartWidth := len("SMART")
 	for _, reports := range smart {
-		text, _ := dialog.SmartSummary(reports)
+		text, _ := disk_browser.SmartSummary(reports)
 		showSmart = showSmart || text != ""
 		smartWidth = max(smartWidth, utf8.RuneCountInString(text))
 	}
@@ -522,7 +513,7 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 		if showTemperatures {
 			cell := ""
 			if reading, ok := readings[device.Name]; ok && isLeaf[device.Name] {
-				if text, color := formatTemperature(reading); text != "" {
+				if text, color := disk_browser.FormatTemperature(reading); text != "" {
 					cell = txwidgets.Span(color, "%*s", temperatureWidth, text)
 					if reading.IsCritical() {
 						cell = "[::l]" + cell + "[::-]"
@@ -537,7 +528,7 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 		if showSmart {
 			cell, cellWidth := "", 0
 			if isLeaf[device.Name] {
-				if text, color := dialog.SmartSummary(smart[device.Name]); text != "" {
+				if text, color := disk_browser.SmartSummary(smart[device.Name]); text != "" {
 					cell, cellWidth = txwidgets.Span(color, "%s", text), utf8.RuneCountInString(text)
 					fields = append(fields, clickableField{device: device.Name, smart: true, line: i + 1, column: smartColumn, width: smartWidth})
 				}
@@ -565,50 +556,6 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 		out.WriteString(txwidgets.Span(StateColor(device.State, tcell.ColorWhite), "%s", state) + counters + trailing + "\n")
 	}
 	return out.String(), fields
-}
-
-// formatTemperature returns the text and color of the temperature of a device: colored by how close it is to the
-// temperature at which its disk is too hot, gray if it may be outdated (an idle hard disk), the icon to read an idle
-// hard disk that was not read yet.
-func formatTemperature(reading disk.Reading) (string, tcell.Color) {
-	switch {
-	case !reading.IsDisk:
-		return "", tcell.ColorDefault
-	case reading.NoSensor:
-		return "–", theme.Colors.Pool.TemperatureUnknown
-	case !reading.Known && reading.Idle:
-		return readTemperatureIcon, theme.Colors.Pool.ReadTemperature
-	case !reading.Known:
-		return "", tcell.ColorDefault
-	}
-	text := fmt.Sprintf("%.0f°C", reading.Temperature.Celsius)
-	if reading.Idle {
-		return text, theme.Colors.Pool.TemperatureIdle
-	}
-	return text, uiutil.GradientColor(theme.Colors.Pool.Temperature, temperaturePosition(reading.Temperature), tcell.ColorWhite)
-}
-
-const (
-	// coolTemperature is where the gradient of the temperatures starts, a disk at room temperature
-	coolTemperature = 25.0
-	// defaultWarningTemperature is where it ends for disks that do not report a temperature at which they are too
-	// hot (most hard disks are specified up to 60 °C)
-	defaultWarningTemperature = 60.0
-)
-
-// temperaturePosition returns the position of the temperature in theme.Colors.Pool.Temperature: 0 for a cool disk,
-// 1 at its critical temperature (where it blinks and raises an alert), or else its warning temperature. Not the
-// warning temperature first: some disks report a recommended one far below (e.g. Seagate IronWolf Pro: 40 °C, critical
-// 60 °C), which would show normal temperatures as too hot.
-func temperaturePosition(temperature disk.Temperature) float64 {
-	warning := temperature.Critical
-	if warning <= coolTemperature {
-		warning = temperature.Warning
-	}
-	if warning <= coolTemperature {
-		warning = defaultWarningTemperature
-	}
-	return min(max((temperature.Celsius-coolTemperature)/(warning-coolTemperature), 0), 1)
 }
 
 // isSpare returns whether the device is a hot spare, by its state.

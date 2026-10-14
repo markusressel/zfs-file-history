@@ -1,0 +1,294 @@
+package disk_browser
+
+import (
+	"cmp"
+	"fmt"
+	"slices"
+	"strings"
+	"zfs-file-history/internal/disk"
+	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/dialog"
+	"zfs-file-history/internal/ui/shortcut_helper"
+	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
+	uiutil "zfs-file-history/internal/ui/util"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
+
+var (
+	attributeColumnId        = &table.Column{Id: 0, Key: "id", Title: "ID", Alignment: tview.AlignRight}
+	attributeColumnName      = &table.Column{Id: 1, Key: "name", Title: "Attribute", Alignment: tview.AlignLeft}
+	attributeColumnNorm      = &table.Column{Id: 2, Key: "normalized", Title: "Norm", Alignment: tview.AlignRight}
+	attributeColumnWorst     = &table.Column{Id: 3, Key: "worst", Title: "Worst", Alignment: tview.AlignRight}
+	attributeColumnThreshold = &table.Column{Id: 4, Key: "threshold", Title: "Thresh", Alignment: tview.AlignRight}
+	attributeColumnValue     = &table.Column{Id: 5, Key: "value", Title: "Value", Alignment: tview.AlignRight}
+	attributeColumnFailed    = &table.Column{Id: 6, Key: "failed", Title: "Failed", Alignment: tview.AlignLeft}
+
+	// attributeColumns are the columns of all kinds of disks: only ATA attributes have an id and normalized values,
+	// the cells are empty for the values of NVMe and SCSI disks
+	attributeColumns = []*table.Column{attributeColumnId, attributeColumnName, attributeColumnNorm, attributeColumnWorst,
+		attributeColumnThreshold, attributeColumnValue, attributeColumnFailed}
+)
+
+// stateKeyAttributesTable is the key of the column layout of the attributes remembered in state.Current
+const stateKeyAttributesTable = "diskAttributes"
+
+// AttributeEntry is a row of the table of attributes. Index is its position in the output of smartctl, the order of
+// values without an id (NVMe, SCSI).
+type AttributeEntry struct {
+	disk.SmartAttribute
+	Index int
+}
+
+func (entry AttributeEntry) TableRowId() string {
+	return fmt.Sprintf("%d\x00%s", entry.Id, entry.Name)
+}
+
+// DiskDetailsComponent shows the details of the selected disk (what it is, its health and problems), above a table
+// of its SMART attributes (the ones that tell of failures highlighted).
+type DiskDetailsComponent struct {
+	application    *tview.Application
+	layout         *tview.Flex
+	details        *tview.TextView
+	tableContainer *table.RowSelectionTable[AttributeEntry]
+
+	// All fields below are only accessed on the UI thread.
+
+	// shownDisk is the disk whose attributes are shown (its TableRowId), see SetDisk
+	shownDisk string
+	// dialogPages are the pages dialogs are shown on, see SetDialogPages
+	dialogPages *tview.Pages
+}
+
+// NewDiskDetails returns the details of a disk. Must be called on the UI thread.
+func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
+	component := &DiskDetailsComponent{application: application}
+
+	component.details = tview.NewTextView().SetDynamicColors(true).SetWrap(false)
+	component.details.SetBorderPadding(0, 0, 1, 1)
+
+	t := table.NewTableContainer[AttributeEntry](application, toAttributeCells, sortAttributes)
+	t.SetTitle("Attributes")
+	t.SetFilterFunc(func(entry *AttributeEntry, filterText string) bool {
+		return table.MatchesGlob(entry.Name, filterText) || table.MatchesGlob(entry.Value, filterText) ||
+			(entry.Id > 0 && table.MatchesGlob(fmt.Sprint(entry.Id), filterText))
+	})
+	t.SetFilterChangedCallback(component.updateFooter)
+	t.SetColumnSpec(attributeColumns, attributeColumnId, false)
+	t.SetActiveColumns(attributeColumns)
+	t.BindColumnLayout(state.Current, stateKeyAttributesTable, attributeColumns)
+	t.SetPlaceholder("No disk selected.", theme.Colors.Pool.Hint)
+	t.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyF2 {
+			component.openColumnSelectionDialog()
+			return nil
+		}
+		return event
+	})
+	component.tableContainer = t
+
+	component.layout = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(component.details, 0, 0, false).
+		AddItem(t.GetLayout(), 0, 1, true)
+	return component
+}
+
+// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
+// whole screen. Must be called on the UI thread.
+func (component *DiskDetailsComponent) SetDialogPages(pages *tview.Pages) {
+	component.dialogPages = pages
+}
+
+// SetDisk shows the details and the attributes of the disk, nil: none. The selected attribute, the sort order and
+// the filter are kept while the same disk is shown (e.g. read again). Must be called on the UI thread.
+func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
+	if entry == nil {
+		component.details.SetText("")
+		component.layout.ResizeItem(component.details, 0, 0)
+		component.shownDisk = ""
+		component.tableContainer.SetPlaceholder("No disk selected.", theme.Colors.Pool.Hint)
+		component.tableContainer.SetData([]*AttributeEntry{})
+		component.updateFooter()
+		return
+	}
+	lines := formatDetails(entry)
+	component.details.SetText(strings.Join(lines, "\n"))
+	// a line of space to the table
+	component.layout.ResizeItem(component.details, len(lines)+1, 0)
+
+	var attributes []*AttributeEntry
+	for i, attribute := range entry.Report.Attributes {
+		attributes = append(attributes, &AttributeEntry{SmartAttribute: attribute, Index: i})
+	}
+	component.tableContainer.SetPlaceholder("No values read.", theme.Colors.Pool.Hint)
+	selected := component.tableContainer.GetSelectedEntry()
+	sameDisk := component.shownDisk == entry.TableRowId()
+	component.shownDisk = entry.TableRowId()
+	component.tableContainer.SetData(attributes)
+	component.tableContainer.SelectFirstIfExists()
+	if sameDisk && selected != nil {
+		for _, attribute := range component.tableContainer.GetEntries() {
+			if attribute.TableRowId() == selected.TableRowId() {
+				component.tableContainer.Select(attribute)
+			}
+		}
+	}
+	component.updateFooter()
+}
+
+// updateFooter shows the number of attributes in the bottom border of the table. Runs on the UI thread.
+func (component *DiskDetailsComponent) updateFooter() {
+	all := len(component.tableContainer.GetAllEntries())
+	switch {
+	case all == 0:
+		component.tableContainer.SetFooter("")
+	case component.tableContainer.IsFilterActive():
+		component.tableContainer.SetFooter(fmt.Sprintf("%d of %d values", len(component.tableContainer.GetEntries()), all))
+	default:
+		component.tableContainer.SetFooter(fmt.Sprintf("%d values", all))
+	}
+}
+
+// GetDetailsText returns the details of the shown disk, without style tags if stripTags. Must be called on the UI
+// thread.
+func (component *DiskDetailsComponent) GetDetailsText(stripTags bool) string {
+	return component.details.GetText(stripTags)
+}
+
+// openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
+func (component *DiskDetailsComponent) openColumnSelectionDialog() {
+	if component.dialogPages == nil {
+		return
+	}
+	d := dialog.NewTableColumnSelectionDialog(component.application, "Configure Attribute Columns", attributeColumns, component.tableContainer)
+	dialog.ShowDialogOnPages(component.application, component.dialogPages, d, nil)
+}
+
+// GetShortcutMap returns the shortcuts of the attributes.
+func (component *DiskDetailsComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
+	return []shortcut_helper.ShortcutEntry{
+		uiutil.TableComponentShortcutColumns.WithRun(component.openColumnSelectionDialog).OnlyInMenu(),
+		uiutil.TableComponentShortcutFilter.WithRun(component.tableContainer.StartFilter),
+	}
+}
+
+// GetCommands returns the sort commands of the attributes, see shortcut_helper.CommandProvider.
+func (component *DiskDetailsComponent) GetCommands() []shortcut_helper.ShortcutEntry {
+	return component.tableContainer.SortCommands()
+}
+
+func (component *DiskDetailsComponent) GetLayout() *tview.Flex {
+	return component.layout
+}
+
+func (component *DiskDetailsComponent) HasFocus() bool {
+	return component.tableContainer.HasFocus()
+}
+
+func (component *DiskDetailsComponent) Focus() {
+	component.application.SetFocus(component.tableContainer.GetLayout())
+}
+
+// toAttributeCells shows an attribute: the ones that tell of failures in white and bold, failing ones in the color
+// of errors.
+func toAttributeCells(row int, columns []*table.Column, entry *AttributeEntry) []*tview.TableCell {
+	color := tcell.ColorLightGray
+	attributes := tcell.AttrNone
+	switch {
+	case entry.Failed == "now":
+		color = theme.Colors.Pool.Faulted
+	case entry.Important:
+		color = tcell.ColorWhite
+	}
+	if entry.Important {
+		attributes = tcell.AttrBold
+	}
+	number := func(value int) string {
+		if value < 0 {
+			return ""
+		}
+		return fmt.Sprint(value)
+	}
+	var cells []*tview.TableCell
+	for _, column := range columns {
+		var text string
+		switch column {
+		case attributeColumnId:
+			if entry.Id > 0 {
+				text = fmt.Sprint(entry.Id)
+			}
+		case attributeColumnName:
+			text = entry.Name
+		case attributeColumnNorm:
+			text = number(entry.Normalized)
+		case attributeColumnWorst:
+			text = number(entry.Worst)
+		case attributeColumnThreshold:
+			text = number(entry.Threshold)
+		case attributeColumnValue:
+			text = entry.Value
+		case attributeColumnFailed:
+			text = entry.Failed
+		}
+		cells = append(cells, tview.NewTableCell(tview.Escape(text)).SetTextColor(color).SetAttributes(attributes).
+			SetAlign(column.Alignment))
+	}
+	return cells
+}
+
+// sortAttributes sorts the attributes by the column, and in the order of smartctl if equal (e.g. by id: the values
+// of NVMe disks, which have none).
+func sortAttributes(entries []*AttributeEntry, column *table.Column, inverted bool) []*AttributeEntry {
+	slices.SortStableFunc(entries, func(a, b *AttributeEntry) int {
+		result := 0
+		switch column {
+		case attributeColumnId:
+			result = cmp.Compare(a.Id, b.Id)
+		case attributeColumnName:
+			result = cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+		case attributeColumnNorm:
+			result = cmp.Compare(a.Normalized, b.Normalized)
+		case attributeColumnWorst:
+			result = cmp.Compare(a.Worst, b.Worst)
+		case attributeColumnThreshold:
+			result = cmp.Compare(a.Threshold, b.Threshold)
+		case attributeColumnValue:
+			// numbers by their value, the others (e.g. text) by their text after them
+			switch {
+			case a.Raw >= 0 && b.Raw >= 0:
+				result = cmp.Compare(a.Raw, b.Raw)
+			case a.Raw >= 0:
+				result = -1
+			case b.Raw >= 0:
+				result = 1
+			default:
+				result = cmp.Compare(a.Value, b.Value)
+			}
+		case attributeColumnFailed:
+			// failing ones first
+			result = cmp.Compare(failedRank(a.Failed), failedRank(b.Failed))
+		}
+		if result == 0 {
+			result = cmp.Compare(a.Index, b.Index)
+		}
+		if inverted {
+			result = -result
+		}
+		return result
+	})
+	return entries
+}
+
+// failedRank orders the attributes by whether they fail: now, in the past, never.
+func failedRank(failed string) int {
+	switch failed {
+	case "now":
+		return 0
+	case "past":
+		return 1
+	default:
+		return 2
+	}
+}

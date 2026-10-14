@@ -184,7 +184,7 @@ func TestPageIndicator(t *testing.T) {
 		return func() bool { return strings.Contains(screenText(t, app, screen), text) }
 	}
 
-	assert.Eventually(t, shows("FILES    1/3"), 3*time.Second, 20*time.Millisecond)
+	assert.Eventually(t, shows("FILES    1/4"), 3*time.Second, 20*time.Millisecond)
 
 	// bold, in the theme's colors
 	var style tcell.Style
@@ -202,16 +202,18 @@ func TestPageIndicator(t *testing.T) {
 	assert.NotZero(t, attributes&tcell.AttrBold, "bold")
 
 	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
-	assert.Eventually(t, shows("DATASETS 2/3"), 3*time.Second, 20*time.Millisecond)
-	assert.False(t, shows("FILES    1/3")())
+	assert.Eventually(t, shows("DATASETS 2/4"), 3*time.Second, 20*time.Millisecond)
+	assert.False(t, shows("FILES    1/4")())
 	screen.InjectKey(tcell.KeyRune, '3', tcell.ModNone)
-	assert.Eventually(t, shows("POOLS    3/3"), 3*time.Second, 20*time.Millisecond)
-	// there is no fourth page
+	assert.Eventually(t, shows("POOLS    3/4"), 3*time.Second, 20*time.Millisecond)
 	screen.InjectKey(tcell.KeyRune, '4', tcell.ModNone)
+	assert.Eventually(t, shows("DISKS    4/4"), 3*time.Second, 20*time.Millisecond)
+	// there is no fifth page
+	screen.InjectKey(tcell.KeyRune, '5', tcell.ModNone)
 	time.Sleep(100 * time.Millisecond)
-	assert.True(t, shows("POOLS    3/3")())
+	assert.True(t, shows("DISKS    4/4")())
 	screen.InjectKey(tcell.KeyRune, '1', tcell.ModNone)
-	assert.Eventually(t, shows("FILES    1/3"), 3*time.Second, 20*time.Millisecond)
+	assert.Eventually(t, shows("FILES    1/4"), 3*time.Second, 20*time.Millisecond)
 }
 
 func TestPageIndicatorWidth(t *testing.T) {

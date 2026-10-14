@@ -28,7 +28,7 @@
 * [x] Pool health and `zpool status`
 * [x] Progress of running scrubs, resilvers, TRIMs and other pool operations on every page
 * [x] Alerts on every page when a pool has problems (data errors, degraded, failing devices)
-* [x] Disk temperatures and SMART health of the devices of the pools, without waking sleeping disks
+* [x] Disk temperatures and SMART health of the disks of all pools, without waking sleeping disks
 * [x] Damaged files (data errors) marked in the file and snapshot browsers, including the snapshots holding them
 * [x] Start, pause and cancel scrubs and TRIMs, clear pool errors
 * [x] Live updates using zpool events

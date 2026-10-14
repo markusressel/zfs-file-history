@@ -180,5 +180,4 @@ func (poolPage *PoolPage) Init() {
 func (poolPage *PoolPage) SetPages(pages *tview.Pages) {
 	poolPage.basePage.SetPages(pages)
 	poolPage.poolBrowser.SetDialogPages(pages)
-	poolPage.poolDevices.SetDialogPages(pages)
 }
