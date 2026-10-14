@@ -139,8 +139,8 @@ func TestFileBrowser_Filter(t *testing.T) {
 }
 
 func TestFileBrowser_FilterOnDirectoryChange(t *testing.T) {
-	t.Run("keep (default)", func(t *testing.T) {
-		ft := newFileBrowserTest(t, "")
+	t.Run("keep", func(t *testing.T) {
+		ft := newFileBrowserTest(t, configuration.FileBrowserFilterOnDirectoryChangeKeep)
 		ft.openWithTxtFilter()
 		ft.pressKey(tcell.KeyEnter, 0)
 
@@ -152,8 +152,8 @@ func TestFileBrowser_FilterOnDirectoryChange(t *testing.T) {
 		assert.Equal(t, []string{"x.txt"}, s.visible)
 	})
 
-	t.Run("clear", func(t *testing.T) {
-		ft := newFileBrowserTest(t, configuration.FileBrowserFilterOnDirectoryChangeClear)
+	t.Run("clear (default)", func(t *testing.T) {
+		ft := newFileBrowserTest(t, "")
 		ft.openWithTxtFilter()
 		ft.pressKey(tcell.KeyEnter, 0)
 

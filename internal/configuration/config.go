@@ -61,11 +61,11 @@ func setDefaultValues() {
 	viper.SetDefault("FileBrowser", FileBrowserConfig{
 		Permissions:             FileBrowserPermissionsFormatSymbolic,
 		Owner:                   FileBrowserOwnerFormatName,
-		FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeKeep,
+		FilterOnDirectoryChange: FileBrowserFilterOnDirectoryChangeClear,
 	})
 	viper.SetDefault("FileBrowser.Permissions", FileBrowserPermissionsFormatSymbolic)
 	viper.SetDefault("FileBrowser.Owner", FileBrowserOwnerFormatName)
-	viper.SetDefault("FileBrowser.FilterOnDirectoryChange", FileBrowserFilterOnDirectoryChangeKeep)
+	viper.SetDefault("FileBrowser.FilterOnDirectoryChange", FileBrowserFilterOnDirectoryChangeClear)
 
 	viper.SetDefault("RestoreSession", true)
 

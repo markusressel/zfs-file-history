@@ -19,9 +19,9 @@ fileBrowser:
   owner: name
   # What happens to an active filter (ctrl+f) when changing directories.
   # Can be one of
+  #   - clear (the filter is removed, default)
   #   - keep  (the filter applies to the new directory as well)
-  #   - clear (the filter is removed)
-  filterOnDirectoryChange: keep
+  filterOnDirectoryChange: clear
 
 profiling:
   # Whether to enable the profiling webserver
