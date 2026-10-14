@@ -376,10 +376,31 @@ func TestPageBoundariesCanBeDragged(t *testing.T) {
 
 	// dataset page: the datasets next to the info above the snapshots
 	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
-	assert.Eventually(t, func() bool {
-		_, _, width, _ := rect(datasetPage.split)
-		return width > 0
-	}, 2*time.Second, 20*time.Millisecond)
+	// Regression: the test waited for a width of the split, which it has before the page was ever drawn (the default
+	// size of tview boxes), and measured where the boundaries are before the page was shown. And the info is sized by
+	// its content, which is loaded after the page is shown: until then, the boundary below it moves.
+	panes := func() [2][4]int {
+		var rects [2][4]int
+		testutil.OnUiThread(t, app, func() {
+			app.ForceDraw()
+			if !datasetPage.isInFront() {
+				return
+			}
+			for i, primitive := range []tview.Primitive{datasetPage.datasetInfo.GetLayout(), datasetPage.snapshotBrowser.GetLayout()} {
+				x, y, width, height := primitive.GetRect()
+				rects[i] = [4]int{x, y, width, height}
+			}
+		})
+		return rects
+	}
+	settledSince, last := time.Now(), panes()
+	require.Eventually(t, func() bool {
+		current := panes()
+		if current != last || current == [2][4]int{} {
+			settledSince, last = time.Now(), current
+		}
+		return time.Since(settledSince) >= 300*time.Millisecond
+	}, 5*time.Second, 20*time.Millisecond, "the dataset page is shown and its panes stay in place")
 	infoX, _, _, _ := rect(datasetPage.datasetInfo.GetLayout())
 	_, snapshotsY, _, _ := rect(datasetPage.snapshotBrowser.GetLayout())
 	drag(infoX+10, snapshotsY, infoX+10, snapshotsY+5)
