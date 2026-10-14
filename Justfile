@@ -11,8 +11,11 @@ PACKAGE := "github.com/markusressel/" + NAME
 GIT_REV := `git rev-parse --short HEAD`
 DATE := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
 VERSION := "2.3.0"
-# agg renders the demo as a GIF, see demo-gif
-AGG := "agg"
+# agg renders the demo as a GIF, see demo-gif: a release binary (https://github.com/asciinema/agg), downloaded into
+# bin/ and checked against its checksum
+AGG_VERSION := "1.9.0"
+AGG_SHA256 := "f111e315cd71056b116302342553dd765b7297579ed511f111d0cedb442aeda6"
+AGG := "bin/agg-" + AGG_VERSION
 # the colors of the GIF: background, foreground and the 16 palette colors of kitty (agg defaults to dracula, which has
 # a blue-gray background)
 AGG_THEME := "000000,dddddd,000000,cc0403,19cb00,cecb00,0d73cc,cb1ed1,0dcdcd,dddddd,767676,f2201f,23fd00,fffd00,1a8fff,fd28ff,14ffff,ffffff"
@@ -66,14 +69,36 @@ deploy: clean build
 clean:
     go clean
     rm -f {{OUTPUT_BIN}}
-# Record the demo (scripts/demo/driver.py) with asciinema to bin/demo.cast; run it while a scrub is running
-demo-record: build
+# Record the demo (scripts/demo/driver.py, its Python environment is managed by uv) with asciinema to bin/demo.cast;
+# run it while a scrub is running. Fails if a screen the demo waits for did not show up.
+demo-record: build demo-test
+    uv sync --quiet --frozen --project scripts/demo
+    rm -f bin/demo.error
     asciinema rec --headless --overwrite --window-size 179x42 --idle-time-limit 2 --quiet \
-        --command "python3 scripts/demo/driver.py {{OUTPUT_BIN}} ." bin/demo.cast
+        --command "uv run --quiet --frozen --project scripts/demo python scripts/demo/driver.py {{OUTPUT_BIN}} . bin/demo.error" bin/demo.cast
+    @if [ -s bin/demo.error ]; then cat bin/demo.error; exit 1; fi
 
-# Render bin/demo.cast as screenshots/demo.gif with agg (https://github.com/asciinema/agg, a release binary on the PATH)
-demo-gif:
-    python3 scripts/demo/prepare_cast.py bin/demo.cast bin/demo-gif.cast
+# Test and lint the demo driver (scripts/demo), without zfs-file-history
+demo-test:
+    cd scripts/demo && uv run --quiet --frozen python -m unittest
+    cd scripts/demo && uv run --quiet --frozen ruff check .
+    cd scripts/demo && uv run --quiet --frozen ruff format --check .
+
+# Download agg into bin/, unless it is there already
+agg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -x {{AGG}} ] && exit 0
+    mkdir -p bin
+    curl --fail --location --silent --show-error --output {{AGG}}.download \
+        https://github.com/asciinema/agg/releases/download/v{{AGG_VERSION}}/agg-x86_64-unknown-linux-gnu
+    echo "{{AGG_SHA256}}  {{AGG}}.download" | sha256sum --check --quiet
+    chmod +x {{AGG}}.download
+    mv {{AGG}}.download {{AGG}}
+
+# Render bin/demo.cast as screenshots/demo.gif with agg
+demo-gif: agg
+    uv run --quiet --frozen --project scripts/demo python scripts/demo/prepare_cast.py bin/demo.cast bin/demo-gif.cast
     {{AGG}} --theme {{AGG_THEME}} --font-size 14 --idle-time-limit 2 --fps-cap 15 bin/demo-gif.cast screenshots/demo.gif
 
 # Record the demo and render it as screenshots/demo.gif

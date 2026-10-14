@@ -1,0 +1,22 @@
+[project]
+name = "zfs-file-history-demo"
+version = "0.1.0"
+description = "Records the demo of the README, see driver.py"
+requires-python = ">=3.12"
+dependencies = [
+    "pyte>=0.8.2",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
