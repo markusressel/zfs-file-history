@@ -57,6 +57,12 @@ func (entry ShortcutEntry) WithRun(run func()) ShortcutEntry {
 	return entry
 }
 
+// WithName returns the entry with the name, e.g. a shared entry named as the action is called where it is used.
+func (entry ShortcutEntry) WithName(name string) ShortcutEntry {
+	entry.Name = name
+	return entry
+}
+
 // WithDescription returns the entry with the description, see ShortcutEntry.Description.
 func (entry ShortcutEntry) WithDescription(description string) ShortcutEntry {
 	entry.Description = description

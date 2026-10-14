@@ -87,3 +87,17 @@ func TestSnapshotBrowser_NoHistoryWithoutTarget(t *testing.T) {
 	})
 	assert.NotContains(t, shortcuts, "History at snapshot")
 }
+
+// The Delete key destroys a snapshot, named like in the action dialog and by ZFS.
+func TestSnapshotBrowser_DeleteKeyIsNamedDestroy(t *testing.T) {
+	dt := newDestroyTest(t)
+	var shortcuts []string
+	testutil.OnUiThread(t, dt.app, func() {
+		for _, shortcut := range dt.browser.GetShortcutMap() {
+			if len(shortcut.KeyCombo) > 0 {
+				shortcuts = append(shortcuts, shortcut.KeyCombo[0]+" "+shortcut.Name)
+			}
+		}
+	})
+	assert.Contains(t, shortcuts, "Delete Destroy")
+}
