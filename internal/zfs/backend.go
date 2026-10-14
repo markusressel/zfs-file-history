@@ -25,13 +25,25 @@ type Backend interface {
 	// SnapshotProperties returns the properties of the snapshots (names behind the "@") of the dataset. Snapshots
 	// that cannot be read are left out.
 	SnapshotProperties(dataset string, names []string) map[string]SnapshotProperties
-	// CreateSnapshot creates the snapshot (name behind the "@") of the dataset, as the current user.
-	CreateSnapshot(dataset string, name string) error
+	// CreateSnapshot creates the snapshot (name behind the "@") of the dataset, as the current user. With recursive
+	// also the ones with the same name of the descendants, all at once.
+	CreateSnapshot(dataset string, name string, recursive bool) error
 	// DestroySnapshot destroys the snapshot (name behind the "@") of the dataset, as the current user. With
 	// recursive also the ones with the same name of the descendants, with dependantClones also their clones.
 	DestroySnapshot(dataset string, name string, recursive bool, dependantClones bool) error
 	// CloneSnapshot creates the dataset target from the snapshot with the full name, as the current user.
 	CloneSnapshot(fullName string, target string) error
+	// RollbackSnapshot rolls the dataset back to its snapshot (name behind the "@"), as the current user. With
+	// destroyNewer the newer snapshots (and bookmarks) are destroyed, without it the rollback fails if there are any.
+	RollbackSnapshot(dataset string, name string, destroyNewer bool) error
+	// PreviewDestroyDataset returns what destroying the dataset would destroy and free, without destroying anything.
+	// With recursive also its snapshots and descendants, never their dependent clones.
+	PreviewDestroyDataset(name string, recursive bool) (*DestroyPreview, error)
+	// DestroyDataset destroys the dataset, as the current user. With recursive also its snapshots and descendants,
+	// never their dependent clones (it fails if there are any).
+	DestroyDataset(name string, recursive bool) error
+	// PromoteDataset promotes the clone, so it no longer depends on its origin, as the current user.
+	PromoteDataset(name string) error
 	// ListProperties returns all properties of the dataset, with human-readable values.
 	ListProperties(dataset string) ([]*Property, error)
 	// SetProperty sets the property of the dataset as the current user.

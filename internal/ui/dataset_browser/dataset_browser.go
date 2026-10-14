@@ -414,7 +414,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 			return nil
 		}
 		if datasetBrowser.tableContainer.GetSelectedEntry() != nil && key == tcell.KeyEnter {
-			// no action on data rows (yet), but don't let tview handle it either
+			datasetBrowser.openActionDialog(datasetBrowser.tableContainer.GetSelectedEntry())
 			return nil
 		}
 		// ← and → scroll horizontally (tview), or change the sort column on the header row (table)
@@ -600,15 +600,23 @@ func filterEntries(entries []*zfs.DatasetListEntry, hideUnmounted bool) []*zfs.D
 	return result
 }
 
-// updateStatus shows the dataset counts and the active modifiers in the bottom border of the list.
+// updateStatus shows the dataset counts and the active modifiers in the bottom border of the list. A click on the
+// hidden unmounted datasets shows them.
 func (datasetBrowser *DatasetBrowserComponent) updateStatus() {
-	datasetBrowser.tableContainer.SetFooter(formatStatus(
+	datasetBrowser.tableContainer.SetFooterParts(formatStatus(
 		datasetBrowser.allEntries,
 		// not the displayed entries: collapsing does not change the count
 		datasetBrowser.matchedCount,
 		datasetBrowser.hideUnmounted,
 		datasetBrowser.tableContainer.IsFilterActive(),
-	))
+		datasetBrowser.ToggleHideUnmounted,
+	)...)
+}
+
+// SetFooterEnabledFunc sets a function that returns whether the parts of the footer can be clicked, e.g. not while a
+// dialog is in front.
+func (datasetBrowser *DatasetBrowserComponent) SetFooterEnabledFunc(enabled func() bool) {
+	datasetBrowser.tableContainer.SetFooterEnabledFunc(enabled)
 }
 
 // datasetMatchesFilter matches the dataset name or its (displayed) mountpoint against the filter,
@@ -617,21 +625,21 @@ func datasetMatchesFilter(entry *zfs.DatasetListEntry, filterText string) bool {
 	return table.MatchesGlob(entry.Name, filterText) || table.MatchesGlob(displayedMountpoint(entry), filterText)
 }
 
-// formatStatus returns the status text, e.g. "16 of 589 datasets · 573 unmounted hidden".
+// formatStatus returns the parts of the status text, e.g. "16 of 589 datasets · 573 unmounted hidden".
 // visibleCount is the number of displayed datasets, after hiding unmounted ones and applying the filter.
 // While a filter is active, the count is always shown as "x of y".
-// allEntries is nil until the first load.
-func formatStatus(allEntries []*zfs.DatasetListEntry, visibleCount int, hideUnmounted bool, filterActive bool) string {
+// allEntries is nil until the first load. A click on the hidden unmounted datasets runs showUnmounted.
+func formatStatus(allEntries []*zfs.DatasetListEntry, visibleCount int, hideUnmounted bool, filterActive bool, showUnmounted func()) []uiutil.FooterPart {
 	if allEntries == nil {
-		return txwidgets.Span(theme.Colors.ShortcutMap.Name, "Loading datasets...")
+		return []uiutil.FooterPart{{Text: txwidgets.Span(theme.Colors.ShortcutMap.Name, "Loading datasets...")}}
 	}
 
 	noun := uiutil.Plural(len(allEntries), "dataset", "datasets")
-	var parts []string
+	var parts []uiutil.FooterPart
 	if visibleCount == len(allEntries) && !filterActive {
-		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d %s", len(allEntries), noun))
+		parts = append(parts, uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d %s", len(allEntries), noun)})
 	} else {
-		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d of %d %s", visibleCount, len(allEntries), noun))
+		parts = append(parts, uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.ShortcutMap.Name, "%d of %d %s", visibleCount, len(allEntries), noun)})
 	}
 
 	if hideUnmounted {
@@ -641,10 +649,12 @@ func formatStatus(allEntries []*zfs.DatasetListEntry, visibleCount int, hideUnmo
 				unmountedCount++
 			}
 		}
-		parts = append(parts, txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%d unmounted hidden", unmountedCount))
+		parts = append(parts,
+			uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.ShortcutMap.Name, " · ")},
+			uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%d unmounted hidden", unmountedCount), OnClick: showUnmounted},
+		)
 	}
-
-	return strings.Join(parts, txwidgets.Span(theme.Colors.ShortcutMap.Name, " · "))
+	return parts
 }
 
 // updateEntries displays allEntries, filtered by the current settings, and keeps the selection in sync.
@@ -723,9 +733,16 @@ func (datasetBrowser *DatasetBrowserComponent) SetPath(path string, checkExists 
 	datasetBrowser.currentPath = path
 }
 
-// GetCommands returns the commands only shown in the command menu, see shortcut_helper.CommandProvider.
+// GetCommands returns the commands only shown in the command menu, see shortcut_helper.CommandProvider: the actions
+// of the selected dataset that have no shortcut, and sorting.
 func (datasetBrowser *DatasetBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
-	return datasetBrowser.tableContainer.SortCommands()
+	var commands []shortcut_helper.ShortcutEntry
+	if selection := datasetBrowser.tableContainer.GetSelectedEntry(); selection != nil {
+		show := func(d dialog.Dialog) { datasetBrowser.showDialog(d) }
+		commands = datasetBrowser.newActionDialog(selection).OptionCommands(show,
+			dialog.DatasetDialogPermissionsActionId, dialog.DatasetDialogPropertiesActionId)
+	}
+	return append(commands, datasetBrowser.tableContainer.SortCommands()...)
 }
 
 func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helper.ShortcutEntry {
@@ -754,6 +771,7 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 	}
 	if selection != nil {
 		shortcuts = append(shortcuts,
+			uiutil.TableComponentShortcutActions.WithRun(func() { datasetBrowser.openActionDialog(selection) }),
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"p"}, Name: "Permissions", Description: "Show and change the delegated ZFS permissions (zfs allow)", Run: func() { datasetBrowser.openPermissionsDialog(selection) }, MenuOnly: true},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"e"}, Name: "Properties", Description: "Show and change the ZFS properties (zfs get/set)", Run: func() { datasetBrowser.openPropertiesDialog(selection) }, MenuOnly: true},
 		)

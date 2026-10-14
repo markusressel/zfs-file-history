@@ -74,7 +74,10 @@ func destroyTarget(snapshots []*Snapshot) (dataset string, names []string, err e
 //	destroy	pool/data@a
 //	destroy	pool/data@b
 //	reclaim	447066112
-func parseDestroyPreview(output string) (*DestroyPreview, error) {
+//
+// zfs only prints the reclaimed space for snapshots, so with requireReclaim false (destroying datasets) it may be
+// missing, Reclaim is 0 then.
+func parseDestroyPreview(output string, requireReclaim bool) (*DestroyPreview, error) {
 	preview := &DestroyPreview{}
 	foundReclaim := false
 	for _, line := range strings.Split(output, "\n") {
@@ -94,7 +97,7 @@ func parseDestroyPreview(output string) (*DestroyPreview, error) {
 			foundReclaim = true
 		}
 	}
-	if len(preview.Destroyed) == 0 || !foundReclaim {
+	if len(preview.Destroyed) == 0 || (requireReclaim && !foundReclaim) {
 		return nil, fmt.Errorf("unexpected output of zfs destroy: %q", strings.TrimSpace(output))
 	}
 	return preview, nil

@@ -280,8 +280,12 @@ func findSnapshot(snapshots []golibzfs.Dataset, name string) *golibzfs.Dataset {
 	return nil
 }
 
-func (System) CreateSnapshot(dataset string, name string) error {
-	_, err := runZfs("snapshot", dataset+"@"+name)
+func (System) CreateSnapshot(dataset string, name string, recursive bool) error {
+	args := []string{"snapshot"}
+	if recursive {
+		args = append(args, "-r")
+	}
+	_, err := runZfs(append(args, dataset+"@"+name)...)
 	return err
 }
 

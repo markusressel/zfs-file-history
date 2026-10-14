@@ -53,3 +53,11 @@ type FolderChangesLoaded struct {
 }
 
 func (e FolderChangesLoaded) isSnapshotBrowserEvent() {}
+
+// RolledBackEvent tells that a dataset was rolled back to a snapshot: its files changed.
+type RolledBackEvent struct {
+	// Snapshot is the full name of the snapshot the dataset was rolled back to.
+	Snapshot string
+}
+
+func (e RolledBackEvent) isSnapshotBrowserEvent() {}

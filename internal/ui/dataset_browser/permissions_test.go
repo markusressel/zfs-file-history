@@ -77,8 +77,8 @@ func TestFormatPermissionMask(t *testing.T) {
 		zfs.PermissionMount:    {{}},
 		zfs.PermissionHold:     {{}},
 	}}
-	assert.Equal(t, "s-mh-----", formatPermissionMask(permissionState{permissions: permissions}, true))
-	assert.Equal(t, "sdmhrcnbf", formatPermissionMask(permissionState{permissions: &zfs.DatasetPermissions{IsRoot: true}}, true))
+	assert.Equal(t, "s-mh------", formatPermissionMask(permissionState{permissions: permissions}, true))
+	assert.Equal(t, "sdmhrcnbpf", formatPermissionMask(permissionState{permissions: &zfs.DatasetPermissions{IsRoot: true}}, true))
 	assert.Equal(t, "?", formatPermissionMask(permissionState{err: errors.New("failed")}, true))
 	assert.Equal(t, "", formatPermissionMask(permissionState{}, false), "not loaded yet")
 }
@@ -112,7 +112,7 @@ func TestDatasetBrowser_LoadsPermissionsOfDisplayedDatasets(t *testing.T) {
 
 	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 
-	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s-m------" }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s-m-------" }, 2*time.Second, 10*time.Millisecond)
 	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/b") == "?" }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"rpool/a", "rpool/b"}, stub.readDatasets(), "hidden (unmounted) datasets are not read")
 
@@ -128,7 +128,7 @@ func TestDatasetBrowser_LoadsPermissionsOfDisplayedDatasets(t *testing.T) {
 	stub.mu.Unlock()
 	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	require.Eventually(t, func() bool { return len(stub.readDatasets()) > 3 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, "s-m------", permissionCell(t, browser, "rpool/a"))
+	assert.Equal(t, "s-m-------", permissionCell(t, browser, "rpool/a"))
 	close(block)
 	require.Eventually(t, func() bool { return len(stub.readDatasets()) == 6 }, 2*time.Second, 10*time.Millisecond)
 }
@@ -155,7 +155,7 @@ func TestDatasetBrowser_PermissionsAreOnlyLoadedForTheColumn(t *testing.T) {
 
 	// adding the column (F2) loads them
 	testutil.OnUiThread(t, app, func() { browser.tableContainer.SetActiveColumns(append(withoutPermissions, columnPermissions)) })
-	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--------" }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s---------" }, 2*time.Second, 10*time.Millisecond)
 }
 
 func TestDatasetBrowser_RootReadsNoPermissions(t *testing.T) {
@@ -170,7 +170,7 @@ func TestDatasetBrowser_RootReadsNoPermissions(t *testing.T) {
 
 	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 
-	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "sdmhrcnbf" }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "sdmhrcnbpf" }, 2*time.Second, 10*time.Millisecond)
 	assert.Empty(t, stub.readDatasets())
 }
 
@@ -283,7 +283,7 @@ func TestDatasetBrowser_ReloadPermissions(t *testing.T) {
 	})
 	app, browser, _ := newBrowserApp(t)
 	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
-	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--------" }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s---------" }, 2*time.Second, 10*time.Millisecond)
 
 	// granted: hold
 	stub.mu.Lock()
@@ -293,8 +293,8 @@ func TestDatasetBrowser_ReloadPermissions(t *testing.T) {
 	stub.mu.Unlock()
 	testutil.OnUiThread(t, app, func() { browser.ReloadPermissions() })
 	require.Eventually(t, func() bool { return len(stub.readDatasets()) == 2 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, "s--------", permissionCell(t, browser, "rpool/a"), "the previous value while reading")
+	assert.Equal(t, "s---------", permissionCell(t, browser, "rpool/a"), "the previous value while reading")
 
 	close(block)
-	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--h-----" }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "s--h------" }, 2*time.Second, 10*time.Millisecond)
 }

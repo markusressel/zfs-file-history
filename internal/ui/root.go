@@ -163,8 +163,15 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		}
 	})
 	datasetPage.datasetBrowser.Events.Subscribe(func(event dataset_browser.Event) {
-		if e, ok := event.(dataset_browser.SelectedDatasetChangedEvent); ok && e.Dataset != nil {
-			recorder.setDataset(e.Dataset.Name)
+		switch e := event.(type) {
+		case dataset_browser.SelectedDatasetChangedEvent:
+			if e.Dataset != nil {
+				recorder.setDataset(e.Dataset.Name)
+			}
+		case dataset_browser.OpenInFileBrowserEvent:
+			switchTo(Main)
+			mainPage.focusComponent(mainPage.componentTitles[mainPage.fileBrowser])
+			mainPage.fileBrowser.SetPath(e.Path, true)
 		}
 	})
 	poolPage.poolBrowser.Events.Subscribe(func(event pool_browser.Event) {

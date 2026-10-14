@@ -6,17 +6,19 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf8"
 	"zfs-file-history/internal/ui/shortcut_helper"
+	"zfs-file-history/internal/ui/theme"
 
 	"github.com/rivo/tview"
 )
 
 type SelectionDialog struct {
-	application   *tview.Application
-	name          string
-	title         string
-	description   string
+	application *tview.Application
+	name        string
+	title       string
+	description string
+	// tagged is whether description contains style tags, see newTaggedSelectionDialog
+	tagged        bool
 	options       []*DialogOption
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
@@ -37,6 +39,8 @@ type SelectionDialog struct {
 
 	// pages the dialog is shown on, set by ShowDialogOnPages. Only accessed on the UI thread.
 	pages *tview.Pages
+	// frame is the bordered window of the dialog, see SetDanger
+	frame *tview.Flex
 }
 
 func (d *SelectionDialog) setPages(pages *tview.Pages) {
@@ -104,7 +108,37 @@ func NewSelectionDialogWithChecklist(
 	handler func(dialog *SelectionDialog, action DialogActionId) error,
 	onComplete func(d *SelectionDialog, option *DialogOption, err error),
 ) *SelectionDialog {
+	return newSelectionDialog(application, name, title, description, false, checklist, options, handler, onComplete)
+}
+
+// newTaggedSelectionDialog is NewSelectionDialogWithChecklist with a description that contains style tags, e.g. names
+// made to stand out with Highlight. Everything else in it must be escaped.
+func newTaggedSelectionDialog(
+	application *tview.Application,
+	name string,
+	title string,
+	description string,
+	checklist []*ChecklistItem,
+	options []*DialogOption,
+	handler func(dialog *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
+	return newSelectionDialog(application, name, title, description, true, checklist, options, handler, onComplete)
+}
+
+func newSelectionDialog(
+	application *tview.Application,
+	name string,
+	title string,
+	description string,
+	tagged bool,
+	checklist []*ChecklistItem,
+	options []*DialogOption,
+	handler func(dialog *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
 	d := &SelectionDialog{
+		tagged:        tagged,
 		checklist:     checklist,
 		application:   application,
 		name:          name,
@@ -120,16 +154,19 @@ func NewSelectionDialogWithChecklist(
 }
 
 func (d *SelectionDialog) createLayout() {
+	// the prefixes ("1.", "Esc.") are a column of their own, as wide as the widest one; names are measured in
+	// cells, an emoji takes two
+	prefixWidth := 0
+	for i, opt := range d.options {
+		prefix := fmt.Sprintf("%d.", i+1)
+		if opt.Id == DialogCloseActionId {
+			prefix = "Esc."
+		}
+		prefixWidth = max(prefixWidth, len(prefix))
+	}
 	maxOptWidth := 0
 	for _, opt := range d.options {
-		prefixLen := 2 // E.g. "1."
-		if opt.Id == DialogCloseActionId {
-			prefixLen = 4 // E.g. "Esc."
-		}
-		optWidth := prefixLen + 1 + utf8.RuneCountInString(opt.Name)
-		if optWidth > maxOptWidth {
-			maxOptWidth = optWidth
-		}
+		maxOptWidth = max(maxOptWidth, prefixWidth+1+tview.TaggedStringWidth(opt.Name))
 	}
 
 	maxOptWidth = max(maxOptWidth, checklistWidth(d.checklist))
@@ -148,9 +185,14 @@ func (d *SelectionDialog) createLayout() {
 		}
 	}
 
+	// the size is calculated from the text as shown
+	plainDescription := d.description
+	if d.tagged {
+		plainDescription = withoutTags(d.description)
+	}
 	constraints := DialogSizeConstraints{
 		Title:             d.title,
-		Description:       d.description,
+		Description:       plainDescription,
 		ExtraContentWidth: maxOptWidth,
 		StaticHeight:      1 + actualTableRows,
 	}
@@ -164,9 +206,10 @@ func (d *SelectionDialog) createLayout() {
 	if textLineWidth < 5 {
 		textLineWidth = 5
 	}
-	descHeight := calculateWrappedHeight(d.description, textLineWidth)
+	descHeight := calculateWrappedHeight(plainDescription, textLineWidth)
 
 	textDescriptionView := tview.NewTextView().
+		SetDynamicColors(d.tagged).
 		SetText(d.description).
 		SetWrap(true).
 		SetWordWrap(true)
@@ -174,6 +217,8 @@ func (d *SelectionDialog) createLayout() {
 	d.optionTable = createOptionTable(d.application, d.options, d.selectAction)
 
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
+	// like the other dialogs; CalculateDialogSize leaves room for it
+	dialogContent.SetBorderPadding(0, 0, 1, 1)
 	dialogContent.AddItem(textDescriptionView, descHeight, 0, false)
 	dialogContent.AddItem(tview.NewBox(), 1, 0, false)
 	if len(d.checklist) > 0 {
@@ -183,13 +228,21 @@ func (d *SelectionDialog) createLayout() {
 	}
 	dialogContent.AddItem(d.optionTable, actualTableRows, 0, true)
 
-	dialog := createModal(d.title, dialogContent, constraints)
+	dialog, frame := createModalWithFrame(d.title, dialogContent, constraints)
+	d.frame = frame
 	inputCapture := createOptionDialogInputCapture(d.optionTable, d.options, d.selectAction, d.Close)
 	if d.checklistTable != nil {
 		inputCapture = d.checklistInputCapture(inputCapture)
 	}
 	dialog.SetInputCapture(inputCapture)
 	d.layout = dialog
+}
+
+// SetDanger shows the dialog with a red border: it confirms an action that loses data. Must be called on the UI
+// thread.
+func (d *SelectionDialog) SetDanger() *SelectionDialog {
+	d.frame.SetBorderColor(theme.Colors.Dialog.DangerBorder)
+	return d
 }
 
 func (d *SelectionDialog) GetName() string {

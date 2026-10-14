@@ -1,6 +1,8 @@
 package util
 
 import (
+	"strings"
+	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -21,9 +23,22 @@ const minLeftFooterWidth = 12
 // The texts may contain tview style tags. Text without tags uses the footer color.
 // All methods must be called on the UI thread, which is where the footer is drawn.
 type BorderFooter struct {
+	box      *tview.Box
 	text     string
 	leftFunc func(maxWidth int) string
 	color    tcell.Color
+	// parts are the parts of text, if set with SetParts
+	parts []FooterPart
+	// regions are the clickable parts, as last drawn
+	regions clickable.Regions
+}
+
+// FooterPart is a part of the right-aligned footer text, see SetParts. One with OnClick is highlighted while below
+// the mouse and runs OnClick (on the UI thread) when clicked.
+type FooterPart struct {
+	// Text may contain style tags
+	Text    string
+	OnClick func()
 }
 
 // NewBorderFooter installs a footer on the given box, which must have a border.
@@ -31,6 +46,7 @@ type BorderFooter struct {
 // A draw func that the box already has is kept and called first.
 func NewBorderFooter(box *tview.Box) *BorderFooter {
 	footer := &BorderFooter{
+		box:   box,
 		color: theme.Colors.ShortcutMap.Name,
 	}
 
@@ -53,6 +69,29 @@ func NewBorderFooter(box *tview.Box) *BorderFooter {
 // SetText sets the right-aligned footer text. An empty text hides it.
 func (f *BorderFooter) SetText(text string) {
 	f.text = text
+	f.parts = nil
+}
+
+// SetParts sets the right-aligned footer text from parts, some of which may be clicked (see HandleMouse). They are
+// only clickable while the whole text fits.
+func (f *BorderFooter) SetParts(parts ...FooterPart) {
+	var text strings.Builder
+	for _, part := range parts {
+		text.WriteString(part.Text)
+	}
+	f.text = text.String()
+	f.parts = parts
+}
+
+// HandleMouse highlights the clickable part below the mouse and runs it when clicked, see clickable.Regions. It
+// only consumes events on the bottom border. enabled is whether the footer reacts to the mouse (e.g. not while a
+// dialog is in front).
+func (f *BorderFooter) HandleMouse(action tview.MouseAction, event *tcell.EventMouse, enabled bool) (consumed bool) {
+	x, y := event.Position()
+	boxX, boxY, width, height := f.box.GetRect()
+	onFooter := y == boxY+height-1 && x >= boxX && x < boxX+width
+	consumed, _ = f.regions.HandleMouse(action, event, enabled && onFooter)
+	return consumed
 }
 
 // GetText returns the right-aligned footer text, including style tags.
@@ -84,9 +123,11 @@ func (f *BorderFooter) SetColor(color tcell.Color) {
 
 // draw prints the footer into the bottom border, leaving the corners intact.
 func (f *BorderFooter) draw(screen tcell.Screen, x, y, width, height int) {
+	f.regions.Reset()
 	if width < 4 || height < 2 {
 		return
 	}
+	defer f.regions.DrawHover(screen)
 	bottomY := y + height - 1
 	availableWidth := width - 2 // between the corners
 
@@ -102,6 +143,7 @@ func (f *BorderFooter) draw(screen tcell.Screen, x, y, width, height int) {
 	}
 	if left == "" {
 		f.drawPart(screen, right, x+1, bottomY, availableWidth, tview.AlignRight)
+		f.addRegions(x+1, bottomY, availableWidth, rightWidth)
 		return
 	}
 
@@ -112,12 +154,34 @@ func (f *BorderFooter) draw(screen tcell.Screen, x, y, width, height int) {
 		if remainingWidth >= minLeftFooterWidth {
 			leftWidth = remainingWidth
 			f.drawPart(screen, right, x+1, bottomY, availableWidth, tview.AlignRight)
+			f.addRegions(x+1, bottomY, availableWidth, rightWidth)
 		}
 		// otherwise the right part is hidden
 	}
 
 	left = f.leftFunc(leftWidth - 2)
 	f.drawPart(screen, theme.CreateTitleText(left), x+1, bottomY, leftWidth, tview.AlignLeft)
+}
+
+// addRegions adds the clickable parts of the right text, drawn right-aligned within maxWidth from x. Nothing if it
+// was cut off.
+func (f *BorderFooter) addRegions(x int, y int, maxWidth int, rightWidth int) {
+	if rightWidth > maxWidth {
+		return
+	}
+	// behind the space of theme.CreateTitleText
+	partX := x + maxWidth - rightWidth + 1
+	for i, part := range f.parts {
+		partWidth := tview.TaggedStringWidth(part.Text)
+		if part.OnClick != nil {
+			f.regions.Add(clickable.Region{
+				X: partX, Y: y, Width: partWidth, Key: i,
+				HoverBackground: theme.Colors.Layout.FooterHoverBackground,
+				OnClick:         part.OnClick,
+			})
+		}
+		partX += partWidth
+	}
 }
 
 // drawPart prints text within maxWidth. If it does not fit, the beginning is shown, followed by an ellipsis.

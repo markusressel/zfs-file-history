@@ -30,11 +30,12 @@ func NewPoolActionDialog(
 	asyncWork func(d *SelectionDialog, action DialogActionId) error,
 	onComplete func(d *SelectionDialog, option *DialogOption, err error),
 ) *SelectionDialog {
-	return NewSelectionDialog(
+	return newTaggedSelectionDialog(
 		application,
 		string(PoolActionDialogPage),
 		localization.LocalizationSelectActionDialogTitle,
-		fmt.Sprintf("What do you want to do with pool '%s'?", pool),
+		fmt.Sprintf("What do you want to do with pool %s?", Highlight(pool)),
+		nil,
 		buildPoolDialogOptions(status),
 		asyncWork,
 		onComplete,

@@ -795,6 +795,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) newActionDialog(selection *data
 	var destroy *destroyRequest
 	var destroyPreviewResult *zfs.DestroyPreview
 	var holdResultValue *holdResult
+	// rolling back asks for confirmation first, with what is lost
+	var rollbackPreviewResult *zfs.RollbackPreview
 	selectedNames := []string{selection.Snapshot.FullName}
 
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
@@ -817,6 +819,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) newActionDialog(selection *data
 			destroy = &destroyRequest{entries: []*data.SnapshotBrowserEntry{selection}, recursive: true, dependantClones: true}
 			preview, err := destroy.preview()
 			destroyPreviewResult = preview
+			return err
+		case dialog.SnapshotDialogRollbackActionId:
+			preview, err := previewRollback(selection.Snapshot.FullName)
+			rollbackPreviewResult = preview
 			return err
 		}
 		return nil
@@ -855,6 +861,10 @@ func (snapshotBrowser *SnapshotBrowserComponent) newActionDialog(selection *data
 		case dialog.SnapshotDialogDestroySnapshotActionId, dialog.SnapshotDialogDestroySnapshotRecursivelyActionId:
 			// nothing was destroyed yet, the confirmation does that
 			snapshotBrowser.showDestroyConfirmation(destroy, destroyPreviewResult)
+			return
+		case dialog.SnapshotDialogRollbackActionId:
+			// nothing was rolled back yet, the confirmation does that
+			snapshotBrowser.showRollbackConfirmation(rollbackPreviewResult)
 			return
 		}
 
@@ -1042,17 +1052,17 @@ var (
 // maxListedDestroyed is the maximum number of destroyed snapshots / datasets listed in the confirmation.
 const maxListedDestroyed = 10
 
-// formatDestroyDescription describes what a destroy would do, based on its dry run.
+// formatDestroyDescription describes what a destroy would do, based on its dry run, with style tags.
 func formatDestroyDescription(preview *zfs.DestroyPreview) string {
 	var description strings.Builder
-	fmt.Fprintf(&description, "This frees %s and cannot be undone.\n\n", uiutil.HumanizedBytes(preview.Reclaim))
+	fmt.Fprintf(&description, "This frees %s and cannot be undone.\n\n", dialog.Highlight(uiutil.HumanizedBytes(preview.Reclaim)))
 	fmt.Fprintf(&description, "Will be destroyed (%d):", len(preview.Destroyed))
 	for i, name := range preview.Destroyed {
 		if i == maxListedDestroyed {
 			fmt.Fprintf(&description, "\n  … and %d more", len(preview.Destroyed)-maxListedDestroyed)
 			break
 		}
-		fmt.Fprintf(&description, "\n  %s", name)
+		fmt.Fprintf(&description, "\n  %s", dialog.Highlight(name))
 	}
 	return description.String()
 }

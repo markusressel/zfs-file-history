@@ -8,6 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 	"zfs-file-history/internal/ui/localization"
+	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -614,4 +616,15 @@ func isDescendantOf(parent tview.Primitive, child tview.Primitive) bool {
 		}
 	}
 	return false
+}
+
+// withoutTags returns the text as shown, without its style tags.
+func withoutTags(text string) string {
+	return tview.NewTextView().SetDynamicColors(true).SetText(text).GetText(true)
+}
+
+// Highlight makes text (e.g. the name of a dataset) stand out in the description of a dialog that shows style tags,
+// see newTaggedSelectionDialog and NewConfirmByNameDialog. It escapes the text.
+func Highlight(text string) string {
+	return txwidgets.Span(theme.Colors.Dialog.Highlight, "%s", text)
 }

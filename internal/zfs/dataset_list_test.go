@@ -63,9 +63,10 @@ func TestOpenDatasetByName_EmptyName(t *testing.T) {
 
 func TestParseDatasetList(t *testing.T) {
 	output := strings.Join([]string{
-		"rpool\t3000\t1000\t0\t98304\t2000\t0\t/",
-		"rpool/data\t2500\t1000\t500\t1500\t0\t500\t/mnt/my data",
-		"rpool/legacy\t100\t1000\t-\t100\t0\t-\tlegacy",
+		"rpool\t3000\t1000\t0\t98304\t2000\t0\t-\t/",
+		"rpool/data\t2500\t1000\t500\t1500\t0\t500\t-\t/mnt/my data",
+		"rpool/legacy\t100\t1000\t-\t100\t0\t-\t-\tlegacy",
+		"rpool/clone\t100\t1000\t0\t100\t0\t0\trpool/data@daily\tnone",
 		"",
 	}, "\n")
 	mountPaths := map[string]string{"rpool": "/", "rpool/data": "/mnt/my data"}
@@ -78,7 +79,10 @@ func TestParseDatasetList(t *testing.T) {
 		{Name: "rpool/data", Used: 2500, Available: 1000, UsedBySnapshots: 500, UsedByDataset: 1500, UsedByChildren: 0, UsedByRefreservation: 500, Mountpoint: "/mnt/my data", MountPath: "/mnt/my data"},
 		// "-" (not applicable) is 0
 		{Name: "rpool/legacy", Used: 100, Available: 1000, UsedBySnapshots: 0, UsedByDataset: 100, UsedByChildren: 0, Mountpoint: "legacy"},
+		{Name: "rpool/clone", Used: 100, Available: 1000, UsedByDataset: 100, Mountpoint: "none", Origin: "rpool/data@daily"},
 	}, result)
+	assert.False(t, result[0].IsClone())
+	assert.True(t, result[3].IsClone())
 }
 
 func TestParseDatasetList_Empty(t *testing.T) {
@@ -90,7 +94,7 @@ func TestParseDatasetList_Empty(t *testing.T) {
 func TestParseDatasetList_Invalid(t *testing.T) {
 	tests := map[string]string{
 		"missing fields": "rpool\t3000\t1000",
-		"invalid size":   "rpool\t3000\t1000\tabc\t0\t0\t0\t/",
+		"invalid size":   "rpool\t3000\t1000\tabc\t0\t0\t0\t-\t/",
 	}
 	for name, output := range tests {
 		t.Run(name, func(t *testing.T) {

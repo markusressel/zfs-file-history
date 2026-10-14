@@ -22,6 +22,8 @@ type TextInputDialog struct {
 	onSubmit      func(text string)
 	// validate checks the text before it is submitted, see SetValidator. May be nil.
 	validate func(text string) error
+	// frame is the bordered window of the dialog
+	frame *tview.Flex
 }
 
 // NewTextInputDialog creates a dialog that asks for a single line of text, prefilled with initialText.
@@ -40,21 +42,26 @@ func NewTextInputDialog(
 		actionChannel: make(chan DialogActionId),
 		onSubmit:      onSubmit,
 	}
-	d.createLayout(title, description, initialText)
+	// leave room for editing longer names than the initial text
+	d.createLayout(title, description, false, initialText, utf8.RuneCountInString(initialText)+10)
 	return d
 }
 
-func (d *TextInputDialog) createLayout(title string, description string, initialText string) {
+// createLayout creates the layout. With tagged, the description contains style tags (anything else escaped).
+func (d *TextInputDialog) createLayout(title string, description string, tagged bool, initialText string, inputWidth int) {
+	// the size is calculated from the text as shown
+	plainDescription := description
+	if tagged {
+		plainDescription = withoutTags(description)
+	}
 	helpText := txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%s", shortcut_helper.KeyEnter) +
 		txwidgets.Span(theme.Colors.ShortcutMap.Name, ": confirm  ") +
 		txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%s", shortcut_helper.KeyEsc) +
 		txwidgets.Span(theme.Colors.ShortcutMap.Name, ": cancel")
 
-	// leave room for editing longer names than the initial text
-	inputWidth := utf8.RuneCountInString(initialText) + 10
 	constraints := DialogSizeConstraints{
 		Title:             title,
-		Description:       description,
+		Description:       plainDescription,
 		ExtraContentWidth: inputWidth,
 		StaticHeight:      4, // spacer, input field, spacer, help text
 	}
@@ -65,6 +72,7 @@ func (d *TextInputDialog) createLayout(title string, description string, initial
 	}
 
 	descriptionView := tview.NewTextView().
+		SetDynamicColors(tagged).
 		SetText(description).
 		SetWrap(true).
 		SetWordWrap(true)
@@ -91,13 +99,15 @@ func (d *TextInputDialog) createLayout(title string, description string, initial
 	d.inputField.SetChangedFunc(func(string) { d.errorView.SetText("") })
 
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(descriptionView, calculateWrappedHeight(description, textLineWidth), 0, false).
+		AddItem(descriptionView, calculateWrappedHeight(plainDescription, textLineWidth), 0, false).
 		AddItem(tview.NewBox(), 1, 0, false).
 		AddItem(d.inputField, 1, 0, true).
 		AddItem(d.errorView, 1, 0, false).
 		AddItem(helpView, 1, 0, false)
+	// like the other dialogs; CalculateDialogSize leaves room for it
+	content.SetBorderPadding(0, 0, 1, 1)
 
-	d.layout = createModal(title, content, constraints)
+	d.layout, d.frame = createModalWithFrame(title, content, constraints)
 }
 
 // SetValidator sets a check for the (trimmed) text: if it returns an error, the error is shown in the dialog and the

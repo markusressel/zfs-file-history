@@ -13,7 +13,7 @@ const (
 )
 
 // NewDestroySnapshotsDialog asks for confirmation before destroying snapshots. The description should explain
-// what exactly will be destroyed (e.g. the result of a dry run). asyncWork receives
+// what exactly will be destroyed (e.g. the result of a dry run), it may contain style tags (see Highlight). asyncWork receives
 // DestroySnapshotsDialogDestroyActionId on confirmation.
 func NewDestroySnapshotsDialog(
 	application *tview.Application,
@@ -21,13 +21,14 @@ func NewDestroySnapshotsDialog(
 	asyncWork func(d *SelectionDialog, action DialogActionId) error,
 	onComplete func(d *SelectionDialog, option *DialogOption, err error),
 ) *SelectionDialog {
-	return NewSelectionDialog(
+	return newTaggedSelectionDialog(
 		application,
 		string(DestroySnapshotsDialogPage),
 		" 💥 Destroy Snapshots ",
 		description,
+		nil,
 		buildConfirmDialogOptions(DestroySnapshotsDialogDestroyActionId, "Destroy", true, DialogSeverityDanger),
 		asyncWork,
 		onComplete,
-	)
+	).SetDanger()
 }
