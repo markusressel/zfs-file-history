@@ -17,6 +17,8 @@ type savedLayoutBinding struct {
 	store         *state.Store
 	key           string
 	defaultLayout ColumnLayout
+	// defaultGrouping is the grouping at the time of BindColumnLayout, see SetGroupings
+	defaultGrouping string
 }
 
 // GetColumnLayout returns the displayed columns and the sort order.
@@ -63,12 +65,15 @@ func (c *RowSelectionTable[T]) notifyColumnLayoutChanged() {
 		c.columnLayoutChangedCallback(c.GetColumnLayout())
 	}
 	if c.savedLayout != nil {
-		c.savedLayout.store.SetTableLayout(c.savedLayout.key, toSavedLayout(c.GetColumnLayout()))
+		saved := toSavedLayout(c.GetColumnLayout())
+		saved.Grouping = c.GetGrouping()
+		c.savedLayout.store.SetTableLayout(c.savedLayout.key, saved)
 	}
 }
 
 // BindColumnLayout restores the layout saved under key in store and saves every change the user makes to it.
-// The current layout becomes the default layout, see ResetColumnLayout, so call this after setting up the columns.
+// The current layout becomes the default layout, see ResetColumnLayout, so call this after setting up the columns
+// (and the groupings, see SetGroupings).
 // allColumns are all columns of the table, used to resolve the saved column keys.
 // Does nothing if store is nil. Must be called on the UI thread.
 func (c *RowSelectionTable[T]) BindColumnLayout(store *state.Store, key string, allColumns []*Column) {
@@ -76,13 +81,15 @@ func (c *RowSelectionTable[T]) BindColumnLayout(store *state.Store, key string, 
 		return
 	}
 	c.savedLayout = &savedLayoutBinding{
-		store:         store,
-		key:           key,
-		defaultLayout: c.GetColumnLayout(),
+		store:           store,
+		key:             key,
+		defaultLayout:   c.GetColumnLayout(),
+		defaultGrouping: c.GetGrouping(),
 	}
 	if saved, ok := store.TableLayout(key); ok {
 		if layout, ok := fromSavedLayout(saved, allColumns); ok {
 			c.SetColumnLayout(layout)
+			c.SetGrouping(saved.Grouping)
 		}
 	}
 }
@@ -94,6 +101,7 @@ func (c *RowSelectionTable[T]) ResetColumnLayout() {
 		return
 	}
 	c.SetColumnLayout(c.savedLayout.defaultLayout)
+	c.SetGrouping(c.savedLayout.defaultGrouping)
 	c.savedLayout.store.DeleteTableLayout(c.savedLayout.key)
 }
 

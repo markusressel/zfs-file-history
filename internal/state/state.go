@@ -54,6 +54,8 @@ type TableLayout struct {
 	// SortColumn is the key of the column the table is sorted by.
 	SortColumn   string `json:"sortColumn"`
 	SortInverted bool   `json:"sortInverted"`
+	// Grouping is the key of the grouping of the entries, "" if they are not grouped.
+	Grouping string `json:"grouping,omitempty"`
 }
 
 // entry is a saved value, with the time it was saved, to merge the changes of several instances and to drop the

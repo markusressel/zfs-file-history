@@ -67,6 +67,13 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	allEntries   []*T
 	entries      []*T
 	entriesMutex sync.Mutex
+	// rowEntries are the entries of the rows of the table, nil for the header row and the rows that start a group,
+	// groupRows the rows that start a group (see SetGroupings). Only accessed on the UI thread.
+	rowEntries []*T
+	groupRows  map[int]groupRow
+	// groupings are the ways the entries can be grouped, grouping the one they are grouped by (nil: none)
+	groupings []Grouping[T]
+	grouping  *Grouping[T]
 
 	// title is the title set with SetTitle
 	title string
@@ -237,6 +244,11 @@ func (c *RowSelectionTable[T]) createLayout() {
 		}
 		key := event.Key()
 
+		if key == tcell.KeyRune && event.Rune() == 'b' && len(c.groupings) > 0 {
+			c.CycleGrouping()
+			return nil
+		}
+
 		// current selection is on HEADER row
 		if c.GetSelectedEntry() == nil {
 			switch key {
@@ -373,6 +385,7 @@ func (c *RowSelectionTable[T]) renderIfTimeFormatChanged() {
 
 // afterDraw draws what is drawn over the table. Runs while drawing.
 func (c *RowSelectionTable[T]) afterDraw(screen tcell.Screen) {
+	c.drawGroupRows(screen)
 	c.drawEmptyState(screen)
 	c.redrawScrollbar(screen)
 }
@@ -566,7 +579,8 @@ func (c *RowSelectionTable[T]) UpdateEntry(entry *T) {
 	}
 
 	index := slices.Index(c.entries, entry)
-	if index < 0 {
+	row := slices.Index(c.rowEntries, entry)
+	if index < 0 || row < 0 {
 		return
 	}
 
@@ -579,7 +593,7 @@ func (c *RowSelectionTable[T]) UpdateEntry(entry *T) {
 				tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
 			)
 		}
-		c.table.SetCell(index+1, column, cell)
+		c.table.SetCell(row, column, cell)
 	}
 }
 
@@ -587,7 +601,7 @@ func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {
 	c.entriesMutex.Lock()
 	c.sortByColumn = sortOption
 	c.sortInverted = inverted
-	c.entries = c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted)
+	c.entries = c.sortIntoGroups(c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted))
 	c.entriesMutex.Unlock()
 }
 
@@ -732,9 +746,26 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 		table.SetCell(0, column, cell)
 	}
 
-	// Table Content
-	for row, entry := range c.entries {
-		cells := c.toTableCells(row, columns, entry)
+	// Table Content, with a row above each group (see SetGroupings)
+	c.rowEntries = []*T{nil}
+	c.groupRows = map[int]groupRow{}
+	var groups []Group
+	counts := map[Group]int{}
+	if c.grouping != nil {
+		for _, entry := range c.entries {
+			group := c.grouping.GroupOf(entry)
+			groups = append(groups, group)
+			counts[group]++
+		}
+	}
+	for index, entry := range c.entries {
+		if groups != nil && (index == 0 || groups[index] != groups[index-1]) {
+			c.setGroupRow(len(c.rowEntries), len(columns), groupRow{group: groups[index], count: counts[groups[index]]})
+			c.rowEntries = append(c.rowEntries, nil)
+		}
+		row := len(c.rowEntries)
+		c.rowEntries = append(c.rowEntries, entry)
+		cells := c.toTableCells(index, columns, entry)
 		for column, cell := range cells {
 			if c.isInMultiSelection(entry) {
 				cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
@@ -743,7 +774,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 					tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
 				)
 			}
-			table.SetCell(row+1, column, cell)
+			table.SetCell(row, column, cell)
 		}
 	}
 	if c.columnOffset == 0 {
@@ -754,19 +785,18 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 }
 
 func (c *RowSelectionTable[T]) Select(entry *T) {
-	index := 0
+	row := 0
 	if entry != nil {
-		index = slices.Index(c.entries, entry)
-		if index < 0 {
+		row = slices.Index(c.rowEntries, entry)
+		if row < 0 {
 			return
-		} else {
-			index += 1
 		}
 	}
-	if index <= 1 {
+	if row == 0 || entry == c.entries[0] {
+		// the first entry: also the row of its group above it
 		c.scrollToTop()
 	}
-	c.table.Select(index, 0)
+	c.table.Select(row, 0)
 	c.syncScrollbar()
 }
 
@@ -809,8 +839,8 @@ func (c *RowSelectionTable[T]) isCutOffOnTheRight() bool {
 func (c *RowSelectionTable[T]) ContentSize() (width int, height int) {
 	// border, padding and scrollbar
 	width = c.contentWidth + 2 + 2 + 1
-	// border and header
-	height = max(len(c.allEntries), 1) + 2 + 1
+	// border and header, and the rows of the groups
+	height = max(len(c.allEntries)+c.groupCount(c.allEntries), 1) + 2 + 1
 	return width, height
 }
 
@@ -869,12 +899,10 @@ func (c *RowSelectionTable[T]) GetEntries() []*T {
 
 func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
 	row, _ := c.table.GetSelection()
-	row -= 1
-	if row >= 0 && row < len(c.entries) {
-		return c.entries[row]
-	} else {
-		return nil
+	if row >= 0 && row < len(c.rowEntries) {
+		return c.rowEntries[row]
 	}
+	return nil
 }
 
 func (c *RowSelectionTable[T]) IsEmpty() bool {
@@ -988,19 +1016,27 @@ func (c *RowSelectionTable[T]) cleanupMultiSelection() {
 	}
 }
 
-// Up moves the current selection up one row
+// Up moves the current selection up one row, over the rows of the groups
 func (c *RowSelectionTable[T]) Up() {
 	row, col := c.table.GetSelection()
-	if row > 0 {
-		c.table.Select(row-1, col)
+	row--
+	for row > 0 && c.isGroupRow(row) {
+		row--
+	}
+	if row >= 0 {
+		c.table.Select(row, col)
 	}
 }
 
-// Down moves the current selection down one row
+// Down moves the current selection down one row, over the rows of the groups
 func (c *RowSelectionTable[T]) Down() {
 	row, col := c.table.GetSelection()
-	if row < len(c.entries) {
-		c.table.Select(row+1, col)
+	row++
+	for row < len(c.rowEntries) && c.isGroupRow(row) {
+		row++
+	}
+	if row < len(c.rowEntries) {
+		c.table.Select(row, col)
 	}
 }
 

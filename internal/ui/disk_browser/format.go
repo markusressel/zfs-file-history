@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"zfs-file-history/internal/disk"
+	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -111,18 +112,25 @@ func formatHealth(report disk.SmartReport) (string, tcell.Color) {
 // are in a table of their own.
 func formatDetails(entry *DiskEntry) []string {
 	report := entry.Report
-	name := entry.DeviceName()
-	if report.Disk != name {
-		name += " → " + report.Disk
-	}
-	lines := []string{"[::b]" + txwidgets.Span(theme.Colors.Dialog.Highlight, "%s", name) + "[::-]" +
-		txwidgets.Span(theme.Colors.Pool.Hint, "  in %s", entry.Pool)}
+	lines := []string{"[::b]" + txwidgets.Span(theme.Colors.Dialog.Highlight, "%s", report.Disk) + "[::-]" +
+		txwidgets.Span(theme.Colors.Pool.Hint, "  %s  in %s", typeOf(report), entry.PoolNames())}
 
 	field := func(label string, value string) {
 		if label != "" {
 			label += ":"
 		}
 		lines = append(lines, txwidgets.Span(theme.Colors.Layout.Table.Accent, "  %-9s", label)+" "+value)
+	}
+	// the devices of the pools on it, unless it is the only one, named like the disk
+	if len(entry.Devices) > 1 || (len(entry.Devices) == 1 && entry.Devices[0].DisplayName() != report.Disk) {
+		for i, device := range entry.Devices {
+			label := ""
+			if i == 0 {
+				label = "Devices"
+			}
+			field(label, txwidgets.Span(tcell.ColorWhite, "%s", device.DisplayName())+
+				txwidgets.Span(theme.Colors.Pool.Hint, "  in %s", device.Pool))
+		}
 	}
 	// the model and so on in a line of their own, the name of the device can be long
 	var details []string
@@ -182,4 +190,75 @@ func formatDetails(entry *DiskEntry) []string {
 		field(label, txwidgets.Span(severityColor(problem.Severity), "%s", problem.Text))
 	}
 	return lines
+}
+
+// typeOf returns the type of the disk, e.g. "SATA HDD" or "NVMe SSD": hard disk or SSD from the kernel, known also if
+// the SMART values could not be read.
+func typeOf(report disk.SmartReport) string {
+	kind := "SSD"
+	if report.Rotational && report.Protocol != "NVMe" {
+		kind = "HDD"
+	}
+	switch report.Protocol {
+	case "ATA":
+		return "SATA " + kind
+	case "SCSI":
+		return "SAS " + kind
+	case "":
+		return kind
+	default:
+		return report.Protocol + " " + kind
+	}
+}
+
+// counterOf returns the value of the column of the counters of the disk for sorting, -1 if it is not known.
+func counterOf(column *table.Column, report disk.SmartReport) int64 {
+	if !report.HasValues() {
+		return -1
+	}
+	counters := report.Counters
+	switch column {
+	case columnBad:
+		return counters.BadSectors
+	case columnUncorrectable:
+		return counters.Uncorrectable
+	case columnCrc:
+		return counters.CrcErrors
+	case columnWear:
+		return counters.WearPercent
+	case columnWritten:
+		return counters.BytesWritten
+	case columnPowerCycles:
+		return counters.PowerCycles
+	case columnUnsafe:
+		return counters.UnsafeShutdowns
+	case columnLoadCycles:
+		return counters.LoadCycles
+	}
+	return -1
+}
+
+// formatCounter returns the text and color of the value of the column of the counters of the disk: "" if not known,
+// errors other than 0 in the color of warnings (bad sectors as soon as there are any: they predict failures), the
+// wear from the level at which it is a problem, 0 dimmed so the others stand out.
+func formatCounter(column *table.Column, report disk.SmartReport) (string, tcell.Color) {
+	value := counterOf(column, report)
+	switch {
+	case value < 0:
+		return "", tcell.ColorDefault
+	case column == columnWritten:
+		return humanize.Bytes(uint64(value)), tcell.ColorLightGray
+	case column == columnWear:
+		color := tcell.ColorLightGray
+		if value >= disk.WornWarningPercent {
+			color = theme.Colors.Pool.Degraded
+		}
+		return fmt.Sprintf("%d%%", value), color
+	case value == 0:
+		return "0", theme.Colors.Layout.Table.ZeroSize
+	case column == columnBad || column == columnUncorrectable || column == columnCrc:
+		return humanize.Comma(value), theme.Colors.Pool.Degraded
+	default:
+		return humanize.Comma(value), tcell.ColorLightGray
+	}
 }

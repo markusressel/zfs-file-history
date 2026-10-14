@@ -248,6 +248,10 @@ type LayoutTableColors struct {
 	ZeroSize tcell.Color
 	// EmptyText is the text shown in place of the rows when no entry matches the filter
 	EmptyText tcell.Color
+	// GroupTitle is the title of a group in the row above its entries, GroupCount the number of its entries behind
+	// it (see table.RowSelectionTable.SetGroupings)
+	GroupTitle tcell.Color
+	GroupCount tcell.Color
 }
 
 // SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the

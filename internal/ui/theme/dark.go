@@ -111,6 +111,8 @@ var (
 				TreeCollapsedIndicator: Primary,
 				ZeroSize:               tcell.ColorDarkGray,
 				EmptyText:              tcell.ColorGray,
+				GroupTitle:             Accent,
+				GroupCount:             tcell.ColorGray,
 			},
 		},
 		ShortcutMap: ShortcutMapColors{

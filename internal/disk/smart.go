@@ -24,6 +24,9 @@ var SmartctlArgs = []string{"-j", "-i", "-H", "-A", "-n", "standby", "--"}
 // SmartctlPaths are the paths smartctl is installed at by the distributions, used in the sudoers rules.
 var SmartctlPaths = []string{"/usr/sbin/smartctl", "/usr/bin/smartctl", "/sbin/smartctl"}
 
+// isRotational returns whether the disk spins, see IsRotational. Replaceable in tests.
+var isRotational = IsRotational
+
 // lookPathSmartctl returns the path of smartctl, "" if it is not installed. Replaceable in tests.
 var lookPathSmartctl = sync.OnceValue(func() string {
 	path, err := exec.LookPath("smartctl")
@@ -131,7 +134,11 @@ type SmartReport struct {
 	HealthKnown, Passed bool
 	// PowerOnHours is how long the disk has run, -1 if unknown
 	PowerOnHours int64
-	Attributes   []SmartAttribute
+	// Rotational is whether the disk spins (a hard disk, see IsRotational), known also if the values were not read
+	Rotational bool
+	// Counters are the values that mean the same for all kinds of disks, to compare them
+	Counters   SmartCounters
+	Attributes []SmartAttribute
 	// Problems are what is wrong, the most severe first, see problems
 	Problems []SmartProblem
 }
@@ -208,8 +215,8 @@ var nvmeCriticalWarnings = []string{
 	"persistent memory region read-only",
 }
 
-// wornWarningPercent is the wear of an NVMe drive ("percentage used") from which it is a problem.
-const wornWarningPercent = 90
+// WornWarningPercent is the wear of an NVMe drive ("percentage used") from which it is a problem.
+const WornWarningPercent = 90
 
 // smartctlOutput is the part of the JSON output of smartctl that is used. Counters that may exceed 64 bits (NVMe)
 // are numbers, see jsonCount.
@@ -231,7 +238,9 @@ type smartctlOutput struct {
 	SerialNumber string          `json:"serial_number"`
 	Firmware     string          `json:"firmware_version"`
 	ScsiRevision string          `json:"scsi_revision"`
-	UserCapacity *struct {
+	// LogicalBlockSize is the size of the blocks ATA attribute 241 (Total_LBAs_Written) counts
+	LogicalBlockSize int64 `json:"logical_block_size"`
+	UserCapacity     *struct {
 		Bytes json.Number `json:"bytes"`
 	} `json:"user_capacity"`
 	SmartStatus *struct {
@@ -267,6 +276,7 @@ type smartctlOutput struct {
 		UnsafeShutdowns         json.Number `json:"unsafe_shutdowns"`
 		PowerOnHours            json.Number `json:"power_on_hours"`
 		DataUnitsWritten        json.Number `json:"data_units_written"`
+		PowerCycles             json.Number `json:"power_cycles"`
 	} `json:"nvme_smart_health_information_log"`
 	ScsiGrownDefectList *json.Number `json:"scsi_grown_defect_list"`
 	ScsiErrorCounterLog map[string]struct {
@@ -392,6 +402,7 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 			SmartAttribute{Name: "Error log entries", Value: strconv.FormatInt(jsonCount(log.NumErrLogEntries), 10), Raw: jsonCount(log.NumErrLogEntries), Normalized: -1, Worst: -1, Threshold: -1},
 			SmartAttribute{Name: "Unsafe shutdowns", Value: strconv.FormatInt(jsonCount(log.UnsafeShutdowns), 10), Raw: jsonCount(log.UnsafeShutdowns), Normalized: -1, Worst: -1, Threshold: -1},
 			SmartAttribute{Name: "Data units written", Value: strconv.FormatInt(jsonCount(log.DataUnitsWritten), 10), Raw: jsonCount(log.DataUnitsWritten), Normalized: -1, Worst: -1, Threshold: -1},
+			SmartAttribute{Name: "Power cycles", Value: strconv.FormatInt(jsonCount(log.PowerCycles), 10), Raw: jsonCount(log.PowerCycles), Normalized: -1, Worst: -1, Threshold: -1},
 		)
 		if report.PowerOnHours < 0 && log.PowerOnHours != "" {
 			report.PowerOnHours = jsonCount(log.PowerOnHours)
@@ -410,7 +421,7 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 			problems = append(problems, SmartProblem{Severity: SmartWarning,
 				Short: fmt.Sprintf("%d media err", mediaErrors), Text: fmt.Sprintf("%d media errors", mediaErrors)})
 		}
-		if log.PercentageUsed >= wornWarningPercent {
+		if log.PercentageUsed >= WornWarningPercent {
 			problems = append(problems, SmartProblem{Severity: SmartWarning,
 				Short: fmt.Sprintf("%d%% worn", log.PercentageUsed), Text: fmt.Sprintf("%d%% of the rated endurance used", log.PercentageUsed)})
 		}
@@ -436,6 +447,7 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 	// the most severe first, else in the order found
 	slices.SortStableFunc(problems, func(a, b SmartProblem) int { return int(b.Severity) - int(a.Severity) })
 	report.Problems = problems
+	report.Counters = countersOf(&parsed)
 	return report, false, nil
 }
 
@@ -530,6 +542,7 @@ func (reader *SmartReader) read(disk string, maxAge time.Duration) SmartReport {
 			report = parsed
 		}
 	}
+	report.Rotational = isRotational(disk)
 	reader.reports[disk] = report
 	return report
 }

@@ -92,7 +92,7 @@ func testSmart() *fakeSmart {
 	}
 	return &fakeSmart{reports: map[string][]disk.SmartReport{
 		"/dev/disk/by-id/ata-DISK_1-part1": {ataReport()},
-		"sdb":                              {{Disk: "sdb", Err: disk.ErrSmartNeedsRoot}},
+		"sdb":                              {{Disk: "sdb", Err: disk.ErrSmartNeedsRoot, Rotational: true}},
 		"nvme0n1p1":                        {nvme},
 	}}
 }
@@ -159,7 +159,7 @@ func (dt *diskBrowserTest) rows() []string {
 	var rows []string
 	testutil.OnUiThread(dt.t, dt.app, func() {
 		for _, entry := range dt.browser.tableContainer.GetEntries() {
-			rows = append(rows, entry.Pool+" "+entry.DeviceName()+" "+entry.Report.Disk)
+			rows = append(rows, entry.PoolNames()+" "+entry.DeviceNames()+" "+entry.Report.Disk)
 		}
 	})
 	return rows
@@ -201,14 +201,21 @@ func (dt *diskBrowserTest) screenText() string {
 func TestDiskBrowser_ListsDisksOfAllPools(t *testing.T) {
 	dt := newDiskBrowserTest(t)
 
-	// sorted by pool; the file of tank is not on a disk
-	assert.Equal(t, []string{"fast nvme0n1p1 nvme0n1", "tank ata-DISK_1-part1 sda", "tank sdb sdb"}, dt.rows())
+	// the hard disks first, sorted by pool; the file of tank is not on a disk
+	assert.Equal(t, []string{"tank ata-DISK_1-part1 sda", "tank sdb sdb", "fast nvme0n1p1 nvme0n1"}, dt.rows())
 	dt.waitFor("temperatures", func() bool { return strings.Contains(dt.screenText(), "40°C") })
 	screen := dt.screenText()
 	assert.Contains(t, screen, "WDC WD40EFRX")
 	assert.Contains(t, screen, "8 realloc")
 	assert.Contains(t, screen, ReadTemperatureIcon+" idle, not read: t")
 	assert.Contains(t, screen, "3 disks · 1 with problems")
+	assert.Contains(t, screen, "Hard disks  2")
+	assert.Contains(t, screen, "SSDs  1")
+	// the serial number instead of the long names of the devices, which the filter still finds
+	assert.Contains(t, screen, "WD-1")
+	assert.NotContains(t, screen, "Device(s)")
+	testutil.OnUiThread(t, dt.app, func() { dt.browser.tableContainer.SetFilterText("ata-DISK*") })
+	assert.Equal(t, []string{"tank ata-DISK_1-part1 sda"}, dt.rows())
 	// read while drawn, the ones older than smartInterval
 	assert.Equal(t, smartInterval, dt.smart.reads()[0])
 	assert.Equal(t, [][]string{nil}, dt.sampler.samples()[:1], "idle hard disks are not forced")
@@ -217,31 +224,32 @@ func TestDiskBrowser_ListsDisksOfAllPools(t *testing.T) {
 func TestDiskBrowser_DetailsOfSelectedDisk(t *testing.T) {
 	dt := newDiskBrowserTest(t)
 
-	assert.Contains(t, dt.detailsText(), "nvme0n1p1 → nvme0n1  in fast")
-	// NVMe values have no id: in the order of smartctl
-	assert.Equal(t, []string{"Percentage used", "Available spare"}, dt.attributeNames())
-
-	dt.press(tcell.KeyDown, 0)
-	dt.waitFor("details of sda", func() bool { return strings.Contains(dt.detailsText(), "ata-DISK_1-part1 → sda") })
+	assert.Contains(t, dt.detailsText(), "ata-DISK_1-part1  in tank")
 	assert.Equal(t, []string{"Reallocated_Sector_Ct", "Power_On_Hours", "Airflow_Temperature_Cel", "Temperature_Celsius"}, dt.attributeNames())
 
 	dt.press(tcell.KeyDown, 0)
 	dt.waitFor("details of sdb", func() bool { return strings.Contains(dt.detailsText(), "only root may read them") })
 	assert.Empty(t, dt.attributeNames())
+
+	// over the row of the SSDs
+	dt.press(tcell.KeyDown, 0)
+	dt.waitFor("details of nvme0n1", func() bool { return strings.Contains(dt.detailsText(), "nvme0n1  SSD  in fast") })
+	// NVMe values have no id: in the order of smartctl
+	assert.Equal(t, []string{"Percentage used", "Available spare"}, dt.attributeNames())
 }
 
 func TestDiskBrowser_SelectDevice(t *testing.T) {
 	dt := newDiskBrowserTest(t)
 
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "sdb") })
-	assert.Contains(t, dt.detailsText(), "sdb  in tank")
+	assert.Contains(t, dt.detailsText(), "sdb  HDD  in tank")
 	// the disk of the pool with a problem, e.g. for its alert
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "sdb") })
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "") })
-	assert.Contains(t, dt.detailsText(), "ata-DISK_1-part1 → sda  in tank")
+	assert.Contains(t, dt.detailsText(), "sda  SATA HDD  in tank")
 	// the first one if none has
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("fast", "") })
-	assert.Contains(t, dt.detailsText(), "nvme0n1p1 → nvme0n1  in fast")
+	assert.Contains(t, dt.detailsText(), "nvme0n1  SSD  in fast")
 }
 
 func TestDiskBrowser_SelectDeviceBeforeLoaded(t *testing.T) {
@@ -255,7 +263,7 @@ func TestDiskBrowser_SelectDeviceBeforeLoaded(t *testing.T) {
 		browser = NewDiskBrowser(app, &fakeSampler{}, testSmart())
 		browser.Events.Subscribe(func(event Event) {
 			if e, ok := event.(SelectedDiskChangedEvent); ok && e.Disk != nil {
-				selected = e.Disk.Device
+				selected = e.Disk.Devices[0].Device
 			}
 		})
 		app.SetRoot(browser.GetLayout(), true)
@@ -378,16 +386,16 @@ func TestSortDiskEntries(t *testing.T) {
 	warning.PowerOnHours = 50
 	entries := func() []*DiskEntry {
 		return []*DiskEntry{
-			{Pool: "tank", Device: "sda", Report: healthy("sda"), Reading: disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 30}}},
-			{Pool: "tank", Device: "sdb", Report: warning, Reading: disk.Reading{IsDisk: true, Idle: true}},
-			{Pool: "fast", Device: "sdc", Report: failing, Reading: disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 50}}},
-			{Pool: "tank", Device: "sdd", Report: disk.SmartReport{Disk: "sdd", Err: disk.ErrSmartNeedsRoot}},
+			{Devices: []PoolDevice{{Pool: "tank", Device: "sda"}}, Report: healthy("sda"), Reading: disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 30}}},
+			{Devices: []PoolDevice{{Pool: "tank", Device: "sdb"}}, Report: warning, Reading: disk.Reading{IsDisk: true, Idle: true}},
+			{Devices: []PoolDevice{{Pool: "fast", Device: "sdc"}}, Report: failing, Reading: disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 50}}},
+			{Devices: []PoolDevice{{Pool: "tank", Device: "sdd"}}, Report: disk.SmartReport{Disk: "sdd", Err: disk.ErrSmartNeedsRoot}},
 		}
 	}
 	devices := func(entries []*DiskEntry) []string {
 		var result []string
 		for _, entry := range entries {
-			result = append(result, entry.Device)
+			result = append(result, entry.Devices[0].Device)
 		}
 		return result
 	}
@@ -408,7 +416,7 @@ func TestDiskBrowser_SelectDeviceNotListed(t *testing.T) {
 	dt.smart.mu.Unlock()
 
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("other", "sdz") })
-	assert.Contains(t, dt.detailsText(), "nvme0n1p1 → nvme0n1  in fast", "the first disk")
+	assert.Contains(t, dt.detailsText(), "sda  SATA HDD  in tank", "the first disk")
 
 	statuses := append(testStatuses(), &zfs.PoolStatus{Name: "other", Devices: []*zfs.PoolDevice{
 		{Name: "other", State: zfs.PoolStateOnline},
@@ -419,7 +427,7 @@ func TestDiskBrowser_SelectDeviceNotListed(t *testing.T) {
 		dt.browser.ReadSmart()
 	})
 	dt.waitFor("the new pool listed", func() bool { return len(dt.rows()) == 4 })
-	assert.Contains(t, dt.detailsText(), "nvme0n1p1 → nvme0n1  in fast", "still the disk the user selected")
+	assert.Contains(t, dt.detailsText(), "sda  SATA HDD  in tank", "still the disk the user selected")
 }
 
 func TestAttentionRank(t *testing.T) {
@@ -478,4 +486,59 @@ func TestDiskDetails_ReadTimeUpdated(t *testing.T) {
 	uiutil.ToggleRelativeTimes()
 	dt.screenText()
 	assert.Contains(t, dt.detailsText(), " ago")
+}
+
+// A disk with a partition for each of two pools (e.g. bpool and rpool) is listed once, with both devices.
+func TestDiskBrowser_DiskOfSeveralPools(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	dt.smart.mu.Lock()
+	dt.smart.reports["nvme0n1p2"] = []disk.SmartReport{healthy("nvme0n1")}
+	dt.smart.mu.Unlock()
+	statuses := append(testStatuses(), &zfs.PoolStatus{Name: "boot", Devices: []*zfs.PoolDevice{
+		{Name: "boot", State: zfs.PoolStateOnline},
+		{Name: "nvme0n1p2", Depth: 1, State: zfs.PoolStateOnline},
+	}})
+	testutil.OnUiThread(t, dt.app, func() {
+		dt.browser.SetStatuses(statuses)
+		dt.browser.ReadSmart()
+	})
+	dt.waitFor("both devices", func() bool { return slices.Contains(dt.rows(), "fast, boot nvme0n1p1, nvme0n1p2 nvme0n1") })
+	assert.Len(t, dt.rows(), 3)
+
+	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("boot", "nvme0n1p2") })
+	details := dt.detailsText()
+	assert.Contains(t, details, "nvme0n1  SSD  in fast, boot")
+	assert.Contains(t, details, "Devices:  nvme0n1p1  in fast\n            nvme0n1p2  in boot")
+}
+
+func TestDiskBrowser_Groupings(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	grouping := func() string {
+		key := ""
+		testutil.OnUiThread(t, dt.app, func() { key = dt.browser.tableContainer.GetGrouping() })
+		return key
+	}
+	assert.Equal(t, groupingType, grouping(), "by type at first")
+
+	dt.press(tcell.KeyRune, 'b')
+	dt.waitFor("by pool", func() bool { return grouping() == groupingPool })
+	screen := dt.screenText()
+	assert.Contains(t, screen, "fast  1")
+	assert.Contains(t, screen, "tank  2")
+	assert.Equal(t, []string{"fast nvme0n1p1 nvme0n1", "tank ata-DISK_1-part1 sda", "tank sdb sdb"}, dt.rows())
+
+	dt.press(tcell.KeyRune, 'b')
+	dt.waitFor("not grouped", func() bool { return grouping() == "" })
+	assert.NotContains(t, dt.screenText(), "Hard disks")
+}
+
+func TestDiskEntry_DeviceNames(t *testing.T) {
+	entry := DiskEntry{Devices: []PoolDevice{
+		{Pool: "bpool", Device: "/dev/disk/by-id/nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R518399R-part2"},
+		{Pool: "rpool", Device: "/dev/disk/by-id/nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R518399R-part3"},
+	}}
+	assert.Equal(t, "nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R518399R-part2, part3", entry.DeviceNames())
+	// only up to a "-"
+	entry.Devices = []PoolDevice{{Pool: "a", Device: "sdb1"}, {Pool: "b", Device: "sdb2"}}
+	assert.Equal(t, "sdb1, sdb2", entry.DeviceNames())
 }

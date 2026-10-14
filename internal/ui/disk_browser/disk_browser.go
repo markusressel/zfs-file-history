@@ -26,7 +26,7 @@ import (
 
 var (
 	columnPool     = &table.Column{Id: 0, Key: "pool", Title: "Pool", Alignment: tview.AlignLeft}
-	columnDevice   = &table.Column{Id: 1, Key: "device", Title: "Device", Alignment: tview.AlignLeft}
+	columnDevice   = &table.Column{Id: 1, Key: "device", Title: "Device(s)", Alignment: tview.AlignLeft}
 	columnDisk     = &table.Column{Id: 2, Key: "disk", Title: "Disk", Alignment: tview.AlignLeft}
 	columnModel    = &table.Column{Id: 3, Key: "model", Title: "Model", Alignment: tview.AlignLeft}
 	columnSerial   = &table.Column{Id: 4, Key: "serial", Title: "Serial", Alignment: tview.AlignLeft}
@@ -38,12 +38,30 @@ var (
 	columnSmart    = &table.Column{Id: 10, Key: "smart", Title: "SMART", Alignment: tview.AlignLeft}
 	columnHours    = &table.Column{Id: 11, Key: "hours", Title: "Hours", Alignment: tview.AlignRight}
 	columnRead     = &table.Column{Id: 12, Key: "read", Title: "Read", Alignment: tview.AlignLeft}
+	// the columns of disk.SmartCounters
+	columnBad           = &table.Column{Id: 13, Key: "badSectors", Title: "Bad", Alignment: tview.AlignRight}
+	columnUncorrectable = &table.Column{Id: 14, Key: "uncorrectable", Title: "Uncorr", Alignment: tview.AlignRight}
+	columnCrc           = &table.Column{Id: 15, Key: "crcErrors", Title: "CRC", Alignment: tview.AlignRight}
+	columnWear          = &table.Column{Id: 16, Key: "wear", Title: "Wear", Alignment: tview.AlignRight}
+	columnWritten       = &table.Column{Id: 17, Key: "written", Title: "Written", Alignment: tview.AlignRight}
+	columnPowerCycles   = &table.Column{Id: 18, Key: "powerCycles", Title: "Cycles", Alignment: tview.AlignRight}
+	columnUnsafe        = &table.Column{Id: 19, Key: "unsafeShutdowns", Title: "Unsafe", Alignment: tview.AlignRight}
+	columnLoadCycles    = &table.Column{Id: 20, Key: "loadCycles", Title: "Parks", Alignment: tview.AlignRight}
 
 	tableColumns = []*table.Column{columnPool, columnDevice, columnDisk, columnModel, columnSerial, columnFirmware,
-		columnProtocol, columnCapacity, columnTemp, columnHealth, columnSmart, columnHours, columnRead}
-	// defaultColumns are the columns shown until the user chooses others (F2)
-	defaultColumns = []*table.Column{columnPool, columnDevice, columnDisk, columnModel, columnCapacity, columnTemp,
-		columnHealth, columnSmart, columnHours}
+		columnProtocol, columnCapacity, columnTemp, columnHealth, columnSmart, columnBad, columnUncorrectable, columnCrc,
+		columnWear, columnWritten, columnHours, columnPowerCycles, columnUnsafe, columnLoadCycles, columnRead}
+	// defaultColumns are the columns shown until the user chooses others (F2). Not the devices: their names (by-id)
+	// are long, mostly the model and serial number, and listed in the details. The serial number is printed on the
+	// disk (to find the one to replace), the kernel name is the one of the tools of Linux.
+	defaultColumns = []*table.Column{columnPool, columnDisk, columnModel, columnSerial, columnCapacity, columnTemp,
+		columnHealth, columnSmart, columnBad, columnWear, columnWritten, columnHours}
+)
+
+// the groupings of the disks, see table.RowSelectionTable.SetGroupings
+const (
+	groupingType = "type"
+	groupingPool = "pool"
 )
 
 // stateKeyTable is the key of the column layout remembered in state.Current
@@ -58,23 +76,69 @@ const (
 	smartInterval = 10 * time.Minute
 )
 
-// DiskEntry is a disk of a device of a pool (a device on several disks, e.g. md, has an entry for each), with its
-// SMART values and the temperature of its device.
+// DiskEntry is a disk that pools are stored on, with its SMART values and the temperature of its devices. A disk is
+// listed once, also if several pools are stored on it (e.g. a partition for each); a device on several disks (e.g.
+// md) is a device of each.
 type DiskEntry struct {
-	Pool string
-	// Device is the name of the device in "zpool status"
-	Device  string
+	// Devices are the devices of the pools on the disk, in the order of the pools
+	Devices []PoolDevice
 	Report  disk.SmartReport
 	Reading disk.Reading
 }
 
 func (entry DiskEntry) TableRowId() string {
-	return entry.Pool + "\x00" + entry.Device + "\x00" + entry.Report.Disk
+	return entry.Report.Disk
 }
 
-// DeviceName returns the name of the device as shown, e.g. without "/dev/disk/by-id/".
-func (entry DiskEntry) DeviceName() string {
-	return zfs.DeviceDisplayName(entry.Device)
+// PoolNames returns the names of the pools on the disk, e.g. "bpool, rpool".
+func (entry DiskEntry) PoolNames() string {
+	var names []string
+	for _, device := range entry.Devices {
+		if !slices.Contains(names, device.Pool) {
+			names = append(names, device.Pool)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// DeviceNames returns the names of the devices on the disk as shown, e.g. without "/dev/disk/by-id/". The ones
+// after the first without the part of their name they share with it up to a "-", e.g.
+// "nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R518399R-part2, part3": the names of partitions are long and differ
+// only at their end.
+func (entry DiskEntry) DeviceNames() string {
+	var names []string
+	for i, device := range entry.Devices {
+		name := device.DisplayName()
+		if i > 0 {
+			name = name[sharedPrefix(names[0], name):]
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// sharedPrefix returns the length of the prefix the names share, up to and including the last "-" in it.
+func sharedPrefix(a string, b string) int {
+	length := 0
+	for length < len(a) && length < len(b) && a[length] == b[length] {
+		length++
+	}
+	return strings.LastIndex(a[:length], "-") + 1
+}
+
+// HasDevice returns whether the device of the pool is on the disk, any device of the pool if device is "".
+func (entry DiskEntry) HasDevice(pool string, device string) bool {
+	return slices.ContainsFunc(entry.Devices, func(d PoolDevice) bool {
+		return d.Pool == pool && (device == "" || d.Device == device)
+	})
+}
+
+// Kind returns the group of the disk by its type: hard disks first, then SSDs.
+func (entry DiskEntry) Kind() table.Group {
+	if entry.Report.Rotational && entry.Report.Protocol != "NVMe" {
+		return table.Group{Title: "Hard disks", Order: 0}
+	}
+	return table.Group{Title: "SSDs", Order: 1}
 }
 
 type Event interface{}
@@ -84,10 +148,16 @@ type SelectedDiskChangedEvent struct {
 	Disk *DiskEntry
 }
 
-// poolDevice is a device of a pool stored on disks, see DiskBrowserComponent.devices.
-type poolDevice struct {
-	pool   string
-	device string
+// PoolDevice is a device of a pool stored on disks, see DiskBrowserComponent.devices.
+type PoolDevice struct {
+	Pool string
+	// Device is the name of the device in "zpool status"
+	Device string
+}
+
+// DisplayName returns the name of the device as shown, e.g. without "/dev/disk/by-id/".
+func (device PoolDevice) DisplayName() string {
+	return zfs.DeviceDisplayName(device.Device)
 }
 
 // DiskBrowserComponent lists the disks of all pools: what they are, their temperature and their health (SMART).
@@ -123,7 +193,7 @@ type DiskBrowserComponent struct {
 	smartDevices []string
 	smartReadAt  time.Time
 	// toSelect is the disk to select once it is listed, see SelectDevice
-	toSelect *poolDevice
+	toSelect *PoolDevice
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
 	dialogPages *tview.Pages
 	// onSetup offers to allow running smartctl with sudo, nil: not offered, see SetOnSetup
@@ -177,13 +247,26 @@ func (browser *DiskBrowserComponent) setupTable() {
 	t := browser.tableContainer
 	t.SetTitle("Disks")
 	t.SetFilterFunc(func(entry *DiskEntry, filterText string) bool {
-		return table.MatchesGlob(entry.Pool, filterText) || table.MatchesGlob(entry.DeviceName(), filterText) ||
-			table.MatchesGlob(entry.Report.Disk, filterText) || table.MatchesGlob(entry.Report.Model, filterText) ||
+		for _, device := range entry.Devices {
+			if table.MatchesGlob(device.Pool, filterText) || table.MatchesGlob(device.DisplayName(), filterText) {
+				return true
+			}
+		}
+		return table.MatchesGlob(entry.Report.Disk, filterText) || table.MatchesGlob(entry.Report.Model, filterText) ||
 			table.MatchesGlob(entry.Report.Serial, filterText)
 	})
 	t.SetFilterChangedCallback(browser.updateFooter)
 	t.SetColumnSpec(tableColumns, columnPool, false)
 	t.SetActiveColumns(defaultColumns)
+	t.SetGroupings([]table.Grouping[DiskEntry]{
+		{Key: groupingType, Name: "type", GroupOf: func(entry *DiskEntry) table.Group { return entry.Kind() }},
+		// the pools of the disk, so a disk is listed once
+		{Key: groupingPool, Name: "pool", GroupOf: func(entry *DiskEntry) table.Group {
+			return table.Group{Title: entry.PoolNames()}
+		}},
+	})
+	// hard disks and SSDs wear differently, so their values are compared among their own kind
+	t.SetGrouping(groupingType)
 	t.BindColumnLayout(state.Current, stateKeyTable, tableColumns)
 	t.SetPlaceholder("Reading the disks of the pools…", theme.Colors.Pool.Hint)
 	t.SetFooterEnabledFunc(func() bool { return browser.enabled() })
@@ -232,11 +315,11 @@ func (browser *DiskBrowserComponent) SetStatuses(statuses []*zfs.PoolStatus) {
 }
 
 // devices returns the devices of all pools that are not groups (e.g. mirrors), in the order of the pools.
-func (browser *DiskBrowserComponent) devices() []poolDevice {
-	var devices []poolDevice
+func (browser *DiskBrowserComponent) devices() []PoolDevice {
+	var devices []PoolDevice
 	for _, status := range browser.statuses {
 		for _, name := range zfs.LeafDevices(status.Devices) {
-			devices = append(devices, poolDevice{pool: status.Name, device: name})
+			devices = append(devices, PoolDevice{Pool: status.Name, Device: name})
 		}
 	}
 	return devices
@@ -246,7 +329,7 @@ func (browser *DiskBrowserComponent) devices() []poolDevice {
 func (browser *DiskBrowserComponent) deviceNames() []string {
 	var names []string
 	for _, device := range browser.devices() {
-		names = append(names, device.device)
+		names = append(names, device.Device)
 	}
 	return names
 }
@@ -257,10 +340,17 @@ func (browser *DiskBrowserComponent) render() {
 	var entries []*DiskEntry
 	if browser.smartReports != nil {
 		entries = []*DiskEntry{}
+		byDisk := map[string]*DiskEntry{}
 		for _, device := range browser.devices() {
-			for _, report := range browser.smartReports[device.device] {
-				entries = append(entries, &DiskEntry{Pool: device.pool, Device: device.device, Report: report,
-					Reading: browser.readings[device.device]})
+			for _, report := range browser.smartReports[device.Device] {
+				// once per disk: the same values for each of its devices (e.g. a partition for each of two pools)
+				entry := byDisk[report.Disk]
+				if entry == nil {
+					entry = &DiskEntry{Report: report, Reading: browser.readings[device.Device]}
+					byDisk[report.Disk] = entry
+					entries = append(entries, entry)
+				}
+				entry.Devices = append(entry.Devices, device)
 			}
 		}
 		browser.tableContainer.SetPlaceholder("No pool is stored on a disk.", theme.Colors.Pool.Hint)
@@ -277,7 +367,7 @@ func (browser *DiskBrowserComponent) render() {
 	var toSelect *DiskEntry
 	if browser.toSelect != nil {
 		for _, entry := range visible {
-			if entry.Pool != browser.toSelect.pool || (browser.toSelect.device != "" && entry.Device != browser.toSelect.device) {
+			if !entry.HasDevice(browser.toSelect.Pool, browser.toSelect.Device) {
 				continue
 			}
 			// of a pool, the disk an alert is about
@@ -322,7 +412,7 @@ func (browser *DiskBrowserComponent) render() {
 // the pool most in need of attention (see attentionRank), e.g. the one an alert of the pool is about. Must be called
 // on the UI thread.
 func (browser *DiskBrowserComponent) SelectDevice(pool string, device string) {
-	browser.toSelect = &poolDevice{pool: pool, device: device}
+	browser.toSelect = &PoolDevice{Pool: pool, Device: device}
 	// a filter could hide it
 	browser.tableContainer.SetFilterText("")
 	browser.render()
@@ -478,12 +568,13 @@ func (browser *DiskBrowserComponent) GetShortcutMap() []shortcut_helper.Shortcut
 		},
 		uiutil.TableComponentShortcutColumns.WithRun(browser.openColumnSelectionDialog).OnlyInMenu(),
 		uiutil.TableComponentShortcutFilter.WithRun(browser.tableContainer.StartFilter),
+		uiutil.TableComponentShortcutGroup.WithRun(browser.tableContainer.CycleGrouping),
 	}
 }
 
-// GetCommands returns the sort commands of the list, see shortcut_helper.CommandProvider.
+// GetCommands returns the sort and grouping commands of the list, see shortcut_helper.CommandProvider.
 func (browser *DiskBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
-	return browser.tableContainer.SortCommands()
+	return append(browser.tableContainer.SortCommands(), browser.tableContainer.GroupingCommands()...)
 }
 
 func (browser *DiskBrowserComponent) GetLayout() tview.Primitive {
@@ -513,9 +604,9 @@ func toTableCells(row int, columns []*table.Column, entry *DiskEntry) []*tview.T
 		attributes := tcell.AttrNone
 		switch column {
 		case columnPool:
-			text = entry.Pool
+			text = entry.PoolNames()
 		case columnDevice:
-			text, color = entry.DeviceName(), tcell.ColorWhite
+			text, color = entry.DeviceNames(), tcell.ColorWhite
 		case columnDisk:
 			text = report.Disk
 		case columnModel:
@@ -525,7 +616,7 @@ func toTableCells(row int, columns []*table.Column, entry *DiskEntry) []*tview.T
 		case columnFirmware:
 			text = report.Firmware
 		case columnProtocol:
-			text = report.Protocol
+			text = typeOf(report)
 		case columnCapacity:
 			if report.Capacity > 0 {
 				// in powers of 1000, like the disks are sold (and the details)
@@ -548,6 +639,9 @@ func toTableCells(row int, columns []*table.Column, entry *DiskEntry) []*tview.T
 			if !report.ReadAt.IsZero() {
 				text = uiutil.FormatTime(report.ReadAt)
 			}
+		case columnBad, columnUncorrectable, columnCrc, columnWear, columnWritten, columnPowerCycles, columnUnsafe,
+			columnLoadCycles:
+			text, color = formatCounter(column, report)
 		}
 		cells = append(cells, tview.NewTableCell(tview.Escape(text)).SetTextColor(color).SetAttributes(attributes).
 			SetAlign(column.Alignment))
@@ -614,8 +708,10 @@ func sortDiskEntries(entries []*DiskEntry, column *table.Column, inverted bool) 
 	slices.SortStableFunc(entries, func(a, b *DiskEntry) int {
 		result := 0
 		switch column {
+		case columnPool:
+			result = strings.Compare(a.PoolNames(), b.PoolNames())
 		case columnDevice:
-			result = strings.Compare(a.DeviceName(), b.DeviceName())
+			result = strings.Compare(a.DeviceNames(), b.DeviceNames())
 		case columnDisk:
 			result = strings.Compare(a.Report.Disk, b.Report.Disk)
 		case columnModel:
@@ -625,7 +721,7 @@ func sortDiskEntries(entries []*DiskEntry, column *table.Column, inverted bool) 
 		case columnFirmware:
 			result = strings.Compare(a.Report.Firmware, b.Report.Firmware)
 		case columnProtocol:
-			result = strings.Compare(a.Report.Protocol, b.Report.Protocol)
+			result = strings.Compare(typeOf(a.Report), typeOf(b.Report))
 		case columnCapacity:
 			result = cmp.Compare(a.Report.Capacity, b.Report.Capacity)
 		case columnTemp:
@@ -638,9 +734,12 @@ func sortDiskEntries(entries []*DiskEntry, column *table.Column, inverted bool) 
 			result = cmp.Compare(powerOnHoursOf(a.Report), powerOnHoursOf(b.Report))
 		case columnRead:
 			result = a.Report.ReadAt.Compare(b.Report.ReadAt)
+		case columnBad, columnUncorrectable, columnCrc, columnWear, columnWritten, columnPowerCycles, columnUnsafe,
+			columnLoadCycles:
+			result = cmp.Compare(counterOf(column, a.Report), counterOf(column, b.Report))
 		}
 		if result == 0 {
-			result = cmp.Or(strings.Compare(a.Pool, b.Pool), strings.Compare(a.DeviceName(), b.DeviceName()),
+			result = cmp.Or(strings.Compare(a.PoolNames(), b.PoolNames()), strings.Compare(a.DeviceNames(), b.DeviceNames()),
 				strings.Compare(a.Report.Disk, b.Report.Disk))
 		}
 		if inverted {

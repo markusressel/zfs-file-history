@@ -7,6 +7,7 @@ import (
 	"time"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 
@@ -33,7 +34,7 @@ var failed = disk.SmartProblem{Severity: disk.SmartError, Short: "FAILED", Text:
 func ataReport() disk.SmartReport {
 	return disk.SmartReport{
 		Disk: "sda", ReadAt: readAt, CheckedAt: readAt, Model: "WDC WD40EFRX", Serial: "WD-1", Firmware: "82.00A82", Capacity: 4000787030016, Protocol: "ATA",
-		HealthKnown: true, Passed: true, PowerOnHours: 8760,
+		Rotational: true, HealthKnown: true, Passed: true, PowerOnHours: 8760,
 		Problems: []disk.SmartProblem{reallocated},
 		Attributes: []disk.SmartAttribute{
 			{Id: 5, Name: "Reallocated_Sector_Ct", Value: "8", Raw: 8, Normalized: 199, Worst: 199, Threshold: 140, Important: true},
@@ -45,9 +46,10 @@ func ataReport() disk.SmartReport {
 }
 
 func TestFormatDetails(t *testing.T) {
-	entry := &DiskEntry{Pool: "tank", Device: "/dev/disk/by-id/ata-DISK_1-part1", Report: ataReport()}
+	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "tank", Device: "/dev/disk/by-id/ata-DISK_1-part1"}}, Report: ataReport()}
 	assert.Equal(t, []string{
-		"ata-DISK_1-part1 → sda  in tank",
+		"sda  SATA HDD  in tank",
+		"  Devices:  ata-DISK_1-part1  in tank",
 		"  Disk:     WDC WD40EFRX  serial WD-1 · 4.0 TB · firmware 82.00A82 · ATA",
 		"  Health:   PASSED",
 		"  Power on: 8,760 h (1.0 years)",
@@ -61,19 +63,19 @@ func TestFormatDetails(t *testing.T) {
 		lines  []string
 	}{
 		{"asleep", disk.SmartReport{Disk: "sdb", Standby: true, CheckedAt: readAt},
-			[]string{"sdb  in tank", "  SMART:    asleep, not woken up to read it"}},
+			[]string{"sdb  SSD  in tank", "  SMART:    asleep, not woken up to read it"}},
 		{"needs root", disk.SmartReport{Disk: "sdb", Err: disk.ErrSmartNeedsRoot},
-			[]string{"sdb  in tank", "  SMART:    only root may read them: allow \"Disk health\" in the command menu (:)"}},
+			[]string{"sdb  SSD  in tank", "  SMART:    only root may read them: allow \"Disk health\" in the command menu (:)"}},
 		{"no smartctl", disk.SmartReport{Disk: "sdb", Err: disk.ErrSmartctlMissing},
-			[]string{"sdb  in tank", "  SMART:    not read: smartctl is not installed (smartmontools)"}},
+			[]string{"sdb  SSD  in tank", "  SMART:    not read: smartctl is not installed (smartmontools)"}},
 		{"other error", disk.SmartReport{Disk: "sdb", Err: errors.New("smartctl failed: no")},
-			[]string{"sdb  in tank", "  Error:    smartctl failed: no"}},
+			[]string{"sdb  SSD  in tank", "  Error:    smartctl failed: no"}},
 		{"failed, no hours", disk.SmartReport{Disk: "sdb", ReadAt: readAt, HealthKnown: true, PowerOnHours: -1},
-			[]string{"sdb  in tank", "  Health:   FAILED", "  Read:     " + uiutil.FormatTime(readAt)}},
+			[]string{"sdb  SSD  in tank", "  Health:   FAILED", "  Read:     " + uiutil.FormatTime(readAt)}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entry := &DiskEntry{Pool: "tank", Device: "sdb", Report: test.report}
+			entry := &DiskEntry{Devices: []PoolDevice{{Pool: "tank", Device: "sdb"}}, Report: test.report}
 			assert.Equal(t, test.lines, strings.Split(testutil.StripTags(strings.Join(formatDetails(entry), "\n")), "\n"))
 		})
 	}
@@ -146,4 +148,54 @@ func TestTemperaturePosition(t *testing.T) {
 			assert.InDelta(t, test.expected, temperaturePosition(test.temperature), 0.001)
 		})
 	}
+}
+
+func TestTypeOf(t *testing.T) {
+	tests := []struct {
+		protocol   string
+		rotational bool
+		expected   string
+	}{
+		{"ATA", true, "SATA HDD"},
+		{"ATA", false, "SATA SSD"},
+		{"NVMe", false, "NVMe SSD"},
+		// the kernel reports unknown ones as rotational
+		{"NVMe", true, "NVMe SSD"},
+		{"SCSI", true, "SAS HDD"},
+		// not read
+		{"", true, "HDD"},
+	}
+	for _, test := range tests {
+		assert.Equal(t, test.expected, typeOf(disk.SmartReport{Protocol: test.protocol, Rotational: test.rotational}))
+	}
+}
+
+func TestFormatCounter(t *testing.T) {
+	report := healthy("sda")
+	report.Counters = disk.SmartCounters{BadSectors: 8, Uncorrectable: 0, CrcErrors: 1234, WearPercent: 93,
+		BytesWritten: 43_915_542_390_272, PowerCycles: 21, UnsafeShutdowns: -1, LoadCycles: 48284}
+	tests := []struct {
+		column *table.Column
+		text   string
+		color  tcell.Color
+	}{
+		{columnBad, "8", theme.Colors.Pool.Degraded},
+		{columnUncorrectable, "0", theme.Colors.Layout.Table.ZeroSize},
+		{columnCrc, "1,234", theme.Colors.Pool.Degraded},
+		{columnWear, "93%", theme.Colors.Pool.Degraded},
+		{columnWritten, "44 TB", tcell.ColorLightGray},
+		{columnPowerCycles, "21", tcell.ColorLightGray},
+		{columnUnsafe, "", tcell.ColorDefault},
+		{columnLoadCycles, "48,284", tcell.ColorLightGray},
+	}
+	for _, test := range tests {
+		text, color := formatCounter(test.column, report)
+		assert.Equal(t, test.text, text, test.column.Title)
+		assert.Equal(t, test.color, color, test.column.Title)
+	}
+
+	report.ReadAt = time.Time{}
+	text, _ := formatCounter(columnBad, report)
+	assert.Empty(t, text, "not read")
+	assert.Equal(t, int64(-1), counterOf(columnBad, report), "sorted first")
 }

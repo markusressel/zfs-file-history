@@ -84,7 +84,10 @@ of the code.
   is kept). The `Monitor` reads all disks every hour (alert `zfs.PoolAlertSmart`), the devices pane and the disks page
   every 10 minutes while drawn, `s` now; one `SmartReader` for all (`newSmartSource` in `root.go`). The disks page
   (`disk_page.go`, `internal/ui/disk_browser`) lists the disks of all pools (from the statuses of the `Monitor`),
-  the details and attributes of the selected one below; Enter or a click on the SMART column of the devices pane,
+  each disk once (also with a partition for each of several pools), grouped by hard disk or SSD (`Rotational`, from
+  sysfs) or by pool, with the values that mean the same for all kinds of disks (`SmartCounters`: bad sectors, wear,
+  bytes written, ...; -1 if not reported, units of vendor attributes only where known), the details and attributes
+  of the selected one below; Enter or a click on the SMART column of the devices pane,
   and a click on a temperature or SMART alert, show the disk there. Fixtures in `internal/disk/testdata` (the permission denied, ATA hot and healthy NVMe ones are from
   real systems).
 - `internal/state/`: the persisted state (`state.Current`): settings, table column layouts, selections, the session.
@@ -129,6 +132,8 @@ of the code.
     `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
     ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),
+    grouping (`SetGroupings`, `b` cycles them: a row above each group that cannot be selected, its title drawn over
+    the row so it does not widen the first column; saved with the column layout),
     horizontal scrolling, multi-selection, persisted column layouts, `ContentSize`.
   - `util/` (imported as `uiutil`): `DataLoader`, `Debouncer`, `SubscribeUI`, `LoadingContainer`, `ResizableSplit`,
     `SelectionMemory`, content size helpers, formatting.

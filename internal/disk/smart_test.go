@@ -126,6 +126,7 @@ func TestParseSmartctl_NvmeHealthy(t *testing.T) {
 		"Error log entries":  "1876",
 		"Unsafe shutdowns":   "98",
 		"Data units written": "198543345",
+		"Power cycles":       "684",
 	}, values)
 }
 
@@ -229,6 +230,8 @@ func TestSmartReader_ReadDevices(t *testing.T) {
 	assert.Equal(t, "sda", reports["sda1"][0].Disk)
 	assert.Equal(t, "8 realloc", reports["sda1"][0].Problems[0].Short)
 	assert.Equal(t, "Samsung SSD 970 EVO Plus 1TB", reports["nvme0n1"][0].Model)
+	assert.True(t, reports["sda1"][0].Rotational, "from sysfs")
+	assert.False(t, reports["nvme0n1"][0].Rotational)
 	assert.Empty(t, reports["tank.img"], "not stored on a disk")
 	assert.Equal(t, []string{"/dev/sda", "/dev/nvme0n1"}, fake.getRuns())
 
