@@ -179,7 +179,7 @@ func TestDiskBrowser_ListsDisksOfAllPools(t *testing.T) {
 func TestDiskBrowser_DetailsOfSelectedDisk(t *testing.T) {
 	dt := newDiskBrowserTest(t)
 
-	assert.Contains(t, dt.detailsText(), "ata-DISK_1-part1  in tank")
+	assert.Contains(t, dt.detailsText(), "tank  ata-DISK_1-part1")
 	assert.Equal(t, []string{"Reallocated_Sector_Ct", "Power_On_Hours", "Airflow_Temperature_Cel", "Temperature_Celsius"}, dt.attributeNames())
 
 	dt.press(tcell.KeyDown, 0)
@@ -189,7 +189,7 @@ func TestDiskBrowser_DetailsOfSelectedDisk(t *testing.T) {
 	// over the row of the SSDs
 	dt.press(tcell.KeyDown, 0)
 	dt.waitFor("details of nvme0n1", func() bool {
-		return strings.Contains(dt.detailsText(), "nvme0n1\nType:     SSD\nDevices:  nvme0n1p1  in fast")
+		return strings.Contains(dt.detailsText(), "nvme0n1\n● healthy · SSD in fast")
 	})
 	// NVMe values have no id: in the order of smartctl
 	assert.Equal(t, []string{"Percentage used", "Available spare"}, dt.attributeNames())
@@ -199,14 +199,14 @@ func TestDiskBrowser_SelectDevice(t *testing.T) {
 	dt := newDiskBrowserTest(t)
 
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "sdb") })
-	assert.Contains(t, dt.detailsText(), "sdb\nType:     HDD\nDevices:  sdb  in tank")
+	assert.Contains(t, dt.detailsText(), "sdb\n● health unknown: SMART needs root · HDD in tank")
 	// the disk of the pool with a problem, e.g. for its alert
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "sdb") })
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "") })
-	assert.Contains(t, dt.detailsText(), "sda\nType:     SATA HDD\nDevices:  ata-DISK_1-part1  in tank")
+	assert.Contains(t, dt.detailsText(), "sda · WDC WD40EFRX\n● 8 reallocated sectors · SATA HDD in tank")
 	// the first one if none has
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("fast", "") })
-	assert.Contains(t, dt.detailsText(), "nvme0n1\nType:     SSD\nDevices:  nvme0n1p1  in fast")
+	assert.Contains(t, dt.detailsText(), "nvme0n1\n● healthy · SSD in fast")
 }
 
 func TestDiskBrowser_SelectDeviceBeforeLoaded(t *testing.T) {
@@ -371,7 +371,7 @@ func TestDiskBrowser_SelectDeviceNotListed(t *testing.T) {
 	dt.smart.SetReports("sdz", []disk.SmartReport{healthy("sdz")})
 
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("other", "sdz") })
-	assert.Contains(t, dt.detailsText(), "sda\nType:     SATA HDD\nDevices:  ata-DISK_1-part1  in tank", "the first disk")
+	assert.Contains(t, dt.detailsText(), "sda · WDC WD40EFRX\n● 8 reallocated sectors · SATA HDD in tank", "the first disk")
 
 	statuses := append(testStatuses(), &zfs.PoolStatus{Name: "other", Devices: []*zfs.PoolDevice{
 		{Name: "other", State: zfs.PoolStateOnline},
@@ -382,7 +382,7 @@ func TestDiskBrowser_SelectDeviceNotListed(t *testing.T) {
 		dt.browser.ReadSmart()
 	})
 	dt.waitFor("the new pool listed", func() bool { return len(dt.rows()) == 4 })
-	assert.Contains(t, dt.detailsText(), "sda\nType:     SATA HDD\nDevices:  ata-DISK_1-part1  in tank", "still the disk the user selected")
+	assert.Contains(t, dt.detailsText(), "sda · WDC WD40EFRX\n● 8 reallocated sectors · SATA HDD in tank", "still the disk the user selected")
 }
 
 func TestAttentionRank(t *testing.T) {
@@ -460,7 +460,9 @@ func TestDiskBrowser_DiskOfSeveralPools(t *testing.T) {
 
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("boot", "nvme0n1p2") })
 	details := dt.detailsText()
-	assert.Contains(t, details, "nvme0n1\nType:     SSD\nDevices:  nvme0n1p1  in fast\n          nvme0n1p2  in boot")
+	assert.Contains(t, details, "nvme0n1\n● healthy · SSD in fast, boot")
+	assert.Contains(t, details, "fast  nvme0n1p1")
+	assert.Contains(t, details, "boot  nvme0n1p2")
 }
 
 func TestDiskBrowser_Groupings(t *testing.T) {

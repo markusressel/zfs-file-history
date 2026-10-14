@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
-	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -44,9 +43,9 @@ func (f *fakeLoader) load(request datasetInfoRequest) (*datasetInfoResult, error
 		key = request.path
 	}
 	return &datasetInfoResult{
-		dataset:    &zfs.Dataset{Path: request.path},
-		title:      "Dataset: " + key,
-		properties: []*DatasetInfoTableEntry{{Name: "Key", Value: key}},
+		dataset: &zfs.Dataset{Path: request.path},
+		title:   "Dataset: " + key,
+		facts:   &datasetFacts{kind: "filesystem", mounted: "yes", mountPoint: key},
 	}, nil
 }
 
@@ -196,19 +195,6 @@ func TestDatasetInfo_StaleResultIsDiscarded(t *testing.T) {
 	assert.Contains(t, title, "rpool/fast")
 }
 
-func TestFormatProperties(t *testing.T) {
-	text := formatProperties([]*DatasetInfoTableEntry{
-		{Name: "Mounted", Value: "no"},
-		{Name: "Mount Point", Value: "/with[brackets]"},
-	})
-	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-	assert.Len(t, lines, 2)
-	// keys are right-aligned to the longest key
-	assert.Contains(t, lines[0], "    Mounted:")
-	// values are escaped
-	assert.Contains(t, lines[1], tview.Escape("/with[brackets]"))
-}
-
 func TestFormatPermissions(t *testing.T) {
 	granted := &zfs.DatasetPermissions{Grants: map[zfs.Permission][]zfs.Grant{
 		zfs.PermissionHold:     {{}},
@@ -216,81 +202,142 @@ func TestFormatPermissions(t *testing.T) {
 		"send":                 {{}}, // not shown, not used by zfs-file-history
 	}}
 	assert.Equal(t, "snapshot, hold", formatPermissions(granted, nil), "in display order")
+	all := &zfs.DatasetPermissions{Grants: map[zfs.Permission][]zfs.Grant{}}
+	for _, permission := range []zfs.Permission{zfs.PermissionSnapshot, zfs.PermissionDestroy, zfs.PermissionMount, zfs.PermissionHold, zfs.PermissionRelease} {
+		all.Grants[permission] = []zfs.Grant{{}}
+	}
+	assert.Equal(t, "snapshot, destroy, mount, hold,\nrelease", formatPermissions(all, nil), "a few on each line")
 	assert.Equal(t, "none", formatPermissions(&zfs.DatasetPermissions{}, nil))
 	assert.Equal(t, "all (root)", formatPermissions(&zfs.DatasetPermissions{IsRoot: true}, nil))
 	assert.Equal(t, "unknown", formatPermissions(nil, errors.New("zfs not found")))
 }
 
-func TestResolveValueColor_Permissions(t *testing.T) {
-	assert.Equal(t, theme.Colors.Permissions.Granted, resolveValueColor("Permissions", "snapshot, hold"))
-	assert.Equal(t, theme.Colors.Permissions.Granted, resolveValueColor("Permissions", "all (root)"))
-	assert.Equal(t, theme.Colors.Permissions.Unknown, resolveValueColor("Permissions", "unknown"))
-	assert.Equal(t, tcell.ColorGray, resolveValueColor("Permissions", "none"))
-}
-
-func TestFormatPoolSummary(t *testing.T) {
+func TestFormatPoolScan(t *testing.T) {
 	tests := []struct {
 		status   zfs.PoolStatus
 		expected string
 	}{
 		{zfs.PoolStatus{Name: "rpool", State: zfs.PoolStateOnline, ScanProgress: -1,
 			Scan: "scrub repaired 0B in 00:06:46 with 0 errors on Thu Oct  1 12:50:53 2026"},
-			"ONLINE · scrub 2026-10-01"},
+			"scrub 2026-10-01"},
 		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateDegraded, ScanProgress: 31.77,
 			Scan: "resilver in progress since Tue Oct 13 09:12:44 2026\n254G resilvered, 31.77% done"},
-			"DEGRADED · resilver 31.8%"},
+			"resilver 31.8%"},
 		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1,
 			Scan: "resilvered 254G in 02:10:31 with 0 errors on Tue Oct 13 11:23:15 2026"},
-			"ONLINE · resilver 2026-10-13"},
+			"resilver 2026-10-13"},
 		{zfs.PoolStatus{Name: "new", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "none requested"},
-			"ONLINE · never scrubbed"},
+			"never scrubbed"},
 		{zfs.PoolStatus{Name: "new", State: zfs.PoolStateOnline, ScanProgress: -1},
-			"ONLINE · never scrubbed"},
+			"never scrubbed"},
 		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "scrub canceled on Tue Oct 13 10:00:01 2026"},
-			"ONLINE · scrub canceled"},
+			"scrub canceled"},
 		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "scrub paused since Tue Oct 13 10:00:01 2026\nmore"},
-			"ONLINE · scrub paused"},
+			"scrub paused"},
 		// other kinds of scans
 		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: 12.5, Scan: "error scrub in progress since Tue Oct 13 10:00:01 2026"},
-			"ONLINE · scan 12.5%"},
+			"scan 12.5%"},
 		{zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "error scrub repaired 0B in 00:00:01 with 0 errors on Tue Oct 13 10:00:01 2026"},
-			"ONLINE · scan 2026-10-13"},
+			"scan 2026-10-13"},
 	}
 	for _, test := range tests {
 		t.Run(test.expected, func(t *testing.T) {
-			assert.Equal(t, test.expected, formatPoolSummary(&test.status))
+			assert.Equal(t, test.expected, formatPoolScan(&test.status))
 		})
 	}
 }
 
-func TestPoolProperty(t *testing.T) {
-	original := loadPoolStatus
-	t.Cleanup(func() { loadPoolStatus = original })
-	var requested []string
-	loadPoolStatus = func(name string) (*zfs.PoolStatus, error) {
-		requested = append(requested, name)
-		if name == "broken" {
-			return nil, errors.New("zpool status failed")
-		}
-		return &zfs.PoolStatus{Name: name, State: zfs.PoolStateDegraded, ScanProgress: -1}, nil
-	}
+const gib = 1 << 30
 
-	// the pool of the dataset, colored by its state
-	assert.Equal(t, &DatasetInfoTableEntry{Name: "Pool", Value: "DEGRADED · never scrubbed", Color: theme.Colors.Pool.Degraded},
-		poolProperty("tank/data/home"))
-	assert.Equal(t, "DEGRADED · never scrubbed", poolProperty("tank").Value, "the root dataset")
-	assert.Equal(t, &DatasetInfoTableEntry{Name: "Pool", Value: "unknown", Color: theme.Colors.Permissions.Unknown},
-		poolProperty("broken/data"))
-	assert.Nil(t, poolProperty(""), "the name of the dataset is not known")
-	assert.Equal(t, []string{"tank", "tank", "broken"}, requested)
+// homeFacts are the facts of a mounted, compressed and encrypted dataset with snapshots and a child.
+func homeFacts() *datasetFacts {
+	return &datasetFacts{
+		kind: "filesystem", mountPoint: "/home", mounted: "yes", canMount: "on", readonly: "off",
+		compression: "zstd", compressRatio: "1.90x", encrypted: true, encryption: "aes-256-gcm", keyStatus: "available",
+		created: time.Now().AddDate(-5, 0, 0), used: 336 * gib, available: 258 * gib,
+		usedByDataset: 196 * gib, usedBySnapshots: 18 * gib, usedByChildren: 121 * gib, logicalUsed: 585 * gib,
+		permissions: "snapshot, mount", poolName: "rpool",
+		pool: &zfs.PoolStatus{Name: "rpool", State: zfs.PoolStateOnline, ScanProgress: -1, Scan: "none requested"},
+	}
 }
 
-func TestFormatProperties_Color(t *testing.T) {
-	text := formatProperties([]*DatasetInfoTableEntry{
-		{Name: "Pool", Value: "tank · DEGRADED", Color: theme.Colors.Pool.Degraded},
-		{Name: "Mounted", Value: "yes"},
-	})
-	assert.Contains(t, text, txwidgets.ColorTag(theme.Colors.Pool.Degraded)+"tank · DEGRADED")
-	// chosen by the name and value
-	assert.Contains(t, text, txwidgets.ColorTag(tcell.ColorGreen)+"yes")
+func infoLines(facts *datasetFacts) []string {
+	return strings.Split(testutil.StripTags(formatInfo(facts)), "\n")
+}
+
+func TestFormatInfo(t *testing.T) {
+	facts := homeFacts()
+	assert.Equal(t, []string{
+		"● mounted at /home",
+		"███████████▍         57% of 594 GiB · 258 GiB free",
+		"",
+		"Space",
+		"Data         196 GiB",
+		"Snapshots    18 GiB",
+		"Children     121 GiB",
+		"Compression  zstd · saves 249 GiB (1.90×)",
+		"",
+		"Dataset",
+		"Pool         rpool ONLINE · never scrubbed",
+		"Created      5 years ago · " + facts.created.Format(time.DateOnly),
+		"Encryption   aes-256-gcm · key loaded",
+		"Permissions  snapshot, mount",
+	}, infoLines(facts), "defaults that say nothing are left out (read-only, can mount)")
+	// the verdict is green: all is well
+	assert.True(t, strings.HasPrefix(formatInfo(facts), txwidgets.ColorTag(uiutil.InfoOk.Color())+"●"))
+}
+
+func TestFormatInfo_Verdict(t *testing.T) {
+	tests := []struct {
+		name    string
+		change  func(facts *datasetFacts)
+		verdict string
+		state   uiutil.InfoState
+	}{
+		{"almost full", func(facts *datasetFacts) { facts.available = 30 * gib }, "● 92% full · mounted at /home", uiutil.InfoWarning},
+		{"full", func(facts *datasetFacts) { facts.available = 10 * gib }, "● 97% full · mounted at /home", uiutil.InfoError},
+		{"degraded pool", func(facts *datasetFacts) { facts.pool.State = zfs.PoolStateDegraded }, "● pool DEGRADED · mounted at /home", uiutil.InfoWarning},
+		{"key not loaded", func(facts *datasetFacts) { facts.keyStatus = "unavailable"; facts.mounted = "no" },
+			"● key not loaded · not mounted", uiutil.InfoError},
+		{"not mounted, but should be", func(facts *datasetFacts) { facts.mounted = "no" }, "● not mounted", uiutil.InfoWarning},
+		{"not mounted on purpose", func(facts *datasetFacts) { facts.mounted = "no"; facts.canMount = "noauto" }, "● not mounted", uiutil.InfoOk},
+		{"read-only clone", func(facts *datasetFacts) { facts.readonly = "on"; facts.origin = "rpool/home@daily" },
+			"● mounted at /home · read-only · clone", uiutil.InfoOk},
+		{"volume", func(facts *datasetFacts) { facts.kind = "volume"; facts.mounted = "-" }, "● volume", uiutil.InfoOk},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			facts := homeFacts()
+			test.change(facts)
+			assert.Equal(t, test.verdict, infoLines(facts)[0])
+			assert.True(t, strings.HasPrefix(formatInfo(facts), txwidgets.ColorTag(test.state.Color())+"●"), "the dot in the color of the worst part")
+		})
+	}
+}
+
+func TestFormatInfo_NotMounted(t *testing.T) {
+	facts := homeFacts()
+	facts.mounted, facts.canMount = "no", "noauto"
+	lines := infoLines(facts)
+	// why it is not mounted
+	assert.Contains(t, lines, "Mount point  /home")
+	assert.Contains(t, lines, "Can mount    noauto")
+}
+
+func TestFormatInfo_Unknown(t *testing.T) {
+	facts := homeFacts()
+	facts.pool = nil
+	facts.compression = "off"
+	facts.usedBySnapshots = 0
+	facts.permissions = "unknown"
+	lines := infoLines(facts)
+	assert.Contains(t, lines, "Pool         rpool · unknown")
+	assert.Contains(t, lines, "Compression  off")
+	assert.Contains(t, lines, "Snapshots    0 B")
+	assert.Contains(t, lines, "Permissions  unknown")
+	// dimmed: they say little
+	text := formatInfo(facts)
+	assert.Contains(t, text, uiutil.InfoMuted("off"))
+	assert.Contains(t, text, uiutil.InfoMuted("0 B"))
+	assert.Contains(t, text, uiutil.InfoMuted("unknown"))
 }

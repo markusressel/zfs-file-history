@@ -111,82 +111,159 @@ func formatHealth(report disk.SmartReport) (string, tcell.Color) {
 	}
 }
 
-// formatDetails returns the lines of the details of a disk: what it is, its health and its problems. Its name is
-// the title of the pane, the attributes are in a table of their own.
+// detailsBarWidth is the width of the bars of the temperature and the wear in the details of a disk
+const detailsBarWidth = 12
+
+// detailsTitle returns the title of the details of a disk: its name and model.
+func detailsTitle(entry *DiskEntry) string {
+	if entry.Report.Model == "" {
+		return entry.Report.Disk
+	}
+	return entry.Report.Disk + " · " + entry.Report.Model
+}
+
+// formatDetails returns the lines of the details of a disk (see uiutil.InfoText): whether it is healthy, then what it
+// is next to its health. Its name and model are the title of the pane, the attributes are in a table of their own.
 func formatDetails(entry *DiskEntry) []string {
 	report := entry.Report
-	var lines []string
-	field := func(label string, value string) {
-		if label != "" {
-			label += ":"
-		}
-		lines = append(lines, txwidgets.Span(theme.Colors.Layout.Table.Accent, "%-9s", label)+" "+value)
+	var info uiutil.InfoText
+	info.Verdict(detailsVerdict(entry)...)
+	info.Line("")
+
+	var what uiutil.InfoText
+	what.Section("Disk")
+	what.Field("Type", uiutil.InfoValue(typeOf(report)))
+	var pools []string
+	for _, device := range entry.Devices {
+		pools = append(pools, uiutil.InfoValue(device.Pool)+"  "+uiutil.InfoMuted(device.DisplayName()))
 	}
-	field("Type", txwidgets.Span(tcell.ColorWhite, "%s", typeOf(report)))
-	// the devices of the pools on it, so also the pools
-	for i, device := range entry.Devices {
-		label := ""
-		if i == 0 {
-			label = "Devices"
-		}
-		field(label, txwidgets.Span(tcell.ColorWhite, "%s", device.DisplayName())+
-			txwidgets.Span(theme.Colors.Pool.Hint, "  in %s", device.Pool))
+	if len(pools) > 0 {
+		what.Field("Pools", strings.Join(pools, "\n"))
 	}
-	// the model and so on in a line of their own, the name of the device can be long
-	var details []string
 	if report.Serial != "" {
-		details = append(details, "serial "+report.Serial)
-	}
-	if report.Capacity > 0 {
-		details = append(details, humanize.Bytes(uint64(report.Capacity)))
+		what.Field("Serial", uiutil.InfoValue(report.Serial))
 	}
 	if report.Firmware != "" {
-		details = append(details, "firmware "+report.Firmware)
+		what.Field("Firmware", uiutil.InfoValue(report.Firmware))
 	}
-	if report.Model != "" || len(details) > 0 {
-		value := txwidgets.Span(tcell.ColorWhite, "%s", report.Model)
-		if len(details) > 0 {
-			if report.Model != "" {
-				value += "  "
-			}
-			value += txwidgets.Span(theme.Colors.Pool.Hint, "%s", strings.Join(details, " · "))
-		}
-		field("Model", value)
+	if report.Capacity > 0 {
+		what.Field("Size", uiutil.InfoValue(humanize.Bytes(uint64(report.Capacity))))
+	}
+
+	var health uiutil.InfoText
+	health.Section("Health")
+	if temperature := formatDetailsTemperature(entry.Reading); temperature != "" {
+		health.Field("Temp", temperature)
 	}
 	switch {
 	case errors.Is(report.Err, disk.ErrSmartctlMissing):
-		field("SMART", txwidgets.Span(theme.Colors.Pool.Hint, "not read: smartctl is not installed (smartmontools)"))
-		return lines
+		health.Field("SMART", uiutil.InfoMuted("not read: smartctl is not installed (smartmontools)"))
 	case errors.Is(report.Err, disk.ErrSmartNeedsRoot):
-		field("SMART", txwidgets.Span(theme.Colors.Dialog.Error, "only root may read them: allow \"Disk health\" in the command menu (:)"))
-		return lines
+		health.Field("SMART", txwidgets.Span(theme.Colors.Dialog.Error, "only root may read them: allow \"Disk health\" in the command menu (:)"))
 	case report.Err != nil:
-		field("Error", txwidgets.Span(theme.Colors.Dialog.Error, "%s", report.Err.Error()))
-		return lines
+		health.Field("Error", txwidgets.Span(theme.Colors.Dialog.Error, "%s", report.Err.Error()))
 	case !report.HasValues():
-		field("SMART", txwidgets.Span(theme.Colors.Pool.Hint, "asleep, not woken up to read it"))
-		return lines
+		health.Field("SMART", uiutil.InfoMuted("asleep, not woken up to read it"))
+	default:
+		addHealthFields(&health, report)
 	}
 
-	health, color := formatHealth(report)
-	field("Health", txwidgets.Span(color, "%s", health))
+	info.SideBySide(6, &what, &health)
+	return info.Lines()
+}
+
+// addHealthFields adds the health of the disk, read from its SMART values: the result of its health check, its wear,
+// age and problems.
+func addHealthFields(health *uiutil.InfoText, report disk.SmartReport) {
+	text, color := formatHealth(report)
+	health.Field("Check", txwidgets.Span(color, "%s", text))
+	if wear := report.Counters.WearPercent; wear >= 0 {
+		health.Field("Wear", uiutil.InfoBar(float64(wear)/100, detailsBarWidth)+" "+uiutil.InfoValue(fmt.Sprintf("%d%%", wear))+
+			uiutil.InfoMuted(" of its rated endurance"))
+	}
 	if report.PowerOnHours >= 0 {
-		field("Power on", txwidgets.Span(tcell.ColorWhite, "%s h (%.1f years)", humanize.Comma(report.PowerOnHours), float64(report.PowerOnHours)/(24*365)))
+		health.Field("Age", uiutil.InfoValue(fmt.Sprintf("%.1f years", float64(report.PowerOnHours)/(24*365)))+
+			uiutil.InfoMuted(" · "+humanize.Comma(report.PowerOnHours)+" h"))
+	}
+	if written := report.Counters.BytesWritten; written >= 0 {
+		health.Field("Written", uiutil.InfoValue(humanize.Bytes(uint64(written))))
+	}
+	for i, problem := range report.Problems {
+		label := ""
+		if i == 0 {
+			label = "Problems"
+		}
+		health.Field(label, txwidgets.Span(severityColor(problem.Severity), "%s", problem.Text))
 	}
 	read := uiutil.FormatTime(report.ReadAt)
 	if report.Standby {
 		// not woken up to read it again
 		read += ", asleep now"
 	}
-	field("Read", txwidgets.Span(theme.Colors.Pool.Hint, "%s", read))
-	for i, problem := range report.Problems {
-		label := ""
-		if i == 0 {
-			label = "Problems"
-		}
-		field(label, txwidgets.Span(severityColor(problem.Severity), "%s", problem.Text))
+	health.Field("Read", uiutil.InfoMuted(read))
+}
+
+// formatDetailsTemperature returns the temperature of the disk in its details: a bar up to the temperature at which it
+// is too hot (critical), "" if it has none.
+func formatDetailsTemperature(reading disk.Reading) string {
+	switch {
+	case !reading.IsDisk:
+		return ""
+	case reading.NoSensor:
+		return uiutil.InfoMuted("no sensor")
+	case !reading.Known && reading.Idle:
+		return uiutil.InfoMuted("idle, not read: t")
+	case !reading.Known:
+		return ""
 	}
-	return lines
+	text, color := FormatTemperature(reading)
+	value := uiutil.InfoBar(temperaturePosition(reading.Temperature), detailsBarWidth) + " " + txwidgets.Span(color, "%s", text)
+	// the bar ends where the disk is too hot: not a target, a limit
+	switch critical := reading.Temperature.Critical; {
+	case critical <= 0:
+	case reading.Temperature.Celsius >= critical:
+		value += txwidgets.Span(uiutil.InfoError.Color(), " · %.0f°C above critical (%.0f°C)", reading.Temperature.Celsius-critical, critical)
+	default:
+		value += uiutil.InfoMuted(fmt.Sprintf(" · critical at %.0f°C", critical))
+	}
+	if reading.Idle {
+		value += uiutil.InfoMuted(", idle")
+	}
+	return value
+}
+
+// detailsVerdict returns the parts of the verdict of a disk: its problems (or that it is healthy, or why that is not
+// known), then where it is.
+func detailsVerdict(entry *DiskEntry) []uiutil.InfoPart {
+	report := entry.Report
+	var parts []uiutil.InfoPart
+	if entry.Reading.IsCritical() {
+		parts = append(parts, uiutil.InfoPart{Text: "too hot", State: uiutil.InfoError})
+	}
+	switch {
+	case errors.Is(report.Err, disk.ErrSmartNeedsRoot):
+		parts = append(parts, uiutil.InfoPart{Text: "health unknown: SMART needs root", State: uiutil.InfoUnknown})
+	case report.Err != nil:
+		parts = append(parts, uiutil.InfoPart{Text: "health unknown", State: uiutil.InfoUnknown})
+	case !report.HasValues():
+		parts = append(parts, uiutil.InfoPart{Text: "health unknown: asleep", State: uiutil.InfoUnknown})
+	case report.HealthKnown && !report.Passed && len(report.Problems) == 0:
+		// the problems say so otherwise, see disk.SmartReport.Problems
+		parts = append(parts, uiutil.InfoPart{Text: "health check failed", State: uiutil.InfoError})
+	case len(report.Problems) == 0:
+		parts = append(parts, uiutil.InfoPart{Text: "healthy", State: uiutil.InfoOk})
+	}
+	for _, problem := range report.Problems {
+		state := uiutil.InfoWarning
+		if problem.Severity == disk.SmartError {
+			state = uiutil.InfoError
+		}
+		parts = append(parts, uiutil.InfoPart{Text: problem.Text, State: state})
+	}
+	if pools := entry.PoolNames(); pools != "" {
+		parts = append(parts, uiutil.InfoPart{Text: typeOf(report) + " in " + pools})
+	}
+	return parts
 }
 
 // isHardDisk returns whether the disk spins. NVMe drives never do: the kernel reports unknown ones as rotational.

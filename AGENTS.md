@@ -224,6 +224,11 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   the dialogs that show style tags (`newTaggedSelectionDialog`, `NewConfirmByNameDialog`); what is lost for good with
   `theme.Colors.Dialog.Danger`, and their confirmations have a red border (`SetDanger`).
 - New UI elements take their colors from the theme.
+- Panes that describe one thing (the dataset info, the details of a disk) are built with `uiutil.InfoText`: a verdict
+  line first (whether all is well, the dot in the color of the worst part), then the values in sections, labels dim
+  and values bright (`theme.Colors.Info`). Color tells states, not the kind of a value; defaults that say nothing are
+  left out; derived values (how full, how much compression saves, years instead of hours) beat raw ones; bars
+  (`InfoBar`) where a fill level reads faster.
 - Packages must not import upwards: `uiutil` does not import `internal/zfs`, components do not import pages.
 
 ## Tests

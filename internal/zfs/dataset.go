@@ -34,12 +34,17 @@ const (
 	propOrigin          = "origin"
 	propSnapshotLimit   = "snapshot_limit"
 	propSnapshotCount   = "snapshot_count"
+	propUsedByDataset   = "usedbydataset"
+	propUsedBySnapshots = "usedbysnapshots"
+	propUsedByChildren  = "usedbychildren"
+	propLogicalUsed     = "logicalused"
 )
 
 // datasetProperties are the properties read by the getters of Dataset, see Backend.DatasetProperties.
 var datasetProperties = []string{propType, propCreation, propMountpoint, propMounted, propCanmount, propReadonly,
 	propVolsize, propAvailable, propUsed, propCompression, propCompressratio, propSnapdir, propCasesensitivity,
-	propEncryption, propKeystatus, propOrigin, propSnapshotLimit, propSnapshotCount}
+	propEncryption, propKeystatus, propOrigin, propSnapshotLimit, propSnapshotCount, propUsedByDataset,
+	propUsedBySnapshots, propUsedByChildren, propLogicalUsed}
 
 type Dataset struct {
 	Path          string
@@ -213,6 +218,25 @@ func (dataset *Dataset) GetAvailable() uint64 {
 
 func (dataset *Dataset) GetUsed() uint64 {
 	return dataset.getPropertyUint64(propUsed)
+}
+
+// GetUsedByDataset, GetUsedBySnapshots and GetUsedByChildren return the parts of the space used by the dataset
+// (GetUsed): by its own data, by its snapshots (what destroying all of them frees) and by its child datasets.
+func (dataset *Dataset) GetUsedByDataset() uint64 {
+	return dataset.getPropertyUint64(propUsedByDataset)
+}
+
+func (dataset *Dataset) GetUsedBySnapshots() uint64 {
+	return dataset.getPropertyUint64(propUsedBySnapshots)
+}
+
+func (dataset *Dataset) GetUsedByChildren() uint64 {
+	return dataset.getPropertyUint64(propUsedByChildren)
+}
+
+// GetLogicalUsed returns the space the dataset would use without compression, see GetUsed.
+func (dataset *Dataset) GetLogicalUsed() uint64 {
+	return dataset.getPropertyUint64(propLogicalUsed)
 }
 
 func (dataset *Dataset) GetCompression() string {
