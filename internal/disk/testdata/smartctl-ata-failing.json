@@ -1,0 +1,22 @@
+{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "argv": ["smartctl", "-j", "-i", "-H", "-A", "-n", "standby", "--", "/dev/sdb"],
+    "messages": [{"string": "SMART overall-health self-assessment test result: FAILED!", "severity": "error"}],
+    "exit_status": 24
+  },
+  "device": {"name": "/dev/sdb", "info_name": "/dev/sdb [SAT]", "type": "sat", "protocol": "ATA"},
+  "model_name": "ST4000DM004-2CV104",
+  "serial_number": "SERIAL0002",
+  "smart_status": {"passed": false},
+  "ata_smart_attributes": {
+    "revision": 10,
+    "table": [
+      {"id": 5, "name": "Reallocated_Sector_Ct", "value": 5, "worst": 5, "thresh": 10, "when_failed": "now", "flags": {"value": 51, "string": "PO--CK ", "prefailure": true}, "raw": {"value": 3912, "string": "3912"}},
+      {"id": 187, "name": "Reported_Uncorrect", "value": 1, "worst": 1, "thresh": 0, "when_failed": "", "flags": {"value": 50, "string": "-O--CK ", "prefailure": false}, "raw": {"value": 211, "string": "211"}},
+      {"id": 197, "name": "Current_Pending_Sector", "value": 100, "worst": 100, "thresh": 0, "when_failed": "", "flags": {"value": 18, "string": "-O--C- ", "prefailure": false}, "raw": {"value": 16, "string": "16"}}
+    ]
+  },
+  "power_on_time": {"hours": 41000}
+}

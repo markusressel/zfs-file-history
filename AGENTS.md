@@ -29,7 +29,9 @@ of the code.
 
 - `cmd/`: the cobra commands. `root.go` starts the UI, `setup.go` installs the sudoers rules of `zfs.SudoersRules`
   (`/etc/sudoers.d/zfs-file-history`, checked with `visudo` before installing): `--events` (`zpool events -v -f`,
-  the event watcher), `--data-errors` (`zpool status -p -v`), `--pool-actions`. Without flags it asks for each rule.
+  the event watcher), `--data-errors` (`zpool status -p -v`), `--smart` (`smartctl -j -i -H -A -n standby -- /dev/*`;
+  `--` keeps other options out, smartctl takes one device; only offered if smartctl is installed,
+  `SudoersRule.IsAvailable`), `--pool-actions`. Without flags it asks for each rule.
   It adds to the file (`zfs.SudoersFile`, which also reads the files of older versions), so it can run again.
 - `internal/zfs/sudoers.go`: the rules, and which ones the user has (`AllowedSudoersRules`: parses `sudo -n -l`,
   which is not logged and needs no password once any rule has NOPASSWD; `sudo -l <command>` cannot be used, it
@@ -65,14 +67,37 @@ of the code.
   by typing the full name (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action
   dialog and command menu only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
   UI tests replace the package variables.
+- `internal/disk/`: the health of the disks of the pools, from sysfs (no root, no processes): `Resolve` maps a device
+  of `zpool status` to its disks (partitions, device mapper, md), `ReadTemperature` reads hwmon (NVMe, SATA with the
+  kernel module drivetemp). Reading the temperature may reset the spin down timer of hard disks, so `Sampler` only
+  reads hard disks while their I/O statistics (`/sys/block/<disk>/stat`, which never touch the disk) change, or when
+  asked to (a click on the temperature, `t`). The devices pane of the pools page and the disks page sample only while
+  they are drawn (`disk_browser.HealthReader`, shared by both: `ReadIfDue` in their `Draw`, every 10 s), so nothing
+  is read while another page is shown. The `Monitor` samples after each
+  load of the statuses with the same `Sampler`, for the alert of disks at or above their critical temperature
+  (`zfs.PoolAlertTemperature`); hard disks count as busy if their statistics changed within 90 s, longer than its
+  idle interval. Tests use a fake `/dev` and `/sys`
+  (`devDir`, `sysDir`), UI tests the fakes of `internal/disk/disktest` (`newTemperatureSampler`).
+  `SmartReader` (`smart.go`) runs `sudo -n smartctl` (rule `--smart`), parses its JSON (ATA, NVMe, SCSI) into
+  `SmartReport`s with `Problems` (failed health check, failing or important ATA attributes, NVMe critical warnings,
+  media errors and wear), and keeps them: sudo logs every call. `-n standby` skips sleeping disks (their last report
+  is kept). The `Monitor` reads all disks every hour (alert `zfs.PoolAlertSmart`), the devices pane and the disks page
+  every 10 minutes while drawn, `s` now; one `SmartReader` for all (`newSmartSource` in `root.go`). The disks page
+  (`disk_page.go`, `internal/ui/disk_browser`) lists the disks of all pools (from the statuses of the `Monitor`),
+  each disk once (also with a partition for each of several pools), grouped by hard disk or SSD (`Rotational`, from
+  sysfs) or by pool, with the values that mean the same for all kinds of disks (`SmartCounters`: bad sectors, wear,
+  bytes written, ...; -1 if not reported, units of vendor attributes only where known), the details and attributes
+  of the selected one below; Enter or a click on the SMART column of the devices pane,
+  and a click on a temperature or SMART alert, show the disk there. Fixtures in `internal/disk/testdata` (the permission denied, ATA hot and healthy NVMe ones are from
+  real systems).
 - `internal/state/`: the persisted state (`state.Current`): settings, table column layouts, selections, the session.
 - `internal/ui/`: the pages and the root.
-  - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`; keys `1`-`3`), global keys, the session
+  - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`, `Disks`; keys `1`-`4`), global keys, the session
     (`session.go`: page, focused component by title, dataset, pool).
   - `page_base.go`: `basePage`, shared by the pages: focusable components and their titles, focus cycling (Tab),
     the shortcut map, `newSplit`/`captureSplitDrags`, `isInFront`.
   - One package per component (`file_browser`, `snapshot_browser`, `dataset_browser`, `dataset_info`,
-    `pool_browser`, `pool_status`, ...). Components emit typed events (`Events *util.Emitter[Event]`), the page wires
+    `pool_browser`, `pool_status`, `disk_browser`, ...). Components emit typed events (`Events *util.Emitter[Event]`), the page wires
     them together.
   - `pool_activity/`: the operations running on the pools (scrub, resilver, TRIM, device removal, raidz expansion),
     shown below the header of every page. One `Monitor` for the application (loads `zpool status` of all pools,
@@ -91,7 +116,8 @@ of the code.
     the time left in several formats, `zfs.PoolActivity.Remaining` is parsed into a `time.Duration`. zpool does not estimate the time left of a TRIM,
     `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
     The same package has the `AlertBar` (above the activities): the problems of the pools (`PoolStatus.Alerts`: a
-    state other than ONLINE, data errors, unusable devices or spares, device errors), most severe first, from the
+    state other than ONLINE, data errors, unusable devices or spares, device errors; and disks at their critical
+    temperature or with SMART problems, see `internal/disk`), most severe first, from the
     loads of the `Monitor`. It comes up by itself when something is wrong. A failed load keeps the last alerts.
     Both bars share `linePanel` (height, mouse).
     The `Monitor` also loads the damaged files (`zfs.ListDataErrors`: `zpool status -p -v`, retried with `sudo -n`,
@@ -106,6 +132,8 @@ of the code.
     `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
     ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),
+    grouping (`SetGroupings`, `b` cycles them: a row above each group that cannot be selected, its title drawn over
+    the row so it does not widen the first column; saved with the column layout),
     horizontal scrolling, multi-selection, persisted column layouts, `ContentSize`.
   - `util/` (imported as `uiutil`): `DataLoader`, `Debouncer`, `SubscribeUI`, `LoadingContainer`, `ResizableSplit`,
     `SelectionMemory`, content size helpers, formatting.
@@ -152,6 +180,8 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 
 ## Layout
 
+- Panes there is nothing to do in (the path overview, the details of a disk) are not in `focusableComponents`, and a
+  click does not focus them either (`uiutil.WithoutFocus` in their `MouseHandler`).
 - Panes are split with `uiutil.ResizableSplit` (via `basePage.newSplit`, registered with `captureSplitDrags`). The
   boundary can be dragged; double-clicking it goes back to the automatic size.
 - `SetAutoSize` sizes the first pane by its content on every draw (e.g. the dataset info and the pool status fit

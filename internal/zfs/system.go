@@ -188,7 +188,7 @@ func (System) CurrentIdentity() (Identity, error) {
 }
 
 // AllowedSudoersRules returns the ids of the rules the user may use (all as root): the ones whose commands sudo
-// allows without a password, with the path zpool has here.
+// allows without a password, with the path their program has here.
 func (System) AllowedSudoersRules() map[string]bool {
 	allowed := map[string]bool{}
 	if isRoot() {
@@ -205,7 +205,7 @@ func (System) AllowedSudoersRules() map[string]bool {
 	}
 	commands, all := parseNoPasswordCommands(output)
 	for _, rule := range SudoersRules {
-		allowed[rule.Id] = all || !slices.ContainsFunc(rule.allowed(ZpoolPath()), func(command string) bool {
+		allowed[rule.Id] = all || !slices.ContainsFunc(rule.AllowedCommands(), func(command string) bool {
 			return !commands[command]
 		})
 	}

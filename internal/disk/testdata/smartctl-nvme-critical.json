@@ -1,0 +1,23 @@
+{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "argv": ["smartctl", "-j", "-i", "-H", "-A", "-n", "standby", "--", "/dev/nvme1n1"],
+    "messages": [{"string": "SMART overall-health self-assessment test result: FAILED!", "severity": "error"}],
+    "exit_status": 8
+  },
+  "device": {"name": "/dev/nvme1n1", "info_name": "/dev/nvme1n1", "type": "nvme", "protocol": "NVMe"},
+  "model_name": "Some NVMe 2TB",
+  "serial_number": "SERIAL0004",
+  "smart_status": {"passed": false, "nvme": {"value": 5, "spare_below_threshold": true, "reliability_degraded": true}},
+  "nvme_smart_health_information_log": {
+    "critical_warning": 5,
+    "available_spare": 4,
+    "available_spare_threshold": 10,
+    "percentage_used": 100,
+    "power_on_hours": 100,
+    "unsafe_shutdowns": 0,
+    "media_errors": 0,
+    "num_err_log_entries": 0
+  }
+}

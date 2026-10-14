@@ -23,7 +23,7 @@ func newPoolPageApp(t *testing.T, width int, height int) (*tview.Application, *P
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	screen.SetSize(width, height)
-	page := NewPoolPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app))
+	page := NewPoolPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), noDisks{}, noDisks{})
 	app.SetRoot(page.layout, true)
 	go func() { _ = app.Run() }()
 	t.Cleanup(app.Stop)

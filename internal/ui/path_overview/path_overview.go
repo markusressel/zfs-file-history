@@ -78,6 +78,11 @@ func (view *overviewView) Draw(screen tcell.Screen) {
 	}
 }
 
+// MouseHandler does not focus the overview on a click: there is nothing to do in it, like Tab skips it.
+func (view *overviewView) MouseHandler() uiutil.MouseHandler {
+	return uiutil.WithoutFocus(view.Box.MouseHandler())
+}
+
 // drawDivider draws a horizontal line across the overview at row y, joined to its border ("├───┤").
 func (view *overviewView) drawDivider(screen tcell.Screen, y int) {
 	x, _, width, _ := view.GetRect()

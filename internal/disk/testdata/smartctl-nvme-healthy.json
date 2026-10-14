@@ -1,0 +1,81 @@
+{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "x86_64-linux-7.2.9-arch1-1",
+    "build_info": "(local build)",
+    "argv": [
+      "smartctl",
+      "-j",
+      "-H",
+      "-A",
+      "-n",
+      "standby",
+      "--",
+      "/dev/nvme0n1"
+    ],
+    "exit_status": 0
+  },
+  "local_time": {
+    "time_t": 1791976904,
+    "asctime": "Wed Oct 14 13:21:44 2026 CEST"
+  },
+  "device": {
+    "name": "/dev/nvme0n1",
+    "info_name": "/dev/nvme0n1",
+    "type": "nvme",
+    "protocol": "NVMe"
+  },
+  "smart_status": {
+    "passed": true,
+    "nvme": {
+      "value": 0
+    }
+  },
+  "nvme_smart_health_information_log": {
+    "nsid": 1,
+    "critical_warning": 0,
+    "temperature": 50,
+    "available_spare": 100,
+    "available_spare_threshold": 10,
+    "percentage_used": 4,
+    "data_units_read": 48509168,
+    "data_units_written": 198543345,
+    "host_reads": 751373765,
+    "host_writes": 3904399896,
+    "controller_busy_time": 12510,
+    "power_cycles": 684,
+    "power_on_hours": 19773,
+    "unsafe_shutdowns": 98,
+    "media_errors": 0,
+    "num_err_log_entries": 1876,
+    "warning_temp_time": 0,
+    "critical_comp_time": 0,
+    "temperature_sensors": [
+      50,
+      55
+    ]
+  },
+  "temperature": {
+    "current": 50
+  },
+  "spare_available": {
+    "current_percent": 100,
+    "threshold_percent": 10
+  },
+  "endurance_used": {
+    "current_percent": 4
+  },
+  "power_cycle_count": 684,
+  "power_on_time": {
+    "hours": 19773
+  }
+}

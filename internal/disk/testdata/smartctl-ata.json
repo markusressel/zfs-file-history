@@ -1,0 +1,32 @@
+{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "argv": ["smartctl", "-j", "-i", "-H", "-A", "-n", "standby", "--", "/dev/sda"],
+    "exit_status": 0
+  },
+  "local_time": {"time_t": 1791979200, "asctime": "Wed Oct 14 12:00:00 2026 CEST"},
+  "device": {"name": "/dev/sda", "info_name": "/dev/sda [SAT]", "type": "sat", "protocol": "ATA"},
+  "model_name": "WDC WD40EFRX-68N32N0",
+  "serial_number": "WD-SERIAL0001",
+  "firmware_version": "82.00A82",
+  "user_capacity": {"blocks": 7814037168, "bytes": 4000787030016},
+  "power_mode": {"ata_value": 255, "name": "ACTIVE or IDLE"},
+  "smart_support": {"available": true, "enabled": true},
+  "smart_status": {"passed": true},
+  "ata_smart_attributes": {
+    "revision": 16,
+    "table": [
+      {"id": 1, "name": "Raw_Read_Error_Rate", "value": 200, "worst": 200, "thresh": 51, "when_failed": "", "flags": {"value": 47, "string": "POSR-K ", "prefailure": true}, "raw": {"value": 0, "string": "0"}},
+      {"id": 5, "name": "Reallocated_Sector_Ct", "value": 199, "worst": 199, "thresh": 140, "when_failed": "", "flags": {"value": 51, "string": "PO--CK ", "prefailure": true}, "raw": {"value": 8, "string": "8"}},
+      {"id": 9, "name": "Power_On_Hours", "value": 52, "worst": 52, "thresh": 0, "when_failed": "", "flags": {"value": 50, "string": "-O--CK ", "prefailure": false}, "raw": {"value": 35123, "string": "35123"}},
+      {"id": 194, "name": "Temperature_Celsius", "value": 117, "worst": 103, "thresh": 0, "when_failed": "", "flags": {"value": 34, "string": "-O---K ", "prefailure": false}, "raw": {"value": 158915215393, "string": "33 (Min/Max 17/47)"}},
+      {"id": 197, "name": "Current_Pending_Sector", "value": 200, "worst": 200, "thresh": 0, "when_failed": "", "flags": {"value": 50, "string": "-O--CK ", "prefailure": false}, "raw": {"value": 0, "string": "0"}},
+      {"id": 198, "name": "Offline_Uncorrectable", "value": 100, "worst": 253, "thresh": 0, "when_failed": "", "flags": {"value": 48, "string": "----CK ", "prefailure": false}, "raw": {"value": 0, "string": "0"}},
+      {"id": 199, "name": "UDMA_CRC_Error_Count", "value": 200, "worst": 200, "thresh": 0, "when_failed": "", "flags": {"value": 50, "string": "-O--CK ", "prefailure": false}, "raw": {"value": 3, "string": "3"}}
+    ]
+  },
+  "power_on_time": {"hours": 35123},
+  "power_cycle_count": 98,
+  "temperature": {"current": 33}
+}

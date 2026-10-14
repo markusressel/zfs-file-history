@@ -23,17 +23,17 @@ const (
 // errNothingSelected is returned when allowing with no rule selected: the dialog stays open.
 var errNothingSelected = errors.New("nothing selected")
 
-// NewSetupPermissionsDialog offers to allow the zpool commands that need root (see zfs.SudoersRules): the user
+// NewSetupPermissionsDialog offers to allow the commands that need root (see zfs.SudoersRules): the user
 // checks the rules in a checklist (or allows all), which are then allowed by running the setup command with sudo in
 // the terminal (or copies that command). allowed are the ids of the rules allowed already (see
-// zfs.AllowedSudoersRules), they are not offered. The rules that only read are checked. If onNeverAsk is not nil
+// zfs.AllowedSudoersRules), they are not offered, nor the ones whose program is not installed. The rules that only read are checked. If onNeverAsk is not nil
 // (the dialog was shown without being asked for), it is offered not to show the dialog again, and onNeverAsk is
 // called on the UI thread if chosen.
 func NewSetupPermissionsDialog(application *tview.Application, allowed map[string]bool, onNeverAsk func()) *SelectionDialog {
 	var offered []*zfs.SudoersRule
 	var checklist []*ChecklistItem
 	for _, rule := range zfs.SudoersRules {
-		if !allowed[rule.Id] {
+		if !allowed[rule.Id] && rule.IsAvailable() {
 			offered = append(offered, rule)
 			checklist = append(checklist, &ChecklistItem{Name: rule.Name + ": " + rule.Summary, Checked: rule.ReadOnly})
 		}
@@ -53,7 +53,7 @@ func NewSetupPermissionsDialog(application *tview.Application, allowed map[strin
 			if len(granted) == 0 {
 				return errNothingSelected
 			}
-			explanation := "allowing your user to run these zpool commands with sudo without a password " +
+			explanation := "allowing your user to run these commands with sudo without a password " +
 				"(sudoers rules, see \"zfs-file-history setup --help\"): " + ruleNames(granted) + "."
 			if err := grantPermissions(application, explanation, [][]string{setupCommand(granted)}); err != nil {
 				return err
@@ -120,13 +120,13 @@ func NewSetupPermissionsDialog(application *tview.Application, allowed map[strin
 // formatSetupPermissions explains why the rules need root, and what each of them is good for.
 func formatSetupPermissions(offered []*zfs.SudoersRule) string {
 	if len(offered) == 0 {
-		return "Your user may already run all zpool commands zfs-file-history needs root for."
+		return "Your user may already run all commands zfs-file-history needs root for."
 	}
 	commands := make([]string, 0, len(offered))
 	for _, rule := range offered {
 		commands = append(commands, rule.Commands)
 	}
-	return "Some features need zpool commands that only root may run. Your user can be allowed to run exactly these " +
+	return "Some features need commands that only root may run. Your user can be allowed to run exactly these " +
 		"with sudo, without a password (rules in /etc/sudoers.d/zfs-file-history): " + strings.Join(commands, "; ") +
 		".\n\nCheck them with ↑/↓ and Space. Allowing runs \"zfs-file-history setup\" with sudo, which asks for your " +
 		"password. Also in the command menu (:) later."

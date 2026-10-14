@@ -469,3 +469,21 @@ func TestParseRemaining(t *testing.T) {
 		assert.Equal(t, test.remaining, remaining, test.text)
 	}
 }
+
+func TestLeafDevices(t *testing.T) {
+	devices := []*PoolDevice{
+		{Name: "tank", Depth: 0, State: PoolStateDegraded},
+		{Name: "raidz2-0", Depth: 1, State: PoolStateDegraded},
+		{Name: "sda", Depth: 2, State: PoolStateOnline},
+		{Name: "replacing-1", Depth: 2, State: PoolStateDegraded},
+		{Name: "sdc", Depth: 3, State: PoolStateFaulted},
+		{Name: "sde", Depth: 3, State: PoolStateOnline},
+		{Name: "logs", Depth: 0},
+		{Name: "nvme0n1p1", Depth: 1, State: PoolStateOnline},
+		{Name: "spares", Depth: 0},
+		{Name: "sdf", Depth: 1, State: PoolStateAvail},
+	}
+	assert.Equal(t, []string{"sda", "sdc", "sde", "nvme0n1p1", "sdf"}, LeafDevices(devices))
+	assert.Empty(t, LeafDevices(nil))
+	assert.Empty(t, LeafDevices([]*PoolDevice{{Name: "tank", State: PoolStateOnline}}), "the pool alone")
+}

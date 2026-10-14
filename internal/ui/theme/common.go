@@ -177,6 +177,19 @@ type PoolColors struct {
 	// Errors are read, write or checksum errors, NoErrors counters of 0
 	Errors   tcell.Color
 	NoErrors tcell.Color
+	// Temperature colors the temperature of a disk by how close it is to its critical temperature (0: cool, 1:
+	// critical)
+	Temperature []GradientStop
+	// TemperatureIdle is a temperature of a hard disk that is idle, so it is not read again: it may be outdated.
+	// TemperatureUnknown is a disk without a sensor.
+	TemperatureIdle    tcell.Color
+	TemperatureUnknown tcell.Color
+	// ReadTemperature is the icon of an idle hard disk whose temperature was not read, a click reads it
+	ReadTemperature tcell.Color
+	// HoverBackground is the background of the temperature below the mouse, which can be clicked
+	HoverBackground tcell.Color
+	// Hint explains what is shown, e.g. why a temperature is not read
+	Hint tcell.Color
 }
 
 // PropertyColors are used in the table of ZFS properties.
@@ -235,6 +248,10 @@ type LayoutTableColors struct {
 	ZeroSize tcell.Color
 	// EmptyText is the text shown in place of the rows when no entry matches the filter
 	EmptyText tcell.Color
+	// GroupTitle is the title of a group in the row above its entries, GroupCount the number of its entries behind
+	// it (see table.RowSelectionTable.SetGroupings)
+	GroupTitle tcell.Color
+	GroupCount tcell.Color
 }
 
 // SparklineColors are the colors of the sparklines (see uiutil.DrawSparkline), e.g. in the path overview and the

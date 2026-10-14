@@ -1,0 +1,16 @@
+{
+  "json_format_version": [1, 0],
+  "smartctl": {"version": [7, 5], "exit_status": 0},
+  "device": {"name": "/dev/sdc", "info_name": "/dev/sdc", "type": "scsi", "protocol": "SCSI"},
+  "scsi_vendor": "SEAGATE",
+  "scsi_model_name": "ST8000NM0075",
+  "serial_number": "SERIAL0005",
+  "smart_status": {"passed": true},
+  "scsi_grown_defect_list": 12,
+  "scsi_error_counter_log": {
+    "read": {"errors_corrected_by_eccfast": 0, "total_uncorrected_errors": 1},
+    "write": {"errors_corrected_by_eccfast": 0, "total_uncorrected_errors": 0},
+    "verify": {"errors_corrected_by_eccfast": 0, "total_uncorrected_errors": 2}
+  },
+  "power_on_time": {"hours": 60000}
+}

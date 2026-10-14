@@ -111,6 +111,8 @@ var (
 				TreeCollapsedIndicator: Primary,
 				ZeroSize:               tcell.ColorDarkGray,
 				EmptyText:              tcell.ColorGray,
+				GroupTitle:             Accent,
+				GroupCount:             tcell.ColorGray,
 			},
 		},
 		ShortcutMap: ShortcutMapColors{
@@ -153,6 +155,18 @@ var (
 			Group:    Accent,
 			Errors:   tcell.ColorRed,
 			NoErrors: tcell.ColorGray,
+			// from cool blue over green to red, hot when it reaches the warning temperature of the disk
+			Temperature: []GradientStop{
+				{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x6CB6E8},
+				{Position: 0.4, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x8CC98C},
+				{Position: 0.75, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFFB84D},
+				{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
+			},
+			TemperatureIdle:    tcell.ColorGray,
+			TemperatureUnknown: tcell.ColorDarkGray,
+			ReadTemperature:    Accent,
+			HoverBackground:    Hover,
+			Hint:               tcell.ColorGray,
 		},
 		Activity: ActivityColors{
 			Border: PrimaryMuted,

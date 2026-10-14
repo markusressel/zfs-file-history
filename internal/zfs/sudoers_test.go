@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"zfs-file-history/internal/disk"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -125,18 +126,49 @@ func TestAllowedSudoersRules(t *testing.T) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " events -v -f, " + ZpoolPath() + " status -p -v\n", nil
 	}
-	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "pool-actions": false}, AllowedSudoersRules())
+	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
 	// all commands of the rule are needed
 	listSudoRules = func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " scrub [a-zA-Z]*\n", nil
 	}
-	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "pool-actions": false}, AllowedSudoersRules())
+	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "smart": false, "pool-actions": false}, AllowedSudoersRules())
+
+	listSudoRules = func() (string, error) {
+		return "User alice may run the following commands on host:\n" +
+			"    (root) NOPASSWD: " + disk.SmartctlPath() + " -j -i -H -A -n standby -- /dev/*\n", nil
+	}
+	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "smart": true, "pool-actions": false}, AllowedSudoersRules())
 
 	listSudoRules = func() (string, error) { return "", errors.New("sudo: a password is required") }
 	assert.Equal(t, map[string]bool{}, AllowedSudoersRules())
 
 	isRoot = func() bool { return true }
-	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "pool-actions": true}, AllowedSudoersRules())
+	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "smart": true, "pool-actions": true}, AllowedSudoersRules())
+}
+
+func TestSudoersRuleSmart(t *testing.T) {
+	assert.Equal(t, "alice ALL=(root) NOPASSWD: /usr/sbin/smartctl -j -i -H -A -n standby -- /dev/*, "+
+		"/usr/bin/smartctl -j -i -H -A -n standby -- /dev/*, /sbin/smartctl -j -i -H -A -n standby -- /dev/*\n",
+		SudoersRuleSmart.Lines("alice"))
+
+	// the rule without -i is dropped, so it can be granted again
+	former := ParseSudoersFile(sudoersFileHeader + "# Disk health\nalice ALL=(root) NOPASSWD: /usr/sbin/smartctl -j -H -A -n standby -- /dev/*, " +
+		"/usr/bin/smartctl -j -H -A -n standby -- /dev/*, /sbin/smartctl -j -H -A -n standby -- /dev/*\n" + SudoersRuleEvents.Lines("alice"))
+	assert.False(t, former.Has("alice", SudoersRuleSmart))
+	assert.True(t, former.Has("alice", SudoersRuleEvents))
+	assert.NotContains(t, former.String(), "smartctl")
+	// read back
+	file := ParseSudoersFile(SudoersRuleSmart.Lines("alice"))
+	assert.True(t, file.Has("alice", SudoersRuleSmart))
+	assert.False(t, file.Has("alice", SudoersRuleEvents))
+
+	original := disk.SmartctlInstalled
+	t.Cleanup(func() { disk.SmartctlInstalled = original })
+	disk.SmartctlInstalled = func() bool { return false }
+	assert.False(t, SudoersRuleSmart.IsAvailable(), "not offered without smartctl")
+	assert.True(t, SudoersRuleEvents.IsAvailable())
+	disk.SmartctlInstalled = func() bool { return true }
+	assert.True(t, SudoersRuleSmart.IsAvailable())
 }

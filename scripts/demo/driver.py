@@ -123,7 +123,7 @@ WAIT_FOR_ACTIVITY = Wait(
 # the demo
 SCRIPT: list[Step] = [
     # the files and their snapshots are loaded
-    Wait(r"FILES +1/3"),
+    Wait(r"FILES +1/4"),
     Wait(r"\d+ snapshots"),
     # the activity panel is shown (a scrub can be started after the demo, the time until then is not in the GIF)
     WAIT_FOR_ACTIVITY,
@@ -149,12 +149,12 @@ SCRIPT: list[Step] = [
     *[Key(DOWN, 2.0 if i == 0 else 1.5, into=r"History of 'README\.md'") for i in range(5)],
     Key(ESC, 2.0, hides=r"History of"),
     # datasets
-    Key("2", 1.5, shows=r"DATASETS 2/3"),
+    Key("2", 1.5, shows=r"DATASETS 2/4"),
     Key(DOWN, 2.0),
     Key(DOWN, 0.6),
     Key(DOWN, 0.6),
     # pools and the actions of the selected pool: the dialog is only opened and closed, no action is chosen
-    Key("3", 2.0, shows=r"POOLS +3/3"),
+    Key("3", 2.0, shows=r"POOLS +3/4"),
     Key(ENTER, 4.0, shows=r"Select Action"),
     Key(ESC, 3.0, hides=r"Select Action"),
     # the command menu, searching for the scrub actions
@@ -163,8 +163,10 @@ SCRIPT: list[Step] = [
     Key("c", 0.3, into=r" Commands "),
     Key("r", 0.3, into=r" Commands "),
     Key(ESC, 2.5, hides=r" Commands "),
+    # the disks of the pools, their temperature and health
+    Key("4", 3.0, shows=r"DISKS +4/4"),
     # back to the files
-    Key("1", 1.5, shows=r"FILES +1/3"),
+    Key("1", 1.5, shows=r"FILES +1/4"),
     Quit(3.0),
 ]
 

@@ -1101,3 +1101,11 @@ func TestTable_ContentSizeIgnoresTheFilter(t *testing.T) {
 	_, after := table.ContentSize()
 	assert.Equal(t, before, after, "the height counts the hidden entries as well")
 }
+
+func TestTable_FindByRowId(t *testing.T) {
+	table, _, _, _ := newFilterTestTable()
+	assert.Equal(t, "weekly-1", table.FindByRowId("weekly-1").name)
+	assert.Nil(t, table.FindByRowId("yearly-1"))
+	table.SetFilterText("daily")
+	assert.Nil(t, table.FindByRowId("weekly-1"), "only the displayed ones")
+}

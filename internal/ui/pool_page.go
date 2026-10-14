@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/pool_browser"
 	"zfs-file-history/internal/ui/pool_status"
@@ -34,10 +35,13 @@ const (
 	statusMaxPercent = 60
 )
 
-func NewPoolPage(application *tview.Application, messages *status_message.Center, activities *pool_activity.Monitor) *PoolPage {
+// NewPoolPage returns the pool page, reading the temperatures of the disks with the sampler and their SMART values
+// with smart (the ones of the activities, so whether hard disks are busy is told from the samples of both, and the
+// SMART values are not read twice).
+func NewPoolPage(application *tview.Application, messages *status_message.Center, activities *pool_activity.Monitor, sampler disk.TemperatureSampler, smart disk.SmartSource) *PoolPage {
 	poolBrowser := pool_browser.NewPoolBrowser(application)
 	poolStatus := pool_status.NewPoolStatus(application)
-	poolDevices := pool_status.NewPoolDevices(application)
+	poolDevices := pool_status.NewPoolDevices(application, sampler, smart)
 
 	poolPage := &PoolPage{
 		basePage:    basePage{application: application, name: Pool, messages: messages, activities: activities},
@@ -45,6 +49,7 @@ func NewPoolPage(application *tview.Application, messages *status_message.Center
 		poolStatus:  poolStatus,
 		poolDevices: poolDevices,
 	}
+	poolDevices.SetEnabledFunc(poolPage.isInFront)
 	poolPage.focusableComponents = func() []FocusableUiComponent {
 		return []FocusableUiComponent{poolBrowser, poolStatus, poolDevices}
 	}

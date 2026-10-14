@@ -15,6 +15,7 @@ import (
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -305,4 +306,14 @@ func TestPathOverview_NowMarker(t *testing.T) {
 	lines, _ = render(t, overview, 2+labelWidth+16+2)
 	assert.NotContains(t, lines[2], "now")
 	assert.Contains(t, lines[2], "differs")
+}
+
+// Regression: a click into the overview focused it, which Tab skips: there is nothing to do in it.
+func TestPathOverview_ClickDoesNotFocus(t *testing.T) {
+	overview := NewPathOverview(func() diff_state.Counts { return diff_state.Counts{} })
+	overview.GetLayout().SetRect(0, 0, 40, 8)
+	focused := false
+	overview.GetLayout().MouseHandler()(tview.MouseLeftDown, tcell.NewEventMouse(5, 3, tcell.Button1, tcell.ModNone),
+		func(tview.Primitive) { focused = true })
+	assert.False(t, focused)
 }

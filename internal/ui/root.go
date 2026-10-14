@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dataset_browser"
 	"zfs-file-history/internal/ui/dialog"
@@ -26,17 +27,25 @@ const (
 	Main    util.Page = "main"
 	Dataset util.Page = "dataset"
 	Pool    util.Page = "pool"
+	Disks   util.Page = "disks"
 )
 
 var (
 	shortcutCycleFocus = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Cycle focus", Description: "Focus the next list of the page", Group: shortcut_helper.GroupNavigation}
-	shortcutGoToPage   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"1", "2", "3"}, Name: "Go to page", Group: shortcut_helper.GroupGlobal}
+	shortcutGoToPage   = shortcut_helper.ShortcutEntry{KeyCombo: []string{"1", "2", "3", "4"}, Name: "Go to page", Group: shortcut_helper.GroupGlobal}
 	shortcutCommands   = shortcut_helper.ShortcutEntry{KeyCombo: []string{":"}, Name: "Commands", Group: shortcut_helper.GroupGlobal}
 	shortcutQuit       = shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Ctrl("q")}, Name: "Quit", Group: shortcut_helper.GroupGlobal}
 )
 
 // globalShortcuts are the shortcuts that work on all pages, shown after the ones of the focused component. The
 // others are only listed in the command menu, see globalCommands.
+// newTemperatureSampler and newSmartSource return what reads the temperatures and the SMART values of the disks,
+// replaceable in tests.
+var (
+	newTemperatureSampler = func() disk.TemperatureSampler { return disk.NewSampler() }
+	newSmartSource        = func() disk.SmartSource { return disk.NewSmartReader() }
+)
+
 func globalShortcuts() []shortcut_helper.ShortcutEntry {
 	return []shortcut_helper.ShortcutEntry{
 		shortcutCycleFocus,
@@ -48,13 +57,14 @@ func globalShortcuts() []shortcut_helper.ShortcutEntry {
 }
 
 // switchablePages are the pages cycled through with tab / shift+tab, in order.
-var switchablePages = []util.Page{Main, Dataset, Pool}
+var switchablePages = []util.Page{Main, Dataset, Pool, Disks}
 
 // pageTitles are the titles of the switchable pages, shown in the page indicator of the header.
 var pageTitles = map[util.Page]string{
 	Main:    "Files",
 	Dataset: "Datasets",
 	Pool:    "Pools",
+	Disks:   "Disks",
 }
 
 // pageTitleWidth is the length of the longest page title, so the page indicator has the same width on all pages.
@@ -128,25 +138,32 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	}
 	// one for all pages, like the messages: the operations running on the pools are shown on every page
 	activities := pool_activity.NewMonitor(application)
+	sampler := newTemperatureSampler()
+	activities.SetTemperatureSampler(sampler)
+	smart := newSmartSource()
+	activities.SetSmartSource(smart)
 	mainPage := NewMainPage(application, messages, activities, path)
 	datasetPage := NewDatasetPage(application, messages, activities, path)
-	poolPage := NewPoolPage(application, messages, activities)
+	poolPage := NewPoolPage(application, messages, activities, sampler, smart)
+	diskPage := NewDiskPage(application, messages, activities, sampler, smart)
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
 		AddPage(string(Dataset), datasetPage.layout, true, false).
-		AddPage(string(Pool), poolPage.layout, true, false)
+		AddPage(string(Pool), poolPage.layout, true, false).
+		AddPage(string(Disks), diskPage.layout, true, false)
 
 	mainPage.SetPages(pagesLayout)
 	datasetPage.SetPages(pagesLayout)
 	poolPage.SetPages(pagesLayout)
+	diskPage.SetPages(pagesLayout)
 
-	headers := map[util.Page]*ApplicationHeaderComponent{Main: mainPage.header, Dataset: datasetPage.header, Pool: poolPage.header}
+	headers := map[util.Page]*ApplicationHeaderComponent{Main: mainPage.header, Dataset: datasetPage.header, Pool: poolPage.header, Disks: diskPage.header}
 	for index, page := range switchablePages {
 		headers[page].SetPage(pageTitles[page], pageTitleWidth(), index+1, len(switchablePages))
 	}
 
-	pages := map[util.Page]switchablePage{Main: mainPage, Dataset: datasetPage, Pool: poolPage}
+	pages := map[util.Page]switchablePage{Main: mainPage, Dataset: datasetPage, Pool: poolPage, Disks: diskPage}
 	switchTo := func(page util.Page) {
 		pagesLayout.SwitchToPage(string(page))
 		recorder.setPage(page)
@@ -184,7 +201,14 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		switchTo(Pool)
 		poolPage.poolBrowser.SelectPool(pool)
 	}
-	// showSetupPermissions offers to allow the zpool commands that need root (see zfs.SudoersRules), from the command
+	// the disks of a device (device "": of the pool) with their SMART values, from the devices pane or an alert
+	showDisk := func(pool string, device string) {
+		switchTo(Disks)
+		diskPage.focusComponent(diskPage.componentTitles[diskPage.diskBrowser])
+		diskPage.diskBrowser.SelectDevice(pool, device)
+	}
+	poolPage.poolDevices.SetOnShowDisk(showDisk)
+	// showSetupPermissions offers to allow the commands that need root (see zfs.SudoersRules), from the command
 	// menu, or by itself (automatic) at the start if not all that only read are allowed: then only if nothing else
 	// is in front, and with the option to never ask again.
 	showSetupPermissions := func(automatic bool) {
@@ -194,7 +218,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		}
 		go func() {
 			allowed := allowedSudoersRules()
-			if automatic && !slices.ContainsFunc(zfs.SudoersRules, func(rule *zfs.SudoersRule) bool { return rule.ReadOnly && !allowed[rule.Id] }) {
+			if automatic && !slices.ContainsFunc(zfs.SudoersRules, func(rule *zfs.SudoersRule) bool { return rule.ReadOnly && !allowed[rule.Id] && rule.IsAvailable() }) {
 				return
 			}
 			application.QueueUpdateDraw(func() {
@@ -252,11 +276,15 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			showObjectSearch(d)
 		}
 	})
-	for _, page := range []*basePage{&mainPage.basePage, &datasetPage.basePage, &poolPage.basePage} {
+	for _, page := range []*basePage{&mainPage.basePage, &datasetPage.basePage, &poolPage.basePage, &diskPage.basePage} {
 		page.activityBar.SetOnClick(func(activity zfs.PoolActivity) { showPool(activity.Pool) })
 		page.alertBar.SetOnClick(func(alert zfs.PoolAlert) {
 			if alert.Kind == zfs.PoolAlertDataErrors && activities.DataErrors() != nil {
 				showDataErrors()
+				return
+			}
+			if alert.Kind == zfs.PoolAlertTemperature || alert.Kind == zfs.PoolAlertSmart {
+				showDisk(alert.Pool, "")
 				return
 			}
 			showPool(alert.Pool)
@@ -267,7 +295,15 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	util.SubscribeUI(zfs.DatasetsLoaded, application, func(_ struct{}) { activities.RefreshDataErrors() })
 	util.SubscribeUI(zfs.PoolsChanged, application, func(_ struct{}) { activities.Refresh() })
 	// e.g. the damaged files may be listed now
-	util.SubscribeUI(zfs.SudoersChanged, application, func(_ struct{}) { activities.ReloadDataErrors() })
+	util.SubscribeUI(zfs.SudoersChanged, application, func(_ struct{}) {
+		activities.ReloadDataErrors()
+		// e.g. smartctl may run with sudo now
+		activities.RefreshSmart()
+		poolPage.poolDevices.ReadSmart()
+		diskPage.diskBrowser.ReadSmart()
+	})
+	poolPage.poolDevices.SetOnSetup(func() { showSetupPermissions(false) })
+	diskPage.diskBrowser.SetOnSetup(func() { showSetupPermissions(false) })
 
 	if restored != nil && restored.Dataset != "" {
 		datasetPage.datasetBrowser.SelectOnLoad(restored.Dataset)

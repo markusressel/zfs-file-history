@@ -4,11 +4,13 @@ package pool_activity
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -54,6 +56,10 @@ var (
 	idleRefreshInterval   = time.Minute
 )
 
+// smartInterval is how often the SMART values of the disks are read for the alerts: smartctl runs with sudo, which
+// logs every call. Replaceable in tests.
+var smartInterval = time.Hour
+
 // Monitor knows the operations running on all pools (see zfs.PoolStatus.Activities) and their problems (see
 // zfs.PoolStatus.Alerts). It reloads the status of all pools periodically, and on Refresh. One for the whole
 // application, shown by a Bar and an AlertBar on each page. Others can use
@@ -63,12 +69,30 @@ type Monitor struct {
 	loader      *uiutil.DataLoader[[]*zfs.PoolStatus]
 	// dataErrorLoader loads the damaged files, see DataErrors
 	dataErrorLoader *uiutil.DataLoader[dataErrorLoad]
+	// temperatureLoader samples the temperatures of the disks, see SetTemperatureSampler
+	temperatureLoader *uiutil.DataLoader[[]zfs.PoolAlert]
+	// smartLoader reads the SMART values of the disks, see SetSmartSource
+	smartLoader *uiutil.DataLoader[[]zfs.PoolAlert]
 
 	// All fields below are only accessed on the UI thread.
 
 	activities []zfs.PoolActivity
-	// alerts are the problems of all pools, most severe first
+	// alerts are the problems of all pools, most severe first: statusAlerts and temperatureAlerts
 	alerts []zfs.PoolAlert
+	// statusAlerts are the problems of the last load of the statuses (see zfs.PoolStatus.Alerts),
+	// temperatureAlerts the disks at or above their critical temperature, by the last sample, smartAlerts the disks
+	// whose SMART values tell of failures or wear
+	statusAlerts      []zfs.PoolAlert
+	temperatureAlerts []zfs.PoolAlert
+	smartAlerts       []zfs.PoolAlert
+	// sampler reads the temperatures of the disks, nil: none, see SetTemperatureSampler
+	sampler disk.TemperatureSampler
+	// smart reads the SMART values of the disks, nil: none, see SetSmartSource
+	smart disk.SmartSource
+	// smartReadAt is when the SMART values were last read, see smartInterval; smartReset forgets the reports of
+	// smart before the next read, see RefreshSmart
+	smartReadAt time.Time
+	smartReset  bool
 	// listeners are called when the activities or alerts changed, see OnChanged
 	listeners []func()
 	// statusListeners are called with the statuses of every load, see OnStatusesLoaded
@@ -123,6 +147,16 @@ func NewMonitor(application *tview.Application) *Monitor {
 			// while a pool is suspended) must not look like all problems were solved.
 			monitor.update(nil, monitor.alerts)
 		})
+	monitor.temperatureLoader = uiutil.NewDataLoader[[]zfs.PoolAlert](application).
+		OnLoad(func(alerts []zfs.PoolAlert) {
+			monitor.temperatureAlerts = alerts
+			monitor.setAlerts(monitor.activities, monitor.combinedAlerts())
+		})
+	monitor.smartLoader = uiutil.NewDataLoader[[]zfs.PoolAlert](application).
+		OnLoad(func(alerts []zfs.PoolAlert) {
+			monitor.smartAlerts = alerts
+			monitor.setAlerts(monitor.activities, monitor.combinedAlerts())
+		})
 	monitor.dataErrorLoader = uiutil.NewDataLoader[dataErrorLoad](application).
 		OnLoad(func(load dataErrorLoad) {
 			// e.g. a search found objects while loading: the load does not have them
@@ -136,6 +170,28 @@ func NewMonitor(application *tview.Application) *Monitor {
 			logging.Warning("Cannot list the damaged files: %v", err)
 		})
 	return monitor
+}
+
+// SetTemperatureSampler sets what reads the temperatures of the disks after each load of the statuses, for the
+// alerts of disks at or above their critical temperature (see disk.Reading.IsCritical). Without (nil), there are
+// none. Must be called on the UI thread.
+func (monitor *Monitor) SetTemperatureSampler(sampler disk.TemperatureSampler) {
+	monitor.sampler = sampler
+}
+
+// SetSmartSource sets what reads the SMART values of the disks, every smartInterval with a load of the statuses,
+// for the alerts of disks that fail or wear out (see disk.SmartReport.Problems). Without (nil), there are none. Must
+// be called on the UI thread.
+func (monitor *Monitor) SetSmartSource(smart disk.SmartSource) {
+	monitor.smart = smart
+}
+
+// RefreshSmart reads the SMART values again with the next load of the statuses, which starts now, without the
+// reports read before: e.g. once the user may run smartctl with sudo. Must be called on the UI thread.
+func (monitor *Monitor) RefreshSmart() {
+	monitor.smartReadAt = time.Time{}
+	monitor.smartReset = true
+	monitor.Refresh()
 }
 
 // Refresh reloads the activities in the background, showing the old ones while loading.
@@ -220,13 +276,105 @@ func (monitor *Monitor) setStatuses(statuses []*zfs.PoolStatus) {
 		activities = append(activities, status.Activities()...)
 		alerts = append(alerts, status.Alerts()...)
 	}
-	// the most severe of all pools first
-	zfs.SortPoolAlerts(alerts)
-	monitor.update(activities, alerts)
+	monitor.statusAlerts = alerts
+	monitor.update(activities, monitor.combinedAlerts())
 	for _, listener := range monitor.statusListeners {
 		listener(statuses)
 	}
 	monitor.updateDataErrors(statuses)
+	monitor.sampleTemperatures(statuses)
+	monitor.readSmart(statuses)
+}
+
+// readSmart reads the SMART values of the disks of the pools in the background, every smartInterval, for the
+// alerts of disks that fail or wear out. Runs on the UI thread.
+func (monitor *Monitor) readSmart(statuses []*zfs.PoolStatus) {
+	smart := monitor.smart
+	if smart == nil || time.Since(monitor.smartReadAt) < smartInterval {
+		return
+	}
+	monitor.smartReadAt = time.Now()
+	reset := monitor.smartReset
+	monitor.smartReset = false
+	monitor.smartLoader.LoadQuietly(func(ctx context.Context) ([]zfs.PoolAlert, error) {
+		if reset {
+			smart.Reset()
+		}
+		var alerts []zfs.PoolAlert
+		for _, status := range statuses {
+			if alert, ok := smartAlert(status, smart.ReadDevices(zfs.LeafDevices(status.Devices), smartInterval)); ok {
+				alerts = append(alerts, alert)
+			}
+		}
+		return alerts, nil
+	})
+}
+
+// smartAlert returns the alert of the devices of the pool whose SMART values tell of failures or wear, with the
+// most severe problem of each, e.g. "SMART: sda 8 reallocated sectors", false if there are none. An error if any
+// fails, else a warning.
+func smartAlert(status *zfs.PoolStatus, reports map[string][]disk.SmartReport) (zfs.PoolAlert, bool) {
+	var problems []string
+	severity := zfs.PoolAlertWarning
+	for _, device := range zfs.LeafDevices(status.Devices) {
+		worst, ok := disk.WorstProblem(reports[device])
+		if !ok {
+			continue
+		}
+		problems = append(problems, zfs.DeviceDisplayName(device)+" "+worst.Text)
+		if worst.Severity == disk.SmartError {
+			severity = zfs.PoolAlertError
+		}
+	}
+	if len(problems) == 0 {
+		return zfs.PoolAlert{}, false
+	}
+	return zfs.PoolAlert{Pool: status.Name, Severity: severity, Kind: zfs.PoolAlertSmart,
+		Message: "SMART: " + strings.Join(problems, "; ")}, true
+}
+
+// combinedAlerts returns the alerts of the statuses and of the temperatures, the most severe of all pools first.
+// Runs on the UI thread.
+func (monitor *Monitor) combinedAlerts() []zfs.PoolAlert {
+	alerts := slices.Concat(monitor.statusAlerts, monitor.temperatureAlerts, monitor.smartAlerts)
+	zfs.SortPoolAlerts(alerts)
+	return alerts
+}
+
+// sampleTemperatures samples the temperatures of the devices of the pools in the background, for the alerts of
+// disks at or above their critical temperature. Idle hard disks are not read (see disk.Sampler), so they can spin
+// down. Runs on the UI thread.
+func (monitor *Monitor) sampleTemperatures(statuses []*zfs.PoolStatus) {
+	sampler := monitor.sampler
+	if sampler == nil {
+		return
+	}
+	monitor.temperatureLoader.LoadQuietly(func(ctx context.Context) ([]zfs.PoolAlert, error) {
+		var alerts []zfs.PoolAlert
+		for _, status := range statuses {
+			if alert, ok := temperatureAlert(status, sampler.Sample(zfs.LeafDevices(status.Devices), nil)); ok {
+				alerts = append(alerts, alert)
+			}
+		}
+		return alerts, nil
+	})
+}
+
+// temperatureAlert returns the alert of the devices of the pool at or above their critical temperature, e.g.
+// "Critical temperature: sda 86°C (critical: 85°C)", false if there are none.
+func temperatureAlert(status *zfs.PoolStatus, readings map[string]disk.Reading) (zfs.PoolAlert, bool) {
+	var hot []string
+	for _, device := range zfs.LeafDevices(status.Devices) {
+		if reading := readings[device]; reading.IsCritical() {
+			hot = append(hot, fmt.Sprintf("%s %.0f°C (critical: %.0f°C)", zfs.DeviceDisplayName(device),
+				reading.Temperature.Celsius, reading.Temperature.Critical))
+		}
+	}
+	if len(hot) == 0 {
+		return zfs.PoolAlert{}, false
+	}
+	return zfs.PoolAlert{Pool: status.Name, Severity: zfs.PoolAlertError, Kind: zfs.PoolAlertTemperature,
+		Message: "Critical temperature: " + strings.Join(hot, "; ")}, true
 }
 
 // updateDataErrors loads the damaged files if the data errors of the pools changed since the last load (or they are
@@ -387,6 +535,12 @@ func (monitor *Monitor) setDataErrors(index *zfs.DataErrorIndex) {
 
 // update shows the activities and alerts, and schedules the next reload. Runs on the UI thread.
 func (monitor *Monitor) update(activities []zfs.PoolActivity, alerts []zfs.PoolAlert) {
+	monitor.setAlerts(activities, alerts)
+	monitor.scheduleRefresh()
+}
+
+// setAlerts shows the activities and alerts, telling the listeners if they changed. Runs on the UI thread.
+func (monitor *Monitor) setAlerts(activities []zfs.PoolActivity, alerts []zfs.PoolAlert) {
 	changed := !slices.Equal(activities, monitor.activities) || !slices.Equal(alerts, monitor.alerts)
 	monitor.activities = activities
 	monitor.alerts = alerts
@@ -395,7 +549,6 @@ func (monitor *Monitor) update(activities []zfs.PoolActivity, alerts []zfs.PoolA
 			listener()
 		}
 	}
-	monitor.scheduleRefresh()
 }
 
 // scheduleRefresh reloads the activities after activeRefreshInterval while something runs, or else after

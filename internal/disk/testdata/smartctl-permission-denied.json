@@ -1,0 +1,37 @@
+{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "x86_64-linux-7.2.9-arch1-1",
+    "build_info": "(local build)",
+    "argv": [
+      "smartctl",
+      "-j",
+      "-H",
+      "-A",
+      "-n",
+      "standby",
+      "--",
+      "/dev/nvme0n1"
+    ],
+    "messages": [
+      {
+        "string": "Smartctl open device: /dev/nvme0n1 failed: Permission denied",
+        "severity": "error"
+      }
+    ],
+    "exit_status": 2
+  },
+  "local_time": {
+    "time_t": 1791975710,
+    "asctime": "Wed Oct 14 13:01:50 2026 CEST"
+  }
+}
