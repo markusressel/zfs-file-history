@@ -275,7 +275,7 @@ class CheckScriptTest(unittest.TestCase):
         ]:
             with self.subTest(line=line):
                 self.assertIsNotNone(pattern.search(line))
-        self.assertIsNone(pattern.search(" zfs-file-history   2.3.0   FILES    1/3 "))
+        self.assertIsNone(pattern.search(" zfs-file-history   2.3.0   FILES    1/4 "))
         self.assertIn(driver.WAIT_FOR_ACTIVITY, driver.SCRIPT)
 
     def test_refuses_invalid_patterns(self) -> None:

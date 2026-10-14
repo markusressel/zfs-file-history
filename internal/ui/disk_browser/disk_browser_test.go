@@ -234,9 +234,13 @@ func TestDiskBrowser_SelectDevice(t *testing.T) {
 
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "sdb") })
 	assert.Contains(t, dt.detailsText(), "sdb  in tank")
-	// the first disk of the pool
+	// the disk of the pool with a problem, e.g. for its alert
+	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "sdb") })
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("tank", "") })
 	assert.Contains(t, dt.detailsText(), "ata-DISK_1-part1 → sda  in tank")
+	// the first one if none has
+	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("fast", "") })
+	assert.Contains(t, dt.detailsText(), "nvme0n1p1 → nvme0n1  in fast")
 }
 
 func TestDiskBrowser_SelectDeviceBeforeLoaded(t *testing.T) {
@@ -392,4 +396,38 @@ func TestSortDiskEntries(t *testing.T) {
 	// not known first
 	assert.Equal(t, []string{"sdd", "sdb", "sdc", "sda"}, devices(sortDiskEntries(entries(), columnHours, false)))
 	assert.Equal(t, []string{"sdb", "sdd", "sda", "sdc"}, devices(sortDiskEntries(entries(), columnTemp, false)))
+}
+
+// Regression: a disk to select that was not listed stayed pending, and was selected by surprise once its pool
+// showed up later.
+func TestDiskBrowser_SelectDeviceNotListed(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	dt.smart.mu.Lock()
+	dt.smart.reports["sdz"] = []disk.SmartReport{healthy("sdz")}
+	dt.smart.mu.Unlock()
+
+	testutil.OnUiThread(t, dt.app, func() { dt.browser.SelectDevice("other", "sdz") })
+	assert.Contains(t, dt.detailsText(), "nvme0n1p1 → nvme0n1  in fast", "the first disk")
+
+	statuses := append(testStatuses(), &zfs.PoolStatus{Name: "other", Devices: []*zfs.PoolDevice{
+		{Name: "other", State: zfs.PoolStateOnline},
+		{Name: "sdz", Depth: 1, State: zfs.PoolStateOnline},
+	}})
+	testutil.OnUiThread(t, dt.app, func() {
+		dt.browser.SetStatuses(statuses)
+		dt.browser.ReadSmart()
+	})
+	dt.waitFor("the new pool listed", func() bool { return len(dt.rows()) == 4 })
+	assert.Contains(t, dt.detailsText(), "nvme0n1p1 → nvme0n1  in fast", "still the disk the user selected")
+}
+
+func TestAttentionRank(t *testing.T) {
+	hot := &DiskEntry{Report: healthy("sda"), Reading: disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 62, Critical: 60}}}
+	failing := &DiskEntry{Report: withProblems("sdb", failed)}
+	warning := &DiskEntry{Report: withProblems("sdc", reallocated)}
+	fine := &DiskEntry{Report: healthy("sdd")}
+	assert.Equal(t, 0, attentionRank(hot))
+	assert.Equal(t, 0, attentionRank(failing))
+	assert.Equal(t, 1, attentionRank(warning))
+	assert.Equal(t, 2, attentionRank(fine))
 }

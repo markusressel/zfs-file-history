@@ -50,7 +50,7 @@ func TestFormatDetails(t *testing.T) {
 		"ata-DISK_1-part1 → sda  in tank",
 		"  Disk:     WDC WD40EFRX  serial WD-1 · 4.0 TB · firmware 82.00A82 · ATA",
 		"  Health:   PASSED",
-		"  Power on: 8760 h (1.0 years)",
+		"  Power on: 8,760 h (1.0 years)",
 		"  Read:     " + uiutil.FormatTime(readAt),
 		"  Problems: 8 reallocated sectors",
 	}, strings.Split(testutil.StripTags(strings.Join(formatDetails(entry), "\n")), "\n"), "the attributes are in their own table")

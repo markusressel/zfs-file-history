@@ -275,12 +275,21 @@ func (browser *DiskBrowserComponent) render() {
 	var toSelect *DiskEntry
 	if browser.toSelect != nil {
 		for _, entry := range visible {
-			if entry.Pool == browser.toSelect.pool && (browser.toSelect.device == "" || entry.Device == browser.toSelect.device) {
+			if entry.Pool != browser.toSelect.pool || (browser.toSelect.device != "" && entry.Device != browser.toSelect.device) {
+				continue
+			}
+			// of a pool, the disk an alert is about
+			if toSelect == nil || attentionRank(entry) < attentionRank(toSelect) {
 				toSelect = entry
-				browser.toSelect = nil
-				break
 			}
 		}
+		if toSelect != nil {
+			browser.toSelect = nil
+		}
+	}
+	if browser.toSelect != nil && toSelect == nil && browser.smartReports != nil {
+		// not a disk of the pools (any more): not selected later by surprise
+		browser.toSelect = nil
 	}
 	if toSelect == nil {
 		for _, entry := range visible {
@@ -301,10 +310,12 @@ func (browser *DiskBrowserComponent) render() {
 	browser.updateFooter()
 }
 
-// SelectDevice selects the first disk of the device of the pool (device "": the first disk of the pool), or once
-// it is listed. Must be called on the UI thread.
+// SelectDevice selects the first disk of the device of the pool, or once it is listed. Device "" selects the disk of
+// the pool most in need of attention (see attentionRank), e.g. the one an alert of the pool is about. Must be called
+// on the UI thread.
 func (browser *DiskBrowserComponent) SelectDevice(pool string, device string) {
 	browser.toSelect = &poolDevice{pool: pool, device: device}
+	// a filter could hide it
 	browser.tableContainer.SetFilterText("")
 	browser.render()
 }
@@ -509,7 +520,8 @@ func toTableCells(row int, columns []*table.Column, entry *DiskEntry) []*tview.T
 			text = report.Protocol
 		case columnCapacity:
 			if report.Capacity > 0 {
-				text = uiutil.StableLengthHumanizedBytes(uint64(report.Capacity))
+				// in powers of 1000, like the disks are sold (and the details)
+				text = humanize.Bytes(uint64(report.Capacity))
 			}
 		case columnTemp:
 			text, color = FormatTemperature(entry.Reading)
@@ -559,6 +571,17 @@ func problemRank(report disk.SmartReport) int {
 		return 0
 	default:
 		return 1
+	}
+}
+
+// attentionRank orders the disks by how much they need attention: at their critical temperature or failing first,
+// then with warnings, then the others (keeping their order).
+func attentionRank(entry *DiskEntry) int {
+	switch rank := problemRank(entry.Report); {
+	case rank == 0 || entry.Reading.IsCritical():
+		return 0
+	default:
+		return rank
 	}
 }
 

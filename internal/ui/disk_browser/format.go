@@ -166,7 +166,7 @@ func formatDetails(entry *DiskEntry) []string {
 	health, color := formatHealth(report)
 	field("Health", txwidgets.Span(color, "%s", health))
 	if report.PowerOnHours >= 0 {
-		field("Power on", txwidgets.Span(tcell.ColorWhite, "%d h (%.1f years)", report.PowerOnHours, float64(report.PowerOnHours)/(24*365)))
+		field("Power on", txwidgets.Span(tcell.ColorWhite, "%s h (%.1f years)", humanize.Comma(report.PowerOnHours), float64(report.PowerOnHours)/(24*365)))
 	}
 	read := uiutil.FormatTime(report.ReadAt)
 	if report.Standby {
