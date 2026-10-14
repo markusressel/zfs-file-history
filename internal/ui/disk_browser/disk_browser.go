@@ -2,12 +2,9 @@ package disk_browser
 
 import (
 	"cmp"
-	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
@@ -66,15 +63,6 @@ const (
 
 // stateKeyTable is the key of the column layout remembered in state.Current
 const stateKeyTable = "diskBrowser"
-
-const (
-	// sampleInterval is how often the temperatures are sampled while the disks are shown, like in the devices pane
-	// of the pools page (see disk.Sampler)
-	sampleInterval = 10 * time.Second
-	// smartInterval is how old the SMART values may be while the disks are shown: smartctl runs with sudo, which
-	// logs every call. The activity monitor reads them every hour (for the alerts), the reports are shared.
-	smartInterval = 10 * time.Minute
-)
 
 // DiskEntry is a disk that pools are stored on, with its SMART values and the temperature of its devices. A disk is
 // listed once, also if several pools are stored on it (e.g. a partition for each); a device on several disks (e.g.
@@ -135,7 +123,7 @@ func (entry DiskEntry) HasDevice(pool string, device string) bool {
 
 // Kind returns the group of the disk by its type: hard disks first, then SSDs.
 func (entry DiskEntry) Kind() table.Group {
-	if entry.Report.Rotational && entry.Report.Protocol != "NVMe" {
+	if isHardDisk(entry.Report) {
 		return table.Group{Title: "Hard disks", Order: 0}
 	}
 	return table.Group{Title: "SSDs", Order: 1}
@@ -162,36 +150,20 @@ func (device PoolDevice) DisplayName() string {
 
 // DiskBrowserComponent lists the disks of all pools: what they are, their temperature and their health (SMART).
 //
-// Like the devices pane of the pools page, the temperatures are only sampled while the disks are drawn (the disks
-// page is shown), every sampleInterval, and idle hard disks are only read when asked to (t), so they can spin down
-// (see disk.Sampler). The SMART values are read while they are drawn as well, if older than smartInterval, or with s.
+// Like the devices pane of the pools page, the temperatures and SMART values are only read while the disks are drawn
+// (the disks page is shown), see HealthReader: idle hard disks only with t, all SMART values again with s.
 type DiskBrowserComponent struct {
 	Events *util.Emitter[Event]
 
 	application    *tview.Application
 	tableContainer *table.RowSelectionTable[DiskEntry]
 	view           *diskView
-	sampler        disk.TemperatureSampler
-	smart          disk.SmartSource
-	loader         *uiutil.DataLoader[map[string]disk.Reading]
-	smartLoader    *uiutil.DataLoader[map[string][]disk.SmartReport]
+	health         *HealthReader
 
 	// All fields below are only accessed on the UI thread.
 
 	// statuses are the statuses of all pools, see SetStatuses
 	statuses []*zfs.PoolStatus
-	// readings are the last readings of the devices, by their name
-	readings map[string]disk.Reading
-	// sampledDevices are the devices of the last sample, sampledAt when it was started
-	sampledDevices []string
-	sampledAt      time.Time
-	// sampleTimer draws again after sampleInterval, which samples again if the disks are still shown
-	sampleTimer *time.Timer
-	// smartReports are the SMART reports of the disks of the devices, by the name of the device; nil until read
-	smartReports map[string][]disk.SmartReport
-	// smartDevices are the devices SMART was last read for, smartReadAt when
-	smartDevices []string
-	smartReadAt  time.Time
 	// toSelect is the disk to select once it is listed, see SelectDevice
 	toSelect *PoolDevice
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
@@ -202,16 +174,17 @@ type DiskBrowserComponent struct {
 	enabled func() bool
 }
 
-// diskView is the table of the disks as placed in the layout: drawing it samples the disks (see
-// DiskBrowserComponent.sampleIfDue), so nothing is read while the disks are not shown.
+// diskView is the table of the disks as placed in the layout: drawing it reads the disks if due (see
+// HealthReader.ReadIfDue), so nothing is read while the disks are not shown.
 type diskView struct {
 	tview.Primitive
 	browser *DiskBrowserComponent
 }
 
 func (view *diskView) Draw(screen tcell.Screen) {
-	view.browser.sampleIfDue()
-	view.browser.smartIfDue()
+	if browser := view.browser; browser.statuses != nil {
+		browser.health.ReadIfDue(browser.deviceNames())
+	}
 	view.Primitive.Draw(screen)
 }
 
@@ -221,25 +194,13 @@ func NewDiskBrowser(application *tview.Application, sampler disk.TemperatureSamp
 	browser := &DiskBrowserComponent{
 		Events:      util.NewEmitter[Event](),
 		application: application,
-		sampler:     sampler,
-		smart:       smart,
 		enabled:     func() bool { return true },
 	}
+	browser.health = NewHealthReader(application, sampler, smart, browser.render)
 	browser.tableContainer = table.NewTableContainer[DiskEntry](application, toTableCells, sortDiskEntries)
 	browser.view = &diskView{Primitive: browser.tableContainer.GetLayout(), browser: browser}
 	browser.setupTable()
 
-	browser.loader = uiutil.NewDataLoader[map[string]disk.Reading](application).
-		OnLoad(func(readings map[string]disk.Reading) {
-			browser.readings = readings
-			browser.render()
-			browser.scheduleSample()
-		})
-	browser.smartLoader = uiutil.NewDataLoader[map[string][]disk.SmartReport](application).
-		OnLoad(func(reports map[string][]disk.SmartReport) {
-			browser.smartReports = reports
-			browser.render()
-		})
 	return browser
 }
 
@@ -339,15 +300,16 @@ func (browser *DiskBrowserComponent) deviceNames() []string {
 // UI thread.
 func (browser *DiskBrowserComponent) render() {
 	var entries []*DiskEntry
-	if browser.smartReports != nil {
+	readings, smartReports := browser.health.Readings(), browser.health.SmartReports()
+	if smartReports != nil {
 		entries = []*DiskEntry{}
 		byDisk := map[string]*DiskEntry{}
 		for _, device := range browser.devices() {
-			for _, report := range browser.smartReports[device.Device] {
+			for _, report := range smartReports[device.Device] {
 				// once per disk: the same values for each of its devices (e.g. a partition for each of two pools)
 				entry := byDisk[report.Disk]
 				if entry == nil {
-					entry = &DiskEntry{Report: report, Reading: browser.readings[device.Device]}
+					entry = &DiskEntry{Report: report, Reading: readings[device.Device]}
 					byDisk[report.Disk] = entry
 					entries = append(entries, entry)
 				}
@@ -380,16 +342,12 @@ func (browser *DiskBrowserComponent) render() {
 			browser.toSelect = nil
 		}
 	}
-	if browser.toSelect != nil && toSelect == nil && browser.smartReports != nil {
+	if browser.toSelect != nil && toSelect == nil && smartReports != nil {
 		// not a disk of the pools (any more): not selected later by surprise
 		browser.toSelect = nil
 	}
 	if toSelect == nil {
-		for _, entry := range visible {
-			if entry.TableRowId() == selected {
-				toSelect = entry
-			}
-		}
+		toSelect = browser.tableContainer.FindByRowId(selected)
 	}
 	if toSelect == nil && headerSelected {
 		browser.tableContainer.SelectHeader()
@@ -419,42 +377,18 @@ func (browser *DiskBrowserComponent) SelectDevice(pool string, device string) {
 	browser.render()
 }
 
-// updateFooter shows the number of disks and the ones with problems in the bottom border, and the hints about the
-// values that were not read: the temperatures of idle hard disks (a click reads them) and of disks without the
-// kernel module drivetemp, and SMART values that need root (a click offers to allow it). Runs on the UI thread.
+// updateFooter shows the hints about the values that were not read (see HealthReader.FooterHints) and the number of
+// disks and of the ones with problems in the bottom border. Runs on the UI thread.
 func (browser *DiskBrowserComponent) updateFooter() {
-	all := browser.tableContainer.GetAllEntries()
-	idle, needsDrivetemp, smartNeedsRoot := false, false, false
-	withProblems := 0
-	for _, entry := range all {
-		idle = idle || entry.Reading.Idle && !entry.Reading.Known
-		needsDrivetemp = needsDrivetemp || entry.Reading.NeedsDrivetemp
-		smartNeedsRoot = smartNeedsRoot || errors.Is(entry.Report.Err, disk.ErrSmartNeedsRoot)
-		if len(entry.Report.Problems) > 0 {
-			withProblems++
+	parts := browser.health.FooterHints(browser.deviceNames(), browser.ReadTemperatures, browser.onSetup)
+	if browser.health.SmartReports() != nil {
+		all := browser.tableContainer.GetAllEntries()
+		withProblems := 0
+		for _, entry := range all {
+			if len(entry.Report.Problems) > 0 {
+				withProblems++
+			}
 		}
-	}
-
-	var parts []uiutil.FooterPart
-	add := func(part uiutil.FooterPart) {
-		if len(parts) > 0 {
-			parts = append(parts, uiutil.FooterPart{Text: " · "})
-		}
-		parts = append(parts, part)
-	}
-	if needsDrivetemp {
-		add(uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.Pool.Hint, "SATA temperatures need: modprobe drivetemp")})
-	}
-	if idle {
-		add(uiutil.FooterPart{
-			Text:    txwidgets.Span(theme.Colors.Pool.ReadTemperature, "%s idle, not read: t", ReadTemperatureIcon),
-			OnClick: browser.ReadTemperatures,
-		})
-	}
-	if smartNeedsRoot && browser.onSetup != nil {
-		add(uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.Pool.ReadTemperature, "SMART needs root: allow"), OnClick: browser.onSetup})
-	}
-	if browser.smartReports != nil {
 		count := fmt.Sprintf("%d disks", len(all))
 		if browser.tableContainer.IsFilterActive() {
 			count = fmt.Sprintf("%d of %d disks", len(browser.tableContainer.GetEntries()), len(all))
@@ -462,87 +396,21 @@ func (browser *DiskBrowserComponent) updateFooter() {
 		if withProblems > 0 {
 			count += txwidgets.Span(theme.Colors.Pool.Degraded, " · %d with problems", withProblems)
 		}
-		add(uiutil.FooterPart{Text: count})
+		parts = append(parts, uiutil.FooterPart{Text: count})
 	}
-	browser.tableContainer.SetFooterParts(parts...)
+	browser.tableContainer.SetFooterParts(uiutil.JoinFooterParts(parts...)...)
 }
 
 // ReadSmart reads the SMART values of all disks again, also if they were read recently. Disks that sleep are not
 // woken up. Must be called on the UI thread.
 func (browser *DiskBrowserComponent) ReadSmart() {
-	browser.readSmart(browser.deviceNames(), 0)
-}
-
-// smartIfDue reads the SMART values of the devices if they changed, or the last read is older than smartInterval.
-// Called while the disks are drawn, like sampleIfDue. Runs on the UI thread.
-func (browser *DiskBrowserComponent) smartIfDue() {
-	if browser.smart == nil || browser.statuses == nil || browser.smartLoader.IsLoading() {
-		return
-	}
-	devices := browser.deviceNames()
-	if browser.smartReports != nil && slices.Equal(devices, browser.smartDevices) && time.Since(browser.smartReadAt) < smartInterval {
-		return
-	}
-	browser.readSmart(devices, smartInterval)
-}
-
-// readSmart reads the SMART values of the devices in the background, the ones older than maxAge. Runs on the UI
-// thread.
-func (browser *DiskBrowserComponent) readSmart(devices []string, maxAge time.Duration) {
-	if browser.smart == nil {
-		return
-	}
-	browser.smartDevices = devices
-	browser.smartReadAt = time.Now()
-	smart := browser.smart
-	browser.smartLoader.LoadQuietly(func(ctx context.Context) (map[string][]disk.SmartReport, error) {
-		return smart.ReadDevices(devices, maxAge), nil
-	})
+	browser.health.ReadSmart(browser.deviceNames())
 }
 
 // ReadTemperatures reads the temperatures of all disks, also of idle hard disks. Must be called on the UI thread.
 func (browser *DiskBrowserComponent) ReadTemperatures() {
 	devices := browser.deviceNames()
-	browser.sample(devices, devices)
-}
-
-// sampleIfDue samples the devices if they changed, or the last sample is older than sampleInterval. Called while
-// the disks are drawn, so nothing is sampled while they are not shown. Runs on the UI thread.
-func (browser *DiskBrowserComponent) sampleIfDue() {
-	if browser.sampler == nil || browser.statuses == nil || browser.loader.IsLoading() {
-		return
-	}
-	devices := browser.deviceNames()
-	// a timer may fire a little early
-	if slices.Equal(devices, browser.sampledDevices) && time.Since(browser.sampledAt) < sampleInterval-time.Second {
-		return
-	}
-	browser.sample(devices, nil)
-}
-
-// sample samples the devices in the background, forced ones are read in any case. Runs on the UI thread.
-func (browser *DiskBrowserComponent) sample(devices []string, forced []string) {
-	if browser.sampler == nil {
-		return
-	}
-	browser.sampledDevices = devices
-	browser.sampledAt = time.Now()
-	sampler := browser.sampler
-	browser.loader.LoadQuietly(func(ctx context.Context) (map[string]disk.Reading, error) {
-		return sampler.Sample(devices, forced), nil
-	})
-}
-
-// scheduleSample draws again after sampleInterval, which samples the devices again if they are still shown (see
-// sampleIfDue). Runs on the UI thread.
-func (browser *DiskBrowserComponent) scheduleSample() {
-	if browser.sampleTimer != nil {
-		browser.sampleTimer.Stop()
-	}
-	application := browser.application
-	browser.sampleTimer = time.AfterFunc(sampleInterval, func() {
-		application.QueueUpdateDraw(func() {})
-	})
+	browser.health.ReadTemperatures(devices, devices)
 }
 
 // openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.

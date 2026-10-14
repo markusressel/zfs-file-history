@@ -41,6 +41,18 @@ type FooterPart struct {
 	OnClick func()
 }
 
+// JoinFooterParts returns the parts separated by " · ".
+func JoinFooterParts(parts ...FooterPart) []FooterPart {
+	var joined []FooterPart
+	for _, part := range parts {
+		if len(joined) > 0 {
+			joined = append(joined, FooterPart{Text: " · "})
+		}
+		joined = append(joined, part)
+	}
+	return joined
+}
+
 // NewBorderFooter installs a footer on the given box, which must have a border.
 // Install it only once per box, and keep the returned footer to change its text.
 // A draw func that the box already has is kept and called first.

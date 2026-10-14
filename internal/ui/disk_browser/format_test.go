@@ -49,13 +49,13 @@ func ataReport() disk.SmartReport {
 func TestFormatDetails(t *testing.T) {
 	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "tank", Device: "/dev/disk/by-id/ata-DISK_1-part1"}}, Report: ataReport()}
 	assert.Equal(t, []string{
-		"sda  SATA HDD  in tank",
-		"  Devices:  ata-DISK_1-part1  in tank",
-		"  Disk:     WDC WD40EFRX  serial WD-1 · 4.0 TB · firmware 82.00A82",
-		"  Health:   PASSED",
-		"  Power on: 8,760 h (1.0 years)",
-		"  Read:     " + uiutil.FormatTime(readAt),
-		"  Problems: 8 reallocated sectors",
+		"Type:     SATA HDD",
+		"Devices:  ata-DISK_1-part1  in tank",
+		"Model:    WDC WD40EFRX  serial WD-1 · 4.0 TB · firmware 82.00A82",
+		"Health:   PASSED",
+		"Power on: 8,760 h (1.0 years)",
+		"Read:     " + uiutil.FormatTime(readAt),
+		"Problems: 8 reallocated sectors",
 	}, strings.Split(testutil.StripTags(strings.Join(formatDetails(entry), "\n")), "\n"), "the attributes are in their own table")
 
 	tests := []struct {
@@ -64,15 +64,15 @@ func TestFormatDetails(t *testing.T) {
 		lines  []string
 	}{
 		{"asleep", disk.SmartReport{Disk: "sdb", Standby: true, CheckedAt: readAt},
-			[]string{"sdb  SSD  in tank", "  SMART:    asleep, not woken up to read it"}},
+			[]string{"Type:     SSD", "Devices:  sdb  in tank", "SMART:    asleep, not woken up to read it"}},
 		{"needs root", disk.SmartReport{Disk: "sdb", Err: disk.ErrSmartNeedsRoot},
-			[]string{"sdb  SSD  in tank", "  SMART:    only root may read them: allow \"Disk health\" in the command menu (:)"}},
+			[]string{"Type:     SSD", "Devices:  sdb  in tank", "SMART:    only root may read them: allow \"Disk health\" in the command menu (:)"}},
 		{"no smartctl", disk.SmartReport{Disk: "sdb", Err: disk.ErrSmartctlMissing},
-			[]string{"sdb  SSD  in tank", "  SMART:    not read: smartctl is not installed (smartmontools)"}},
+			[]string{"Type:     SSD", "Devices:  sdb  in tank", "SMART:    not read: smartctl is not installed (smartmontools)"}},
 		{"other error", disk.SmartReport{Disk: "sdb", Err: errors.New("smartctl failed: no")},
-			[]string{"sdb  SSD  in tank", "  Error:    smartctl failed: no"}},
+			[]string{"Type:     SSD", "Devices:  sdb  in tank", "Error:    smartctl failed: no"}},
 		{"failed, no hours", disk.SmartReport{Disk: "sdb", ReadAt: readAt, HealthKnown: true, PowerOnHours: -1},
-			[]string{"sdb  SSD  in tank", "  Health:   FAILED", "  Read:     " + uiutil.FormatTime(readAt)}},
+			[]string{"Type:     SSD", "Devices:  sdb  in tank", "Health:   FAILED", "Read:     " + uiutil.FormatTime(readAt)}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

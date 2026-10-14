@@ -75,6 +75,12 @@ type detailsView struct {
 	component *DiskDetailsComponent
 }
 
+// MouseHandler handles the mouse like the text view (e.g. scrolling), without focusing it: there is nothing to do in
+// it, like Tab skips it.
+func (view *detailsView) MouseHandler() uiutil.MouseHandler {
+	return uiutil.WithoutFocus(view.TextView.MouseHandler())
+}
+
 func (view *detailsView) Draw(screen tcell.Screen) {
 	if view.component.shownEntry != nil && view.component.renderedTimeFormat != uiutil.TimeFormatGeneration() {
 		view.component.renderDetails()
@@ -87,7 +93,10 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	component := &DiskDetailsComponent{application: application}
 
 	component.details = tview.NewTextView().SetDynamicColors(true).SetWrap(false)
+	// a pane of its own like the path overview, which Tab skips: there is nothing to do in it
+	component.details.SetBorder(true)
 	component.details.SetBorderPadding(0, 0, 1, 1)
+	uiutil.SetupWindow(component.details, "Disk")
 	component.detailsView = &detailsView{TextView: component.details, component: component}
 
 	t := table.NewTableContainer[AttributeEntry](application, toAttributeCells, sortAttributes)
@@ -128,6 +137,7 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 	component.shownEntry = entry
 	if entry == nil {
 		component.details.SetText("")
+		uiutil.SetupWindow(component.details, "Disk")
 		component.layout.ResizeItem(component.detailsView, 0, 0)
 		component.shownDisk = ""
 		component.tableContainer.SetPlaceholder("No disk selected.", theme.Colors.Pool.Hint)
@@ -153,10 +163,8 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 		component.tableContainer.SelectHeader()
 	}
 	if sameDisk && selected != nil {
-		for _, attribute := range component.tableContainer.GetEntries() {
-			if attribute.TableRowId() == selected.TableRowId() {
-				component.tableContainer.Select(attribute)
-			}
+		if attribute := component.tableContainer.FindByRowId(selected.TableRowId()); attribute != nil {
+			component.tableContainer.Select(attribute)
 		}
 	}
 	component.updateFooter()
@@ -166,9 +174,10 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 func (component *DiskDetailsComponent) renderDetails() {
 	component.renderedTimeFormat = uiutil.TimeFormatGeneration()
 	lines := formatDetails(component.shownEntry)
+	uiutil.SetupWindow(component.details, component.shownEntry.Report.Disk)
 	component.details.SetText(strings.Join(lines, "\n"))
-	// a line of space to the table
-	component.layout.ResizeItem(component.detailsView, len(lines)+1, 0)
+	// and the border
+	component.layout.ResizeItem(component.detailsView, len(lines)+2, 0)
 }
 
 // updateFooter shows the number of attributes in the bottom border of the table. Runs on the UI thread.

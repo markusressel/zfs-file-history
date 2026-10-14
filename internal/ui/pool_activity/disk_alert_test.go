@@ -1,38 +1,16 @@
 package pool_activity
 
 import (
-	"sync"
 	"testing"
 	"time"
 	"zfs-file-history/internal/disk"
+	"zfs-file-history/internal/disk/disktest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// fakeSampler returns the readings, which can be changed while the test runs.
-type fakeSampler struct {
-	mu       sync.Mutex
-	readings map[string]disk.Reading
-}
-
-func (sampler *fakeSampler) Sample(devices []string, _ []string) map[string]disk.Reading {
-	sampler.mu.Lock()
-	defer sampler.mu.Unlock()
-	result := map[string]disk.Reading{}
-	for _, device := range devices {
-		result[device] = sampler.readings[device]
-	}
-	return result
-}
-
-func (sampler *fakeSampler) set(readings map[string]disk.Reading) {
-	sampler.mu.Lock()
-	defer sampler.mu.Unlock()
-	sampler.readings = readings
-}
 
 // withDisks returns the status of a healthy pool with a mirror of the disks.
 func withDisks(name string, disks ...string) *zfs.PoolStatus {
@@ -73,7 +51,7 @@ func TestMonitor_TemperatureAlerts(t *testing.T) {
 	degraded := withDisks("bpool", "sda")
 	degraded.State = zfs.PoolStateDegraded
 	app, monitor, _, fake, _ := setupAlertTest(t, []*zfs.PoolStatus{degraded, withDisks("tank", "sdb", "sdc")})
-	sampler := &fakeSampler{readings: map[string]disk.Reading{"sdb": critical(86), "sdc": critical(40)}}
+	sampler := disktest.NewSampler(map[string]disk.Reading{"sdb": critical(86), "sdc": critical(40)})
 	testutil.OnUiThread(t, app, func() {
 		monitor.SetTemperatureSampler(sampler)
 		monitor.Refresh()
@@ -91,42 +69,11 @@ func TestMonitor_TemperatureAlerts(t *testing.T) {
 	}, alerts(), "the most severe first")
 
 	// cooled down: gone with the next load
-	sampler.set(map[string]disk.Reading{"sdb": critical(80)})
+	sampler.Set(map[string]disk.Reading{"sdb": critical(80)})
 	fake.set([]*zfs.PoolStatus{degraded, withDisks("tank", "sdb", "sdc")}, nil)
 	testutil.OnUiThread(t, app, func() { monitor.Refresh() })
 	require.Eventually(t, func() bool { return len(alerts()) == 1 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, zfs.PoolAlertState, alerts()[0].Kind)
-}
-
-// fakeSmart returns the reports by device, and counts the reads and resets.
-type fakeSmart struct {
-	mu      sync.Mutex
-	reports map[string][]disk.SmartReport
-	reads   int
-	resets  int
-}
-
-func (smart *fakeSmart) ReadDevices(devices []string, _ time.Duration) map[string][]disk.SmartReport {
-	smart.mu.Lock()
-	defer smart.mu.Unlock()
-	smart.reads++
-	result := map[string][]disk.SmartReport{}
-	for _, device := range devices {
-		result[device] = smart.reports[device]
-	}
-	return result
-}
-
-func (smart *fakeSmart) Reset() {
-	smart.mu.Lock()
-	defer smart.mu.Unlock()
-	smart.resets++
-}
-
-func (smart *fakeSmart) counts() (reads int, resets int) {
-	smart.mu.Lock()
-	defer smart.mu.Unlock()
-	return smart.reads, smart.resets
 }
 
 func smartReport(problems ...disk.SmartProblem) []disk.SmartReport {
@@ -167,7 +114,7 @@ func TestMonitor_SmartAlerts(t *testing.T) {
 	smartInterval = time.Hour
 
 	app, monitor, _, _, _ := setupAlertTest(t, []*zfs.PoolStatus{withDisks("tank", "sda", "sdb")})
-	smart := &fakeSmart{reports: map[string][]disk.SmartReport{"sdb": smartReport(smartError)}}
+	smart := disktest.NewSmart(map[string][]disk.SmartReport{"sdb": smartReport(smartError)})
 	testutil.OnUiThread(t, app, func() {
 		monitor.SetSmartSource(smart)
 		monitor.Refresh()
@@ -186,13 +133,11 @@ func TestMonitor_SmartAlerts(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { monitor.Refresh() })
 	testutil.OnUiThread(t, app, func() { monitor.Refresh() })
 	time.Sleep(50 * time.Millisecond)
-	reads, resets := smart.counts()
-	assert.Equal(t, 1, reads)
-	assert.Equal(t, 0, resets)
+	assert.Len(t, smart.MaxAges(), 1)
+	assert.Zero(t, smart.Resets())
 
 	// e.g. once allowed to run smartctl: read again, without the old reports
 	testutil.OnUiThread(t, app, func() { monitor.RefreshSmart() })
-	require.Eventually(t, func() bool { reads, _ := smart.counts(); return reads == 2 }, 2*time.Second, 10*time.Millisecond)
-	_, resets = smart.counts()
-	assert.Equal(t, 1, resets)
+	require.Eventually(t, func() bool { return len(smart.MaxAges()) == 2 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, 1, smart.Resets())
 }

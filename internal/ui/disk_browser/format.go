@@ -111,29 +111,26 @@ func formatHealth(report disk.SmartReport) (string, tcell.Color) {
 	}
 }
 
-// formatDetails returns the lines of the details of a disk: what it is, its health and its problems. The attributes
-// are in a table of their own.
+// formatDetails returns the lines of the details of a disk: what it is, its health and its problems. Its name is
+// the title of the pane, the attributes are in a table of their own.
 func formatDetails(entry *DiskEntry) []string {
 	report := entry.Report
-	lines := []string{"[::b]" + txwidgets.Span(theme.Colors.Dialog.Highlight, "%s", report.Disk) + "[::-]" +
-		txwidgets.Span(theme.Colors.Pool.Hint, "  %s  in %s", typeOf(report), entry.PoolNames())}
-
+	var lines []string
 	field := func(label string, value string) {
 		if label != "" {
 			label += ":"
 		}
-		lines = append(lines, txwidgets.Span(theme.Colors.Layout.Table.Accent, "  %-9s", label)+" "+value)
+		lines = append(lines, txwidgets.Span(theme.Colors.Layout.Table.Accent, "%-9s", label)+" "+value)
 	}
-	// the devices of the pools on it, unless it is the only one, named like the disk
-	if len(entry.Devices) > 1 || (len(entry.Devices) == 1 && entry.Devices[0].DisplayName() != report.Disk) {
-		for i, device := range entry.Devices {
-			label := ""
-			if i == 0 {
-				label = "Devices"
-			}
-			field(label, txwidgets.Span(tcell.ColorWhite, "%s", device.DisplayName())+
-				txwidgets.Span(theme.Colors.Pool.Hint, "  in %s", device.Pool))
+	field("Type", txwidgets.Span(tcell.ColorWhite, "%s", typeOf(report)))
+	// the devices of the pools on it, so also the pools
+	for i, device := range entry.Devices {
+		label := ""
+		if i == 0 {
+			label = "Devices"
 		}
+		field(label, txwidgets.Span(tcell.ColorWhite, "%s", device.DisplayName())+
+			txwidgets.Span(theme.Colors.Pool.Hint, "  in %s", device.Pool))
 	}
 	// the model and so on in a line of their own, the name of the device can be long
 	var details []string
@@ -154,7 +151,7 @@ func formatDetails(entry *DiskEntry) []string {
 			}
 			value += txwidgets.Span(theme.Colors.Pool.Hint, "%s", strings.Join(details, " · "))
 		}
-		field("Disk", value)
+		field("Model", value)
 	}
 	switch {
 	case errors.Is(report.Err, disk.ErrSmartctlMissing):
@@ -192,11 +189,16 @@ func formatDetails(entry *DiskEntry) []string {
 	return lines
 }
 
+// isHardDisk returns whether the disk spins. NVMe drives never do: the kernel reports unknown ones as rotational.
+func isHardDisk(report disk.SmartReport) bool {
+	return report.Rotational && report.Protocol != "NVMe"
+}
+
 // typeOf returns the type of the disk, e.g. "SATA HDD" or "NVMe SSD": hard disk or SSD from the kernel, known also if
 // the SMART values could not be read.
 func typeOf(report disk.SmartReport) string {
 	kind := "SSD"
-	if report.Rotational && report.Protocol != "NVMe" {
+	if isHardDisk(report) {
 		kind = "HDD"
 	}
 	switch report.Protocol {

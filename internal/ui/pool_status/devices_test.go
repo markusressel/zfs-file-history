@@ -3,11 +3,11 @@ package pool_status
 import (
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 	"zfs-file-history/internal/disk"
+	"zfs-file-history/internal/disk/disktest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
@@ -17,36 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// fakeSampler returns the readings, and records the forced devices of each sample. A forced device that is idle and
-// not known yet is read (45 °C).
-type fakeSampler struct {
-	mu       sync.Mutex
-	readings map[string]disk.Reading
-	forced   [][]string
-}
-
-func (sampler *fakeSampler) Sample(devices []string, forced []string) map[string]disk.Reading {
-	sampler.mu.Lock()
-	defer sampler.mu.Unlock()
-	sampler.forced = append(sampler.forced, forced)
-	result := map[string]disk.Reading{}
-	for _, device := range devices {
-		reading := sampler.readings[device]
-		if slices.Contains(forced, device) && reading.Idle {
-			reading = disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 45}}
-			sampler.readings[device] = reading
-		}
-		result[device] = reading
-	}
-	return result
-}
-
-func (sampler *fakeSampler) samples() [][]string {
-	sampler.mu.Lock()
-	defer sampler.mu.Unlock()
-	return slices.Clone(sampler.forced)
-}
 
 // resilveringDevices are the devices of a degraded pool with a resilver running, with logs, a cache and spares.
 func resilveringDevices() []*zfs.PoolDevice {
@@ -147,7 +117,7 @@ func TestCounterAndNoteColors(t *testing.T) {
 
 func TestPoolDevices_SetStatus(t *testing.T) {
 	app := tview.NewApplication()
-	devices := NewPoolDevices(app, &fakeSampler{}, nil)
+	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 
 	devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
 	assert.Contains(t, devices.GetLayout().GetTitle(), "Devices · 2 with errors")
@@ -166,7 +136,7 @@ func TestPoolDevices_SetStatus(t *testing.T) {
 
 func TestPoolDevices_Focus(t *testing.T) {
 	app := tview.NewApplication()
-	devices := NewPoolDevices(app, &fakeSampler{}, nil)
+	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 	assert.False(t, devices.HasFocus())
 	devices.Focus()
 	assert.True(t, devices.HasFocus())
@@ -238,7 +208,7 @@ func TestFormatDevices_SpareWithoutTemperature(t *testing.T) {
 }
 
 // setupDevicesTest shows the devices of resilveringDevices with the readings of the sampler on a simulation screen.
-func setupDevicesTest(t *testing.T, sampler *fakeSampler) (*tview.Application, *PoolDevicesComponent, tcell.SimulationScreen) {
+func setupDevicesTest(t *testing.T, sampler *disktest.Sampler) (*tview.Application, *PoolDevicesComponent, tcell.SimulationScreen) {
 	app := tview.NewApplication()
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
@@ -255,7 +225,7 @@ func setupDevicesTest(t *testing.T, sampler *fakeSampler) (*tview.Application, *
 }
 
 func TestPoolDevices_SamplesWhileDrawn(t *testing.T) {
-	sampler := &fakeSampler{readings: testReadings()}
+	sampler := disktest.NewSampler(testReadings())
 	app, devices, _ := setupDevicesTest(t, sampler)
 
 	require.Eventually(t, func() bool {
@@ -265,7 +235,7 @@ func TestPoolDevices_SamplesWhileDrawn(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 	// drawn again, but not due yet
 	testutil.OnUiThread(t, app, func() { app.ForceDraw() })
-	assert.Equal(t, [][]string{nil}, sampler.samples(), "nothing forced")
+	assert.Equal(t, [][]string{nil}, sampler.Forced(), "nothing forced")
 
 	testutil.OnUiThread(t, app, func() {
 		assert.Contains(t, devices.footer.GetText(), "idle, not read: t")
@@ -274,9 +244,9 @@ func TestPoolDevices_SamplesWhileDrawn(t *testing.T) {
 }
 
 func TestPoolDevices_ClickReadsIdleDisk(t *testing.T) {
-	sampler := &fakeSampler{readings: testReadings()}
+	sampler := disktest.NewSampler(testReadings())
 	app, devices, screen := setupDevicesTest(t, sampler)
-	require.Eventually(t, func() bool { return len(sampler.samples()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return len(sampler.Forced()) == 1 }, 2*time.Second, 10*time.Millisecond)
 
 	// the icon of sdc, below the border and the header
 	var x, y int
@@ -296,7 +266,7 @@ func TestPoolDevices_ClickReadsIdleDisk(t *testing.T) {
 	screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
 
 	require.Eventually(t, func() bool {
-		return slices.ContainsFunc(sampler.samples(), func(forced []string) bool { return slices.Equal(forced, []string{"sdc"}) })
+		return slices.ContainsFunc(sampler.Forced(), func(forced []string) bool { return slices.Equal(forced, []string{"sdc"}) })
 	},
 		2*time.Second, 10*time.Millisecond)
 	require.Eventually(t, func() bool {
@@ -307,22 +277,22 @@ func TestPoolDevices_ClickReadsIdleDisk(t *testing.T) {
 }
 
 func TestPoolDevices_KeyReadsAll(t *testing.T) {
-	sampler := &fakeSampler{readings: testReadings()}
+	sampler := disktest.NewSampler(testReadings())
 	app, devices, screen := setupDevicesTest(t, sampler)
-	require.Eventually(t, func() bool { return len(sampler.samples()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return len(sampler.Forced()) == 1 }, 2*time.Second, 10*time.Millisecond)
 	testutil.OnUiThread(t, app, func() {
 		devices.Focus()
 		require.Len(t, devices.GetShortcutMap(), 1)
 	})
 
 	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
-	require.Eventually(t, func() bool { return len(sampler.samples()) == 2 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, zfs.LeafDevices(resilveringDevices()), sampler.samples()[1])
+	require.Eventually(t, func() bool { return len(sampler.Forced()) == 2 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, zfs.LeafDevices(resilveringDevices()), sampler.Forced()[1])
 }
 
 func TestPoolDevices_NoDisks(t *testing.T) {
 	app := tview.NewApplication()
-	devices := NewPoolDevices(app, &fakeSampler{}, nil)
+	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 	devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
 	assert.Empty(t, devices.GetShortcutMap())
 	assert.NotContains(t, devices.GetLayout().GetText(true), "TEMP")
@@ -351,9 +321,9 @@ func TestFormatDevices_CriticalBlinks(t *testing.T) {
 
 // TestPoolDevices_CriticalBlinksOnScreen checks that tview draws the critical temperature with the blink attribute.
 func TestPoolDevices_CriticalBlinksOnScreen(t *testing.T) {
-	sampler := &fakeSampler{readings: map[string]disk.Reading{
+	sampler := disktest.NewSampler(map[string]disk.Reading{
 		"sda": {IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 86, Critical: 85}},
-	}}
+	})
 	app, devices, screen := setupDevicesTest(t, sampler)
 	require.Eventually(t, func() bool {
 		var fields []clickableField
@@ -377,32 +347,6 @@ func TestPoolDevices_CriticalBlinksOnScreen(t *testing.T) {
 	assert.Equal(t, "0", text, "the checksum counter")
 	_, _, attributes = style.Decompose()
 	assert.Zero(t, attributes&tcell.AttrBlink)
-}
-
-// fakeSmart returns the reports by device, and records the maxAge of each read.
-type fakeSmart struct {
-	mu      sync.Mutex
-	reports map[string][]disk.SmartReport
-	maxAges []time.Duration
-}
-
-func (smart *fakeSmart) ReadDevices(devices []string, maxAge time.Duration) map[string][]disk.SmartReport {
-	smart.mu.Lock()
-	defer smart.mu.Unlock()
-	smart.maxAges = append(smart.maxAges, maxAge)
-	result := map[string][]disk.SmartReport{}
-	for _, device := range devices {
-		result[device] = smart.reports[device]
-	}
-	return result
-}
-
-func (smart *fakeSmart) Reset() {}
-
-func (smart *fakeSmart) reads() []time.Duration {
-	smart.mu.Lock()
-	defer smart.mu.Unlock()
-	return slices.Clone(smart.maxAges)
 }
 
 var readAt = time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
@@ -480,13 +424,13 @@ func TestFormatDevices_SmartWithoutTemperatures(t *testing.T) {
 
 // setupSmartTest shows the devices of resilveringDevices with the SMART reports of smart. showDisk is the last disk
 // shown on the disks page ("pool/device"), only accessed on the UI thread.
-func setupSmartTest(t *testing.T, smart *fakeSmart) (app *tview.Application, devices *PoolDevicesComponent, showDisk *string, screen tcell.SimulationScreen) {
+func setupSmartTest(t *testing.T, smart *disktest.Smart) (app *tview.Application, devices *PoolDevicesComponent, showDisk *string, screen tcell.SimulationScreen) {
 	app = tview.NewApplication()
 	screen = tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	app.EnableMouse(true)
 	screen.SetSize(120, 30)
-	devices = NewPoolDevices(app, &fakeSampler{}, smart)
+	devices = NewPoolDevices(app, disktest.NewSampler(nil), smart)
 	app.SetRoot(devices.GetLayout(), true)
 	go func() { _ = app.Run() }()
 	t.Cleanup(app.Stop)
@@ -501,16 +445,16 @@ func setupSmartTest(t *testing.T, smart *fakeSmart) (app *tview.Application, dev
 }
 
 func TestPoolDevices_Smart(t *testing.T) {
-	smart := &fakeSmart{reports: map[string][]disk.SmartReport{"sda": {withProblems("sda", reallocated)}, "sdb": {healthy("sdb")}}}
+	smart := disktest.NewSmart(map[string][]disk.SmartReport{"sda": {withProblems("sda", reallocated)}, "sdb": {healthy("sdb")}})
 	app, devices, showDisk, screen := setupSmartTest(t, smart)
 
-	// read while drawn, the ones older than smartInterval
+	// read while drawn, the ones older than 10 minutes (see disk_browser.HealthReader)
 	require.Eventually(t, func() bool {
 		var text string
 		testutil.OnUiThread(t, app, func() { text = devices.GetLayout().GetText(true) })
 		return strings.Contains(text, "8 realloc")
 	}, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, []time.Duration{smartInterval}, smart.reads())
+	assert.Equal(t, []time.Duration{10 * time.Minute}, smart.MaxAges())
 	testutil.OnUiThread(t, app, func() {
 		names := []string{}
 		for _, entry := range devices.GetShortcutMap() {
@@ -521,8 +465,8 @@ func TestPoolDevices_Smart(t *testing.T) {
 
 	// s reads all again
 	screen.InjectKey(tcell.KeyRune, 's', tcell.ModNone)
-	require.Eventually(t, func() bool { return len(smart.reads()) == 2 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, time.Duration(0), smart.reads()[1])
+	require.Eventually(t, func() bool { return len(smart.MaxAges()) == 2 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, time.Duration(0), smart.MaxAges()[1])
 
 	// a click on the SMART values of sda shows its disk on the disks page
 	var x, y int
@@ -544,7 +488,7 @@ func TestPoolDevices_Smart(t *testing.T) {
 }
 
 func TestPoolDevices_SmartNeedsRoot(t *testing.T) {
-	smart := &fakeSmart{reports: map[string][]disk.SmartReport{"sda": {{Disk: "sda", Err: disk.ErrSmartNeedsRoot}}}}
+	smart := disktest.NewSmart(map[string][]disk.SmartReport{"sda": {{Disk: "sda", Err: disk.ErrSmartNeedsRoot}}})
 	app, devices, _, screen := setupSmartTest(t, smart)
 	var setups atomic.Int32
 	testutil.OnUiThread(t, app, func() { devices.SetOnSetup(func() { setups.Add(1) }) })

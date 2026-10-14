@@ -897,6 +897,17 @@ func (c *RowSelectionTable[T]) GetEntries() []*T {
 	return c.entries
 }
 
+// FindByRowId returns the displayed entry with the TableRowId, nil if none is displayed. E.g. to select the entry that
+// was selected again, after the entries were replaced by new ones (SetData).
+func (c *RowSelectionTable[T]) FindByRowId(id string) *T {
+	for _, entry := range c.entries {
+		if (*entry).TableRowId() == id {
+			return entry
+		}
+	}
+	return nil
+}
+
 func (c *RowSelectionTable[T]) GetSelectedEntry() *T {
 	row, _ := c.table.GetSelection()
 	if row >= 0 && row < len(c.rowEntries) {

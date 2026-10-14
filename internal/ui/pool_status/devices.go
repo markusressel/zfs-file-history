@@ -1,13 +1,9 @@
 package pool_status
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/ui/clickable"
@@ -33,45 +29,21 @@ const (
 // temperatureWidth is the width of the temperature column, e.g. " 45°C".
 const temperatureWidth = 5
 
-// sampleInterval is how often the disks are sampled while the devices are shown, see disk.Sampler: whether hard
-// disks are busy is told by comparing their I/O statistics between two samples.
-const sampleInterval = 10 * time.Second
-
-// smartInterval is how old the SMART values may be while the devices are shown: smartctl runs with sudo, which logs
-// every call. The activity monitor reads them every hour (for the alerts), the reports are shared.
-const smartInterval = 10 * time.Minute
-
 // PoolDevicesComponent shows the devices of a pool as a tree, like the config of "zpool status": their state, their
 // read, write and checksum errors, the temperature of their disks and their health (SMART).
 //
-// The temperatures are only sampled while the devices are drawn (the pools page is shown), every sampleInterval.
-// Idle hard disks are not read, so they can spin down (see disk.Sampler): a click on their temperature, or t, reads
-// them. The SMART values are read while they are drawn as well, if older than smartInterval, or with s. A click on
-// them, or Enter, shows them on the disks page.
+// The temperatures and SMART values are only read while the devices are drawn (the pools page is shown), see
+// disk_browser.HealthReader. Idle hard disks are not read, so they can spin down: a click on their temperature, or t,
+// reads them. s reads the SMART values again, a click on them, or Enter, shows them on the disks page.
 type PoolDevicesComponent struct {
 	application *tview.Application
 	textView    *DevicesView
 	footer      *uiutil.BorderFooter
-	sampler     disk.TemperatureSampler
-	loader      *uiutil.DataLoader[map[string]disk.Reading]
-	smart       disk.SmartSource
-	smartLoader *uiutil.DataLoader[map[string][]disk.SmartReport]
+	health      *disk_browser.HealthReader
 
 	// All fields below are only accessed on the UI thread.
 
 	status *zfs.PoolStatus
-	// readings are the last readings of the devices, by their name
-	readings map[string]disk.Reading
-	// sampledDevices are the devices of the last sample, sampledAt when it was started
-	sampledDevices []string
-	sampledAt      time.Time
-	// sampleTimer draws again after sampleInterval, which samples again if the devices are still shown
-	sampleTimer *time.Timer
-	// smartReports are the SMART reports of the disks of the devices, by the name of the device
-	smartReports map[string][]disk.SmartReport
-	// smartDevices are the devices SMART was last read for, smartReadAt when
-	smartDevices []string
-	smartReadAt  time.Time
 	// fields are the temperatures and SMART values in the text, which can be clicked
 	fields  []clickableField
 	regions clickable.Regions
@@ -95,8 +67,6 @@ type DevicesView struct {
 func NewPoolDevices(application *tview.Application, sampler disk.TemperatureSampler, smart disk.SmartSource) *PoolDevicesComponent {
 	poolDevices := &PoolDevicesComponent{
 		application: application,
-		sampler:     sampler,
-		smart:       smart,
 		enabled:     func() bool { return true },
 	}
 	textView := tview.NewTextView().
@@ -107,19 +77,7 @@ func NewPoolDevices(application *tview.Application, sampler disk.TemperatureSamp
 	uiutil.SetupWindow(textView, "Devices")
 	poolDevices.textView = &DevicesView{TextView: textView, devices: poolDevices}
 	poolDevices.footer = uiutil.NewBorderFooter(textView.Box)
-
-	poolDevices.loader = uiutil.NewDataLoader[map[string]disk.Reading](application).
-		OnLoad(func(readings map[string]disk.Reading) {
-			poolDevices.readings = readings
-			poolDevices.render()
-			poolDevices.scheduleSample()
-		})
-
-	poolDevices.smartLoader = uiutil.NewDataLoader[map[string][]disk.SmartReport](application).
-		OnLoad(func(reports map[string][]disk.SmartReport) {
-			poolDevices.smartReports = reports
-			poolDevices.render()
-		})
+	poolDevices.health = disk_browser.NewHealthReader(application, sampler, smart, poolDevices.render)
 
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
@@ -176,51 +134,22 @@ func (poolDevices *PoolDevicesComponent) render() {
 	uiutil.SetupWindow(poolDevices.textView, devicesTitle(status.Devices))
 	// keep the scroll position while the status is refreshed
 	row, column := poolDevices.textView.GetScrollOffset()
-	text, fields := formatDevices(status.Devices, poolDevices.readings, poolDevices.smartReports)
+	text, fields := formatDevices(status.Devices, poolDevices.health.Readings(), poolDevices.health.SmartReports())
 	poolDevices.textView.SetText(text)
 	poolDevices.textView.ScrollTo(row, column)
 	poolDevices.fields = fields
 	poolDevices.footer.SetParts(poolDevices.footerParts()...)
 }
 
-// footerParts returns the hints about the values that were not read: the temperatures of idle hard disks (a click
-// reads them) and of disks without the kernel module drivetemp, and SMART values that need root (a click offers to
-// allow it).
+// footerParts returns the hints about the values that were not read, see disk_browser.HealthReader.FooterHints.
 func (poolDevices *PoolDevicesComponent) footerParts() []uiutil.FooterPart {
-	idle, needsDrivetemp, smartNeedsRoot := false, false, false
-	for _, name := range zfs.LeafDevices(poolDevices.status.Devices) {
-		reading := poolDevices.readings[name]
-		idle = idle || reading.Idle && !reading.Known
-		needsDrivetemp = needsDrivetemp || reading.NeedsDrivetemp
-		for _, report := range poolDevices.smartReports[name] {
-			smartNeedsRoot = smartNeedsRoot || errors.Is(report.Err, disk.ErrSmartNeedsRoot)
-		}
-	}
-	var parts []uiutil.FooterPart
-	add := func(part uiutil.FooterPart) {
-		if len(parts) > 0 {
-			parts = append(parts, uiutil.FooterPart{Text: " · "})
-		}
-		parts = append(parts, part)
-	}
-	if needsDrivetemp {
-		add(uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.Pool.Hint, "SATA temperatures need: modprobe drivetemp")})
-	}
-	if idle {
-		add(uiutil.FooterPart{
-			Text:    txwidgets.Span(theme.Colors.Pool.ReadTemperature, "%s idle, not read: t", disk_browser.ReadTemperatureIcon),
-			OnClick: poolDevices.ReadTemperatures,
-		})
-	}
-	if smartNeedsRoot && poolDevices.onSetup != nil {
-		add(uiutil.FooterPart{Text: txwidgets.Span(theme.Colors.Pool.ReadTemperature, "SMART needs root: allow"), OnClick: poolDevices.onSetup})
-	}
-	return parts
+	devices := zfs.LeafDevices(poolDevices.status.Devices)
+	return uiutil.JoinFooterParts(poolDevices.health.FooterHints(devices, poolDevices.ReadTemperatures, poolDevices.onSetup)...)
 }
 
 // hasSmart returns whether SMART values of any device were read, or tried to. Runs on the UI thread.
 func (poolDevices *PoolDevicesComponent) hasSmart() bool {
-	for _, reports := range poolDevices.smartReports {
+	for _, reports := range poolDevices.health.SmartReports() {
 		if len(reports) > 0 {
 			return true
 		}
@@ -232,35 +161,8 @@ func (poolDevices *PoolDevicesComponent) hasSmart() bool {
 // woken up. Must be called on the UI thread.
 func (poolDevices *PoolDevicesComponent) ReadSmart() {
 	if poolDevices.status != nil {
-		poolDevices.readSmart(zfs.LeafDevices(poolDevices.status.Devices), 0)
+		poolDevices.health.ReadSmart(zfs.LeafDevices(poolDevices.status.Devices))
 	}
-}
-
-// smartIfDue reads the SMART values of the devices if they changed, or the last read is older than smartInterval.
-// Called while the devices are drawn, like sampleIfDue. Runs on the UI thread.
-func (poolDevices *PoolDevicesComponent) smartIfDue() {
-	if poolDevices.smart == nil || poolDevices.status == nil || poolDevices.smartLoader.IsLoading() {
-		return
-	}
-	devices := zfs.LeafDevices(poolDevices.status.Devices)
-	if slices.Equal(devices, poolDevices.smartDevices) && time.Since(poolDevices.smartReadAt) < smartInterval {
-		return
-	}
-	poolDevices.readSmart(devices, smartInterval)
-}
-
-// readSmart reads the SMART values of the devices in the background, the ones older than maxAge. Runs on the UI
-// thread.
-func (poolDevices *PoolDevicesComponent) readSmart(devices []string, maxAge time.Duration) {
-	if poolDevices.smart == nil {
-		return
-	}
-	poolDevices.smartDevices = devices
-	poolDevices.smartReadAt = time.Now()
-	smart := poolDevices.smart
-	poolDevices.smartLoader.LoadQuietly(func(ctx context.Context) (map[string][]disk.SmartReport, error) {
-		return smart.ReadDevices(devices, maxAge), nil
-	})
 }
 
 // ShowSmart shows the disks of the device with the given name ("" for the first) with their SMART values, see
@@ -274,7 +176,7 @@ func (poolDevices *PoolDevicesComponent) ShowSmart(device string) {
 
 // hasDisks returns whether any device is stored on a disk, whose temperature can be read. Runs on the UI thread.
 func (poolDevices *PoolDevicesComponent) hasDisks() bool {
-	for _, reading := range poolDevices.readings {
+	for _, reading := range poolDevices.health.Readings() {
 		if reading.IsDisk && !reading.NoSensor {
 			return true
 		}
@@ -288,7 +190,7 @@ func (poolDevices *PoolDevicesComponent) ReadTemperatures() {
 		return
 	}
 	devices := zfs.LeafDevices(poolDevices.status.Devices)
-	poolDevices.sample(devices, devices)
+	poolDevices.health.ReadTemperatures(devices, devices)
 }
 
 // readTemperature reads the temperature of the device, also of an idle hard disk. Runs on the UI thread.
@@ -296,50 +198,16 @@ func (poolDevices *PoolDevicesComponent) readTemperature(device string) {
 	if poolDevices.status == nil {
 		return
 	}
-	poolDevices.sample(zfs.LeafDevices(poolDevices.status.Devices), []string{device})
+	poolDevices.health.ReadTemperatures(zfs.LeafDevices(poolDevices.status.Devices), []string{device})
 }
 
-// sampleIfDue samples the devices if they changed, or the last sample is older than sampleInterval. Called while
-// the devices are drawn, so nothing is sampled while they are not shown. Runs on the UI thread.
-func (poolDevices *PoolDevicesComponent) sampleIfDue() {
-	if poolDevices.status == nil || poolDevices.loader.IsLoading() {
-		return
-	}
-	devices := zfs.LeafDevices(poolDevices.status.Devices)
-	// a timer may fire a little early
-	if slices.Equal(devices, poolDevices.sampledDevices) && time.Since(poolDevices.sampledAt) < sampleInterval-time.Second {
-		return
-	}
-	poolDevices.sample(devices, nil)
-}
-
-// sample samples the devices in the background, forced ones are read in any case. Runs on the UI thread.
-func (poolDevices *PoolDevicesComponent) sample(devices []string, forced []string) {
-	poolDevices.sampledDevices = devices
-	poolDevices.sampledAt = time.Now()
-	sampler := poolDevices.sampler
-	poolDevices.loader.LoadQuietly(func(ctx context.Context) (map[string]disk.Reading, error) {
-		return sampler.Sample(devices, forced), nil
-	})
-}
-
-// scheduleSample draws again after sampleInterval, which samples the devices again if they are still shown (see
-// sampleIfDue). Runs on the UI thread.
-func (poolDevices *PoolDevicesComponent) scheduleSample() {
-	if poolDevices.sampleTimer != nil {
-		poolDevices.sampleTimer.Stop()
-	}
-	application := poolDevices.application
-	poolDevices.sampleTimer = time.AfterFunc(sampleInterval, func() {
-		application.QueueUpdateDraw(func() {})
-	})
-}
-
-// Draw samples the devices if due (see sampleIfDue), draws them, and adds the temperatures that can be clicked.
+// Draw reads the devices if due (see disk_browser.HealthReader.ReadIfDue), draws them, and adds the temperatures that
+// can be clicked.
 func (view *DevicesView) Draw(screen tcell.Screen) {
 	devices := view.devices
-	devices.sampleIfDue()
-	devices.smartIfDue()
+	if devices.status != nil {
+		devices.health.ReadIfDue(zfs.LeafDevices(devices.status.Devices))
+	}
 	view.TextView.Draw(screen)
 
 	devices.regions.Reset()

@@ -72,12 +72,12 @@ of the code.
   kernel module drivetemp). Reading the temperature may reset the spin down timer of hard disks, so `Sampler` only
   reads hard disks while their I/O statistics (`/sys/block/<disk>/stat`, which never touch the disk) change, or when
   asked to (a click on the temperature, `t`). The devices pane of the pools page and the disks page sample only while
-  they are drawn (`DevicesView.Draw`, `disk_browser.diskView.Draw`, every 10 s), so nothing is read while another
-  page is shown. The `Monitor` samples after each
+  they are drawn (`disk_browser.HealthReader`, shared by both: `ReadIfDue` in their `Draw`, every 10 s), so nothing
+  is read while another page is shown. The `Monitor` samples after each
   load of the statuses with the same `Sampler`, for the alert of disks at or above their critical temperature
   (`zfs.PoolAlertTemperature`); hard disks count as busy if their statistics changed within 90 s, longer than its
   idle interval. Tests use a fake `/dev` and `/sys`
-  (`devDir`, `sysDir`), UI tests a fake sampler (`newTemperatureSampler`).
+  (`devDir`, `sysDir`), UI tests the fakes of `internal/disk/disktest` (`newTemperatureSampler`).
   `SmartReader` (`smart.go`) runs `sudo -n smartctl` (rule `--smart`), parses its JSON (ATA, NVMe, SCSI) into
   `SmartReport`s with `Problems` (failed health check, failing or important ATA attributes, NVMe critical warnings,
   media errors and wear), and keeps them: sudo logs every call. `-n standby` skips sleeping disks (their last report
@@ -180,6 +180,8 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 
 ## Layout
 
+- Panes there is nothing to do in (the path overview, the details of a disk) are not in `focusableComponents`, and a
+  click does not focus them either (`uiutil.WithoutFocus` in their `MouseHandler`).
 - Panes are split with `uiutil.ResizableSplit` (via `basePage.newSplit`, registered with `captureSplitDrags`). The
   boundary can be dragged; double-clicking it goes back to the automatic size.
 - `SetAutoSize` sizes the first pane by its content on every draw (e.g. the dataset info and the pool status fit
