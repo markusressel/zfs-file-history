@@ -267,7 +267,7 @@ func (poolDevices *PoolDevicesComponent) readSmart(devices []string, maxAge time
 	})
 }
 
-// ShowSmart shows the SMART values of the disks of the pool in a dialog, scrolled to the device with the given name
+// ShowSmart shows the SMART values of the disks of the pool in a dialog, with the device with the given name selected
 // ("" for the first). Must be called on the UI thread.
 func (poolDevices *PoolDevicesComponent) ShowSmart(focus string) {
 	if poolDevices.dialogPages == nil || poolDevices.status == nil {
@@ -277,7 +277,7 @@ func (poolDevices *PoolDevicesComponent) ShowSmart(focus string) {
 	for _, name := range zfs.LeafDevices(poolDevices.status.Devices) {
 		devices = append(devices, dialog.SmartDevice{Name: name, Reports: poolDevices.smartReports[name]})
 	}
-	d := dialog.NewSmartDialog(poolDevices.status.Name, devices, focus, poolDevices.ReadSmart)
+	d := dialog.NewSmartDialog(poolDevices.application, poolDevices.status.Name, devices, focus, poolDevices.ReadSmart)
 	dialog.ShowDialogOnPages(poolDevices.application, poolDevices.dialogPages, d, nil)
 }
 
@@ -462,7 +462,7 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 	showSmart := false
 	smartWidth := len("SMART")
 	for _, reports := range smart {
-		text, _ := formatSmart(reports)
+		text, _ := dialog.SmartSummary(reports)
 		showSmart = showSmart || text != ""
 		smartWidth = max(smartWidth, utf8.RuneCountInString(text))
 	}
@@ -537,7 +537,7 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 		if showSmart {
 			cell, cellWidth := "", 0
 			if isLeaf[device.Name] {
-				if text, color := formatSmart(smart[device.Name]); text != "" {
+				if text, color := dialog.SmartSummary(smart[device.Name]); text != "" {
 					cell, cellWidth = txwidgets.Span(color, "%s", text), utf8.RuneCountInString(text)
 					fields = append(fields, clickableField{device: device.Name, smart: true, line: i + 1, column: smartColumn, width: smartWidth})
 				}
@@ -565,33 +565,6 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 		out.WriteString(txwidgets.Span(StateColor(device.State, tcell.ColorWhite), "%s", state) + counters + trailing + "\n")
 	}
 	return out.String(), fields
-}
-
-// formatSmart returns the text and color of the SMART values of the disks of a device: the most severe problem
-// (e.g. "8 realloc"), "OK", why they could not be read, or "asleep" for a disk that slept whenever it was asked. ""
-// if there is nothing to show (no disks, not read yet, or smartctl is not installed).
-func formatSmart(reports []disk.SmartReport) (string, tcell.Color) {
-	if problem, ok := disk.WorstProblem(reports); ok {
-		if problem.Severity == disk.SmartError {
-			return problem.Short, theme.Colors.Pool.Faulted
-		}
-		return problem.Short, theme.Colors.Pool.Degraded
-	}
-	text, color := "", tcell.ColorDefault
-	for _, report := range reports {
-		switch {
-		case errors.Is(report.Err, disk.ErrSmartctlMissing):
-		case errors.Is(report.Err, disk.ErrSmartNeedsRoot):
-			return "?", theme.Colors.Pool.Hint
-		case report.Err != nil:
-			return "error", theme.Colors.Pool.Hint
-		case !report.HasValues() && report.Standby:
-			text, color = "asleep", theme.Colors.Pool.Hint
-		case report.HasValues() && text == "":
-			text, color = "OK", theme.Colors.Pool.Online
-		}
-	}
-	return text, color
 }
 
 // formatTemperature returns the text and color of the temperature of a device: colored by how close it is to the

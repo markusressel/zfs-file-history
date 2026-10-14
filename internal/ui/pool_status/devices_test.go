@@ -1,7 +1,6 @@
 package pool_status
 
 import (
-	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -462,32 +461,6 @@ func withProblems(name string, problems ...disk.SmartProblem) disk.SmartReport {
 
 var reallocated = disk.SmartProblem{Severity: disk.SmartWarning, Short: "8 realloc", Text: "8 reallocated sectors"}
 var failed = disk.SmartProblem{Severity: disk.SmartError, Short: "FAILED", Text: "the health check of the disk failed"}
-
-func TestFormatSmart(t *testing.T) {
-	tests := []struct {
-		name    string
-		reports []disk.SmartReport
-		text    string
-		color   tcell.Color
-	}{
-		{"not on a disk", nil, "", tcell.ColorDefault},
-		{"healthy", []disk.SmartReport{healthy("sda")}, "OK", theme.Colors.Pool.Online},
-		{"warning", []disk.SmartReport{withProblems("sda", reallocated)}, "8 realloc", theme.Colors.Pool.Degraded},
-		{"the worst of several disks", []disk.SmartReport{withProblems("sda", reallocated), withProblems("sdb", failed)}, "FAILED", theme.Colors.Pool.Faulted},
-		{"needs root", []disk.SmartReport{{Disk: "sda", Err: disk.ErrSmartNeedsRoot}}, "?", theme.Colors.Pool.Hint},
-		{"other error", []disk.SmartReport{{Disk: "sda", Err: errors.New("no")}}, "error", theme.Colors.Pool.Hint},
-		{"asleep, never read", []disk.SmartReport{{Disk: "sda", Standby: true}}, "asleep", theme.Colors.Pool.Hint},
-		{"asleep, read before", []disk.SmartReport{func() disk.SmartReport { r := healthy("sda"); r.Standby = true; return r }()}, "OK", theme.Colors.Pool.Online},
-		{"no smartctl", []disk.SmartReport{{Disk: "sda", Err: disk.ErrSmartctlMissing}}, "", tcell.ColorDefault},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			text, color := formatSmart(test.reports)
-			assert.Equal(t, test.text, text)
-			assert.Equal(t, test.color, color)
-		})
-	}
-}
 
 func TestFormatDevices_Smart(t *testing.T) {
 	smart := map[string][]disk.SmartReport{

@@ -98,6 +98,8 @@ type SmartAttribute struct {
 	Name string
 	// Value is the raw value, as smartctl prints it
 	Value string
+	// Raw is the raw value as a number (e.g. for sorting), -1 if it has none
+	Raw int64
 	// Normalized, Worst and Threshold are the normalized values of an ATA attribute (the lower, the worse; the
 	// attribute fails at or below Threshold), -1 for others
 	Normalized, Worst, Threshold int
@@ -178,6 +180,24 @@ var importantAtaAttributes = map[int]importantAtaAttribute{
 	198: {"offline unc", "offline uncorrectable sectors"},
 }
 
+// temperatureAttributes are the ids of the ATA attributes of the temperature: at or below their threshold, the disk
+// is too hot, which is shown by its temperature as well (see Sampler).
+var temperatureAttributes = []int{190, 194}
+
+// failingAttributeProblem returns the problem of an ATA attribute at or below its threshold. Only one that tells of
+// a coming failure (prefailure, like smartctl's exit status bit 4) is an error; one of old age a warning, e.g. a
+// temperature above the limit of the disk (e.g. Airflow_Temperature_Cel of Seagate disks during a scrub).
+func failingAttributeProblem(id int, name string, prefailure bool) SmartProblem {
+	switch {
+	case prefailure:
+		return SmartProblem{Severity: SmartError, Short: "failing", Text: name + " is at or below its threshold: the disk may fail soon"}
+	case slices.Contains(temperatureAttributes, id):
+		return SmartProblem{Severity: SmartWarning, Short: "too hot", Text: name + " is past its threshold: the disk is too hot"}
+	default:
+		return SmartProblem{Severity: SmartWarning, Short: "worn", Text: name + " is at or below its threshold (old age)"}
+	}
+}
+
 // nvmeCriticalWarnings are the bits of the critical warning of NVMe drives.
 var nvmeCriticalWarnings = []string{
 	"available spare below threshold",
@@ -228,7 +248,10 @@ type smartctlOutput struct {
 			Worst      int    `json:"worst"`
 			Thresh     int    `json:"thresh"`
 			WhenFailed string `json:"when_failed"`
-			Raw        struct {
+			Flags      struct {
+				Prefailure bool `json:"prefailure"`
+			} `json:"flags"`
+			Raw struct {
 				Value  json.Number `json:"value"`
 				String string      `json:"string"`
 			} `json:"raw"`
@@ -346,13 +369,12 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 		for _, attribute := range parsed.AtaSmartAttributes.Table {
 			important, isImportant := importantAtaAttributes[attribute.Id]
 			report.Attributes = append(report.Attributes, SmartAttribute{
-				Id: attribute.Id, Name: attribute.Name, Value: attribute.Raw.String,
+				Id: attribute.Id, Name: attribute.Name, Value: attribute.Raw.String, Raw: jsonCount(attribute.Raw.Value),
 				Normalized: attribute.Value, Worst: attribute.Worst, Threshold: attribute.Thresh,
 				Failed: attribute.WhenFailed, Important: isImportant,
 			})
 			if attribute.WhenFailed == "now" {
-				problems = append(problems, SmartProblem{Severity: SmartError, Short: "failing",
-					Text: attribute.Name + " is at or below its threshold"})
+				problems = append(problems, failingAttributeProblem(attribute.Id, attribute.Name, attribute.Flags.Prefailure))
 			}
 			if count := jsonCount(attribute.Raw.Value); isImportant && count > 0 {
 				problems = append(problems, SmartProblem{Severity: SmartWarning,
@@ -363,13 +385,13 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 	if log := parsed.NvmeLog; log != nil {
 		mediaErrors := jsonCount(log.MediaErrors)
 		report.Attributes = append(report.Attributes,
-			SmartAttribute{Name: "Critical warning", Value: fmt.Sprintf("0x%02x", log.CriticalWarning), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
-			SmartAttribute{Name: "Available spare", Value: fmt.Sprintf("%d%% (threshold %d%%)", log.AvailableSpare, log.AvailableSpareThreshold), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
-			SmartAttribute{Name: "Percentage used", Value: fmt.Sprintf("%d%%", log.PercentageUsed), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
-			SmartAttribute{Name: "Media errors", Value: strconv.FormatInt(mediaErrors, 10), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
-			SmartAttribute{Name: "Error log entries", Value: strconv.FormatInt(jsonCount(log.NumErrLogEntries), 10), Normalized: -1, Worst: -1, Threshold: -1},
-			SmartAttribute{Name: "Unsafe shutdowns", Value: strconv.FormatInt(jsonCount(log.UnsafeShutdowns), 10), Normalized: -1, Worst: -1, Threshold: -1},
-			SmartAttribute{Name: "Data units written", Value: strconv.FormatInt(jsonCount(log.DataUnitsWritten), 10), Normalized: -1, Worst: -1, Threshold: -1},
+			SmartAttribute{Name: "Critical warning", Value: fmt.Sprintf("0x%02x", log.CriticalWarning), Raw: int64(log.CriticalWarning), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
+			SmartAttribute{Name: "Available spare", Value: fmt.Sprintf("%d%% (threshold %d%%)", log.AvailableSpare, log.AvailableSpareThreshold), Raw: int64(log.AvailableSpare), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
+			SmartAttribute{Name: "Percentage used", Value: fmt.Sprintf("%d%%", log.PercentageUsed), Raw: int64(log.PercentageUsed), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
+			SmartAttribute{Name: "Media errors", Value: strconv.FormatInt(mediaErrors, 10), Raw: mediaErrors, Normalized: -1, Worst: -1, Threshold: -1, Important: true},
+			SmartAttribute{Name: "Error log entries", Value: strconv.FormatInt(jsonCount(log.NumErrLogEntries), 10), Raw: jsonCount(log.NumErrLogEntries), Normalized: -1, Worst: -1, Threshold: -1},
+			SmartAttribute{Name: "Unsafe shutdowns", Value: strconv.FormatInt(jsonCount(log.UnsafeShutdowns), 10), Raw: jsonCount(log.UnsafeShutdowns), Normalized: -1, Worst: -1, Threshold: -1},
+			SmartAttribute{Name: "Data units written", Value: strconv.FormatInt(jsonCount(log.DataUnitsWritten), 10), Raw: jsonCount(log.DataUnitsWritten), Normalized: -1, Worst: -1, Threshold: -1},
 		)
 		if report.PowerOnHours < 0 && log.PowerOnHours != "" {
 			report.PowerOnHours = jsonCount(log.PowerOnHours)
@@ -395,7 +417,7 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 	}
 	if parsed.ScsiGrownDefectList != nil {
 		defects := jsonCount(*parsed.ScsiGrownDefectList)
-		report.Attributes = append(report.Attributes, SmartAttribute{Name: "Grown defects", Value: strconv.FormatInt(defects, 10),
+		report.Attributes = append(report.Attributes, SmartAttribute{Name: "Grown defects", Value: strconv.FormatInt(defects, 10), Raw: defects,
 			Normalized: -1, Worst: -1, Threshold: -1, Important: true})
 		if defects > 0 {
 			problems = append(problems, SmartProblem{Severity: SmartWarning,

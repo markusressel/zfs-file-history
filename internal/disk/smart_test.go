@@ -13,8 +13,8 @@ import (
 )
 
 // readFixture returns a file of testdata: outputs of "smartctl -j -H -A -n standby -- <device>" (see SmartctlArgs).
-// smartctl-permission-denied.json (without root) and smartctl-nvme-healthy.json (without -i) are from real systems
-// (smartctl 7.5),
+// smartctl-permission-denied.json (without root), smartctl-nvme-healthy.json (without -i) and smartctl-ata-hot.json
+// (serial number and WWN replaced) are from real systems (smartctl 7.5),
 // the others follow the format of smartctl 7.5 with made up values and serial numbers (smartctl-standby.json the
 // output of the -n option in ataprint.cpp).
 func readFixture(t *testing.T, name string) []byte {
@@ -43,7 +43,7 @@ func TestParseSmartctl_Ata(t *testing.T) {
 	assert.Equal(t, []SmartProblem{{Severity: SmartWarning, Short: "8 realloc", Text: "8 reallocated sectors"}}, report.Problems)
 
 	require.Len(t, report.Attributes, 7)
-	assert.Equal(t, SmartAttribute{Id: 5, Name: "Reallocated_Sector_Ct", Value: "8", Normalized: 199, Worst: 199, Threshold: 140, Important: true}, report.Attributes[1])
+	assert.Equal(t, SmartAttribute{Id: 5, Name: "Reallocated_Sector_Ct", Value: "8", Raw: 8, Normalized: 199, Worst: 199, Threshold: 140, Important: true}, report.Attributes[1])
 	assert.Equal(t, "33 (Min/Max 17/47)", report.Attributes[3].Value)
 	assert.False(t, report.Attributes[3].Important)
 }
@@ -54,12 +54,31 @@ func TestParseSmartctl_AtaFailing(t *testing.T) {
 	assert.False(t, report.Passed)
 	assert.Equal(t, []SmartProblem{
 		{Severity: SmartError, Short: "FAILED", Text: "the health check of the disk failed"},
-		{Severity: SmartError, Short: "failing", Text: "Reallocated_Sector_Ct is at or below its threshold"},
+		{Severity: SmartError, Short: "failing", Text: "Reallocated_Sector_Ct is at or below its threshold: the disk may fail soon"},
 		{Severity: SmartWarning, Short: "3912 realloc", Text: "3912 reallocated sectors"},
 		{Severity: SmartWarning, Short: "211 uncorr", Text: "211 reported uncorrectable errors"},
 		{Severity: SmartWarning, Short: "16 pending", Text: "16 pending sectors"},
 	}, report.Problems)
 	assert.Equal(t, "now", report.Attributes[0].Failed)
+}
+
+// Regression: a Seagate IronWolf Pro too hot during a scrub was shown as failing (Error), its health check passed.
+func TestParseSmartctl_AtaTooHot(t *testing.T) {
+	report, _, err := parseSmartctl("sdd", readFixture(t, "smartctl-ata-hot.json"), smartTime)
+	require.NoError(t, err)
+	assert.Equal(t, "ST14000NE0008-2RX103", report.Model)
+	assert.Equal(t, "EN02", report.Firmware)
+	assert.Equal(t, int64(14000519643136), report.Capacity)
+	assert.True(t, report.Passed)
+	assert.Equal(t, []SmartProblem{{Severity: SmartWarning, Short: "too hot",
+		Text: "Airflow_Temperature_Cel is past its threshold: the disk is too hot"}}, report.Problems)
+}
+
+func TestFailingAttributeProblem(t *testing.T) {
+	assert.Equal(t, SmartError, failingAttributeProblem(5, "Reallocated_Sector_Ct", true).Severity)
+	assert.Equal(t, "too hot", failingAttributeProblem(194, "Temperature_Celsius", false).Short)
+	assert.Equal(t, SmartProblem{Severity: SmartWarning, Short: "worn", Text: "Load_Cycle_Count is at or below its threshold (old age)"},
+		failingAttributeProblem(193, "Load_Cycle_Count", false))
 }
 
 func TestParseSmartctl_Nvme(t *testing.T) {

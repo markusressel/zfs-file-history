@@ -82,8 +82,9 @@ of the code.
   media errors and wear), and keeps them: sudo logs every call. `-n standby` skips sleeping disks (their last report
   is kept). The `Monitor` reads all disks every hour (alert `zfs.PoolAlertSmart`), the devices pane every 10 minutes
   while drawn, `s` now; one `SmartReader` for both (`newSmartSource` in `root.go`). Enter or a click on the SMART
-  column shows `dialog.SmartDialog`. Fixtures in `internal/disk/testdata` (only the permission denied one is from a
-  real system).
+  column shows `dialog.SmartDialog` (a sortable table of the disks, the details of the selected one, a table of its
+  attributes). Fixtures in `internal/disk/testdata` (the permission denied, ATA hot and healthy NVMe ones are from
+  real systems).
 - `internal/state/`: the persisted state (`state.Current`): settings, table column layouts, selections, the session.
 - `internal/ui/`: the pages and the root.
   - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`; keys `1`-`3`), global keys, the session
