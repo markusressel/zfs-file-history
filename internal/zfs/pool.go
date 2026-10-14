@@ -144,6 +144,22 @@ type PoolDevice struct {
 	Trim string
 }
 
+// LeafDevices returns the names of the devices that have no children: the ones stored on disks (or files), not the
+// pool, its vdevs and groups.
+func LeafDevices(devices []*PoolDevice) []string {
+	var leaves []string
+	for i, device := range devices {
+		if device.IsGroup() || device.Depth == 0 {
+			continue
+		}
+		if i+1 < len(devices) && devices[i+1].Depth > device.Depth {
+			continue
+		}
+		leaves = append(leaves, device.Name)
+	}
+	return leaves
+}
+
 // IsGroup returns whether the device is the name of a group of devices, e.g. "logs".
 func (device *PoolDevice) IsGroup() bool {
 	return device.State == ""

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/util"
 )
 
@@ -11,9 +12,9 @@ import (
 // by the setup command run from the application, so what needs them is started again (see WatchZpoolEvents).
 var SudoersChanged = util.NewEmitter[struct{}]()
 
-// SudoersRule is a permission the setup command can grant: zpool commands the user may run with sudo without a
-// password. Pool operations cannot be delegated like dataset ones (zfs allow), so this is the only way to allow
-// them without starting the application as root.
+// SudoersRule is a permission the setup command can grant: commands (of zpool, or smartctl) the user may run with
+// sudo without a password. Pool operations cannot be delegated like dataset ones (zfs allow), so this is the only
+// way to allow them without starting the application as root.
 type SudoersRule struct {
 	// Id is the flag of the setup command that grants the rule, without the leading "--"
 	Id string
@@ -27,10 +28,45 @@ type SudoersRule struct {
 	Description string
 	// ReadOnly is set for rules whose commands only read: they are offered as selected
 	ReadOnly bool
-	// allowed returns the commands the rule allows for one path of zpool
-	allowed func(zpool string) []string
-	// denied returns the commands the rule denies for one path of zpool, nil if none
-	denied func(zpool string) []string
+	// allowed returns the commands the rule allows for one path of its program (zpool, see program)
+	allowed func(path string) []string
+	// denied returns the commands the rule denies for one path of its program, nil if none
+	denied func(path string) []string
+	// program is the program of the commands, nil: zpool
+	program *sudoersProgram
+	// former returns the commands former versions of the rule allowed for one path of its program, nil if none: their
+	// lines are dropped from the sudoers file, so the setup command can grant the rule again (see ParseSudoersFile)
+	former func(path string) []string
+}
+
+// sudoersProgram is a program the commands of a SudoersRule run.
+type sudoersProgram struct {
+	// paths are the paths it is installed at by the distributions, all of them are allowed
+	paths []string
+	// path returns the path it has here
+	path func() string
+	// installed returns whether it is installed, nil: always
+	installed func() bool
+}
+
+// zpoolProgram is the program of the rules without one.
+var zpoolProgram = &sudoersProgram{paths: zpoolPaths, path: ZpoolPath}
+
+// smartctlProgram runs the commands of SudoersRuleSmart.
+var smartctlProgram = &sudoersProgram{paths: disk.SmartctlPaths, path: disk.SmartctlPath, installed: func() bool { return disk.SmartctlInstalled() }}
+
+// programOf returns the program of the commands of the rule.
+func (rule *SudoersRule) programOf() *sudoersProgram {
+	if rule.program == nil {
+		return zpoolProgram
+	}
+	return rule.program
+}
+
+// IsAvailable returns whether the program of the rule is installed: rules of others are not offered.
+func (rule *SudoersRule) IsAvailable() bool {
+	installed := rule.programOf().installed
+	return installed == nil || installed()
 }
 
 var (
@@ -81,8 +117,28 @@ var (
 		},
 	}
 
+	// SudoersRuleSmart allows to read the SMART values of the disks with smartctl (see disk.SmartReader). Any device
+	// below /dev may be given, nothing else: "--" ends the options (see disk.SmartctlArgs), and smartctl refuses
+	// more than one device, so no other options (e.g. self-tests, or switching SMART off) can be added behind it.
+	SudoersRuleSmart = &SudoersRule{
+		Id:       "smart",
+		Name:     "Disk health",
+		Summary:  "SMART values of the disks of the pools",
+		Commands: "smartctl " + strings.Join(disk.SmartctlArgs, " ") + " /dev/*",
+		Description: "Show the SMART values of the disks of the pools (only root may read them), and warn if a disk " +
+			"fails or wears out. Sleeping disks are not woken up. Allows: smartctl " +
+			strings.Join(disk.SmartctlArgs, " ") + " /dev/*",
+		ReadOnly: true,
+		allowed: func(smartctl string) []string {
+			return []string{smartctl + " " + strings.Join(disk.SmartctlArgs, " ") + " /dev/*"}
+		},
+		program: smartctlProgram,
+		// without -i, before the model and serial number were shown
+		former: func(smartctl string) []string { return []string{smartctl + " -j -H -A -n standby -- /dev/*"} },
+	}
+
 	// SudoersRules are all rules, in the order they are offered and written.
-	SudoersRules = []*SudoersRule{SudoersRuleEvents, SudoersRuleDataErrors, SudoersRulePoolActions}
+	SudoersRules = []*SudoersRule{SudoersRuleEvents, SudoersRuleDataErrors, SudoersRuleSmart, SudoersRulePoolActions}
 )
 
 // SudoersRuleById returns the rule with the given id, nil if there is none.
@@ -95,10 +151,10 @@ func SudoersRuleById(id string) *SudoersRule {
 	return nil
 }
 
-// Lines returns the sudoers lines that grant the rule to the user, for all paths zpool may be installed at.
+// Lines returns the sudoers lines that grant the rule to the user, for all paths its program may be installed at.
 func (rule *SudoersRule) Lines(user string) string {
 	var allowed, denied []string
-	for _, path := range zpoolPaths {
+	for _, path := range rule.programOf().paths {
 		allowed = append(allowed, rule.allowed(path)...)
 		if rule.denied != nil {
 			for _, command := range rule.denied(path) {
@@ -113,14 +169,31 @@ func (rule *SudoersRule) Lines(user string) string {
 	return lines
 }
 
-// matches returns whether the sudoers line was written for the rule (for any path of zpool, also by older versions).
+// matches returns whether the sudoers line was written for the rule (for any path of its program, also by older
+// versions).
 func (rule *SudoersRule) matches(line string) bool {
-	for _, path := range zpoolPaths {
+	for _, path := range rule.programOf().paths {
 		commands := rule.allowed(path)
 		if rule.denied != nil {
 			commands = append(commands, rule.denied(path)...)
 		}
 		for _, command := range commands {
+			if containsCommand(line, command) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// matchesFormer returns whether the sudoers line was written for a former version of the rule, see
+// SudoersRule.former.
+func (rule *SudoersRule) matchesFormer(line string) bool {
+	if rule.former == nil {
+		return false
+	}
+	for _, path := range rule.programOf().paths {
+		for _, command := range rule.former(path) {
 			if containsCommand(line, command) {
 				return true
 			}
@@ -190,6 +263,9 @@ func ParseSudoersFile(content string) *SudoersFile {
 			if rule.matches(trimmed) {
 				file.Grant(user, rule)
 				matched = true
+			} else if rule.matchesFormer(trimmed) {
+				// dropped: it no longer allows what the application runs
+				matched = true
 			}
 		}
 		if !matched {
@@ -228,6 +304,11 @@ func (file *SudoersFile) String() string {
 		content.WriteString(line + "\n")
 	}
 	return content.String()
+}
+
+// AllowedCommands returns the commands the rule allows, with the path its program has here.
+func (rule *SudoersRule) AllowedCommands() []string {
+	return rule.allowed(rule.programOf().path())
 }
 
 // AllowedSudoersRules returns the ids of the rules the user may use (all as root). It runs sudo, so it must not be

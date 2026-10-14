@@ -31,6 +31,12 @@ const (
 	PoolAlertDeviceState = "device state"
 	// PoolAlertSpareState are spares that cannot be used. Only a warning: no data is at risk.
 	PoolAlertSpareState = "spare state"
+	// PoolAlertTemperature are disks at or above their critical temperature. Not from zpool status, see
+	// pool_activity.Monitor.
+	PoolAlertTemperature = "temperature"
+	// PoolAlertSmart are disks whose SMART values tell of a failure or of wear. Not from zpool status, see
+	// pool_activity.Monitor.
+	PoolAlertSmart = "smart"
 )
 
 // sparesGroup is the name of the group of the spares in the config of zpool status.
@@ -84,7 +90,7 @@ func (status *PoolStatus) Alerts() []PoolAlert {
 			continue
 		}
 		if slices.Contains(unavailableDeviceStates, device.State) {
-			description := deviceDisplayName(device.Name) + " " + device.State
+			description := DeviceDisplayName(device.Name) + " " + device.State
 			if device.Note != "" {
 				description += " (" + device.Note + ")"
 			}
@@ -95,7 +101,7 @@ func (status *PoolStatus) Alerts() []PoolAlert {
 			}
 		}
 		if device.HasErrors() {
-			withErrors = append(withErrors, deviceDisplayName(device.Name)+" "+formatDeviceErrors(device))
+			withErrors = append(withErrors, DeviceDisplayName(device.Name)+" "+formatDeviceErrors(device))
 		}
 	}
 	if len(unavailable) > 0 {
@@ -158,9 +164,9 @@ func firstSentence(text string) string {
 	return text
 }
 
-// deviceDisplayName returns the name of a device without the directory of its path, e.g.
+// DeviceDisplayName returns the name of a device without the directory of its path, e.g.
 // "nvme-SSD_1TB_SERIAL0001-part3" for "/dev/disk/by-id/nvme-SSD_1TB_SERIAL0001-part3".
-func deviceDisplayName(name string) string {
+func DeviceDisplayName(name string) string {
 	if strings.HasPrefix(name, "/") {
 		return path.Base(name)
 	}

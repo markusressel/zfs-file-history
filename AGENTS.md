@@ -29,7 +29,9 @@ of the code.
 
 - `cmd/`: the cobra commands. `root.go` starts the UI, `setup.go` installs the sudoers rules of `zfs.SudoersRules`
   (`/etc/sudoers.d/zfs-file-history`, checked with `visudo` before installing): `--events` (`zpool events -v -f`,
-  the event watcher), `--data-errors` (`zpool status -p -v`), `--pool-actions`. Without flags it asks for each rule.
+  the event watcher), `--data-errors` (`zpool status -p -v`), `--smart` (`smartctl -j -i -H -A -n standby -- /dev/*`;
+  `--` keeps other options out, smartctl takes one device; only offered if smartctl is installed,
+  `SudoersRule.IsAvailable`), `--pool-actions`. Without flags it asks for each rule.
   It adds to the file (`zfs.SudoersFile`, which also reads the files of older versions), so it can run again.
 - `internal/zfs/sudoers.go`: the rules, and which ones the user has (`AllowedSudoersRules`: parses `sudo -n -l`,
   which is not logged and needs no password once any rule has NOPASSWD; `sudo -l <command>` cannot be used, it
@@ -65,6 +67,23 @@ of the code.
   by typing the full name (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action
   dialog and command menu only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
   UI tests replace the package variables.
+- `internal/disk/`: the health of the disks of the pools, from sysfs (no root, no processes): `Resolve` maps a device
+  of `zpool status` to its disks (partitions, device mapper, md), `ReadTemperature` reads hwmon (NVMe, SATA with the
+  kernel module drivetemp). Reading the temperature may reset the spin down timer of hard disks, so `Sampler` only
+  reads hard disks while their I/O statistics (`/sys/block/<disk>/stat`, which never touch the disk) change, or when
+  asked to (a click on the temperature, `t`). The devices pane of the pools page samples only while it is drawn
+  (`DevicesView.Draw`, every 10 s), so nothing is read while another page is shown. The `Monitor` samples after each
+  load of the statuses with the same `Sampler`, for the alert of disks at or above their critical temperature
+  (`zfs.PoolAlertTemperature`); hard disks count as busy if their statistics changed within 90 s, longer than its
+  idle interval. Tests use a fake `/dev` and `/sys`
+  (`devDir`, `sysDir`), UI tests a fake sampler (`newTemperatureSampler`).
+  `SmartReader` (`smart.go`) runs `sudo -n smartctl` (rule `--smart`), parses its JSON (ATA, NVMe, SCSI) into
+  `SmartReport`s with `Problems` (failed health check, failing or important ATA attributes, NVMe critical warnings,
+  media errors and wear), and keeps them: sudo logs every call. `-n standby` skips sleeping disks (their last report
+  is kept). The `Monitor` reads all disks every hour (alert `zfs.PoolAlertSmart`), the devices pane every 10 minutes
+  while drawn, `s` now; one `SmartReader` for both (`newSmartSource` in `root.go`). Enter or a click on the SMART
+  column shows `dialog.SmartDialog`. Fixtures in `internal/disk/testdata` (only the permission denied one is from a
+  real system).
 - `internal/state/`: the persisted state (`state.Current`): settings, table column layouts, selections, the session.
 - `internal/ui/`: the pages and the root.
   - `root.go` creates the UI: the pages (`Main` = files, `Dataset`, `Pool`; keys `1`-`3`), global keys, the session
@@ -91,7 +110,8 @@ of the code.
     the time left in several formats, `zfs.PoolActivity.Remaining` is parsed into a `time.Duration`. zpool does not estimate the time left of a TRIM,
     `PoolStatus.TrimRemaining` does, from the start time and progress of each device.
     The same package has the `AlertBar` (above the activities): the problems of the pools (`PoolStatus.Alerts`: a
-    state other than ONLINE, data errors, unusable devices or spares, device errors), most severe first, from the
+    state other than ONLINE, data errors, unusable devices or spares, device errors; and disks at their critical
+    temperature or with SMART problems, see `internal/disk`), most severe first, from the
     loads of the `Monitor`. It comes up by itself when something is wrong. A failed load keeps the last alerts.
     Both bars share `linePanel` (height, mouse).
     The `Monitor` also loads the damaged files (`zfs.ListDataErrors`: `zpool status -p -v`, retried with `sudo -n`,

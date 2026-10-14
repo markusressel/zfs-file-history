@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dataset_browser"
 	"zfs-file-history/internal/ui/dialog"
@@ -37,6 +38,13 @@ var (
 
 // globalShortcuts are the shortcuts that work on all pages, shown after the ones of the focused component. The
 // others are only listed in the command menu, see globalCommands.
+// newTemperatureSampler and newSmartSource return what reads the temperatures and the SMART values of the disks,
+// replaceable in tests.
+var (
+	newTemperatureSampler = func() disk.TemperatureSampler { return disk.NewSampler() }
+	newSmartSource        = func() disk.SmartSource { return disk.NewSmartReader() }
+)
+
 func globalShortcuts() []shortcut_helper.ShortcutEntry {
 	return []shortcut_helper.ShortcutEntry{
 		shortcutCycleFocus,
@@ -128,9 +136,13 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	}
 	// one for all pages, like the messages: the operations running on the pools are shown on every page
 	activities := pool_activity.NewMonitor(application)
+	sampler := newTemperatureSampler()
+	activities.SetTemperatureSampler(sampler)
+	smart := newSmartSource()
+	activities.SetSmartSource(smart)
 	mainPage := NewMainPage(application, messages, activities, path)
 	datasetPage := NewDatasetPage(application, messages, activities, path)
-	poolPage := NewPoolPage(application, messages, activities)
+	poolPage := NewPoolPage(application, messages, activities, sampler, smart)
 
 	pagesLayout := tview.NewPages().
 		AddPage(string(Main), mainPage.layout, true, true).
@@ -184,7 +196,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		switchTo(Pool)
 		poolPage.poolBrowser.SelectPool(pool)
 	}
-	// showSetupPermissions offers to allow the zpool commands that need root (see zfs.SudoersRules), from the command
+	// showSetupPermissions offers to allow the commands that need root (see zfs.SudoersRules), from the command
 	// menu, or by itself (automatic) at the start if not all that only read are allowed: then only if nothing else
 	// is in front, and with the option to never ask again.
 	showSetupPermissions := func(automatic bool) {
@@ -194,7 +206,7 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		}
 		go func() {
 			allowed := allowedSudoersRules()
-			if automatic && !slices.ContainsFunc(zfs.SudoersRules, func(rule *zfs.SudoersRule) bool { return rule.ReadOnly && !allowed[rule.Id] }) {
+			if automatic && !slices.ContainsFunc(zfs.SudoersRules, func(rule *zfs.SudoersRule) bool { return rule.ReadOnly && !allowed[rule.Id] && rule.IsAvailable() }) {
 				return
 			}
 			application.QueueUpdateDraw(func() {
@@ -267,7 +279,13 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	util.SubscribeUI(zfs.DatasetsLoaded, application, func(_ struct{}) { activities.RefreshDataErrors() })
 	util.SubscribeUI(zfs.PoolsChanged, application, func(_ struct{}) { activities.Refresh() })
 	// e.g. the damaged files may be listed now
-	util.SubscribeUI(zfs.SudoersChanged, application, func(_ struct{}) { activities.ReloadDataErrors() })
+	util.SubscribeUI(zfs.SudoersChanged, application, func(_ struct{}) {
+		activities.ReloadDataErrors()
+		// e.g. smartctl may run with sudo now
+		activities.RefreshSmart()
+		poolPage.poolDevices.ReadSmart()
+	})
+	poolPage.poolDevices.SetOnSetup(func() { showSetupPermissions(false) })
 
 	if restored != nil && restored.Dataset != "" {
 		datasetPage.datasetBrowser.SelectOnLoad(restored.Dataset)

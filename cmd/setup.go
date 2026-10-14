@@ -25,9 +25,9 @@ var setupFlags = map[string]*bool{}
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
-	Short: "Allow your user to run the zpool commands zfs-file-history needs root for (sudoers rules)",
-	Long: `Some features of zfs-file-history need zpool commands that only root may run:
-ZFS cannot delegate them to users like it does for datasets (zfs allow).
+	Short: "Allow your user to run the zpool and smartctl commands zfs-file-history needs root for (sudoers rules)",
+	Long: `Some features of zfs-file-history need zpool and smartctl commands that only root
+may run: ZFS cannot delegate them to users like it does for datasets (zfs allow).
 
 This command allows the current user to run ONLY these specific commands with
 sudo, without a password, with rules in /etc/sudoers.d/zfs-file-history:
@@ -41,7 +41,7 @@ zfs-file-history also offers this in the application ("Set up permissions" in
 the command menu), and asks for your sudo password in the terminal.
 
 You MUST run this command with sudo:
-  sudo zfs-file-history setup [--events] [--data-errors] [--pool-actions]`,
+  sudo zfs-file-history setup [--events] [--data-errors] [--smart] [--pool-actions]`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// When run with sudo, $USER becomes "root".
 		// We need $SUDO_USER to get the name of the actual person running the command.
@@ -65,7 +65,7 @@ You MUST run this command with sudo:
 			} else {
 				// e.g. a script: the rules that only read, as before there were flags
 				for _, rule := range zfs.SudoersRules {
-					if rule.ReadOnly {
+					if rule.ReadOnly && rule.IsAvailable() {
 						rules = append(rules, rule)
 					}
 				}
@@ -108,13 +108,17 @@ func flaggedRules() []*zfs.SudoersRule {
 }
 
 // askForRules asks the user for each rule that the file does not grant yet whether to allow it. The ones that only
-// read are allowed by default (Enter), the others not.
+// read are allowed by default (Enter), the others not. Rules whose program is not installed are not asked for.
 func askForRules(in io.Reader, out io.Writer, file *zfs.SudoersFile, user string) []*zfs.SudoersRule {
 	reader := bufio.NewReader(in)
 	var rules []*zfs.SudoersRule
 	for _, rule := range zfs.SudoersRules {
 		if file.Has(user, rule) {
 			_, _ = fmt.Fprintf(out, "%s: already allowed\n", rule.Name)
+			continue
+		}
+		if !rule.IsAvailable() {
+			_, _ = fmt.Fprintf(out, "%s: not installed (%s)\n", rule.Name, rule.Commands)
 			continue
 		}
 		choices := "[y/N]"

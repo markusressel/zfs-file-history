@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -34,7 +35,7 @@ func TestFormatSetupPermissions(t *testing.T) {
 	assert.Contains(t, description, "zfs-file-history): zpool status -p -v.")
 	assert.NotContains(t, description, "Live updates")
 
-	assert.Equal(t, "Your user may already run all zpool commands zfs-file-history needs root for.", formatSetupPermissions(nil))
+	assert.Equal(t, "Your user may already run all commands zfs-file-history needs root for.", formatSetupPermissions(nil))
 }
 
 type setupDialogTest struct {
@@ -45,8 +46,17 @@ type setupDialogTest struct {
 	sudoersChanged atomic.Int32
 }
 
-// newSetupDialogTest shows the dialog with the given rules allowed already. sudo and the clipboard are never used.
+// newSetupDialogTest shows the dialog with the given rules allowed already, without smartctl (its rule is not
+// offered, see newSetupDialogTestWithSmartctl). sudo and the clipboard are never used.
 func newSetupDialogTest(t *testing.T, allowed map[string]bool, automatic bool, sudoErr error) *setupDialogTest {
+	return newSetupDialogTestWithSmartctl(t, allowed, automatic, sudoErr, false)
+}
+
+// newSetupDialogTestWithSmartctl is newSetupDialogTest, with smartctl installed or not.
+func newSetupDialogTestWithSmartctl(t *testing.T, allowed map[string]bool, automatic bool, sudoErr error, smartctl bool) *setupDialogTest {
+	originalInstalled := disk.SmartctlInstalled
+	t.Cleanup(func() { disk.SmartctlInstalled = originalInstalled })
+	disk.SmartctlInstalled = func() bool { return smartctl }
 	dt := &setupDialogTest{rootDialogTest: rootDialogTest{permissionsDialogTest: permissionsDialogTest{t: t}}}
 	originalGrant, originalCopy, originalExecutable := grantPermissions, copyToClipboard, executablePath
 	originalSudoersChanged := zfs.SudoersChanged
@@ -132,6 +142,17 @@ func TestSetupPermissionsDialog_AllowChecked(t *testing.T) {
 	assert.False(t, dt.onUiThread, "sudo runs from the background")
 }
 
+func TestSetupPermissionsDialog_Smart(t *testing.T) {
+	dt := newSetupDialogTestWithSmartctl(t, map[string]bool{"events": true, "data-errors": true}, false, nil, true)
+	// it only reads
+	dt.waitForText("☑ Disk health: SMART values")
+	dt.waitForText("☐ Pool actions")
+
+	dt.choose('1')
+	dt.waitForClosed("SuccessDialog")
+	assert.Equal(t, [][]string{{"/usr/bin/zfs-file-history", "setup", "--smart"}}, dt.commands())
+}
+
 func TestSetupPermissionsDialog_AllowAll(t *testing.T) {
 	dt := newSetupDialogTest(t, map[string]bool{"events": true}, false, nil)
 	dt.waitForText("Allow all")
@@ -158,7 +179,7 @@ func TestSetupPermissionsDialog_OnlyNotAllowedOnes(t *testing.T) {
 
 func TestSetupPermissionsDialog_AllAllowed(t *testing.T) {
 	dt := newSetupDialogTest(t, map[string]bool{"events": true, "data-errors": true, "pool-actions": true}, true, nil)
-	dt.waitForText("Your user may already run all zpool commands")
+	dt.waitForText("Your user may already run all commands")
 	assert.NotContains(t, dt.screenText(), "Allow checked")
 }
 
