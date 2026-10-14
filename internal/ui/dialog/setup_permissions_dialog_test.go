@@ -117,18 +117,18 @@ func (dt *setupDialogTest) key(key tcell.Key, r rune) {
 func TestSetupPermissionsDialog_AllowChecked(t *testing.T) {
 	dt := newSetupDialogTest(t, map[string]bool{}, true, nil)
 	// the rules that only read are checked
-	dt.waitForText("☑ Live updates: snapshots")
-	dt.waitForText("☑ Damaged files")
-	dt.waitForText("☐ Pool actions")
+	dt.waitForText("● Live updates: snapshots")
+	dt.waitForText("● Damaged files")
+	dt.waitForText("○ Pool actions")
 
 	// from the first option up into the checklist: pool actions on, live updates off
 	dt.key(tcell.KeyUp, 0)
 	dt.key(tcell.KeyRune, ' ')
-	dt.waitForText("☑ Pool actions")
+	dt.waitForText("● Pool actions")
 	dt.key(tcell.KeyUp, 0)
 	dt.key(tcell.KeyUp, 0)
 	dt.key(tcell.KeyEnter, 0)
-	dt.waitForText("☐ Live updates: snapshots")
+	dt.waitForText("○ Live updates: snapshots")
 	// down out of the checklist to the first option
 	dt.key(tcell.KeyDown, 0)
 	dt.key(tcell.KeyDown, 0)
@@ -145,8 +145,8 @@ func TestSetupPermissionsDialog_AllowChecked(t *testing.T) {
 func TestSetupPermissionsDialog_Smart(t *testing.T) {
 	dt := newSetupDialogTestWithSmartctl(t, map[string]bool{"events": true, "data-errors": true}, false, nil, true)
 	// it only reads
-	dt.waitForText("☑ Disk health: SMART values")
-	dt.waitForText("☐ Pool actions")
+	dt.waitForText("● Disk health: SMART values")
+	dt.waitForText("○ Pool actions")
 
 	dt.choose('1')
 	dt.waitForClosed("SuccessDialog")
@@ -166,7 +166,7 @@ func TestSetupPermissionsDialog_AllowAll(t *testing.T) {
 
 func TestSetupPermissionsDialog_OnlyNotAllowedOnes(t *testing.T) {
 	dt := newSetupDialogTest(t, map[string]bool{"events": true, "data-errors": true}, false, nil)
-	dt.waitForText("☐ Pool actions")
+	dt.waitForText("○ Pool actions")
 	assert.NotContains(t, dt.screenText(), "Live updates")
 	assert.NotContains(t, dt.screenText(), "Don't ask again", "only offered when shown by itself")
 

@@ -757,8 +757,10 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 	shortcuts := []shortcut_helper.ShortcutEntry{
 		uiutil.TableComponentShortcutColumns.WithRun(datasetBrowser.openColumnSelectionDialog).OnlyInMenu(),
 		uiutil.TableComponentShortcutFilter.WithRun(datasetBrowser.tableContainer.StartFilter),
-		{KeyCombo: []string{"u"}, Name: toggleUnmountedName, Description: toggleUnmountedDescription, Group: shortcut_helper.GroupView, Run: datasetBrowser.ToggleHideUnmounted, MenuOnly: true},
-		{KeyCombo: []string{"t"}, Name: toggleTreeViewName, Description: toggleTreeViewDescription, Group: shortcut_helper.GroupView, Run: datasetBrowser.ToggleTreeView, MenuOnly: true},
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{"u"}, Name: toggleUnmountedName, Description: toggleUnmountedDescription, Group: shortcut_helper.GroupView, Run: datasetBrowser.ToggleHideUnmounted, MenuOnly: true}.
+			AsSwitch("Hide unmounted datasets", "Hide the datasets that are not mounted, e.g. boot environments", func() bool { return datasetBrowser.hideUnmounted }),
+		shortcut_helper.ShortcutEntry{KeyCombo: []string{"t"}, Name: toggleTreeViewName, Description: toggleTreeViewDescription, Group: shortcut_helper.GroupView, Run: datasetBrowser.ToggleTreeView, MenuOnly: true}.
+			AsSwitch("Tree view", "Show the datasets as a tree, children below their parent", func() bool { return datasetBrowser.treeView }),
 	}
 	selection := datasetBrowser.tableContainer.GetSelectedEntry()
 	if datasetBrowser.treeView && selection != nil {

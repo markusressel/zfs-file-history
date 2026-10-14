@@ -316,6 +316,9 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		}
 	}
 
+	// the command selected when the command menu was closed, selected again when it is opened
+	commandMenuMemory := &dialog.CommandMenuMemory{}
+
 	// globalCommands are the commands of the command menu that work on all pages, see globalShortcuts
 	globalCommands := func(front util.Page) []shortcut_helper.ShortcutEntry {
 		commands := []shortcut_helper.ShortcutEntry{
@@ -328,6 +331,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 				Description: "Show the " + strings.ToLower(pageTitles[page]) + " page",
 				Group:       shortcut_helper.GroupGlobal,
 				Run:         func() { switchTo(page) },
+				// the keys are at the bottom, the pages in the header
+				SearchOnly: true,
 			})
 		}
 		hideShortcuts := shortcut_helper.ShortcutHide
@@ -337,10 +342,11 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		}
 		return append(commands,
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Alt("→")}, Name: "Next page", Description: "Show the page on the right", Group: shortcut_helper.GroupGlobal,
-				Run: func() { switchTo(adjacentPage(switchablePages, front, false)) }},
+				Run: func() { switchTo(adjacentPage(switchablePages, front, false)) }, SearchOnly: true},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Alt("←")}, Name: "Previous page", Description: "Show the page on the left", Group: shortcut_helper.GroupGlobal,
-				Run: func() { switchTo(adjacentPage(switchablePages, front, true)) }},
-			shortcut_helper.ShortcutTimeFormat.WithRun(util.ToggleRelativeTimes),
+				Run: func() { switchTo(adjacentPage(switchablePages, front, true)) }, SearchOnly: true},
+			shortcut_helper.ShortcutTimeFormat.WithRun(util.ToggleRelativeTimes).
+				AsSwitch("Relative times", "Show times like \"3 minutes ago\" instead of dates", util.IsRelativeTimes),
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"F5"}, Name: "Refresh", Description: "Reload the pools, datasets, snapshots and files",
 				Group: shortcut_helper.GroupGlobal, Run: pages[front].refresh},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"m"}, Name: "Messages", Description: "Show all messages, e.g. errors", Group: shortcut_helper.GroupGlobal,
@@ -352,7 +358,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 				Group: shortcut_helper.GroupGlobal, Run: showDataErrors},
 			shortcut_helper.ShortcutEntry{Name: "Set up permissions", Description: "Allow your user to run the zpool commands that need root (live updates, damaged files, pool actions)",
 				Group: shortcut_helper.GroupGlobal, Run: func() { showSetupPermissions(false) }},
-			hideShortcuts.WithRun(toggleShortcuts),
+			hideShortcuts.WithRun(toggleShortcuts).
+				AsSwitch("Show shortcuts", "The keys at the bottom", func() bool { return !shortcut_helper.ShortcutsHidden() }),
 			shortcutQuit.WithRun(application.Stop).WithDescription("Exit the application"),
 		)
 	}
@@ -388,7 +395,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			application.Stop()
 		case event.Key() == tcell.KeyRune && event.Rune() == ':' && !textInput:
 			dialog.ShowCommandMenu(application, pagesLayout,
-				append(pages[front].commandSections(), dialog.CommandSection{Title: "Global", Commands: globalCommands(front)}))
+				append(pages[front].commandSections(), dialog.CommandSection{Title: "Global", Commands: globalCommands(front)}),
+				commandMenuMemory)
 		case event.Key() == tcell.KeyRune && event.Rune() == 'm' && !textInput:
 			showMessageHistory(application, pagesLayout, messages)
 		case (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight) && event.Modifiers()&tcell.ModAlt != 0 && !textInput:

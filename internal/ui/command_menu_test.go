@@ -50,7 +50,8 @@ func TestCommandMenuKey(t *testing.T) {
 	waitForText("Folder history")
 	typeText("overv")
 	waitForText("Files page")
-	waitForText("Hide overview")
+	// a switch, named by what it switches
+	waitForText("● Show overview")
 	clear(5)
 	typeText("go to")
 	waitForText("Global")
@@ -63,8 +64,8 @@ func TestCommandMenuKey(t *testing.T) {
 			util.ToggleRelativeTimes()
 		}
 	})
-	typeText("time f")
-	waitForText("Time format")
+	typeText("relative t")
+	waitForText("Relative times")
 	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
 
 	assert.Eventually(t, func() bool { return frontPage() == string(Main) }, 3*time.Second, 20*time.Millisecond)

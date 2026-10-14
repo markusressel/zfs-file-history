@@ -1,8 +1,6 @@
 package dialog
 
 import (
-	"unicode/utf8"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -14,19 +12,17 @@ type ChecklistItem struct {
 	Checked bool
 }
 
-// formatChecklistItem returns the text of the row of the item.
+// formatChecklistItem returns the text of the row of the item (with style tags), marked like the switches of the
+// command menu.
 func formatChecklistItem(item *ChecklistItem) string {
-	if item.Checked {
-		return "  ☑ " + item.Name
-	}
-	return "  ☐ " + item.Name
+	return "  " + switchMark(item.Checked) + " " + tview.Escape(item.Name)
 }
 
 // checklistWidth returns the width of the widest row of the checklist.
 func checklistWidth(items []*ChecklistItem) int {
 	width := 0
 	for _, item := range items {
-		width = max(width, utf8.RuneCountInString(formatChecklistItem(item)))
+		width = max(width, tview.TaggedStringWidth(formatChecklistItem(item)))
 	}
 	return width
 }

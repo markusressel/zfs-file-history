@@ -253,7 +253,8 @@ func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
 		name = "Show overview"
 	}
 	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"o"}, Name: name, Description: "The details of the folder and the selection, below the files",
-		Group: shortcut_helper.GroupView, Run: mainPage.toggleOverview, MenuOnly: true}
+		Group: shortcut_helper.GroupView, Run: mainPage.toggleOverview, MenuOnly: true}.
+		AsSwitch("Show overview", "The details of the folder and the selection, below the files", func() bool { return !mainPage.isOverviewHidden() })
 }
 
 // SetPages sets the pages of the application, on which the dialogs of the components are shown as well.

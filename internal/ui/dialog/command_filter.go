@@ -13,6 +13,8 @@ type commandMatch struct {
 	// positions are the indices of the runes of the name that match the query, to highlight them
 	positions []int
 	score     int
+	// section is the title of the section the command is listed in, see CommandMenuMemory
+	section string
 }
 
 // How well a term of the query matches a name, see matchTerm.

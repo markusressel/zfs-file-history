@@ -111,10 +111,13 @@ func TestGrouping_KeyAndCommands(t *testing.T) {
 	assert.Equal(t, "kind", table.GetGrouping())
 
 	commands := table.GroupingCommands()
-	require.Len(t, commands, 2)
-	assert.Equal(t, "Do not group", commands[0].Name)
-	assert.Equal(t, "Group by Kind", commands[1].Name)
-	commands[0].Run()
+	require.Len(t, commands, 3)
+	assert.Equal(t, "group", commands[0].Query, "searches the others, which are only listed while searching")
+	assert.Equal(t, "Do not group", commands[1].Name)
+	assert.True(t, commands[1].SearchOnly)
+	assert.Equal(t, "Group by Kind", commands[2].Name)
+	assert.True(t, commands[2].SearchOnly)
+	commands[1].Run()
 	assert.Empty(t, table.GetGrouping())
 
 	ungrouped, _, _, _ := newFilterTestTable()
