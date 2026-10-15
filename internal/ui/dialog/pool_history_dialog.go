@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/scrollbar"
@@ -13,6 +15,7 @@ import (
 	"zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 
+	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -81,8 +84,22 @@ type PoolHistoryDialog struct {
 	// groups are the records grouped (see zfs.GroupPoolHistory), oldest first, groupOf the group of each record
 	groups  []*zfs.PoolHistoryGroup
 	groupOf map[*zfs.PoolHistoryEntry]*zfs.PoolHistoryGroup
-	// err is why the history could not be read, nil if it was
+	// err is why the history could not be read (the last time), nil if it was
 	err error
+	// state is the state of the history of the pool shown, see PoolHistoryCache.Watch
+	state PoolHistoryState
+	// shown is the history the records are of (see viewOf), nil while none was read
+	shown *PoolHistory
+	// spinner is the frame of the spinner of the hint while the history is read again, see readingHint
+	spinner int
+	// stopWatching stops the updates of the history of the pool, see PoolHistoryCache.Watch
+	stopWatching func()
+
+	// viewMutex guards viewSource and view, the history of the dataset taken from the one of the pool in the
+	// background (see viewOf).
+	viewMutex  sync.Mutex
+	viewSource *PoolHistory
+	view       *PoolHistory
 	// chronological is whether the records are listed one by one instead of grouped
 	chronological bool
 	// expanded are the groups whose records are shown below them
@@ -96,10 +113,10 @@ type PoolHistoryDialog struct {
 }
 
 // NewPoolHistoryDialog shows the history of the pool, or of the dataset (with its children and snapshots) if dataset
-// is not "", read by load in the background (see zfs.PoolHistory, which reads all pools). The events ZFS logged itself
-// are shown for a dataset from the start: a recursive command names only the dataset it was given, the events name
-// each dataset it changed. Must be called on the UI thread.
-func NewPoolHistoryDialog(application *tview.Application, pool string, dataset string, load func() ([]zfs.PoolHistoryEntry, error)) *PoolHistoryDialog {
+// is not "", from the cache: the one read before right away, while it is read again (see PoolHistoryCache.Watch). The
+// events ZFS logged itself are shown for a dataset from the start: a recursive command names only the dataset it was
+// given, the events name each dataset it changed. Must be called on the UI thread.
+func NewPoolHistoryDialog(application *tview.Application, pool string, dataset string, cache *PoolHistoryCache) *PoolHistoryDialog {
 	d := &PoolHistoryDialog{
 		application:   application,
 		actionChannel: make(chan DialogActionId),
@@ -114,24 +131,84 @@ func NewPoolHistoryDialog(application *tview.Application, pool string, dataset s
 		d.applyColumnLayout(layout)
 	}
 	d.createLayout()
-	go func() {
-		entries, err := load()
-		own := []zfs.PoolHistoryEntry{}
-		for i := range entries {
-			if entry := &entries[i]; entry.Pool == pool && (dataset == "" || entry.IsAbout(dataset)) {
+	current, stop := cache.Watch(pool, d.onState)
+	d.stopWatching = stop
+	go d.onState(current)
+	return d
+}
+
+// onState shows the state of the history of the pool: the records of the dataset are taken from it here, in the
+// background (see viewOf). Called from the goroutine of the read, or of the dialog.
+func (d *PoolHistoryDialog) onState(historyState PoolHistoryState) {
+	view := d.viewOf(historyState.History)
+	d.application.QueueUpdateDraw(func() { d.setState(historyState, view) })
+}
+
+// viewOf returns the records of the history that are shown: of the pool all, of a dataset the ones about it,
+// grouped again. Taken once for each history read. May take long for a large pool, so it must not be called on the UI
+// thread.
+func (d *PoolHistoryDialog) viewOf(history *PoolHistory) *PoolHistory {
+	if history == nil || d.dataset == "" {
+		return history
+	}
+	d.viewMutex.Lock()
+	defer d.viewMutex.Unlock()
+	if d.viewSource != history {
+		var own []zfs.PoolHistoryEntry
+		for i := range history.Entries {
+			if entry := &history.Entries[i]; entry.IsAbout(d.dataset) {
 				own = append(own, *entry)
 			}
 		}
-		groups := zfs.GroupPoolHistory(own)
-		groupOf := make(map[*zfs.PoolHistoryEntry]*zfs.PoolHistoryGroup, len(own))
-		for _, group := range groups {
-			for _, entry := range group.Entries {
-				groupOf[entry] = group
-			}
-		}
-		application.QueueUpdateDraw(func() { d.setEntries(own, groups, groupOf, err) })
-	}()
-	return d
+		d.viewSource, d.view = history, groupPoolHistory(own)
+	}
+	return d.view
+}
+
+// setState shows the state of the history, unless a newer one is shown already: the records of a new history (see
+// setHistory), the progress of a read. Must be called on the UI thread.
+func (d *PoolHistoryDialog) setState(historyState PoolHistoryState, view *PoolHistory) {
+	if historyState.Version <= d.state.Version && d.state.Version != 0 {
+		return
+	}
+	if historyState.Reading {
+		d.spinner++
+	}
+	d.state, d.err = historyState, historyState.Err
+	d.loadingView.SetMessage("Reading the history (zpool history)… " + poolHistoryProgressText(historyState))
+	if view != nil && view != d.shown {
+		d.setHistory(view)
+	} else if view == nil && !historyState.Reading {
+		// could not be read, and none was before
+		d.showTable()
+		d.all, d.groups, d.groupOf = []zfs.PoolHistoryEntry{}, nil, nil
+		d.sortRows()
+		d.applyFilter()
+	}
+	d.updateHint()
+}
+
+// poolHistoryProgressText tells how far the history was read, e.g. "12% · 40,123 records · 23 MB": the share of the
+// size of the history read before, if known.
+func poolHistoryProgressText(historyState PoolHistoryState) string {
+	text := fmt.Sprintf("%s records · %s", humanize.Comma(int64(historyState.Progress.Records)), humanize.IBytes(uint64(historyState.Progress.Bytes)))
+	if historyState.Expected > 0 {
+		percent := min(100*historyState.Progress.Bytes/historyState.Expected, 99)
+		text = fmt.Sprintf("%d%% · %s", percent, text)
+	}
+	return text
+}
+
+// showTable shows the table instead of the loading view. Must be called on the UI thread.
+func (d *PoolHistoryDialog) showTable() {
+	d.loadingView.Stop()
+	// the table is shown before the loading view is hidden, so a page is always shown (see uiutil.LoadingContainer)
+	hadFocus := d.tableArea.HasFocus()
+	d.tableArea.ShowPage(poolHistoryTablePage)
+	d.tableArea.HidePage(poolHistoryLoadingPage)
+	if hadFocus {
+		d.application.SetFocus(d.table)
+	}
 }
 
 func (d *PoolHistoryDialog) createLayout() {
@@ -243,23 +320,91 @@ func (d *PoolHistoryDialog) createLayout() {
 	d.updateHint()
 }
 
-// setEntries shows the records (oldest first) and their groups, or why they could not be read. Must be called on the
-// UI thread.
-func (d *PoolHistoryDialog) setEntries(entries []zfs.PoolHistoryEntry, groups []*zfs.PoolHistoryGroup, groupOf map[*zfs.PoolHistoryEntry]*zfs.PoolHistoryGroup, err error) {
-	d.loadingView.Stop()
-	// the table is shown before the loading view is hidden, so a page is always shown (see uiutil.LoadingContainer)
-	hadFocus := d.tableArea.HasFocus()
-	d.tableArea.ShowPage(poolHistoryTablePage)
-	d.tableArea.HidePage(poolHistoryLoadingPage)
-	if hadFocus {
-		d.application.SetFocus(d.table)
+// setHistory shows the records of the history. A history read again replaces the one shown only if it differs (e.g.
+// new records), keeping the selected row, the expanded groups, the filter and the view. Must be called on the UI
+// thread.
+func (d *PoolHistoryDialog) setHistory(history *PoolHistory) {
+	previous := d.shown
+	d.shown = history
+	if previous != nil && samePoolHistory(previous, history) {
+		return
 	}
-	d.all, d.groups, d.groupOf, d.err = entries, groups, groupOf, err
-	if d.all == nil {
-		d.all = []zfs.PoolHistoryEntry{}
+	d.showTable()
+	selected := d.selectedRow()
+	expanded := map[poolHistoryEntryKey]bool{}
+	for group := range d.expanded {
+		expanded[poolHistoryKeyOf(group.Entries[0])] = true
+	}
+	d.all, d.groups, d.groupOf = history.Entries, history.Groups, history.GroupOf
+	clear(d.expanded)
+	for _, group := range d.groups {
+		if expanded[poolHistoryKeyOf(group.Entries[0])] {
+			d.expanded[group] = true
+		}
 	}
 	d.sortRows()
-	d.applyFilter()
+	d.showRows(d.findRow(selected))
+}
+
+// poolHistoryEntryKey identifies a record across reads of the history: ZFS drops the oldest records once its ring
+// buffer is full, so their index changes.
+type poolHistoryEntryKey struct {
+	time     time.Time
+	internal bool
+	txg      uint64
+	event    string
+	text     string
+}
+
+// poolHistoryKeyOf returns the key of the record.
+func poolHistoryKeyOf(entry *zfs.PoolHistoryEntry) poolHistoryEntryKey {
+	return poolHistoryEntryKey{time: entry.Time, internal: entry.Internal, txg: entry.Txg, event: entry.Event, text: entry.Text}
+}
+
+// samePoolHistory returns whether the histories have the same records: nothing was added or dropped (the last and
+// first record are the same, and their number).
+func samePoolHistory(a *PoolHistory, b *PoolHistory) bool {
+	if len(a.Entries) != len(b.Entries) {
+		return false
+	}
+	if len(a.Entries) == 0 {
+		return true
+	}
+	last := len(a.Entries) - 1
+	return poolHistoryKeyOf(&a.Entries[0]) == poolHistoryKeyOf(&b.Entries[0]) &&
+		poolHistoryKeyOf(&a.Entries[last]) == poolHistoryKeyOf(&b.Entries[last])
+}
+
+// findRow returns the row of the records shown that is the row of another history (the same group and record, see
+// poolHistoryEntryKey), the zero row if there is none.
+func (d *PoolHistoryDialog) findRow(row poolHistoryRow) poolHistoryRow {
+	var found poolHistoryRow
+	if row.entry != nil {
+		key := poolHistoryKeyOf(row.entry)
+		// from the newest, where the selection usually is
+		for i := len(d.all) - 1; i >= 0; i-- {
+			if poolHistoryKeyOf(&d.all[i]) == key {
+				found.entry = &d.all[i]
+				break
+			}
+		}
+		if found.entry == nil {
+			return poolHistoryRow{}
+		}
+	}
+	if row.group != nil {
+		found.group = d.groupOf[found.entry]
+		if found.entry == nil {
+			key := poolHistoryKeyOf(row.group.Entries[0])
+			for i := len(d.groups) - 1; i >= 0; i-- {
+				if poolHistoryKeyOf(d.groups[i].Entries[0]) == key {
+					found.group = d.groups[i]
+					break
+				}
+			}
+		}
+	}
+	return found
 }
 
 // applyColumnLayout shows the columns of the layout and sorts by its column; by the time, the newest first, if its
@@ -703,10 +848,14 @@ func (d *PoolHistoryDialog) updateDetails() {
 // be called on the UI thread.
 func (d *PoolHistoryDialog) updateHint() {
 	switch {
+	case d.err != nil && d.shown != nil:
+		d.hintView.SetText(tview.Escape(fmt.Sprintf("Could not read the history again, it is from before: %s", d.err)))
 	case d.err != nil:
 		d.hintView.SetText(tview.Escape(fmt.Sprintf("Could not read the history: %s", d.err)))
 	case d.all == nil:
 		d.hintView.SetText("")
+	case d.state.Reading && !d.isHeaderSelected():
+		d.hintView.SetText(d.readingHint())
 	case d.isHeaderSelected():
 		d.hintView.SetText("←/→: sort column · Enter: sort direction · F2: columns · Esc: close")
 	case d.chronological:
@@ -728,6 +877,13 @@ func (d *PoolHistoryDialog) updateHint() {
 	}
 }
 
+// readingHint tells that the history shown is read again, and how far: with a spinner, which moves with each report
+// of the progress (see zfs.PoolHistory).
+func (d *PoolHistoryDialog) readingHint() string {
+	frame := util.SpinnerFrames[d.spinner%len(util.SpinnerFrames)]
+	return tview.Escape(fmt.Sprintf("%s Reading the history again, this is the one from before… %s", frame, poolHistoryProgressText(d.state)))
+}
+
 func (d *PoolHistoryDialog) GetName() string {
 	return string(PoolHistoryDialogPage)
 }
@@ -742,6 +898,7 @@ func (d *PoolHistoryDialog) GetActionChannel() <-chan DialogActionId {
 
 func (d *PoolHistoryDialog) Close() {
 	d.loadingView.Stop()
+	d.stopWatching()
 	go func() {
 		d.actionChannel <- DialogCloseActionId
 	}()

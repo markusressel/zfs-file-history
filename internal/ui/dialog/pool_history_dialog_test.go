@@ -1,9 +1,11 @@
 package dialog
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
@@ -39,18 +41,38 @@ type historyDialogTest struct {
 	screen tcell.SimulationScreen
 	pages  *tview.Pages
 	dialog *PoolHistoryDialog
+	cache  *PoolHistoryCache
+}
+
+// historyCacheOf returns a cache that reads the records of the pool from the ones load returns (of all pools).
+func historyCacheOf(load func() ([]zfs.PoolHistoryEntry, error)) *PoolHistoryCache {
+	return NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
+		entries, err := load()
+		var own []zfs.PoolHistoryEntry
+		for _, entry := range entries {
+			if entry.Pool == pool {
+				own = append(own, entry)
+			}
+		}
+		return own, err
+	})
 }
 
 // newHistoryDialogTest shows the history of the pool or dataset, read by load.
 func newHistoryDialogTest(t *testing.T, pool string, dataset string, load func() ([]zfs.PoolHistoryEntry, error)) *historyDialogTest {
-	dt := &historyDialogTest{t: t, app: tview.NewApplication(), screen: tcell.NewSimulationScreen("UTF-8")}
+	return newHistoryDialogTestWithCache(t, pool, dataset, historyCacheOf(load))
+}
+
+// newHistoryDialogTestWithCache shows the history of the pool or dataset from the cache.
+func newHistoryDialogTestWithCache(t *testing.T, pool string, dataset string, cache *PoolHistoryCache) *historyDialogTest {
+	dt := &historyDialogTest{t: t, app: tview.NewApplication(), screen: tcell.NewSimulationScreen("UTF-8"), cache: cache}
 	dt.app.SetScreen(dt.screen)
 	dt.screen.SetSize(140, 40)
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	dt.app.SetRoot(dt.pages, true)
 	testutil.RunApp(t, dt.app)
 	testutil.OnUiThread(t, dt.app, func() {
-		dt.dialog = NewPoolHistoryDialog(dt.app, pool, dataset, load)
+		dt.dialog = NewPoolHistoryDialog(dt.app, pool, dataset, cache)
 		ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
 	})
 	return dt
@@ -490,4 +512,118 @@ func TestPoolHistoryDialog_Columns(t *testing.T) {
 	saved, ok := table.LoadColumnLayout(store, stateKeyPoolHistoryTable, poolHistoryColumns)
 	require.True(t, ok)
 	assert.Equal(t, []*table.Column{poolHistoryColumnEvent, poolHistoryColumnDataset, poolHistoryColumnUser, poolHistoryColumnDetails}, saved.Columns)
+}
+
+// reopen closes the dialog and shows it again, with the same cache.
+func (dt *historyDialogTest) reopen(pool string, dataset string) {
+	dt.t.Helper()
+	testutil.OnUiThread(dt.t, dt.app, func() { dt.dialog.Close() })
+	require.Eventually(dt.t, func() bool {
+		var name string
+		testutil.OnUiThread(dt.t, dt.app, func() { name, _ = dt.pages.GetFrontPage() })
+		return name == "background"
+	}, 3*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(dt.t, dt.app, func() {
+		dt.dialog = NewPoolHistoryDialog(dt.app, pool, dataset, dt.cache)
+		ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
+	})
+}
+
+// Shown again, the history read before is shown at once while it is read again, with its progress; the history read
+// then replaces it, with the same row selected and the same groups expanded.
+func TestPoolHistoryDialog_ShownAgainFromTheCache(t *testing.T) {
+	reads := 0
+	release := make(chan struct{})
+	progressed := make(chan struct{})
+	history := slices.Clone(testHistory)
+	cache := NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
+		reads++
+		if reads > 1 {
+			progress(zfs.PoolHistoryProgress{Bytes: 512, Records: 2})
+			close(progressed)
+			<-release
+		}
+		var own []zfs.PoolHistoryEntry
+		for _, entry := range history {
+			if entry.Pool == pool {
+				own = append(own, entry)
+			}
+		}
+		progress(zfs.PoolHistoryProgress{Bytes: 1024, Records: len(own)})
+		return own, nil
+	})
+	dt := newHistoryDialogTestWithCache(t, "tank", "", cache)
+	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
+	dt.key(tcell.KeyEnter, 0)
+	dt.key(tcell.KeyDown, 0)
+	dt.key(tcell.KeyDown, 0)
+	dt.key(tcell.KeyDown, 0)
+	dt.waitForSelected("zfs destroy")
+	dt.waitForRows("Scrub", "  scan done", "  zpool scrub", "zfs destroy", "zfs snapshot ▸")
+
+	// a new record, read when shown again
+	history = append(history, zfs.PoolHistoryEntry{Pool: "tank", Time: historyAt(6), Event: "zfs set", Text: "zfs set atime=off tank", User: "root", Host: "host"})
+	dt.reopen("tank", "")
+	<-progressed
+	dt.waitForText("Reading the history again, this is the one from before… 50% · 2 records · 512 B")
+	// the rows of before, at once: not the loading view
+	assert.Equal(t, []string{"Scrub ▸", "zfs destroy", "zfs snapshot ▸"}, dt.shownEvents())
+
+	// the selection is not kept across closing the dialog, but across a history read again
+	dt.key(tcell.KeyEnter, 0)
+	dt.key(tcell.KeyDown, 0)
+	dt.key(tcell.KeyDown, 0)
+	dt.key(tcell.KeyDown, 0)
+	dt.waitForSelected("zfs destroy")
+	close(release)
+	dt.waitForRows("zfs set", "Scrub", "  scan done", "  zpool scrub", "zfs destroy", "zfs snapshot ▸")
+	dt.waitForSelected("zfs destroy")
+	dt.waitForText("4 of 4 groups (6 records)")
+	assert.Equal(t, 2, reads)
+}
+
+// While the history is read the first time, the loading view tells how far.
+func TestPoolHistoryDialog_Progress(t *testing.T) {
+	release := make(chan struct{})
+	cache := NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
+		progress(zfs.PoolHistoryProgress{Bytes: 3 << 20, Records: 12345})
+		<-release
+		return nil, nil
+	})
+	dt := newHistoryDialogTestWithCache(t, "tank", "", cache)
+	t.Cleanup(func() { close(release) })
+
+	dt.waitForText("Reading the history (zpool history)… 12,345 records · 3.0 MiB")
+}
+
+// A dialog shown while the history is read does not read it a second time.
+func TestPoolHistoryCache_OneReadAtATime(t *testing.T) {
+	release := make(chan struct{})
+	var reads atomic.Int32
+	cache := NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
+		reads.Add(1)
+		<-release
+		return []zfs.PoolHistoryEntry{{Pool: pool, Event: "zpool create"}}, nil
+	})
+	states := make(chan PoolHistoryState, 10)
+	first, stopFirst := cache.Watch("tank", func(state PoolHistoryState) { states <- state })
+	second, stopSecond := cache.Watch("tank", func(PoolHistoryState) {})
+	stopSecond()
+	assert.True(t, first.Reading)
+	assert.True(t, second.Reading)
+	assert.Nil(t, second.History)
+
+	close(release)
+	state := <-states
+	stopFirst()
+	assert.False(t, state.Reading)
+	require.NotNil(t, state.History)
+	assert.Len(t, state.History.Entries, 1)
+	assert.Equal(t, int32(1), reads.Load())
+
+	// watched again: the history read before, and read again
+	third, stopThird := cache.Watch("tank", func(PoolHistoryState) {})
+	defer stopThird()
+	assert.Same(t, state.History, third.History)
+	assert.True(t, third.Reading)
 }

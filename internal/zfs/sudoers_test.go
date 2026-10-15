@@ -52,6 +52,9 @@ func TestParseSudoersFile(t *testing.T) {
 			SudoersRulePoolActions.Lines("alice"),
 			[]*SudoersRule{SudoersRuleEvents, SudoersRuleDataErrors, SudoersRulePoolActions}},
 		{"only the denied clear", "alice ALL=(root) !/usr/bin/zpool clear * *\n", []*SudoersRule{SudoersRulePoolActions}},
+		{"version 2.5: the history of all pools", "# installed by zfs-file-history setup\n" +
+			"alice ALL=(root) NOPASSWD: /usr/sbin/zpool history -il, /sbin/zpool history -il, /usr/bin/zpool history -il\n",
+			[]*SudoersRule{SudoersRuleHistory}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -62,6 +65,15 @@ func TestParseSudoersFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The line of a former version of the history rule (all pools) is replaced by the one of the rule (one pool).
+func TestSudoersFile_Fallback(t *testing.T) {
+	file := ParseSudoersFile("# installed by zfs-file-history setup\n" +
+		"alice ALL=(root) NOPASSWD: /usr/sbin/zpool history -il, /sbin/zpool history -il, /usr/bin/zpool history -il\n")
+
+	assert.Equal(t, sudoersFileHeader+"# Pool history\n"+SudoersRuleHistory.Lines("alice"), file.String())
+	assert.Contains(t, file.String(), "/usr/bin/zpool history -il [a-zA-Z]*")
 }
 
 func TestSudoersFile_Grant(t *testing.T) {
@@ -141,6 +153,13 @@ func TestAllowedSudoersRules(t *testing.T) {
 	}
 	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": false, "smart": true, "pool-actions": false}, AllowedSudoersRules())
 
+	listSudoRules = func() (string, error) {
+		return "User alice may run the following commands on host:\n" +
+			"    (root) NOPASSWD: " + ZpoolPath() + " history -il [a-zA-Z]*\n", nil
+	}
+	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": true, "smart": false, "pool-actions": false}, AllowedSudoersRules())
+
+	// the history of all pools, allowed by former versions of the rule, still works
 	listSudoRules = func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " history -il\n", nil

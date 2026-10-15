@@ -63,5 +63,7 @@ func (NoSystem) PreviewDestroySnapshots(string, []string, bool, bool) (*DestroyP
 	return nil, ErrNoSystem
 }
 func (NoSystem) DataErrorStatuses() ([]*PoolStatus, []string, error) { return nil, nil, ErrNoSystem }
-func (NoSystem) PoolHistory() ([]PoolHistoryEntry, error)            { return nil, ErrNoSystem }
-func (NoSystem) WatchEvents(context.Context, func(), func()) error   { return ErrNoSystem }
+func (NoSystem) PoolHistory(context.Context, string, func(PoolHistoryProgress)) ([]PoolHistoryEntry, error) {
+	return nil, ErrNoSystem
+}
+func (NoSystem) WatchEvents(context.Context, func(), func()) error { return ErrNoSystem }

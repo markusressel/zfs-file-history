@@ -1,6 +1,8 @@
 package zfs
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -74,6 +76,60 @@ var (
 	// dataset and its ancestors. Anyone can read them.
 	readDelegations = func(dataset string) (string, error) {
 		return runZfs("allow", dataset)
+	}
+	// streamCommand runs the command and passes each line of its output (without the line break, only valid during
+	// the call) to onLine while it runs. Once onLine returns false, the output is not read further and the command is
+	// stopped, which is no error. If it fails, the error contains the message the command printed, if any.
+	streamCommand = func(ctx context.Context, onLine func(line []byte) bool, name string, args ...string) error {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		command := exec.CommandContext(ctx, name, args...)
+		var stderr strings.Builder
+		command.Stderr = &stderr
+		output, err := command.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		if err := command.Start(); err != nil {
+			return err
+		}
+		reader := bufio.NewReaderSize(output, 1<<20)
+		stopped := false
+		var long []byte
+		for ctx.Err() == nil {
+			line, err := reader.ReadSlice('\n')
+			if errors.Is(err, bufio.ErrBufferFull) {
+				// a line longer than the buffer, e.g. the dumped arguments of an ioctl
+				long = append(long, line...)
+				continue
+			}
+			if long != nil {
+				line, long = append(long, line...), nil
+			}
+			if len(line) > 0 && !onLine(bytes.TrimSuffix(line, []byte("\n"))) {
+				stopped = true
+				break
+			}
+			if err != nil {
+				break
+			}
+		}
+		if stopped || ctx.Err() != nil {
+			// a command sudo runs does not get the kill of sudo: it stops once it cannot write anymore
+			cancelled := ctx.Err()
+			_ = output.Close()
+			cancel()
+			_ = command.Wait()
+			if stopped {
+				return nil
+			}
+			return cancelled
+		}
+		err = command.Wait()
+		if err != nil && strings.TrimSpace(stderr.String()) != "" {
+			return errors.New(strings.TrimSpace(stderr.String()))
+		}
+		return err
 	}
 	// listSudoRules lists the commands the user may run with sudo ("sudo -l"). Without a password (-n), which works
 	// if any of them is allowed without one. Unlike running a command, this is not logged.
@@ -215,9 +271,7 @@ func (System) AllowedSudoersRules() map[string]bool {
 	}
 	commands, all := parseNoPasswordCommands(output)
 	for _, rule := range SudoersRules {
-		allowed[rule.Id] = all || !slices.ContainsFunc(rule.AllowedCommands(), func(command string) bool {
-			return !commands[command]
-		})
+		allowed[rule.Id] = all || rule.isAllowedBy(commands)
 	}
 	return allowed
 }
@@ -337,23 +391,27 @@ func (System) PoolStatuses() ([]*PoolStatus, error) {
 	return parsePoolStatuses(output)
 }
 
-// PoolHistory reads the history, which needs root: unless the application runs as root, zpool runs with "sudo -n",
-// which works with the sudoers rule of the setup command. Without root zpool fails anyway, so it is not tried first.
-func (System) PoolHistory() ([]PoolHistoryEntry, error) {
-	var output string
-	var err error
+// PoolHistory reads the history of the pool, which needs root: unless the application runs as root, zpool runs with
+// "sudo -n", which works with the sudoers rule of the setup command. Without root zpool fails anyway, so it is not
+// tried first. Former versions of the rule only allow the history of all pools, which is read up to the end of the
+// pool then.
+func (System) PoolHistory(ctx context.Context, pool string, progress func(PoolHistoryProgress)) ([]PoolHistoryEntry, error) {
+	read := func(name string, args ...string) ([]PoolHistoryEntry, error) {
+		return readPoolHistory(pool, progress, func(onLine func(line []byte) bool) error {
+			return streamCommand(ctx, onLine, name, args...)
+		})
+	}
 	if isRoot() {
-		output, err = runPoolCommand("zpool", historyArgs...)
-	} else {
-		output, err = runSudoCommand(append([]string{"-n", ZpoolPath()}, historyArgs...)...)
+		return read(ZpoolPath(), poolHistoryArgs(pool)...)
+	}
+	entries, err := read("sudo", append([]string{"-n", ZpoolPath()}, poolHistoryArgs(pool)...)...)
+	if err != nil && isSudoDenied(err) {
+		entries, err = read("sudo", append([]string{"-n", ZpoolPath()}, historyArgs...)...)
 		if err != nil && isSudoDenied(err) {
 			return nil, fmt.Errorf("%w. %s", err, SetupHistoryHint)
 		}
 	}
-	if err != nil {
-		return nil, err
-	}
-	return parsePoolHistory(output), nil
+	return entries, err
 }
 
 // DataErrorStatuses lists the damaged files, which needs root: if zpool does not list them, it is run again with

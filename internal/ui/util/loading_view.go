@@ -9,7 +9,8 @@ import (
 	"github.com/rivo/tview"
 )
 
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+// SpinnerFrames are the frames of the spinner that shows that something is loading.
+var SpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 type LoadingView struct {
 	*tview.TextView
@@ -64,9 +65,9 @@ func (v *LoadingView) Start() {
 				msg := v.message
 				v.mu.RUnlock()
 				v.app.QueueUpdateDraw(func() {
-					v.TextView.SetText(fmt.Sprintf("\n\n\n[yellow]%s[-] %s", spinnerFrames[frame], msg))
+					v.TextView.SetText(fmt.Sprintf("\n\n\n[yellow]%s[-] %s", SpinnerFrames[frame], msg))
 				})
-				frame = (frame + 1) % len(spinnerFrames)
+				frame = (frame + 1) % len(SpinnerFrames)
 			}
 		}
 	}()

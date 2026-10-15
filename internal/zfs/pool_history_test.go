@@ -1,8 +1,11 @@
 package zfs
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -138,38 +141,113 @@ func TestPoolHistoryEntryIsAbout(t *testing.T) {
 	assert.False(t, (&PoolHistoryEntry{}).IsAbout("tank"))
 }
 
+// fakeHistoryCommand replaces streamCommand: it passes the lines of the output of each command (by its arguments
+// after "-il"; "" for all pools) to onLine, until it returns false. A missing output fails like a denied sudo.
+func fakeHistoryCommand(t *testing.T, outputs map[string]string) (calls *[][]string, read *int) {
+	original := streamCommand
+	t.Cleanup(func() { streamCommand = original })
+	calls, read = &[][]string{}, new(int)
+	streamCommand = func(ctx context.Context, onLine func(line []byte) bool, name string, args ...string) error {
+		*calls = append(*calls, append([]string{name}, args...))
+		_, pool, _ := strings.Cut(strings.Join(args, " "), "history -il")
+		output, ok := outputs[strings.TrimSpace(pool)]
+		if !ok {
+			return errors.New("sudo: a password is required")
+		}
+		for line := range strings.SplitSeq(output, "\n") {
+			*read++
+			if !onLine([]byte(line)) {
+				return nil
+			}
+		}
+		return nil
+	}
+	return calls, read
+}
+
 func TestSystemPoolHistory(t *testing.T) {
-	originalPool, originalSudo, originalRoot := runPoolCommand, runSudoCommand, isRoot
-	t.Cleanup(func() { runPoolCommand, runSudoCommand, isRoot = originalPool, originalSudo, originalRoot })
-	output := "History for 'tank':\n2024-01-02.03:04:05 zpool scrub tank [user 0 (root) on host:linux]\n"
-	var sudoArgs []string
-	runPoolCommand = func(name string, args ...string) (string, error) {
-		assert.Equal(t, []string{"history", "-il"}, args)
-		return output, nil
-	}
-	runSudoCommand = func(args ...string) (string, error) {
-		sudoArgs = args
-		return output, nil
-	}
+	originalRoot := isRoot
+	t.Cleanup(func() { isRoot = originalRoot })
+	tank := "History for 'tank':\n2024-01-02.03:04:05 zpool scrub tank [user 0 (root) on host:linux]\n"
+	calls, _ := fakeHistoryCommand(t, map[string]string{"tank": tank})
 
 	// as root zpool runs directly
 	isRoot = func() bool { return true }
-	entries, err := System{}.PoolHistory()
+	var progress []PoolHistoryProgress
+	entries, err := System{}.PoolHistory(context.Background(), "tank", func(p PoolHistoryProgress) { progress = append(progress, p) })
 	require.NoError(t, err)
 	assert.Len(t, entries, 1)
-	assert.Nil(t, sudoArgs)
+	assert.Equal(t, [][]string{{ZpoolPath(), "history", "-il", "tank"}}, *calls)
+	assert.Equal(t, []PoolHistoryProgress{{Bytes: int64(len(tank)) + 1, Records: 1}}, progress, "the end is reported")
 
 	// otherwise with sudo, as allowed by the rule of the setup command
 	isRoot = func() bool { return false }
-	entries, err = System{}.PoolHistory()
+	*calls = nil
+	entries, err = System{}.PoolHistory(context.Background(), "tank", nil)
 	require.NoError(t, err)
 	assert.Len(t, entries, 1)
-	assert.Equal(t, []string{"-n", ZpoolPath(), "history", "-il"}, sudoArgs)
-	assert.Equal(t, []string{strings.Join(sudoArgs[1:], " ")}, SudoersRuleHistory.AllowedCommands())
+	assert.Equal(t, [][]string{{"sudo", "-n", ZpoolPath(), "history", "-il", "tank"}}, *calls)
+	assert.Equal(t, []string{ZpoolPath() + " history -il [a-zA-Z]*"}, SudoersRuleHistory.AllowedCommands())
 
 	// without the rule: how to allow it
-	runSudoCommand = func(args ...string) (string, error) { return "", errors.New("sudo: a password is required") }
-	_, err = System{}.PoolHistory()
+	*calls = nil
+	_, err = System{}.PoolHistory(context.Background(), "other", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), SetupHistoryHint)
+}
+
+// With the rule of former versions, which only allows the history of all pools, the records of the pool are read
+// from it, and zpool is stopped once they were read.
+func TestSystemPoolHistory_AllPools(t *testing.T) {
+	originalRoot := isRoot
+	t.Cleanup(func() { isRoot = originalRoot })
+	isRoot = func() bool { return false }
+	all := "History for 'bpool':\n2024-01-01.00:00:00 zpool create bpool sda\n" +
+		"History for 'rpool':\n2024-01-02.00:00:00 zpool create rpool sdb\n2024-01-03.00:00:00 zfs snapshot rpool/a@s\n" +
+		"History for 'tank':\n2024-01-04.00:00:00 zpool create tank sdc\n"
+	calls, read := fakeHistoryCommand(t, map[string]string{"": all})
+
+	entries, err := System{}.PoolHistory(context.Background(), "rpool", nil)
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{{"sudo", "-n", ZpoolPath(), "history", "-il", "rpool"}, {"sudo", "-n", ZpoolPath(), "history", "-il"}}, *calls)
+	require.Len(t, entries, 2)
+	assert.Equal(t, "zpool create rpool sdb", entries[0].Text)
+	assert.Equal(t, "zfs snapshot rpool/a@s", entries[1].Text)
+	assert.Equal(t, 6, *read, "stopped at the history of the next pool")
+}
+
+// streamCommand passes the lines while the command runs (also ones longer than its buffer), stops it once onLine
+// returns false, and fails with what the command printed.
+func TestStreamCommand(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh")
+	}
+	long := strings.Repeat("x", 3<<20)
+	var lines []string
+	err := streamCommand(context.Background(), func(line []byte) bool {
+		lines = append(lines, string(line))
+		return true
+	}, "sh", "-c", fmt.Sprintf("echo a; head -c %d /dev/zero | tr '\\0' x; echo; printf b", len(long)))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", long, "b"}, lines)
+
+	// stopped: an endless command ends
+	count := 0
+	err = streamCommand(context.Background(), func(line []byte) bool {
+		count++
+		return count < 3
+	}, "sh", "-c", "yes")
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+
+	// cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	err = streamCommand(ctx, func(line []byte) bool {
+		cancel()
+		return true
+	}, "sh", "-c", "yes")
+	assert.ErrorIs(t, err, context.Canceled)
+
+	err = streamCommand(context.Background(), func(line []byte) bool { return true }, "sh", "-c", "echo denied >&2; exit 1")
+	assert.EqualError(t, err, "denied")
 }
