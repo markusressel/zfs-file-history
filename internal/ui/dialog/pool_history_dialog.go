@@ -221,6 +221,11 @@ func (d *PoolHistoryDialog) showRows(selected poolHistoryRow) {
 	if d.all == nil {
 		return
 	}
+	// the line the selection is drawn on, kept if it is still shown (e.g. a group that is expanded or collapsed)
+	shown := len(d.content.rows) > 0
+	selectedRow, _ := d.table.GetSelection()
+	offset, _ := d.table.GetOffset()
+	line := max(selectedRow-offset, 1)
 	filter := strings.TrimSpace(d.filterInput.GetText())
 	rows := d.content.rows[:0]
 	if d.chronological {
@@ -250,14 +255,21 @@ func (d *PoolHistoryDialog) showRows(selected poolHistoryRow) {
 	}
 	d.content.rows = rows
 	row := 1
-	if index := slices.IndexFunc(rows, func(row poolHistoryRow) bool {
+	index := slices.IndexFunc(rows, func(row poolHistoryRow) bool {
 		return row.group == selected.group && row.entry == selected.entry
-	}); index >= 0 {
+	})
+	if index >= 0 {
 		row = index + 1
 	}
-	// drawn empty (while loading, or with a filter nothing matches), the table follows its end, but the newest
-	// records are at the top; the selection is scrolled to again
-	d.table.ScrollToBeginning()
+	if shown && index >= 0 {
+		// without, tview scrolls only as far as needed to show the selection: a group expanded further down the list
+		// would end up on its last line, its records out of sight
+		d.table.SetOffset(max(row-line, 0), 0)
+	} else {
+		// drawn empty (while loading, or with a filter nothing matches), the table follows its end, but the newest
+		// records are at the top; the selection is scrolled to again
+		d.table.ScrollToBeginning()
+	}
 	if len(rows) > 0 {
 		d.table.Select(row, 0)
 	}
