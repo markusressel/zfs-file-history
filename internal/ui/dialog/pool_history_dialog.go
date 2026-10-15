@@ -31,8 +31,10 @@ const poolHistoryTimeLayout = "2006-01-02 15:04:05"
 // poolHistoryDetailsHeight is the number of lines of the record shown in full below the list.
 const poolHistoryDetailsHeight = 3
 
-// poolHistoryColumns are the titles of the columns of the list.
-var poolHistoryColumns = []string{"Time", "Event", "Dataset", "Details", "User"}
+// poolHistoryColumns are the titles of the columns of the list. The details are last: they can be long (e.g. the
+// devices of zpool create), and are cut off where the list ends, not the columns after them; the selected row is
+// shown in full below the list.
+var poolHistoryColumns = []string{"Time", "Event", "Dataset", "User", "Details"}
 
 // PoolHistoryDialog lists the history of a pool, or of a dataset (with its children and snapshots), newest first
 // (see zfs.PoolHistory). The records are grouped into what was done (see zfs.GroupPoolHistory: a scrub from its start
@@ -574,9 +576,9 @@ func (c *poolHistoryContent) GetCell(row int, column int) *tview.TableCell {
 	case 2:
 		return tview.NewTableCell(tview.Escape(entry.Dataset())).SetTextColor(theme.Colors.Layout.Table.Accent).SetMaxWidth(50)
 	case 3:
-		return tview.NewTableCell(tview.Escape(poolHistoryDetails(entry))).SetTextColor(color).SetExpansion(1)
-	default:
 		return tview.NewTableCell(tview.Escape(entry.User)).SetTextColor(theme.Colors.Info.Label)
+	default:
+		return tview.NewTableCell(tview.Escape(poolHistoryDetails(entry))).SetTextColor(color).SetExpansion(1)
 	}
 }
 

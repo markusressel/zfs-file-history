@@ -325,3 +325,15 @@ func TestPoolHistoryDialog_Scrollbar(t *testing.T) {
 	dt.waitForRows()
 	assert.NotContains(t, dt.screenText(), scrollbar.ScrollIndicatorBottom)
 }
+
+// long arguments of a command do not push the user out of the list
+func TestPoolHistoryDialog_LongDetails(t *testing.T) {
+	long := []zfs.PoolHistoryEntry{{Pool: "tank", Time: historyAt(1), Event: "zpool create",
+		Text: "zpool create -o ashift=12 tank mirror " + strings.Repeat("/dev/disk/by-id/nvme-Some_Long_Device_Name-part3 ", 4),
+		User: "alice", Host: "host"}}
+	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return long, nil })
+	dt.waitForText("1 of 1 groups")
+
+	dt.waitForText("User")
+	dt.waitForText("alice")
+}

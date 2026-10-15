@@ -15,7 +15,7 @@ import (
 )
 
 // poolHistoryGroupCell returns the cell of the row of a group in the column: when it started, what it was, the
-// dataset of all its records, how it ended (or what its commands did), who ran its commands. A collapsed group
+// dataset of all its records, who ran its commands, how it ended (or what its commands did). A collapsed group
 // says how many records it hides, like a collapsed dataset of the tree.
 func poolHistoryGroupCell(group *zfs.PoolHistoryGroup, column int, expanded bool) *tview.TableCell {
 	switch column {
@@ -30,10 +30,10 @@ func poolHistoryGroupCell(group *zfs.PoolHistoryGroup, column int, expanded bool
 	case 2:
 		return tview.NewTableCell(tview.Escape(poolHistoryCommonDataset(group))).SetTextColor(theme.Colors.Layout.Table.Accent).SetMaxWidth(50)
 	case 3:
+		return tview.NewTableCell(tview.Escape(strings.Join(poolHistoryGroupUsers(group), ", "))).SetTextColor(theme.Colors.Info.Label)
+	default:
 		summary, color := poolHistoryGroupSummary(group)
 		return tview.NewTableCell(tview.Escape(summary)).SetTextColor(color).SetExpansion(1)
-	default:
-		return tview.NewTableCell(tview.Escape(strings.Join(poolHistoryGroupUsers(group), ", "))).SetTextColor(theme.Colors.Info.Label)
 	}
 }
 
