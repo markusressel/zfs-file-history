@@ -149,8 +149,9 @@ func runExternalDiffEditor(
 	cmd.Stderr = os.Stderr
 
 	done := make(chan struct{})
-	// suspended on the UI thread, so tview does not read stdin while the viewer runs
-	application.QueueUpdate(func() {
+	// Suspended on the UI thread, so tview does not read stdin while the viewer runs. Suspend resumes the screen
+	// cleared and does not draw it: it stayed black until the next key.
+	application.QueueUpdateDraw(func() {
 		defer close(done)
 		suspended := application.Suspend(func() {
 			if err := cmd.Run(); err != nil {
@@ -162,4 +163,6 @@ func runExternalDiffEditor(
 		}
 	})
 	<-done
+	// The draw only writes the cells that changed since the last one, but the terminal was cleared: all of them.
+	application.Sync()
 }

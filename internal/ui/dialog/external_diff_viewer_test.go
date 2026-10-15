@@ -2,11 +2,17 @@ package dialog
 
 import (
 	"os"
+	"sync/atomic"
 	"testing"
+	"time"
 	"zfs-file-history/internal/data"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExternalDiffViewer_IsAvailable(t *testing.T) {
@@ -91,4 +97,22 @@ func TestDiffPaths(t *testing.T) {
 			assert.Equal(t, "/pool/ds/.zfs/snapshot/new/file.txt", newPath)
 		})
 	}
+}
+
+// Regression: the screen was resumed after the viewer exited but not drawn, so it stayed black until the next key.
+func TestRunExternalDiffEditor_DrawsWhenTheViewerExits(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	require.NoError(t, screen.Init())
+	app := tview.NewApplication().SetScreen(screen).SetRoot(tview.NewBox(), true)
+	var draws atomic.Int32
+	app.SetAfterDrawFunc(func(tcell.Screen) { draws.Add(1) })
+	testutil.RunApp(t, app)
+	testutil.WaitForEvents(t, app, screen)
+	var before int32
+	// after the draw of the key of WaitForEvents, which runs before the next update
+	testutil.OnUiThread(t, app, func() { before = draws.Load() })
+
+	runExternalDiffEditor(app, ExternalDiffViewerConfig{Path: "true"}, "/old", "/new")
+
+	assert.Eventually(t, func() bool { return draws.Load() > before }, 5*time.Second, 10*time.Millisecond)
 }
