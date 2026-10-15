@@ -45,6 +45,7 @@ func TestRunPoolAction(t *testing.T) {
 		"zpool trim tank",
 		"zpool trim -c tank",
 		"zpool clear tank",
+		"zpool upgrade tank",
 	}, fake.commands)
 }
 

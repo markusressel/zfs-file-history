@@ -516,6 +516,63 @@ func TestPoolBrowser_ActionNeedsRoot(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 }
 
+// Upgrading the pool cannot be undone: it only runs once the name of the pool was typed.
+func TestPoolBrowser_UpgradeIsConfirmedByName(t *testing.T) {
+	actions := setRunPoolAction(t, nil)
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) { return []*zfs.PoolListEntry{{Name: "tank"}}, nil })
+	var upgraded atomic.Int32
+	app, screen := testutil.NewApp()
+	browser := NewPoolBrowser(app)
+	browser.Events.Subscribe(func(event Event) {
+		if e, ok := event.(PoolBrowserStatusEvent); ok && e.Message.Message == "Enabled all features of tank" {
+			upgraded.Add(1)
+		}
+	})
+	testutil.StartApp(t, app, browser.GetLayout())
+	testutil.OnUiThread(t, app, browser.Refresh)
+	require.Eventually(t, func() bool {
+		var selected *zfs.PoolListEntry
+		testutil.OnUiThread(t, app, func() { selected = browser.GetSelectedPool() })
+		return selected != nil
+	}, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, app, func() {
+		browser.SetStatus(&zfs.PoolStatus{Name: "tank", ScanProgress: -1, Action: "Enable all features using 'zpool upgrade'."})
+	})
+
+	// e.g. from the command menu
+	command := commandNamed(t, app, browser, "Upgrade pool")
+	testutil.OnUiThread(t, app, command.Run)
+	testutil.WaitForPage(t, app, browser.layout, string(dialog.PoolUpgradeDialogPage), 2*time.Second)
+	assert.Empty(t, actions(), "not before the name was typed")
+
+	// Enter alone, or another name, does not upgrade
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
+	testutil.Type(t, app, screen, "tan")
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
+	testutil.WaitForUpdates(t, app)
+	assert.True(t, testutil.HasPage(t, app, browser.layout, string(dialog.PoolUpgradeDialogPage)))
+	assert.Empty(t, actions())
+
+	testutil.Type(t, app, screen, "k")
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
+	require.Eventually(t, func() bool { return upgraded.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"upgrade tank"}, actions())
+	testutil.WaitForNoPage(t, app, browser.layout, string(dialog.PoolUpgradeDialogPage), 2*time.Second)
+}
+
+// Not offered unless zpool status suggests it.
+func TestPoolBrowser_UpgradeOnlyIfSuggested(t *testing.T) {
+	app, browser, _ := loadedBrowserApp(t, "tank")
+	testutil.OnUiThread(t, app, func() { browser.SetStatus(&zfs.PoolStatus{Name: "tank", ScanProgress: -1}) })
+	var names []string
+	testutil.OnUiThread(t, app, func() {
+		for _, command := range browser.GetCommands() {
+			names = append(names, command.Name)
+		}
+	})
+	assert.NotContains(t, names, "Upgrade pool")
+}
+
 func TestPoolBrowser_ActionShortcut(t *testing.T) {
 	app, browser, _ := loadedBrowserApp(t, "tank")
 

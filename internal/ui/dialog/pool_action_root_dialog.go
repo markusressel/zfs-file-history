@@ -38,7 +38,7 @@ func NewPoolActionRootDialog(application *tview.Application, needsRoot *zfs.Pool
 			explanation := fmt.Sprintf("running zpool as root to %s on %s.", needsRoot.Action.Name, needsRoot.Pool)
 			return grantPermissions(application, explanation, [][]string{needsRoot.Command()})
 		case PoolActionRootDialogAllowActionId:
-			explanation := "allowing your user to scrub, TRIM and clear the errors of pools without a password " +
+			explanation := "allowing your user to scrub, TRIM, upgrade and clear the errors of pools without a password " +
 				"(sudoers rules, see \"zfs-file-history setup --help\")."
 			return grantPermissions(application, explanation, [][]string{setup})
 		case PoolActionRootDialogCopyActionId:
@@ -103,7 +103,7 @@ func formatPoolActionNeedsRoot(needsRoot *zfs.PoolActionNeedsRootError, setup []
 	if needsRoot.Cause != nil {
 		fmt.Fprintf(&description, "\n\nReason: %s", needsRoot.Cause.Error())
 	}
-	description.WriteString("\n\nYour user can be allowed to scrub, TRIM and clear the errors of pools without a " +
+	description.WriteString("\n\nYour user can be allowed to scrub, TRIM, upgrade and clear the errors of pools without a " +
 		"password (nothing else, e.g. no destroying) with:\n")
 	fmt.Fprintf(&description, "\n  sudo %s", strings.Join(setup, " "))
 	return description.String()

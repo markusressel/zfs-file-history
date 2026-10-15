@@ -88,11 +88,14 @@ of the code.
   at its top, where the new ones are shown. `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
   while the rule is allowed (`SetOnShowHistory`, updated on `zfs.SudoersChanged`).
 - `internal/zfs/pool_action.go`: the actions on pools (`zfs.PoolActions`: scrub start/pause/cancel, TRIM
-  start/cancel, clear). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
+  start/cancel, clear, upgrade). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
   denied, and returns a `PoolActionNeedsRootError` if that is not allowed either: `dialog.NewErrorDialogWithRetry`
   then offers to run it once with sudo or to run `setup --pool-actions` (like `NewMissingPermissionsDialog` does
-  for dataset permissions). Actions that lose data or make a pool unavailable (destroy, export, upgrade, `clear -F`) are deliberately
-  not offered.
+  for dataset permissions). Actions that lose data or make a pool unavailable (destroy, export, `clear -F`) are
+  deliberately not offered. Upgrade cannot be undone: only offered while `zpool status` suggests it
+  (`PoolStatus.CanUpgrade`), red, and confirmed by typing the name of the pool (`dialog.NewPoolUpgradeDialog`, not
+  run by the action dialog itself: `dialog.PoolActionOf`). The sudoers rule of former versions without upgrade is
+  its `fallback`.
 - `internal/zfs/dataset_actions.go`: the actions on datasets that lose data (destroying a clone, rolling back) work
   in two steps: a preview lists what would be lost without changing anything (dry run, newer snapshots, holds,
   clones, permissions), the action takes the confirmed preview, checks everything again and refuses with

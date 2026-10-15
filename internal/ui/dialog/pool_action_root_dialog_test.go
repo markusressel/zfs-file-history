@@ -33,7 +33,7 @@ func TestFormatPoolActionNeedsRoot(t *testing.T) {
 	assert.Equal(t, "To start a scrub on tank, zpool has to run as root: ZFS cannot delegate pool operations to users "+
 		"like it does for datasets (zfs allow)."+
 		"\n\nReason: cannot scrub tank: permission denied"+
-		"\n\nYour user can be allowed to scrub, TRIM and clear the errors of pools without a password "+
+		"\n\nYour user can be allowed to scrub, TRIM, upgrade and clear the errors of pools without a password "+
 		"(nothing else, e.g. no destroying) with:\n"+
 		"\n  sudo /usr/bin/zfs-file-history setup --pool-actions", description)
 }

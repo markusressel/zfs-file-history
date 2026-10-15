@@ -312,6 +312,10 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 	}
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
+		if option.Id == dialog.PoolDialogUpgradeActionId {
+			poolBrowser.confirmUpgrade(name)
+			return
+		}
 		action, ok := dialog.PoolActionOf(option.Id)
 		if !ok {
 			return
@@ -328,6 +332,34 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 		zfs.PoolsChanged.Emit(struct{}{})
 	}
 	return dialog.NewPoolActionDialog(poolBrowser.application, name, poolBrowser.statusOf(pool), asyncWork, onComplete)
+}
+
+// confirmUpgrade upgrades the pool once its name was typed: it cannot be undone. Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) confirmUpgrade(pool string) {
+	poolBrowser.showDialog(dialog.NewPoolUpgradeDialog(poolBrowser.application, pool, func() { poolBrowser.upgradeInBackground(pool) }))
+}
+
+// upgradeInBackground upgrades the pool as confirmed in the background and shows the result. Must be called on the UI
+// thread.
+func (poolBrowser *PoolBrowserComponent) upgradeInBackground(pool string) {
+	action := zfs.PoolActionUpgrade
+	go func() {
+		err := runPoolAction(action, pool)
+		poolBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Could not %s on %s: %s", action.Name, pool, err.Error())
+				// a retry asks for confirmation again
+				retry := func() { poolBrowser.confirmUpgrade(pool) }
+				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Upgrade Failed", err, retry))
+				return
+			}
+			poolBrowser.Events.Emit(PoolBrowserStatusEvent{
+				Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("%s of %s", action.Done, pool)),
+			})
+			// the event watcher may not run (see "setup"), so the pools are reloaded here
+			zfs.PoolsChanged.Emit(struct{}{})
+		})
+	}()
 }
 
 // SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the

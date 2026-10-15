@@ -30,7 +30,7 @@
 * [x] Alerts on every page when a pool has problems (data errors, degraded, failing devices)
 * [x] Disk temperatures and SMART health of the disks of all pools, without waking sleeping disks
 * [x] Damaged files (data errors) marked in the file and snapshot browsers, including the snapshots holding them
-* [x] Start, pause and cancel scrubs and TRIMs, clear pool errors
+* [x] Start, pause and cancel scrubs and TRIMs, clear pool errors, upgrade pools
 * [x] History of pools and datasets (`zpool history`): what was done, when and by whom, including destroyed snapshots,
   grouped into scrubs, resilvers, TRIMs and runs of commands
 * [x] Live updates using zpool events
@@ -85,8 +85,9 @@ permissions:
 - **Damaged files** (`zpool status -v`): which files are damaged by data errors.
 - **Pool history** (`zpool history -il <pool>`): what was done to the pools and datasets, when and by whom.
 - **Disk health** (`smartctl`, if smartmontools is installed): the SMART values of the disks of the pools.
-- **Pool actions** (`zpool scrub`, `trim`, `clear`): scrubs, TRIMs and clearing the errors of a pool. Destroying,
-  exporting or upgrading pools is not offered by zfs-file-history at all.
+- **Pool actions** (`zpool scrub`, `trim`, `clear`, `upgrade`): scrubs, TRIMs, clearing the errors of a pool and
+  upgrading it (confirmed by typing its name, it cannot be undone). Destroying or exporting pools is not offered by
+  zfs-file-history at all.
 
 On the first start, zfs-file-history offers to allow them for your user (also later with "Set up permissions" in the
 command menu): it runs its setup command with sudo, which creates sudoers rules that let your user run exactly these

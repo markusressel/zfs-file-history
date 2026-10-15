@@ -18,11 +18,13 @@ const (
 	PoolDialogTrimActionId
 	PoolDialogCancelTrimActionId
 	PoolDialogClearActionId
+	PoolDialogUpgradeActionId
 )
 
 // NewPoolActionDialog creates the dialog with the actions for a pool. status is the status of the pool (nil if
-// not known), it decides which actions make sense, e.g. pausing a scrub only while one runs. Destroying, exporting
-// or upgrading the pool is deliberately not offered, see zfs.PoolAction.
+// not known), it decides which actions make sense, e.g. pausing a scrub only while one runs. Destroying or exporting
+// the pool is deliberately not offered, see zfs.PoolAction. Upgrading it is not run by the dialog (see
+// PoolActionOf), but confirmed with NewPoolUpgradeDialog first.
 func NewPoolActionDialog(
 	application *tview.Application,
 	pool string,
@@ -102,16 +104,25 @@ func buildPoolDialogOptions(status *zfs.PoolStatus) []*DialogOption {
 			Name:        "🩹 Clear errors",
 			Description: "Reset the error counters of the devices, and retry the ones that failed (zpool clear)",
 		},
-		&DialogOption{
-			Id:   DialogCloseActionId,
-			Name: localization.LocalizationCommonClose,
-		},
 	)
+	if status != nil && status.CanUpgrade() {
+		dialogOptions = append(dialogOptions, &DialogOption{
+			Id:          PoolDialogUpgradeActionId,
+			Name:        "⬆️ Upgrade pool",
+			Description: "Enable all features ZFS supports, cannot be undone (zpool upgrade)",
+			Severity:    DialogSeverityDanger,
+		})
+	}
+	dialogOptions = append(dialogOptions, &DialogOption{
+		Id:   DialogCloseActionId,
+		Name: localization.LocalizationCommonClose,
+	})
 
 	return dialogOptions
 }
 
-// PoolActionOf returns the zfs action of an option of the pool action dialog, false for others (e.g. close).
+// PoolActionOf returns the zfs action of an option of the pool action dialog that runs right away, false for others
+// (e.g. close, or upgrade, which is confirmed first).
 func PoolActionOf(id DialogActionId) (zfs.PoolAction, bool) {
 	actions := map[DialogActionId]zfs.PoolAction{
 		PoolDialogScrubActionId:       zfs.PoolActionScrub,
