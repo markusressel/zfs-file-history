@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Runs zfs-file-history in a pty and types the keys of the demo, for "just demo-record" (asciinema rec --headless).
+"""Runs zfs-file-history in a pty and types the keys of a storyboard, for "just demo-record" (asciinema rec --headless).
 
-The output of the application is passed through, so asciinema records it. The demo shows the files page, the search
-and the history of a file, the datasets page, the pools page with its actions, and the command menu. It waits until a
-scrub (or another pool operation) runs, so the activity panel is shown (--without-activity does not); the time until
-then is not in the GIF, see Ready.
+The output of the application is passed through, so asciinema records it. The storyboards are in storyboards.py: the
+overview walks through the whole application (the GIF of the README), the others show one feature each. A storyboard
+may wait until a scrub (or another pool operation) runs, so the activity panel is shown (--without-activity does not,
+unless the storyboard is about it); the time until then is not in the GIF, see Ready.
 
 The application starts with --fresh and an empty state (XDG_STATE_HOME is a temporary directory): without the
 selections, table layouts and toggles of earlier runs, every run of the demo is the same, and it does not change the
@@ -18,7 +18,12 @@ started. If a screen does not show up (a slow load, a dialog that did not open o
 application instead of typing the following keys into something else, and writes the reason into the error file.
 asciinema does not pass the exit code on, so "just demo-record" checks that file.
 
-usage: uv run driver.py [--without-activity] <binary> <start directory> <error file>
+The driver marks each key and click in the recording (prepare_cast.key_marker), so the GIF shows them (render.py).
+
+usage: uv run driver.py [--storyboard <name>] [--without-activity] <binary> <start directory> <error file>
+       uv run driver.py --list
+       uv run driver.py --describe <name>   (prints the size of its terminal, e.g. 140x36, whether it waits for an
+       activity: required, optional (left out with --without-activity) or no, and for an alert: alert or no)
 """
 
 from __future__ import annotations
@@ -35,19 +40,31 @@ import sys
 import tempfile
 import termios
 import time
-from dataclasses import dataclass
 from typing import BinaryIO
 
 import pyte
 
-from prepare_cast import READY_MARKER
+from prepare_cast import READY_MARKER, ZOOM_OUT_MARKER, key_marker, zoom_marker
+from steps import (
+    CLICK_LABEL,
+    CTRL_Q,
+    NAVIGATION_KEYS,
+    Click,
+    Key,
+    Ready,
+    Search,
+    Step,
+    Wait,
+    Zoom,
+    ZoomOut,
+    key_label,
+)
+from storyboards import ACTIVITY_TIMEOUT, STORYBOARDS, WAIT_FOR_ACTIVITY, Storyboard
 
-UP, DOWN, RIGHT, LEFT = "\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D"
-TAB, ENTER, ESC = "\t", "\r", "\x1b"
-CTRL_Q = "\x11"
-
-# keys that only move the selection or the focus, and can be typed without checking the screen
-NAVIGATION_KEYS = {UP, DOWN, RIGHT, LEFT, TAB}
+# the corners of the borders of panes and dialogs, see Driver.box
+TOP_LEFT_CORNERS = {"┌", "╔", "╭"}
+TOP_RIGHT_CORNERS = {"┐", "╗", "╮"}
+BOTTOM_LEFT_CORNERS = {"└", "╚", "╰"}
 
 # how long a screen may take to show up (or go away) before the demo is stopped
 WAIT_TIMEOUT = 15.0
@@ -57,120 +74,6 @@ QUIT_TIMEOUT = 5.0
 DEFAULT_SIZE = (179, 42)
 
 
-@dataclass(frozen=True)
-class Key:
-    """A key of the demo, typed after waiting delay seconds.
-
-    shows: a pattern that must not be on the screen before the key, and must be after it (e.g. a dialog it opens).
-    hides: a pattern that must be on the screen before the key, and must not be after it (e.g. a dialog it closes).
-    into: a pattern that must be on the screen when the key is typed (e.g. the menu the text is typed into).
-    """
-
-    keys: str
-    delay: float = 0.0
-    shows: str | None = None
-    hides: str | None = None
-    into: str | None = None
-
-
-@dataclass(frozen=True)
-class Wait:
-    """Waits until the pattern is on the screen, e.g. until the application has loaded, at most timeout seconds
-    (WAIT_TIMEOUT if None)."""
-
-    pattern: str
-    timeout: float | None = None
-
-
-@dataclass(frozen=True)
-class Ready:
-    """Waits until the application wrote nothing for quiet seconds (e.g. its layout settled after loading), and marks
-    the recording there: prepare_cast drops what was shown before, so the GIF starts with the application ready."""
-
-    quiet: float = 0.5
-
-
-@dataclass(frozen=True)
-class Quit:
-    """Quits the application (ctrl+q) after waiting delay seconds, and waits until it has quit."""
-
-    delay: float = 0.0
-
-
-@dataclass(frozen=True)
-class Search:
-    """Types text into a search field one character at a time, delay seconds apart, until the pattern until is on the
-    screen (e.g. only one entry is left). into is a pattern for the field, e.g. its label: after each character, the
-    driver waits until the field shows the text typed so far, so it knows that the character arrived. Stops the demo
-    if until is not shown after the whole text."""
-
-    text: str
-    until: str
-    into: str
-    delay: float = 0.0
-
-
-Step = Key | Wait | Ready | Search | Quit
-
-# how long the demo waits for an operation on a pool, e.g. until a scrub was started
-ACTIVITY_TIMEOUT = 300.0
-
-# an operation running on a pool, in the activity panel: its title, the pool and the progress, e.g. "Scrub  tank  31.8%"
-WAIT_FOR_ACTIVITY = Wait(
-    r"(Scrub|Resilver|TRIM|Device removal|RAIDZ expansion) +\S+ .*\d+(\.\d+)?%", timeout=ACTIVITY_TIMEOUT
-)
-
-# the demo
-SCRIPT: list[Step] = [
-    # the files and their snapshots are loaded
-    Wait(r"FILES +1/4"),
-    Wait(r"\d+ snapshots"),
-    # the activity panel is shown (a scrub can be started after the demo, the time until then is not in the GIF)
-    WAIT_FOR_ACTIVITY,
-    Ready(),
-    # through the files and the snapshots, then back to the files
-    Key(DOWN, 3.0),
-    Key(DOWN, 0.5),
-    Key(DOWN, 0.5),
-    Key(DOWN, 0.5),
-    Key(TAB, 1.5),
-    Key(DOWN, 0.6),
-    Key(DOWN, 0.6),
-    Key(DOWN, 0.6),
-    Key(TAB, 1.5),
-    # search for the file until it is the only entry left, so the history is the one of README.md
-    Key("/", 1.0, shows=r"Filter: "),
-    Search("README.md", until=r"\b1 of \d+ entries", into=r"Filter: ", delay=0.4),
-    # ends typing, the filter stays (if it did not, "h" is typed into it, and the history is not shown)
-    Key(ENTER, 1.0, into=r"Filter: "),
-    Key("h", 1.0, shows=r"History of 'README\.md'"),
-    # down the snapshots of the history (4 at the moment, an identical one and the versions before), slow enough to
-    # see what changed in each; more presses than snapshots only select the last one longer
-    *[Key(DOWN, 2.0 if i == 0 else 1.5, into=r"History of 'README\.md'") for i in range(5)],
-    Key(ESC, 2.0, hides=r"History of"),
-    # datasets
-    Key("2", 1.5, shows=r"DATASETS 2/4"),
-    Key(DOWN, 2.0),
-    Key(DOWN, 0.6),
-    Key(DOWN, 0.6),
-    # pools and the actions of the selected pool: the dialog is only opened and closed, no action is chosen
-    Key("3", 2.0, shows=r"POOLS +3/4"),
-    Key(ENTER, 4.0, shows=r"Select Action"),
-    Key(ESC, 3.0, hides=r"Select Action"),
-    # the command menu, searching for the scrub actions
-    Key(":", 2.5, shows=r" Commands "),
-    Key("s", 1.0, into=r" Commands "),
-    Key("c", 0.3, into=r" Commands "),
-    Key("r", 0.3, into=r" Commands "),
-    Key(ESC, 2.5, hides=r" Commands "),
-    # the disks of the pools, their temperature and health
-    Key("4", 3.0, shows=r"DISKS +4/4"),
-    # back to the files
-    Key("1", 1.5, shows=r"FILES +1/4"),
-    Quit(3.0),
-]
-
-
 class DemoFailed(Exception):
     """The demo cannot go on: a screen did not show up, or the script is not safe to run."""
 
@@ -178,7 +81,7 @@ class DemoFailed(Exception):
 def check_script(script: list[Step]) -> None:
     """Raises DemoFailed if the script does not start with a Wait (keys typed before the application is ready may be
     read differently, or not at all), if a key other than the navigation keys does not say what it shows, hides or is
-    typed into, or if a pattern is not a valid regular expression."""
+    typed into, if a click does not say what it shows or hides, or if a pattern is not a valid regular expression."""
     if not script or not isinstance(script[0], Wait):
         raise DemoFailed("the script must start with a Wait for the application to be ready")
     for number, step in enumerate(script, start=1):
@@ -186,8 +89,15 @@ def check_script(script: list[Step]) -> None:
             conditions = [pattern for pattern in (step.shows, step.hides, step.into) if pattern is not None]
             if not conditions and step.keys not in NAVIGATION_KEYS:
                 raise DemoFailed(f"step {number}: {step.keys!r} must say what it shows, hides or is typed into")
+        elif isinstance(step, Click):
+            conditions = [pattern for pattern in (step.shows, step.hides) if pattern is not None]
+            if not conditions:
+                raise DemoFailed(f"step {number}: the click on /{step.pattern}/ must say what it shows or hides")
+            conditions.append(step.pattern)
         elif isinstance(step, Wait):
             conditions = [step.pattern]
+        elif isinstance(step, Zoom):
+            conditions = [step.title]
         elif isinstance(step, Search):
             conditions = [step.until, step.into]
         else:
@@ -263,8 +173,72 @@ class Driver:
     def failure(self, reason: str) -> DemoFailed:
         return DemoFailed(f"{reason}, the screen was:\n{self.screen_text()}")
 
+    def mark(self, marker: str) -> None:
+        """Writes a marker into the recording, see prepare_cast."""
+        self.out.write(marker.encode())
+        self.out.flush()
+
     def send(self, keys: str) -> None:
         os.write(self.fd, keys.encode())
+
+    def find(self, pattern: str, line: int | None) -> tuple[int, int] | None:
+        """Returns the cell (column, line) of the first match of the pattern on the screen (of its group "at", if it
+        has one and it matched), None if there is none."""
+        lines = range(self.screen.lines) if line is None else [line]
+        for y in lines:
+            text = self.screen.display[y]
+            match = re.search(pattern, text)
+            if match is None:
+                continue
+            index = match.start("at") if "at" in match.re.groupindex and match.start("at") >= 0 else match.start()
+            return self.column(y, index), y
+        return None
+
+    def box(self, title: str) -> tuple[int, int, int, int] | None:
+        """Returns the cells (left, top, right, bottom) of the corners of the box whose top border shows the pattern
+        title (e.g. the title of a dialog), None if there is none."""
+        for y in range(self.screen.lines):
+            match = re.search(title, self.screen.display[y])
+            if match is None:
+                continue
+            x = self.column(y, match.start())
+            row = self.screen.buffer[y]
+            left = next((column for column in range(x, -1, -1) if row[column].data in TOP_LEFT_CORNERS), None)
+            right = next(
+                (column for column in range(x, self.screen.columns) if row[column].data in TOP_RIGHT_CORNERS), None
+            )
+            if left is None or right is None:
+                continue
+            bottom = next(
+                (
+                    line
+                    for line in range(y + 1, self.screen.lines)
+                    if self.screen.buffer[line][left].data in BOTTOM_LEFT_CORNERS
+                ),
+                None,
+            )
+            if bottom is not None:
+                return left, y, right, bottom
+        return None
+
+    def column(self, y: int, index: int) -> int:
+        """Returns the column of the character at the index of the text of the line: a wide character (e.g. 名) takes
+        two columns, the second one is empty in the text."""
+        characters = 0
+        for x in range(self.screen.columns):
+            if characters >= index:
+                return x
+            characters += len(self.screen.buffer[y][x].data)
+        return self.screen.columns - 1
+
+    def click(self, x: int, y: int, hover: float) -> None:
+        """Moves the mouse to the cell (so it is highlighted while hovered), then presses and releases the left button
+        there, as SGR mouse events (1-based)."""
+        self.send(f"\x1b[<35;{x + 1};{y + 1}M")
+        self.sleep(hover)
+        self.mark(key_marker(CLICK_LABEL))
+        self.send(f"\x1b[<0;{x + 1};{y + 1}M")
+        self.send(f"\x1b[<0;{x + 1};{y + 1}m")
 
     def run(self, step: Step) -> None:
         if isinstance(step, Wait):
@@ -278,25 +252,49 @@ class Driver:
                 self.require(step.hides, True, step.keys)
             if step.into is not None:
                 self.require(step.into, True, step.keys)
+            self.mark(key_marker(step.keys if step.typed else key_label(step.keys), typed=step.typed))
             self.send(step.keys)
             if step.shows is not None:
                 self.wait(step.shows)
             if step.hides is not None:
                 self.wait(step.hides, shown=False)
+        elif isinstance(step, Click):
+            self.sleep(step.delay)
+            if step.shows is not None:
+                self.require(step.shows, False, step.pattern)
+            if step.hides is not None:
+                self.require(step.hides, True, step.pattern)
+            cell = self.find(step.pattern, step.line)
+            if cell is None:
+                raise self.failure(f"/{step.pattern}/ to click is not shown")
+            self.click(*cell, step.hover)
+            if step.shows is not None:
+                self.wait(step.shows)
+            if step.hides is not None:
+                self.wait(step.hides, shown=False)
+        elif isinstance(step, Zoom):
+            self.sleep(step.delay)
+            box = self.box(step.title)
+            if box is None:
+                raise self.failure(f"no box with /{step.title}/ in its top border to zoom in to")
+            self.mark(zoom_marker(*box, step.padding))
+        elif isinstance(step, ZoomOut):
+            self.sleep(step.delay)
+            self.mark(ZOOM_OUT_MARKER)
         elif isinstance(step, Ready):
             deadline = time.monotonic() + WAIT_TIMEOUT
             while (quiet_until := self.last_output + step.quiet) > time.monotonic():
                 if not self.running or time.monotonic() >= deadline:
                     raise self.failure(f"the application did not stop drawing within {WAIT_TIMEOUT:g} s")
                 self.pump(min(quiet_until, deadline))
-            self.out.write(READY_MARKER.encode())
-            self.out.flush()
+            self.mark(READY_MARKER)
         elif isinstance(step, Search):
             self.require(step.until, False, step.text)
             for length in range(1, len(step.text) + 1):
                 self.sleep(step.delay)
                 typed = step.text[:length]
                 self.require(step.into, True, typed[-1])
+                self.mark(key_marker(typed[-1], typed=True))
                 self.send(typed[-1])
                 self.wait(step.into + re.escape(typed))
                 if self.shows(step.until):
@@ -368,18 +366,53 @@ def run_demo(binary: str, start: str, error_file: str, script: list[Step], out: 
         return True
 
 
+def storyboard_steps(storyboard: Storyboard, without_activity: bool) -> list[Step]:
+    """Returns the steps of the storyboard, without the wait for an activity if without_activity (unless the
+    storyboard is about it)."""
+    if not without_activity or storyboard.needs_activity:
+        return storyboard.steps
+    return [step for step in storyboard.steps if step is not WAIT_FOR_ACTIVITY]
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Runs zfs-file-history and types the keys of the demo.")
-    parser.add_argument("binary", help="the zfs-file-history binary")
-    parser.add_argument("start", help="the directory the application is started in")
-    parser.add_argument("error_file", help="where the reason is written if the demo stops")
+    parser = argparse.ArgumentParser(description="Runs zfs-file-history and types the keys of a storyboard.")
+    parser.add_argument("--list", action="store_true", help="list the storyboards and exit")
+    parser.add_argument(
+        "--describe",
+        metavar="NAME",
+        help="print the terminal size of the storyboard (e.g. 140x36), whether it waits for an activity "
+        "(required, optional or no) and for an alert (alert or no), and exit",
+    )
+    parser.add_argument("--storyboard", default="overview", choices=sorted(STORYBOARDS), help="what to record")
     parser.add_argument(
         "--without-activity",
         action="store_true",
         help=f"do not wait (up to {ACTIVITY_TIMEOUT:g} s) for an operation on a pool, e.g. a scrub, before the demo",
     )
+    parser.add_argument("binary", nargs="?", help="the zfs-file-history binary")
+    parser.add_argument("start", nargs="?", help="the directory the application is started in")
+    parser.add_argument("error_file", nargs="?", help="where the reason is written if the demo stops")
     args = parser.parse_args()
-    script = [step for step in SCRIPT if not (args.without_activity and step is WAIT_FOR_ACTIVITY)]
+    if args.list:
+        for storyboard in STORYBOARDS.values():
+            print(f"{storyboard.name:14} {storyboard.description}")
+        return
+    if args.describe is not None:
+        if args.describe not in STORYBOARDS:
+            parser.error(f"unknown storyboard {args.describe!r}, see --list")
+        storyboard = STORYBOARDS[args.describe]
+        columns, lines = storyboard.size
+        if storyboard.needs_activity:
+            activity = "required"
+        elif WAIT_FOR_ACTIVITY in storyboard.steps:
+            activity = "optional"
+        else:
+            activity = "no"
+        print(f"{columns}x{lines} {activity} {'alert' if storyboard.needs_alert else 'no'}")
+        return
+    if args.error_file is None:
+        parser.error("binary, start and error_file are required")
+    script = storyboard_steps(STORYBOARDS[args.storyboard], args.without_activity)
     # absolute, as the application is started in the start directory
     ok = run_demo(os.path.abspath(args.binary), args.start, os.path.abspath(args.error_file), script, sys.stdout.buffer)
     sys.exit(0 if ok else 1)

@@ -7,17 +7,27 @@ of the code.
 
 - Go with cgo: building needs the libzfs headers (e.g. `libzfslinux-dev` on Debian/Ubuntu, see the CI workflow).
 - `just build`, `just test`, `just coverage`. Or directly: `go build ./...`, `go vet ./...`, `go test ./...`.
-- `just demo` records the demo of the README (`screenshots/demo.gif`) on this system: `scripts/demo/driver.py` types
-  the keys while asciinema records, agg renders the GIF. It waits up to 5 minutes until a scrub (or another
-  operation on a pool) runs, so the activity panel is shown: start one after `just demo` (`--without-activity` does
-  not wait). It builds with the build cache (`build ""`, `just build` rebuilds all packages with `-a`).
+- `just demo [<storyboard>]` records a storyboard of the demo on this system and renders it as a GIF: `overview` (the
+  default) walks through the whole application for the README (`screenshots/demo.gif`), the others show one feature
+  each for release notes (`screenshots/demo-<name>.gif`; `just demo-list`). The storyboards are in
+  `scripts/demo/storyboards.py` (each with its terminal size; smaller ones read better in release notes), their steps
+  in `steps.py`; `scripts/demo/driver.py` types the keys while asciinema records (`bin/demo-<name>.cast`), agg renders
+  it at twice the font size, `render.py` (ffmpeg, 50 fps) zooms in (`Zoom`: around a fixed point, on a logarithmic
+  scale, so it neither pans nor rushes), draws the keys typed in the bottom right corner (marked in the recording by
+  the driver; `Key.typed` for text, shown as one word) and scales it to half. A storyboard may wait up to 5 minutes until a scrub (or another operation on a pool) runs, so the activity
+  panel is shown: start one after `just demo` (`--without-activity` does not wait, unless the storyboard is about it,
+  `needs_activity`). It builds with the build cache (`build ""`, `just build` rebuilds all packages with `-a`).
   The driver runs in a Python environment managed by uv (`scripts/demo/pyproject.toml`, `uv.lock`). It reads the
   screen with pyte: each key other than moving around says what it shows, hides or is typed into (`Key.shows`,
   `hides`, `into`), checked before and after the key (`check_script` refuses a demo without), so a slow load stops
-  the demo instead of sending the keys into something else. `Search` types into a search field until a pattern shows
-  (e.g. one entry left). `Ready` marks the recording once the application stopped drawing after the start, and
-  `prepare_cast.py` moves everything before it to time 0, so the GIF starts with the loaded application. The application runs with `--fresh` and an empty `XDG_STATE_HOME`, so every run is the same
-  and the state of the user is not changed. `just demo-test` tests it against fake applications and runs ruff.
+  the demo instead of sending the keys into something else. `Click` clicks what a pattern finds on the screen (hovered
+  first, SGR mouse events), e.g. the page tabs, and must say what it shows or hides as well. `Search` types into a
+  search field until a pattern shows (e.g. one entry left). `Ready` marks the recording once the application stopped
+  drawing after the start, and `prepare_cast.py` moves everything before it to time 0, so the GIF starts with the
+  loaded application. The application runs with `--fresh` and an empty `XDG_STATE_HOME`, so every run is the same
+  and the state of the user is not changed. Storyboards wait for what the application shows (e.g. the page tabs,
+  `FILES_PAGE`), not for names of datasets or pools. `just demo-test` tests them against fake applications (and that
+  every storyboard is safe to run) and runs ruff.
 - Before committing: `gofmt -l .` is empty, `go vet ./...` and `go test ./...` pass, the touched packages pass with
   `-race`. CI also runs codespell (see `.codespellignore`).
 - `TestOverviewKey` in `internal/ui` fails with `-race` (a test writes `state.Current` while the UI runs). Known, not

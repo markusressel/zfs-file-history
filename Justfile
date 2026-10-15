@@ -70,16 +70,35 @@ deploy: clean build
 clean:
     go clean
     rm -f {{OUTPUT_BIN}}
-# Record the demo (scripts/demo/driver.py, its Python environment is managed by uv) with asciinema to bin/demo.cast.
-# It waits until a scrub (or another operation on a pool) runs, which can be started after this; FLAGS go to the
-# driver (--without-activity: do not wait). Fails if a screen the demo waits for did not show up.
-demo-record *FLAGS: (build "") demo-test
+# The storyboards are in scripts/demo/storyboards.py, run by driver.py (its Python environment is managed by uv):
+# "overview" walks through the whole application (the GIF of the README), the others show one feature each (see
+# demo-list). Recorded in the terminal size of the storyboard. A storyboard may wait until a scrub (or another
+# operation on a pool) runs, or until a pool reports a problem (alerts), which can be started after this; FLAGS go to
+# the driver (--without-activity: do not wait, unless the storyboard is about it). Fails if a screen it waits for did
+# not show up.
+# Record a storyboard of the demo with asciinema to bin/demo-<name>.cast
+demo-record NAME="overview" *FLAGS: (build "") demo-test
+    #!/usr/bin/env bash
+    set -euo pipefail
     uv sync --quiet --frozen --project scripts/demo
+    driver="uv run --quiet --frozen --project scripts/demo python scripts/demo/driver.py"
+    read -r size activity alert < <($driver --describe {{NAME}})
     rm -f bin/demo.error
-    @echo "Recording: start a scrub now (e.g. zpool scrub <pool>), the demo waits up to 5 minutes for it"
-    asciinema rec --headless --overwrite --window-size 179x42 --idle-time-limit 2 --quiet \
-        --command "uv run --quiet --frozen --project scripts/demo python scripts/demo/driver.py {{FLAGS}} {{OUTPUT_BIN}} . bin/demo.error" bin/demo.cast
-    @if [ -s bin/demo.error ]; then cat bin/demo.error; exit 1; fi
+    if [ "$activity" = required ] || [[ "$activity" = optional && " {{FLAGS}} " != *" --without-activity "* ]]; then
+        echo "Recording {{NAME}}: start a scrub now (e.g. zpool scrub <pool>), the demo waits up to 5 minutes for it"
+    elif [ "$alert" = alert ]; then
+        echo "Recording {{NAME}}: make a pool report a problem now (e.g. take a device of a mirror offline for a" \
+            "moment), the demo waits up to 5 minutes for the alert"
+    else
+        echo "Recording {{NAME}}"
+    fi
+    asciinema rec --headless --overwrite --window-size "$size" --idle-time-limit 2 --quiet \
+        --command "$driver --storyboard {{NAME}} {{FLAGS}} {{OUTPUT_BIN}} . bin/demo.error" bin/demo-{{NAME}}.cast
+    if [ -s bin/demo.error ]; then cat bin/demo.error; exit 1; fi
+
+# List the storyboards of the demo
+demo-list:
+    @uv run --quiet --frozen --project scripts/demo python scripts/demo/driver.py --list
 
 # Test and lint the demo driver (scripts/demo), without zfs-file-history
 demo-test:
@@ -99,10 +118,22 @@ agg:
     chmod +x {{AGG}}.download
     mv {{AGG}}.download {{AGG}}
 
-# Render bin/demo.cast as screenshots/demo.gif with agg
-demo-gif: agg
-    uv run --quiet --frozen --project scripts/demo python scripts/demo/prepare_cast.py bin/demo.cast bin/demo-gif.cast
-    {{AGG}} --theme {{AGG_THEME}} --font-size 14 --idle-time-limit 2 --fps-cap 15 bin/demo-gif.cast screenshots/demo.gif
+# The overview is rendered as screenshots/demo.gif (the README), the others as screenshots/demo-<name>.gif. agg
+# renders at twice the font size, ffmpeg (render.py) zooms in (steps.Zoom), draws the keys typed and scales it to
+# half, so zoomed text stays sharp.
+# Render bin/demo-<name>.cast as a GIF with agg
+demo-gif NAME="overview": agg
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python="uv run --quiet --frozen --project scripts/demo python"
+    gif=screenshots/demo-{{NAME}}.gif
+    if [ {{NAME}} = overview ]; then gif=screenshots/demo.gif; fi
+    prepared=bin/demo-{{NAME}}-gif.cast
+    $python scripts/demo/prepare_cast.py bin/demo-{{NAME}}.cast $prepared
+    {{AGG}} --theme {{AGG_THEME}} --font-size 28 --idle-time-limit 2 --fps-cap 15 $prepared bin/demo-{{NAME}}-large.gif
+    $python scripts/demo/render.py $prepared.render.json 28 bin/demo-{{NAME}}-large.gif "$gif"
+    echo "$gif"
 
-# Record the demo and render it as screenshots/demo.gif
-demo *FLAGS: (demo-record FLAGS) demo-gif
+# E.g. "just demo files", "just demo overview --without-activity"; see demo-record and demo-gif.
+# Record a storyboard of the demo and render it as a GIF
+demo NAME="overview" *FLAGS: (demo-record NAME FLAGS) (demo-gif NAME)
