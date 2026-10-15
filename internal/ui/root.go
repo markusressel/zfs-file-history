@@ -238,6 +238,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	historyCache := dialog.NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
 		return loadPoolHistory(ctx, pool, progress)
 	})
+	// the events ZFS logs while the dialog is shown come in as they are logged
+	zfs.PoolHistoryRecorded.Subscribe(historyCache.Record)
 	showHistory := func(pool string, dataset string) {
 		dialog.ShowDialogOnPages(application, pagesLayout, dialog.NewPoolHistoryDialog(application, pool, dataset, historyCache), nil)
 	}

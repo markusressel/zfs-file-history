@@ -89,9 +89,10 @@ type Backend interface {
 	// RunPoolAction runs the action on the pool. Returns a PoolActionNeedsRootError if the user may not.
 	RunPoolAction(action PoolAction, pool string) error
 	// WatchEvents calls onDatasetsChanged when datasets or snapshots were created, destroyed, or pools imported or
-	// exported, and onPoolsChanged when the state of a pool changed, from another goroutine, until ctx is done.
-	// Returns an error if the events cannot be watched (e.g. no permission).
-	WatchEvents(ctx context.Context, onDatasetsChanged func(), onPoolsChanged func()) error
+	// exported, onPoolsChanged when the state of a pool changed, and onHistory with each event ZFS logged in the
+	// history of a pool (PoolHistoryEntry.Internal), from another goroutine, until ctx is done. Returns an error if
+	// the events cannot be watched (e.g. no permission).
+	WatchEvents(ctx context.Context, onDatasetsChanged func(), onPoolsChanged func(), onHistory func(PoolHistoryEntry)) error
 }
 
 // Mount is a mounted ZFS dataset or snapshot.

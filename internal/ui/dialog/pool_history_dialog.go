@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/scrollbar"
@@ -320,9 +319,10 @@ func (d *PoolHistoryDialog) createLayout() {
 	d.updateHint()
 }
 
-// setHistory shows the records of the history. A history read again replaces the one shown only if it differs (e.g.
-// new records), keeping the selected row, the expanded groups, the filter and the view. Must be called on the UI
-// thread.
+// setHistory shows the records of the history. A history read again (or with the records ZFS reported, see
+// PoolHistoryCache.Record) replaces the one shown only if it differs, keeping the selected row, the expanded groups,
+// the filter and the view: the selected row stays on its line while new records come in above it, unless the list
+// was scrolled to its top, where the new ones are shown. Must be called on the UI thread.
 func (d *PoolHistoryDialog) setHistory(history *PoolHistory) {
 	previous := d.shown
 	d.shown = history
@@ -330,6 +330,8 @@ func (d *PoolHistoryDialog) setHistory(history *PoolHistory) {
 		return
 	}
 	d.showTable()
+	offset, _ := d.table.GetOffset()
+	atTop := previous != nil && offset == 0
 	selected := d.selectedRow()
 	expanded := map[poolHistoryEntryKey]bool{}
 	for group := range d.expanded {
@@ -344,12 +346,16 @@ func (d *PoolHistoryDialog) setHistory(history *PoolHistory) {
 	}
 	d.sortRows()
 	d.showRows(d.findRow(selected))
+	if atTop {
+		d.table.SetOffset(0, 0)
+	}
 }
 
 // poolHistoryEntryKey identifies a record across reads of the history: ZFS drops the oldest records once its ring
 // buffer is full, so their index changes.
 type poolHistoryEntryKey struct {
-	time     time.Time
+	// time is the second of the record (as listed, see zfs.PoolHistory)
+	time     int64
 	internal bool
 	txg      uint64
 	event    string
@@ -358,7 +364,7 @@ type poolHistoryEntryKey struct {
 
 // poolHistoryKeyOf returns the key of the record.
 func poolHistoryKeyOf(entry *zfs.PoolHistoryEntry) poolHistoryEntryKey {
-	return poolHistoryEntryKey{time: entry.Time, internal: entry.Internal, txg: entry.Txg, event: entry.Event, text: entry.Text}
+	return poolHistoryEntryKey{time: entry.Time.Unix(), internal: entry.Internal, txg: entry.Txg, event: entry.Event, text: entry.Text}
 }
 
 // samePoolHistory returns whether the histories have the same records: nothing was added or dropped (the last and
