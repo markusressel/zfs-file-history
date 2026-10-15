@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/table"
@@ -66,12 +67,10 @@ func newHistoryDialogTest(t *testing.T, pool string, dataset string, load func()
 
 // newHistoryDialogTestWithCache shows the history of the pool or dataset from the cache.
 func newHistoryDialogTestWithCache(t *testing.T, pool string, dataset string, cache *PoolHistoryCache) *historyDialogTest {
-	dt := &historyDialogTest{t: t, app: tview.NewApplication(), screen: tcell.NewSimulationScreen("UTF-8"), cache: cache}
-	dt.app.SetScreen(dt.screen)
-	dt.screen.SetSize(140, 40)
+	dt := &historyDialogTest{t: t, cache: cache}
+	dt.app, dt.screen = testutil.NewApp(testutil.WithSize(140, 40))
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 	testutil.OnUiThread(t, dt.app, func() {
 		dt.dialog = NewPoolHistoryDialog(dt.app, pool, dataset, cache)
 		ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
@@ -80,24 +79,11 @@ func newHistoryDialogTestWithCache(t *testing.T, pool string, dataset string, ca
 }
 
 func (dt *historyDialogTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(dt.t, dt.app, func() {
-		dt.app.ForceDraw()
-		cells, width, height := dt.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(dt.t, dt.app, dt.screen)
 }
 
 func (dt *historyDialogTest) waitForText(text string) {
-	require.Eventually(dt.t, func() bool { return strings.Contains(dt.screenText(), text) }, 3*time.Second, 10*time.Millisecond, "text %q", text)
+	testutil.WaitForText(dt.t, dt.app, dt.screen, text, 3*time.Second)
 }
 
 // shownEvents returns the rows shown, from the top: the event of a record (indented below its group), the title of a
@@ -146,13 +132,11 @@ func (dt *historyDialogTest) waitForSelected(row string) {
 }
 
 func (dt *historyDialogTest) keys(keys string) {
-	for _, r := range keys {
-		dt.key(tcell.KeyRune, r)
-	}
+	testutil.Type(dt.t, dt.app, dt.screen, keys)
 }
 
 func (dt *historyDialogTest) key(key tcell.Key, r rune) {
-	dt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, key, r)
 }
 
 func TestPoolHistoryDialog_Pool(t *testing.T) {
@@ -267,11 +251,7 @@ func TestPoolHistoryDialog_Filter(t *testing.T) {
 	dt.key(tcell.KeyEscape, 0)
 	dt.waitForText("3 of 3 groups")
 	dt.key(tcell.KeyRune, 'q')
-	require.Eventually(t, func() bool {
-		shown := true
-		testutil.OnUiThread(t, dt.app, func() { shown = dt.pages.HasPage(string(PoolHistoryDialogPage)) })
-		return !shown
-	}, 3*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoPage(t, dt.app, dt.pages, string(PoolHistoryDialogPage), 3*time.Second)
 }
 
 // a dataset: its records, of its children and snapshots, with the events logged by ZFS, which name each dataset a
@@ -414,28 +394,14 @@ func TestPoolHistoryDialog_ExpandKeepsTheLine(t *testing.T) {
 	assert.Equal(t, before, line(), "also when collapsed")
 }
 
-// screenPosition returns where the text is on the screen, see screenText.
-func (dt *historyDialogTest) screenPosition(text string) (x int, y int) {
-	dt.t.Helper()
-	for y, line := range strings.Split(dt.screenText(), "\n") {
-		if index := strings.Index(line, text); index >= 0 {
-			return len([]rune(line[:index])), y
-		}
-	}
-	require.Fail(dt.t, "not on the screen", text)
-	return 0, 0
-}
-
 // click clicks the text on the screen.
 func (dt *historyDialogTest) click(text string) {
-	x, y := dt.screenPosition(text)
-	dt.screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-	dt.screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.ClickText(dt.t, dt.app, dt.screen, text)
 }
 
 // the header row sorts like in the other tables: ← and → choose the column, Enter the direction; saved
 func TestPoolHistoryDialog_Sort(t *testing.T) {
-	store := useTestState(t)
+	store := statetest.Use(t)
 	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return testHistory, nil })
 	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
 	dt.waitForText("Time ↓")
@@ -471,11 +437,7 @@ func TestPoolHistoryDialog_Sort(t *testing.T) {
 
 // the first click on the header row selects it, the next ones sort by the clicked column
 func TestPoolHistoryDialog_SortByClick(t *testing.T) {
-	useTestState(t)
-	// as in the application (see root.go): the second click would be a double click
-	originalInterval := tview.DoubleClickInterval
-	tview.DoubleClickInterval = 0
-	t.Cleanup(func() { tview.DoubleClickInterval = originalInterval })
+	statetest.Use(t)
 	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return testHistory, nil })
 	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
 
@@ -492,7 +454,7 @@ func TestPoolHistoryDialog_SortByClick(t *testing.T) {
 
 // F2 chooses the columns, like in the other tables; saved
 func TestPoolHistoryDialog_Columns(t *testing.T) {
-	store := useTestState(t)
+	store := statetest.Use(t)
 	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return testHistory, nil })
 	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
 
@@ -501,7 +463,7 @@ func TestPoolHistoryDialog_Columns(t *testing.T) {
 	// removes the first column, the time: the rows are sorted by the next one
 	dt.key(tcell.KeyEnter, 0)
 	dt.key(tcell.KeyEscape, 0)
-	require.Eventually(t, func() bool { return !strings.Contains(dt.screenText(), "Configure History Columns") }, 3*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoText(t, dt.app, dt.screen, "Configure History Columns", 3*time.Second)
 	assert.NotContains(t, dt.screenText(), "Time")
 	dt.waitForText("Event ↓")
 	dt.waitForRows("zfs snapshot ▸", "zfs destroy", "Scrub ▸")

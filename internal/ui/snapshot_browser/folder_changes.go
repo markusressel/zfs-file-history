@@ -10,8 +10,8 @@ import (
 )
 
 // folderChangesDelay is how long the folder has to stay the same before it is compared with its snapshots, so
-// passing through folders does not read all their snapshots.
-const folderChangesDelay = 250 * time.Millisecond
+// passing through folders does not read all their snapshots. Replaceable in tests, which wait for it.
+var folderChangesDelay = 250 * time.Millisecond
 
 // compareSnapshots compares the folder in all snapshots with now and the previous snapshot, replaceable in tests.
 var compareSnapshots = folder_listing.CompareSnapshots

@@ -55,7 +55,7 @@ func TestSnapshotBrowser_HistoryAtSnapshot(t *testing.T) {
 	assert.Equal(t, "daily-1", request.Snapshot.Snapshot.Name)
 
 	// h
-	require.Eventually(t, func() bool { return !strings.Contains(dt.screenText(), "History of") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoText(t, dt.app, dt.screen, "History of", 2*time.Second)
 	dt.press(tcell.KeyRune, 'h')
 	request = receiveHistoryRequest(t, requests)
 	assert.Same(t, target, request.Entry)
@@ -76,7 +76,7 @@ func TestSnapshotBrowser_NoHistoryWithoutTarget(t *testing.T) {
 
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SnapshotActionDialog")
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForUpdates(t, dt.app)
 	assert.NotContains(t, dt.screenText(), "History of")
 
 	var shortcuts []string

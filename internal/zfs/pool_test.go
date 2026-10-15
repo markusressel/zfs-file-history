@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -410,9 +411,7 @@ func TestParseAmounts(t *testing.T) {
 
 // setNow makes now return the given time.
 func setNow(t *testing.T, fixed time.Time) {
-	original := now
-	now = func() time.Time { return fixed }
-	t.Cleanup(func() { now = original })
+	testutil.Replace(t, &now, func() time.Time { return fixed })
 }
 
 func TestPoolStatus_TrimRemaining(t *testing.T) {

@@ -1,21 +1,17 @@
 package util
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
-	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTimeFormat(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
+	store := statetest.Use(t)
 	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
 		relativeTimes.Store(false)
 	})
 	then := time.Now().Add(-3 * time.Minute)
@@ -39,11 +35,8 @@ func TestTimeFormat(t *testing.T) {
 
 // Relative times are updated every second while one of them counts seconds, otherwise every minute.
 func TestRelativeTimesOutdated(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
+	statetest.Use(t)
 	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
 		relativeTimes.Store(false)
 		newestFormattedTime.Store(0)
 	})

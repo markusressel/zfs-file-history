@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -144,10 +145,8 @@ func TestPoolHistoryEntryIsAbout(t *testing.T) {
 // fakeHistoryCommand replaces streamCommand: it passes the lines of the output of each command (by its arguments
 // after "-il"; "" for all pools) to onLine, until it returns false. A missing output fails like a denied sudo.
 func fakeHistoryCommand(t *testing.T, outputs map[string]string) (calls *[][]string, read *int) {
-	original := streamCommand
-	t.Cleanup(func() { streamCommand = original })
 	calls, read = &[][]string{}, new(int)
-	streamCommand = func(ctx context.Context, onLine func(line []byte) bool, name string, args ...string) error {
+	testutil.Replace(t, &streamCommand, func(ctx context.Context, onLine func(line []byte) bool, name string, args ...string) error {
 		*calls = append(*calls, append([]string{name}, args...))
 		_, pool, _ := strings.Cut(strings.Join(args, " "), "history -il")
 		output, ok := outputs[strings.TrimSpace(pool)]
@@ -161,18 +160,16 @@ func fakeHistoryCommand(t *testing.T, outputs map[string]string) (calls *[][]str
 			}
 		}
 		return nil
-	}
+	})
 	return calls, read
 }
 
 func TestSystemPoolHistory(t *testing.T) {
-	originalRoot := isRoot
-	t.Cleanup(func() { isRoot = originalRoot })
 	tank := "History for 'tank':\n2024-01-02.03:04:05 zpool scrub tank [user 0 (root) on host:linux]\n"
 	calls, _ := fakeHistoryCommand(t, map[string]string{"tank": tank})
 
 	// as root zpool runs directly
-	isRoot = func() bool { return true }
+	testutil.Replace(t, &isRoot, func() bool { return true })
 	var progress []PoolHistoryProgress
 	entries, err := System{}.PoolHistory(context.Background(), "tank", func(p PoolHistoryProgress) { progress = append(progress, p) })
 	require.NoError(t, err)
@@ -181,7 +178,7 @@ func TestSystemPoolHistory(t *testing.T) {
 	assert.Equal(t, []PoolHistoryProgress{{Bytes: int64(len(tank)) + 1, Records: 1}}, progress, "the end is reported")
 
 	// otherwise with sudo, as allowed by the rule of the setup command
-	isRoot = func() bool { return false }
+	testutil.Replace(t, &isRoot, func() bool { return false })
 	*calls = nil
 	entries, err = System{}.PoolHistory(context.Background(), "tank", nil)
 	require.NoError(t, err)
@@ -199,9 +196,7 @@ func TestSystemPoolHistory(t *testing.T) {
 // With the rule of former versions, which only allows the history of all pools, the records of the pool are read
 // from it, and zpool is stopped once they were read.
 func TestSystemPoolHistory_AllPools(t *testing.T) {
-	originalRoot := isRoot
-	t.Cleanup(func() { isRoot = originalRoot })
-	isRoot = func() bool { return false }
+	testutil.Replace(t, &isRoot, func() bool { return false })
 	all := "History for 'bpool':\n2024-01-01.00:00:00 zpool create bpool sda\n" +
 		"History for 'rpool':\n2024-01-02.00:00:00 zpool create rpool sdb\n2024-01-03.00:00:00 zfs snapshot rpool/a@s\n" +
 		"History for 'tank':\n2024-01-04.00:00:00 zpool create tank sdc\n"

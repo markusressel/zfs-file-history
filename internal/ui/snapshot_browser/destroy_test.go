@@ -61,11 +61,7 @@ func fullSnapshotNames(snapshots []*zfs.Snapshot) []string {
 func newDestroyTest(t *testing.T) *destroyTest {
 	dt := &destroyTest{t: t}
 
-	originalPreview, originalDestroy := previewDestroySnapshots, destroySnapshots
-	t.Cleanup(func() { previewDestroySnapshots, destroySnapshots = originalPreview, originalDestroy })
-	originalList, originalHold, originalRelease := listHolds, holdSnapshots, releaseSnapshots
-	t.Cleanup(func() { listHolds, holdSnapshots, releaseSnapshots = originalList, originalHold, originalRelease })
-	listHolds = func(names []string, recursive bool) ([]zfs.Hold, error) {
+	testutil.Replace(t, &listHolds, func(names []string, recursive bool) ([]zfs.Hold, error) {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.holdsListed = append(dt.holdsListed, holdCall{names, recursive, testutil.IsOnUiThread(dt.app)})
@@ -79,20 +75,20 @@ func newDestroyTest(t *testing.T) *destroyTest {
 			}
 		}
 		return result, nil
-	}
-	holdSnapshots = func(names []string) error {
+	})
+	testutil.Replace(t, &holdSnapshots, func(names []string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.holdCalls = append(dt.holdCalls, holdCall{snapshots: names, onUiThread: testutil.IsOnUiThread(dt.app)})
 		return nil
-	}
-	releaseSnapshots = func(names []string) error {
+	})
+	testutil.Replace(t, &releaseSnapshots, func(names []string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.releaseCalls = append(dt.releaseCalls, holdCall{snapshots: names, onUiThread: testutil.IsOnUiThread(dt.app)})
 		return nil
-	}
-	previewDestroySnapshots = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) (*zfs.DestroyPreview, error) {
+	})
+	testutil.Replace(t, &previewDestroySnapshots, func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) (*zfs.DestroyPreview, error) {
 		dt.mu.Lock()
 		dt.previews = append(dt.previews, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, testutil.IsOnUiThread(dt.app)})
 		err := dt.previewError
@@ -105,20 +101,17 @@ func newDestroyTest(t *testing.T) *destroyTest {
 			destroyed = append(destroyed, "pool/data/child@daily-1")
 		}
 		return &zfs.DestroyPreview{Destroyed: destroyed, Reclaim: 3 * 1024 * 1024 * 1024}, nil
-	}
-	destroySnapshots = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) error {
+	})
+	testutil.Replace(t, &destroySnapshots, func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.destroys = append(dt.destroys, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, testutil.IsOnUiThread(dt.app)})
 		return nil
-	}
+	})
 
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.browser = NewSnapshotBrowser(dt.app)
-	dt.app.SetRoot(dt.browser.GetLayout(), true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.browser.GetLayout())
 
 	dt.entries = []*data.SnapshotBrowserEntry{
 		{Snapshot: &zfs.Snapshot{Name: "daily-1", FullName: "pool/data@daily-1", Path: "/pool/data/.zfs/snapshot/daily-1"}},
@@ -134,13 +127,11 @@ func newDestroyTest(t *testing.T) *destroyTest {
 }
 
 func (dt *destroyTest) press(key tcell.Key, r rune) {
-	dt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, key, r)
 }
 
 func (dt *destroyTest) hasDialog(name string) bool {
-	has := false
-	testutil.OnUiThread(dt.t, dt.app, func() { has = dt.browser.container.Pages.HasPage(name) })
-	return has
+	return testutil.HasPage(dt.t, dt.app, dt.browser.container.Pages, name)
 }
 
 func (dt *destroyTest) waitForDialog(name string) {
@@ -244,7 +235,7 @@ func TestSnapshotBrowser_RecursiveDestroyFromTheMenu(t *testing.T) {
 	assert.Equal(t, destroyCall{snapshots: []string{"pool/data@daily-1"}, recursive: true, dependantClones: true}, previews[0])
 	assert.Empty(t, destroys)
 	// everything that would be destroyed is listed, e.g. snapshots of child datasets
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "pool/data/child@daily-1") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "pool/data/child@daily-1", 2*time.Second)
 
 	dt.confirm()
 	dt.waitForDialog("SuccessDialog")
@@ -264,7 +255,7 @@ func TestSnapshotBrowser_FailedDryRunDestroysNothing(t *testing.T) {
 
 	dt.waitForDialog("ErrorDialog")
 	assert.False(t, dt.hasDialog("DestroySnapshotsDialog"))
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "dependent clones") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "dependent clones", 2*time.Second)
 	_, destroys := dt.calls()
 	assert.Empty(t, destroys)
 }
@@ -285,7 +276,7 @@ func TestSnapshotBrowser_DestroyMultiSelection(t *testing.T) {
 	require.Len(t, previews, 1)
 	assert.ElementsMatch(t, []string{"pool/data@daily-1", "pool/data@daily-2"}, previews[0].snapshots, "one dry run for all")
 	assert.Empty(t, destroys)
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "Will be destroyed (2)") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "Will be destroyed (2)", 2*time.Second)
 
 	dt.confirm()
 	dt.waitForDialog("SuccessDialog")

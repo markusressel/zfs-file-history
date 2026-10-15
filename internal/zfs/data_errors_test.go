@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -128,24 +129,19 @@ type fakeDataErrorCommands struct {
 
 func setupFakeDataErrors(t *testing.T, zpoolOutput string, sudoOutput string, sudoErr error) *fakeDataErrorCommands {
 	fake := &fakeDataErrorCommands{}
-	originalPool, originalSudo, originalMounts := runPoolCommand, runSudoCommand, readZfsMounts
-	runPoolCommand = func(name string, args ...string) (string, error) {
+	testutil.Replace(t, &runPoolCommand, func(name string, args ...string) (string, error) {
 		fake.commands = append(fake.commands, name+" "+strings.Join(args, " "))
 		if args[0] == "get" {
 			return "rpool\tdisabled\n", nil
 		}
 		return zpoolOutput, nil
-	}
-	runSudoCommand = func(args ...string) (string, error) {
+	})
+	testutil.Replace(t, &runSudoCommand, func(args ...string) (string, error) {
 		fake.commands = append(fake.commands, "sudo "+strings.Join(args, " "))
 		return sudoOutput, sudoErr
-	}
-	readZfsMounts = func() ([]Mount, error) { return testMounts, nil }
-	originalRoot := isRoot
-	isRoot = func() bool { return false }
-	t.Cleanup(func() {
-		runPoolCommand, runSudoCommand, readZfsMounts, isRoot = originalPool, originalSudo, originalMounts, originalRoot
 	})
+	testutil.Replace(t, &readZfsMounts, func() ([]Mount, error) { return testMounts, nil })
+	testutil.Replace(t, &isRoot, func() bool { return false })
 	return fake
 }
 
@@ -196,16 +192,14 @@ func TestListDataErrors_SudoFails(t *testing.T) {
 }
 
 func TestPoolsWithoutHeadErrlog(t *testing.T) {
-	original := runPoolCommand
-	t.Cleanup(func() { runPoolCommand = original })
-	runPoolCommand = func(name string, args ...string) (string, error) {
+	testutil.Replace(t, &runPoolCommand, func(name string, args ...string) (string, error) {
 		return "rpool\tdisabled\ntank\tactive\nbackup\tenabled\n", nil
-	}
+	})
 	assert.Equal(t, []string{"rpool"}, System{}.PoolsWithoutHeadErrlog([]string{"rpool", "tank", "backup"}))
 	assert.Nil(t, System{}.PoolsWithoutHeadErrlog(nil))
 
 	// e.g. a version of ZFS without the feature
-	runPoolCommand = func(name string, args ...string) (string, error) { return "", errors.New("bad property list") }
+	testutil.Replace(t, &runPoolCommand, func(name string, args ...string) (string, error) { return "", errors.New("bad property list") })
 	assert.Nil(t, System{}.PoolsWithoutHeadErrlog([]string{"rpool"}))
 
 	assert.Equal(t, "sudo zpool set feature@head_errlog=enabled rpool", EnableHeadErrlogCommand("rpool"))
@@ -251,7 +245,7 @@ func TestDataErrorIndex_WithLocations(t *testing.T) {
 func TestListDataErrors_RootWithoutErrorsField(t *testing.T) {
 	// e.g. a pool whose status has no errors field for another reason
 	fake := setupFakeDataErrors(t, readTestData(t, "zpool-status-data-errors-denied.txt"), "", errors.New("not called"))
-	isRoot = func() bool { return true }
+	testutil.Replace(t, &isRoot, func() bool { return true })
 
 	index, err := ListDataErrors()
 

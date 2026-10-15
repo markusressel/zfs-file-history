@@ -9,8 +9,6 @@ import (
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,11 +35,9 @@ func TestSnapshotBrowser_PathVersionsLoaded(t *testing.T) {
 	filePath := filepath.Join(folderPath, "notes.txt")
 	write(filePath, "123456")
 
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 
 	loaded := make(chan PathVersionsLoaded, 10)
 	entry := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: filePath}}

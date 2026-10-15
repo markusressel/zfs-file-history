@@ -11,7 +11,6 @@ import (
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,17 +37,11 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	ds.addSnapshot("d1", day(1), map[string]string{"notes.txt": "one\n"})
 	ds.addSnapshot("d2", day(2), map[string]string{"notes.txt": "one\ntwo\n"})
 	ds.writeFile(ds.root, "notes.txt", "one\ntwo\nthree\n", fileTime.Add(time.Hour))
-	original := findSnapshotsOfPath
-	t.Cleanup(func() { findSnapshotsOfPath = original })
-	findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
+	testutil.Replace(t, &findSnapshotsOfPath, func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil })
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(140, 30)
+	app, screen := testutil.NewApp(testutil.WithSize(140, 30))
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	path := filepath.Join(ds.root, "notes.txt")
 	file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}
@@ -58,23 +51,7 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 		ShowDialogOnPages(app, pages, overlay, nil)
 	})
 
-	screenLines := func() []string {
-		var lines []string
-		testutil.OnUiThread(t, app, func() {
-			app.ForceDraw()
-			cells, width, height := screen.GetContents()
-			for y := 0; y < height; y++ {
-				var line strings.Builder
-				for x := 0; x < width; x++ {
-					if runes := cells[y*width+x].Runes; len(runes) > 0 {
-						line.WriteRune(runes[0])
-					}
-				}
-				lines = append(lines, line.String())
-			}
-		})
-		return lines
-	}
+	screenLines := func() []string { return strings.Split(testutil.ScreenText(t, app, screen), "\n") }
 	row := func(lines []string, text string) int {
 		for i, line := range lines {
 			if strings.Contains(line, text) {
@@ -113,11 +90,7 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 		boundary, _, _, _ = overlay.rightLayoutContainer.GetRect()
 		_, _, leftWidth, _ = overlay.tableContainer.GetLayout().GetRect()
 	})
-	screen.InjectMouse(boundary, 20, tcell.Button1, tcell.ModNone)
-	time.Sleep(50 * time.Millisecond)
-	screen.InjectMouse(boundary+15, 20, tcell.Button1, tcell.ModNone)
-	time.Sleep(50 * time.Millisecond)
-	screen.InjectMouse(boundary+15, 20, tcell.ButtonNone, tcell.ModNone)
+	testutil.Drag(t, app, screen, boundary, 20, boundary+15, 20)
 	require.Eventually(t, func() bool {
 		width := 0
 		testutil.OnUiThread(t, app, func() { _, _, width, _ = overlay.tableContainer.GetLayout().GetRect() })
@@ -135,15 +108,11 @@ func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
 			ds.addSnapshot("d2", day(2), map[string]string{"notes.txt": "one\n"})
 			ds.addSnapshot("d3", day(3), map[string]string{"notes.txt": "one\ntwo\n"})
 			ds.writeFile(ds.root, "notes.txt", "one\ntwo\n", fileTime)
-			original := findSnapshotsOfPath
-			t.Cleanup(func() { findSnapshotsOfPath = original })
-			findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
+			testutil.Replace(t, &findSnapshotsOfPath, func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil })
 
-			app := tview.NewApplication()
-			app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+			app, _ := testutil.NewApp()
 			pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-			app.SetRoot(pages, true)
-			testutil.RunApp(t, app)
+			testutil.StartApp(t, app, pages)
 
 			path := filepath.Join(ds.root, "notes.txt")
 			file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}

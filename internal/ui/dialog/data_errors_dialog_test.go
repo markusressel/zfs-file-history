@@ -98,7 +98,7 @@ func TestFormatDataErrorsHelp(t *testing.T) {
 }
 
 func TestDataErrorsDialog_FindAndUpdate(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	finds := 0
 	index := zfs.NewDataErrorIndex([]zfs.DataError{liveError, gone, metadata}, nil)
 	closes := 0
@@ -127,7 +127,7 @@ func TestDataErrorsDialog_FindAndUpdate(t *testing.T) {
 }
 
 func TestDataErrorsDialog_Setup(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	setups := 0
 	key := tcell.NewEventKey(tcell.KeyRune, 's', tcell.ModNone)
 
@@ -145,14 +145,9 @@ func TestDataErrorsDialog_Setup(t *testing.T) {
 }
 
 func TestDataErrorsDialog_ShowsFile(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(140, 40)
-	app.SetScreen(screen)
+	app, _ := testutil.NewApp(testutil.WithSize(140, 40))
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	var mu sync.Mutex
 	var shown []string
@@ -181,15 +176,11 @@ func TestDataErrorsDialog_ShowsFile(t *testing.T) {
 		return len(shown) == 1
 	}, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"/home/b"}, shown)
-	require.Eventually(t, func() bool {
-		closed := false
-		testutil.OnUiThread(t, app, func() { closed = !pages.HasPage(string(DataErrorsDialogPage)) })
-		return closed
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoPage(t, app, pages, string(DataErrorsDialogPage), 2*time.Second)
 }
 
 func TestFileHistoryOverlay_MarksDamagedVersions(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{Name: "a", RealFile: &data.RealFile{Name: "a", Path: "/home/a"}, Type: data.File}
 	overlay := NewFileHistoryOverlay(app, file, nil)
 	daily := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "daily", FullName: "rpool/home@daily"}}

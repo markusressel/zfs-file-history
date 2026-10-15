@@ -6,8 +6,6 @@ import (
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -53,11 +51,9 @@ func TestSortSnapshotEntries_Damaged(t *testing.T) {
 }
 
 func TestSelectSnapshot(t *testing.T) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 
 	daily := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "daily", FullName: "tank@daily"}}
 	weekly := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "weekly", FullName: "tank@weekly"}}

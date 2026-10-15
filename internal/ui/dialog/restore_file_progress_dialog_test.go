@@ -16,7 +16,7 @@ import (
 )
 
 func TestRestoreFileProgressDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{
 		Name: "test.txt",
 		SnapshotFiles: []*data.SnapshotFile{
@@ -46,7 +46,7 @@ func TestRestoreFileProgressDialog(t *testing.T) {
 }
 
 func TestRestoreFileProgressDialog_AbsentFile(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	tempFile := filepath.Join(t.TempDir(), "to_delete.txt")
 	err := os.WriteFile(tempFile, []byte("hello"), 0644)
 	assert.NoError(t, err)
@@ -99,7 +99,7 @@ func TestRestoreFileProgressDialog_ShowsTheWholeError(t *testing.T) {
 	})
 	// the error is shown in lines of the dialog, so its end is shown as well
 	assert.Eventually(t, func() bool {
-		text := dialogScreenText(t, app, screen)
+		text := testutil.ScreenText(t, app, screen)
 		return strings.Contains(text, "Failed!") && strings.Contains(text, "test.txt: no such file or") &&
 			strings.Contains(text, "directory")
 	}, 3*time.Second, 20*time.Millisecond, "the end of the error is shown")
@@ -107,18 +107,10 @@ func TestRestoreFileProgressDialog_ShowsTheWholeError(t *testing.T) {
 
 // startDialogTestApp runs an app with a focused list on its pages, to show dialogs on.
 func startDialogTestApp(t *testing.T) (*tview.Application, tcell.SimulationScreen, *tview.Pages, *tview.List) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(80, 24)
+	app, screen := testutil.NewApp(testutil.WithSize(80, 24))
 	list := tview.NewList().AddItem("entry", "", 0, nil)
 	pages := tview.NewPages().AddPage("main", list, true, true)
 	app.SetRoot(pages, true).SetFocus(list)
 	testutil.RunApp(t, app)
 	return app, screen, pages, list
-}
-
-// dialogScreenText returns the text on the screen, one line per row.
-func dialogScreenText(t *testing.T, app *tview.Application, screen tcell.SimulationScreen) string {
-	return testutil.ScreenText(t, app, screen)
 }

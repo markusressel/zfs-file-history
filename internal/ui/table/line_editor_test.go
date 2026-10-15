@@ -3,6 +3,7 @@ package table
 import (
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -142,10 +143,7 @@ func TestLineEditor_MultiByteRunes(t *testing.T) {
 // renderToScreen prints the rendered editor like a window title and returns the visible text
 // and the index of the cell in reverse video (the cursor), -1 if none.
 func renderToScreen(t *testing.T, e *lineEditor) (string, int) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	defer screen.Fini()
-	screen.SetSize(40, 1)
+	screen := testutil.NewScreen(t, 40, 1)
 	tview.Print(screen, e.Render(), 0, 0, 40, tview.AlignLeft, tcell.ColorWhite)
 
 	var text strings.Builder
@@ -195,10 +193,7 @@ func TestLineEditor_Render(t *testing.T) {
 
 // renderWindowToScreen prints RenderWindow(maxWidth) and returns the visible text and the cursor column.
 func renderWindowToScreen(t *testing.T, e *lineEditor, maxWidth int) (string, int) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	defer screen.Fini()
-	screen.SetSize(40, 1)
+	screen := testutil.NewScreen(t, 40, 1)
 	rendered := e.RenderWindow(maxWidth)
 	tview.Print(screen, rendered, 0, 0, 40, tview.AlignLeft, tcell.ColorWhite)
 	assert.LessOrEqual(t, tview.TaggedStringWidth(rendered), maxWidth)

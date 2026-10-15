@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -26,7 +27,7 @@ func (e groupedEntry) TableRowId() string {
 func newGroupingTestTable() (*RowSelectionTable[groupedEntry], []*groupedEntry) {
 	cols := []*Column{{Id: 0, Key: "name", Title: "Name"}}
 	table := NewTableContainer[groupedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *groupedEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell(entry.name)}
 		},
@@ -67,22 +68,9 @@ func groupedNames(table *RowSelectionTable[groupedEntry]) []string {
 
 // drawGroupedTable draws the table at 40x12 and returns the lines on the screen.
 func drawGroupedTable(t *testing.T, table *RowSelectionTable[groupedEntry]) []string {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 12)
-	table.GetLayout().SetRect(0, 0, 40, 12)
-	table.GetLayout().Draw(screen)
-	screen.Show()
-	cells, width, _ := screen.GetContents()
-	var lines []string
-	for y := 0; y < len(cells)/width; y++ {
-		var line strings.Builder
-		for _, cell := range cells[y*width : (y+1)*width] {
-			if len(cell.Runes) > 0 {
-				line.WriteRune(cell.Runes[0])
-			}
-		}
-		lines = append(lines, strings.TrimSpace(strings.Trim(line.String(), "│")))
+	lines := testutil.ScreenLines(testutil.DrawToScreen(t, table.GetLayout(), 40, 12))
+	for y, line := range lines {
+		lines[y] = strings.TrimSpace(strings.Trim(line, "│"))
 	}
 	return lines
 }

@@ -17,7 +17,7 @@ import (
 )
 
 func TestNewSelectionDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	options := []*DialogOption{
 		{Id: DialogActionId(1), Name: "Option 1"},
 		{Id: DialogCloseActionId, Name: "Cancel"},
@@ -30,7 +30,7 @@ func TestNewSelectionDialog(t *testing.T) {
 }
 
 func TestSelectionDialog_NumericJumpShortcuts(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	options := []*DialogOption{
 		{Id: DialogActionId(1), Name: "Option A"},
 		{Id: DialogActionId(2), Name: "Option B"},
@@ -73,7 +73,7 @@ func TestSelectionDialog_NumericJumpShortcuts(t *testing.T) {
 }
 
 func TestNewDeleteFileDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{
 		Name:     "to_delete.txt",
 		RealFile: &data.RealFile{Name: "to_delete.txt"},
@@ -84,13 +84,13 @@ func TestNewDeleteFileDialog(t *testing.T) {
 }
 
 func TestNewDestroySnapshotsDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	d := NewDestroySnapshotsDialog(app, "This frees 1 GiB and cannot be undone.", nil, nil)
 	assert.Equal(t, "DestroySnapshotsDialog", d.GetName())
 }
 
 func TestNewFileActionDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{
 		Name:      "test.txt",
 		RealFile:  &data.RealFile{Name: "test.txt", Path: "/pool/ds1/test.txt"},
@@ -115,7 +115,7 @@ func TestNewFileActionDialog(t *testing.T) {
 }
 
 func TestNewSnapshotActionDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	snapshot := &data.SnapshotBrowserEntry{
 		Snapshot: &zfs.Snapshot{
 			Name: "snapshot-2",
@@ -139,7 +139,7 @@ func TestNewSnapshotActionDialog(t *testing.T) {
 }
 
 func TestNewMultiSnapshotActionDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	snapshots := []*data.SnapshotBrowserEntry{
 		{
 			Snapshot: &zfs.Snapshot{
@@ -166,7 +166,7 @@ func TestNewMultiSnapshotActionDialog(t *testing.T) {
 }
 
 func TestNewRestoreFileDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{
 		Name: "test.txt",
 		Type: data.File,
@@ -231,12 +231,9 @@ func TestSelectionDialog_StopLoadingRestoresOptionText(t *testing.T) {
 }
 
 func TestSelectionDialog_RetryFunc(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	pages := tview.NewPages()
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	var mu sync.Mutex
 	var runs []DialogActionId
@@ -255,14 +252,10 @@ func TestSelectionDialog_RetryFunc(t *testing.T) {
 		defer mu.Unlock()
 		return len(runs)
 	}
-	isShown := func() bool {
-		shown := false
-		testutil.OnUiThread(t, app, func() { shown = pages.HasPage("Actions") })
-		return shown
-	}
+	isShown := func() bool { return testutil.HasPage(t, app, pages, "Actions") }
 
 	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
-	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
 	require.Eventually(t, func() bool { return runCount() == 1 && !isShown() }, 2*time.Second, 10*time.Millisecond)
 
 	// the dialog is shown again and runs the option again, then closes like the first time
@@ -275,7 +268,7 @@ func TestSelectionDialog_RetryFunc(t *testing.T) {
 
 func TestSelectionDialog_SetOptionName(t *testing.T) {
 	options := []*DialogOption{{Id: 1, Name: "Copy"}, {Id: 2, Name: "Other"}, {Id: DialogCloseActionId, Name: "Close"}}
-	d := NewSelectionDialog(tview.NewApplication(), "Actions", "Actions", "", options, nil, nil)
+	d := NewSelectionDialog(testutil.App(), "Actions", "Actions", "", options, nil, nil)
 
 	d.SetOptionName(1, "Copied")
 
@@ -292,7 +285,7 @@ func TestOptionTable_SelectedOptionKeepsSeverityColor(t *testing.T) {
 		{Id: DialogCloseActionId, Name: "Close"},
 	}
 
-	optionTable := createOptionTable(tview.NewApplication(), options, func(*DialogOption) {})
+	optionTable := createOptionTable(testutil.App(), options, func(*DialogOption) {})
 
 	assert.Equal(t, theme.SelectedStyle(theme.Colors.Dialog.Danger), optionTable.GetCell(0, 1).SelectedStyle)
 }

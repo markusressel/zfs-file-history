@@ -3,7 +3,6 @@ package dialog
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,7 +29,7 @@ func newMissingRelease() *zfs.MissingPermissionsError {
 }
 
 func TestNewErrorDialog_MissingPermissions(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 
 	assert.Equal(t, "ErrorDialog", NewErrorDialog(app, "Failed", errors.New("dataset is busy")).GetName())
 	assert.Equal(t, "MissingPermissionsDialog", NewErrorDialog(app, "Failed", newMissingRelease()).GetName())
@@ -77,29 +76,23 @@ type permissionsDialogTest struct {
 // sudo, zfs and the clipboard are never used.
 func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copyErr error, verifyResults ...error) *permissionsDialogTest {
 	dt := &permissionsDialogTest{t: t, verifyResults: verifyResults}
-	originalGrant, originalCopy, originalVerify := grantPermissions, copyToClipboard, verifyPermissions
-	originalPermissionsChanged := zfs.PermissionsChanged
-	t.Cleanup(func() {
-		grantPermissions, copyToClipboard, verifyPermissions = originalGrant, originalCopy, originalVerify
-		zfs.PermissionsChanged = originalPermissionsChanged
-	})
 	// an emitter of this test, so its listener does not outlive it
-	zfs.PermissionsChanged = util.NewEmitter[struct{}]()
+	testutil.Replace(t, &zfs.PermissionsChanged, util.NewEmitter[struct{}]())
 	zfs.PermissionsChanged.Subscribe(func(struct{}) { dt.permissionsChanged.Add(1) })
-	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
+	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		dt.recordUiThread()
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.granted = append(dt.granted, commands...)
 		return grantErr
-	}
-	copyToClipboard = func(text string) error {
+	})
+	testutil.Replace(t, &copyToClipboard, func(text string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.copied = append(dt.copied, text)
 		return copyErr
-	}
-	verifyPermissions = func(missing *zfs.MissingPermissionsError) error {
+	})
+	testutil.Replace(t, &verifyPermissions, func(missing *zfs.MissingPermissionsError) error {
 		dt.recordUiThread()
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
@@ -108,14 +101,11 @@ func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copy
 			return dt.verifyResults[dt.verified-1]
 		}
 		return nil
-	}
+	})
 
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 
 	var retry func()
 	if withRetry {
@@ -147,14 +137,12 @@ func (dt *permissionsDialogTest) recordUiThread() {
 }
 
 func (dt *permissionsDialogTest) choose(option rune) {
-	dt.screen.InjectKey(tcell.KeyRune, option, tcell.ModNone)
-	dt.screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, tcell.KeyRune, option)
+	testutil.Press(dt.t, dt.app, dt.screen, tcell.KeyEnter, 0)
 }
 
 func (dt *permissionsDialogTest) hasPage(name string) bool {
-	shown := false
-	testutil.OnUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage(name) })
-	return shown
+	return testutil.HasPage(dt.t, dt.app, dt.pages, name)
 }
 
 // waitForDialog waits until the dialog with the given name replaced the permissions dialog.
@@ -165,7 +153,7 @@ func (dt *permissionsDialogTest) waitForDialog(name string) {
 }
 
 func (dt *permissionsDialogTest) waitForText(text string) {
-	require.Eventually(dt.t, func() bool { return strings.Contains(dt.screenText(), text) }, 3*time.Second, 10*time.Millisecond, "text %q", text)
+	testutil.WaitForText(dt.t, dt.app, dt.screen, text, 3*time.Second)
 }
 
 func (dt *permissionsDialogTest) counts() (verified int, retried int) {

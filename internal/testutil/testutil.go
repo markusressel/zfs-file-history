@@ -3,7 +3,6 @@ package testutil
 
 import (
 	"io/fs"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +10,63 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+func init() {
+	// Like CreateUi: tview's double clicks are disabled in the application, otherwise a second click within the
+	// interval (e.g. the next click of a test) is a double click, which most primitives ignore.
+	tview.DoubleClickInterval = 0
+}
+
+// appConfig is the configuration of NewApp, changed by its options.
+type appConfig struct {
+	width, height int
+}
+
+// AppOption changes how NewApp creates the application, e.g. WithSize.
+type AppOption func(*appConfig)
+
+// WithSize sets the size of the screen of NewApp (80x25 without).
+func WithSize(width int, height int) AppOption {
+	return func(config *appConfig) { config.width, config.height = width, height }
+}
+
+// NewApp returns an application for a test, set up like CreateUi sets up the application: on a simulation screen
+// (initialized, 80x25 unless WithSize), with the mouse enabled, and without double clicks (see init). Tests create
+// their applications with it (TestAppsAreCreatedWithNewApp), so they do not differ from the application, or from
+// each other, in what they forgot to set up. Run it with StartApp (or RunApp).
+func NewApp(options ...AppOption) (*tview.Application, tcell.SimulationScreen) {
+	app := tview.NewApplication().EnableMouse(true)
+	return app, UseSimulationScreen(app, options...)
+}
+
+// UseSimulationScreen gives the app a simulation screen (80x25 unless WithSize) and returns it, e.g. for the
+// application of CreateUi, which is set up like the one of NewApp otherwise. Must be called before the app runs.
+func UseSimulationScreen(app *tview.Application, options ...AppOption) tcell.SimulationScreen {
+	config := appConfig{width: 80, height: 25}
+	for _, option := range options {
+		option(&config)
+	}
+	screen := tcell.NewSimulationScreen("UTF-8")
+	// initializes the screen, which resets its size
+	app.SetScreen(screen)
+	screen.SetSize(config.width, config.height)
+	return screen
+}
+
+// App returns the application of NewApp without its screen, for a test that only creates a component with it (e.g.
+// passes it to a constructor).
+func App(options ...AppOption) *tview.Application {
+	app, _ := NewApp(options...)
+	return app
+}
+
+// StartApp sets the root of the app and runs it until the test ends (see RunApp). The root is set before the event
+// loop starts, like CreateUi does: set later, it raced with the first draw.
+func StartApp(t testing.TB, app *tview.Application, root tview.Primitive) (stop func()) {
+	t.Helper()
+	app.SetRoot(root, true)
+	return RunApp(t, app)
+}
 
 // RunApp runs the app in the background until the test ends, or until stop is called. Both stop it and wait until
 // its event loop returned: tview.Application.Stop does not wait, so the handler of an event could still run while
@@ -33,8 +89,54 @@ func RunApp(t testing.TB, app *tview.Application) (stop func()) {
 			}
 		})
 	}
+	stop = runningApps.add(t, stop)
 	t.Cleanup(stop)
 	return stop
+}
+
+// runningApps are the stop functions of the apps of each test (see RunApp), which Replace calls before it restores a
+// variable: the app could still read it otherwise.
+var runningApps = &appStops{stops: map[testing.TB]map[*func()]bool{}}
+
+type appStops struct {
+	mutex sync.Mutex
+	// stops are guarded by mutex
+	stops map[testing.TB]map[*func()]bool
+}
+
+// add adds the stop function of an app of the test, and returns it, removing itself once called: every app is
+// stopped when its test ends, so nothing is left.
+func (apps *appStops) add(t testing.TB, stop func()) func() {
+	apps.mutex.Lock()
+	defer apps.mutex.Unlock()
+	var remove func()
+	remove = func() {
+		stop()
+		apps.mutex.Lock()
+		defer apps.mutex.Unlock()
+		delete(apps.stops[t], &remove)
+		if len(apps.stops[t]) == 0 {
+			delete(apps.stops, t)
+		}
+	}
+	if apps.stops[t] == nil {
+		apps.stops[t] = map[*func()]bool{}
+	}
+	apps.stops[t][&remove] = true
+	return remove
+}
+
+// stopAll stops the apps of the test that still run, and waits until they stopped.
+func (apps *appStops) stopAll(t testing.TB) {
+	apps.mutex.Lock()
+	var stops []func()
+	for stop := range apps.stops[t] {
+		stops = append(stops, *stop)
+	}
+	apps.mutex.Unlock()
+	for _, stop := range stops {
+		stop()
+	}
 }
 
 // OnUiThread runs f on the UI thread of the running app and waits for it, failing the test instead of hanging on
@@ -92,27 +194,6 @@ func WaitForEvents(t testing.TB, app *tview.Application, screen tcell.Simulation
 	case <-time.After(uiTimeout):
 		t.Fatal("timed out waiting for the app to handle the events (deadlock?)")
 	}
-}
-
-// ScreenText draws the running app and returns the text on its screen, a line per row (a rune per cell, wide
-// characters once). It draws first: a change made on the UI thread (e.g. with OnUiThread) is only shown once
-// something draws, and a test must not depend on something else doing so in time (see TestScreenIsDrawnBeforeRead).
-func ScreenText(t testing.TB, app *tview.Application, screen tcell.SimulationScreen) string {
-	t.Helper()
-	var text strings.Builder
-	OnUiThread(t, app, func() {
-		app.ForceDraw()
-		cells, width, height := screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
 }
 
 // IsOnUiThread returns whether it is called on the UI thread of the running app: an update queued from here does

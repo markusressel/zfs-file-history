@@ -1,13 +1,12 @@
 package snapshot_browser
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/folder_listing"
-	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -62,12 +61,7 @@ func TestChangedInSnapshot(t *testing.T) {
 
 // v shows only the snapshots in which something changed, per page and remembered.
 func TestOnlyChanges(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	store := statetest.Use(t)
 	browser, app := startBrowser(t)
 	var entries []*data.SnapshotBrowserEntry
 	for _, name := range []string{"s1", "s2", "s3"} {

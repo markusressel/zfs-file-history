@@ -5,13 +5,12 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
-	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,19 +31,8 @@ func TestDialogColumnKeysAreUnique(t *testing.T) {
 	}
 }
 
-// useTestState sets state.Current to a store in a temporary directory, for the duration of the test.
-func useTestState(t *testing.T) *state.Store {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
-	return store
-}
-
 func TestFolderHistoryOverlay_ModeIsRemembered(t *testing.T) {
-	store := useTestState(t)
+	store := statetest.Use(t)
 	ft := newFolderHistoryTest(t)
 	testutil.OnUiThread(t, ft.app, func() { assert.Equal(t, diffModePredecessor, ft.overlay.mode, "the default") })
 
@@ -60,13 +48,11 @@ func TestFolderHistoryOverlay_ModeIsRemembered(t *testing.T) {
 }
 
 func TestFileHistoryOverlay_ModeIsRemembered(t *testing.T) {
-	useTestState(t)
+	statetest.Use(t)
 	ds := newFakeDataset(t)
 	ds.addSnapshot("d1", day(1), map[string]string{"notes.txt": "one\n"})
-	original := findSnapshotsOfPath
-	t.Cleanup(func() { findSnapshotsOfPath = original })
-	findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
-	app := tview.NewApplication()
+	testutil.Replace(t, &findSnapshotsOfPath, func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil })
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: filepath.Join(ds.root, "notes.txt")}}
 
 	overlay := NewFileHistoryOverlay(app, file, nil)
@@ -77,7 +63,7 @@ func TestFileHistoryOverlay_ModeIsRemembered(t *testing.T) {
 }
 
 func TestFolderHistoryOverlay_ColumnsAreEditableAndSaved(t *testing.T) {
-	store := useTestState(t)
+	store := statetest.Use(t)
 	ft := newFolderHistoryTest(t)
 	ft.selectChange("b.txt")
 
@@ -101,7 +87,7 @@ func TestFolderHistoryOverlay_ColumnsAreEditableAndSaved(t *testing.T) {
 }
 
 func TestDatasetPropertiesDialog_ColumnsAreEditable(t *testing.T) {
-	store := useTestState(t)
+	store := statetest.Use(t)
 	pt := newPropertiesTest(t, false)
 
 	pt.press(tcell.KeyF2, 0)

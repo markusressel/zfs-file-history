@@ -16,11 +16,8 @@ import (
 // stubHolds replaces the zfs hold functions: existing are the holds listHolds returns,
 // changes records the snapshots passed to holdSnapshots / releaseSnapshots.
 func stubHolds(t *testing.T, existing []zfs.Hold, listErr error, changeErr error) (held *[]string, released *[]string) {
-	originalList, originalHold, originalRelease := listHolds, holdSnapshots, releaseSnapshots
-	t.Cleanup(func() { listHolds, holdSnapshots, releaseSnapshots = originalList, originalHold, originalRelease })
-
 	held, released = &[]string{}, &[]string{}
-	listHolds = func(names []string, recursive bool) ([]zfs.Hold, error) {
+	testutil.Replace(t, &listHolds, func(names []string, recursive bool) ([]zfs.Hold, error) {
 		var result []zfs.Hold
 		for _, h := range existing {
 			for _, name := range names {
@@ -30,15 +27,15 @@ func stubHolds(t *testing.T, existing []zfs.Hold, listErr error, changeErr error
 			}
 		}
 		return result, listErr
-	}
-	holdSnapshots = func(names []string) error {
+	})
+	testutil.Replace(t, &holdSnapshots, func(names []string) error {
 		*held = append(*held, names...)
 		return changeErr
-	}
-	releaseSnapshots = func(names []string) error {
+	})
+	testutil.Replace(t, &releaseSnapshots, func(names []string) error {
 		*released = append(*released, names...)
 		return changeErr
-	}
+	})
 	return held, released
 }
 
@@ -154,7 +151,7 @@ func TestSnapshotBrowser_ReleaseFromTheMenu(t *testing.T) {
 	// menu: 1 create, 2 clone, 3 hold, 4 release
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SnapshotActionDialog")
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "Release hold") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "Release hold", 2*time.Second)
 	dt.press(tcell.KeyRune, '4')
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SuccessDialog")

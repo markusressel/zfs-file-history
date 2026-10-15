@@ -116,7 +116,7 @@ func TestCounterAndNoteColors(t *testing.T) {
 }
 
 func TestPoolDevices_SetStatus(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 
 	devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
@@ -135,7 +135,7 @@ func TestPoolDevices_SetStatus(t *testing.T) {
 }
 
 func TestPoolDevices_Focus(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 	assert.False(t, devices.HasFocus())
 	devices.Focus()
@@ -209,14 +209,9 @@ func TestFormatDevices_SpareWithoutTemperature(t *testing.T) {
 
 // setupDevicesTest shows the devices of resilveringDevices with the readings of the sampler on a simulation screen.
 func setupDevicesTest(t *testing.T, sampler *disktest.Sampler) (*tview.Application, *PoolDevicesComponent, tcell.SimulationScreen) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	app.EnableMouse(true)
-	screen.SetSize(100, 20)
+	app, screen := testutil.NewApp(testutil.WithSize(100, 20))
 	devices := NewPoolDevices(app, sampler, nil)
-	app.SetRoot(devices.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, devices.GetLayout())
 	testutil.OnUiThread(t, app, func() { devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()}) })
 	// like the load of the status, which is drawn
 	app.QueueUpdateDraw(func() {})
@@ -261,8 +256,7 @@ func TestPoolDevices_ClickReadsIdleDisk(t *testing.T) {
 		})
 		return x >= 0
 	}, 2*time.Second, 10*time.Millisecond)
-	screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.Click(t, app, screen, x, y)
 
 	require.Eventually(t, func() bool {
 		return slices.ContainsFunc(sampler.Forced(), func(forced []string) bool { return slices.Equal(forced, []string{"sdc"}) })
@@ -284,13 +278,13 @@ func TestPoolDevices_KeyReadsAll(t *testing.T) {
 		require.Len(t, devices.GetShortcutMap(), 1)
 	})
 
-	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 't')
 	require.Eventually(t, func() bool { return len(sampler.Forced()) == 2 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, zfs.LeafDevices(resilveringDevices()), sampler.Forced()[1])
 }
 
 func TestPoolDevices_NoDisks(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 	devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
 	assert.Empty(t, devices.GetShortcutMap())
@@ -424,14 +418,10 @@ func TestFormatDevices_SmartWithoutTemperatures(t *testing.T) {
 // setupSmartTest shows the devices of resilveringDevices with the SMART reports of smart. showDisk is the last disk
 // shown on the disks page ("pool/device"), only accessed on the UI thread.
 func setupSmartTest(t *testing.T, smart *disktest.Smart) (app *tview.Application, devices *PoolDevicesComponent, showDisk *string, screen tcell.SimulationScreen) {
-	app = tview.NewApplication()
-	screen = tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	app.EnableMouse(true)
+	app, screen = testutil.NewApp()
 	screen.SetSize(120, 30)
 	devices = NewPoolDevices(app, disktest.NewSampler(nil), smart)
-	app.SetRoot(devices.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, devices.GetLayout())
 	shown := ""
 	testutil.OnUiThread(t, app, func() {
 		devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
@@ -462,7 +452,7 @@ func TestPoolDevices_Smart(t *testing.T) {
 	})
 
 	// s reads all again
-	screen.InjectKey(tcell.KeyRune, 's', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 's')
 	require.Eventually(t, func() bool { return len(smart.MaxAges()) == 2 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, time.Duration(0), smart.MaxAges()[1])
 
@@ -476,8 +466,7 @@ func TestPoolDevices_Smart(t *testing.T) {
 			}
 		}
 	})
-	screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.Click(t, app, screen, x, y)
 	require.Eventually(t, func() bool {
 		shown := ""
 		testutil.OnUiThread(t, app, func() { shown = *showDisk })
@@ -505,7 +494,6 @@ func TestPoolDevices_SmartNeedsRoot(t *testing.T) {
 		// right-aligned in the bottom border, behind the corner and a space
 		x, y = boxX+width-4, boxY+height-1
 	})
-	screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.Click(t, app, screen, x, y)
 	require.Eventually(t, func() bool { return setups.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
 }

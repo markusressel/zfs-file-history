@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
@@ -112,20 +113,15 @@ func (r *recordedEvents) get() []string {
 }
 
 func setListDatasets(t *testing.T, f func() ([]*zfs.DatasetListEntry, error)) {
-	original := listDatasets
-	listDatasets = f
-	t.Cleanup(func() { listDatasets = original })
+	testutil.Replace(t, &listDatasets, f)
 }
 
 // newBrowserApp creates a browser as the root of a running application.
 // The root is set before the event loop starts, like in CreateUi, to avoid racing with the first draw.
 func newBrowserApp(t *testing.T) (*tview.Application, *DatasetBrowserComponent, tcell.SimulationScreen) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	browser := NewDatasetBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 	return app, browser, screen
 }
 
@@ -321,8 +317,7 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 
 	pressKey := func(key tcell.Key) {
-		screen.InjectKey(key, 0, tcell.ModNone)
-		testutil.WaitForEvents(t, app, screen)
+		testutil.Press(t, app, screen, key, 0)
 	}
 
 	// on a data row, right and enter are consumed by the browser and don't change the sort order: enter opens the
@@ -331,11 +326,7 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 	pressKey(tcell.KeyRight)
 	pressKey(tcell.KeyEnter)
 	assert.Equal(t, []string{"rpool/a", "rpool/b", "rpool/c"}, entryNames())
-	hasActionDialog := func() bool {
-		shown := false
-		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage(string(dialog.DatasetActionDialogPage)) })
-		return shown
-	}
+	hasActionDialog := func() bool { return testutil.HasPage(t, app, browser.layout, string(dialog.DatasetActionDialogPage)) }
 	require.Eventually(t, hasActionDialog, 2*time.Second, 10*time.Millisecond)
 	pressKey(tcell.KeyEscape)
 	require.Eventually(t, func() bool { return !hasActionDialog() }, 2*time.Second, 10*time.Millisecond)
@@ -409,8 +400,7 @@ func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
 
 	app, browser, screen := newBrowserApp(t)
 	pressKey := func(r rune) {
-		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
-		testutil.WaitForEvents(t, app, screen)
+		testutil.Press(t, app, screen, tcell.KeyRune, r)
 	}
 	state := func() (visible []string, selected string, status string, hiding bool, shortcut string) {
 		testutil.OnUiThread(t, app, func() {
@@ -522,7 +512,7 @@ func TestDatasetBrowser_Filter(t *testing.T) {
 
 	app, browser, screen := newBrowserApp(t)
 	pressKey := func(key tcell.Key, r rune) {
-		screen.InjectKey(key, r, tcell.ModNone)
+		testutil.Press(t, app, screen, key, r)
 	}
 	state := func() (visible []string, selected string, footer string, hiding bool) {
 		testutil.OnUiThread(t, app, func() {
@@ -550,9 +540,7 @@ func TestDatasetBrowser_Filter(t *testing.T) {
 
 	// type a filter: matches names and mountpoints, '*' across '/'
 	pressKey(tcell.KeyCtrlF, 0)
-	for _, r := range "*/var/*" {
-		pressKey(tcell.KeyRune, r)
-	}
+	testutil.Type(t, app, screen, "*/var/*")
 	waitForFooter("2 of 5 datasets · 1 unmounted hidden")
 	visible, selected, _, _ := state()
 	assert.ElementsMatch(t, []string{"rpool/var/log", "rpool/var/lib/docker"}, visible)
@@ -599,14 +587,9 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 
 	pressKey := func(key tcell.Key) {
-		screen.InjectKey(key, 0, tcell.ModNone)
-		testutil.WaitForEvents(t, app, screen)
+		testutil.Press(t, app, screen, key, 0)
 	}
-	dialogOpen := func() bool {
-		var open bool
-		testutil.OnUiThread(t, app, func() { open = browser.layout.HasPage(string(dialog.ColumnSelectionDialogPage)) })
-		return open
-	}
+	dialogOpen := func() bool { return testutil.HasPage(t, app, browser.layout, string(dialog.ColumnSelectionDialogPage)) }
 
 	pressKey(tcell.KeyF2)
 	require.True(t, dialogOpen())
@@ -624,7 +607,7 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 }
 
 func TestDatasetBrowser_ShortcutMapContainsColumns(t *testing.T) {
-	browser := NewDatasetBrowser(tview.NewApplication())
+	browser := NewDatasetBrowser(testutil.App())
 	columns := findEntry(browser.GetShortcutMap(), uiutil.TableComponentShortcutColumns.Name)
 	if assert.NotNil(t, columns) {
 		assert.Equal(t, uiutil.TableComponentShortcutColumns.KeyCombo, columns.KeyCombo)
@@ -634,12 +617,7 @@ func TestDatasetBrowser_ShortcutMapContainsColumns(t *testing.T) {
 
 func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store := state.Load(path)
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	store := statetest.UseFile(t, path)
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
 	})
@@ -647,24 +625,31 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 	app, browser, screen := newBrowserApp(t)
 	testutil.OnUiThread(t, app, func() { browser.Focus() })
 	pressKey := func(key tcell.Key, r rune) {
-		screen.InjectKey(key, r, tcell.ModNone)
-		testutil.WaitForEvents(t, app, screen)
+		testutil.Press(t, app, screen, key, r)
 	}
 
 	// remove the first column (name)
 	pressKey(tcell.KeyF2, 0)
+	testutil.WaitForPage(t, app, browser.layout, string(dialog.ColumnSelectionDialogPage), 2*time.Second)
 	pressKey(tcell.KeyEnter, 0)
 	pressKey(tcell.KeyEscape, 0)
-	require.NoError(t, store.Flush())
+	// Regression: the dialog is closed (and the focus given back to the table) in an update queued apart from the
+	// keys, and the next F2 came before it, while the closing dialog still had the focus.
+	testutil.WaitForNoPage(t, app, browser.layout, string(dialog.ColumnSelectionDialogPage), 2*time.Second)
+	require.Eventually(t, func() bool {
+		focused := false
+		testutil.OnUiThread(t, app, func() { focused = browser.HasFocus() })
+		return focused
+	}, 2*time.Second, 10*time.Millisecond, "the table has the focus again")
 
 	// a new browser (e.g. after a restart) restores the layout from the file
-	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(tview.NewApplication())
+	var restored *DatasetBrowserComponent
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
 	assert.Equal(t, tableColumns[1:], restored.tableContainer.GetColumnSpec())
-	state.Current = store
 
 	// reset in the dialog restores the default columns and removes the saved layout
 	pressKey(tcell.KeyF2, 0)
+	testutil.WaitForPage(t, app, browser.layout, string(dialog.ColumnSelectionDialogPage), 2*time.Second)
 	pressKey(tcell.KeyRune, 'r')
 	pressKey(tcell.KeyEscape, 0)
 	var columns []*table.Column
@@ -676,12 +661,7 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 
 func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store := state.Load(path)
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	statetest.UseFile(t, path)
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
 	})
@@ -694,17 +674,16 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	require.True(t, hiding)
 	require.True(t, tree)
 
-	screen.InjectKey(tcell.KeyRune, 'u', tcell.ModNone)
-	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'u')
+	testutil.Press(t, app, screen, tcell.KeyRune, 't')
 	assert.Eventually(t, func() bool {
 		testutil.OnUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
 		return !hiding && !tree
 	}, 2*time.Second, 10*time.Millisecond)
-	require.NoError(t, store.Flush())
 
 	// a new browser (e.g. after a restart) restores the toggles from the file
-	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(tview.NewApplication())
+	var restored *DatasetBrowserComponent
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
 	assert.False(t, restored.IsHidingUnmounted())
 	assert.False(t, restored.IsTreeView())
 	assert.NotNil(t, findEntry(restored.GetShortcutMap(), "Hide unmounted"))
@@ -724,7 +703,7 @@ func findEntry(entries []shortcut_helper.ShortcutEntry, name string) *shortcut_h
 // The size columns are colored by how big their sizes are compared to all datasets, 0 dimmed. The available space
 // is not colored: it is mostly the same for all datasets of a pool.
 func TestDatasetBrowser_SizeColors(t *testing.T) {
-	browser := NewDatasetBrowser(tview.NewApplication())
+	browser := NewDatasetBrowser(testutil.App())
 	// without the permissions column, so no permissions are read in the background (and outlive the test)
 	var columns []*table.Column
 	for _, column := range tableColumns {
@@ -786,18 +765,17 @@ func TestDatasetBrowser_SelectOnLoad(t *testing.T) {
 		browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/home"))
 		browser.Refresh(false)
 	})
-	time.Sleep(50 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		loading := true
+		testutil.OnUiThread(t, app, func() { loading = browser.IsLoading() })
+		return !loading
+	}, 5*time.Second, 10*time.Millisecond, "loaded again")
 	assert.Equal(t, "rpool/home", selected())
 }
 
 func TestDatasetBrowser_CollapsedDatasetsAreSavedAndRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store := state.Load(path)
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	statetest.UseFile(t, path)
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{
 			{Name: "rpool", MountPath: "/rpool"},
@@ -818,19 +796,14 @@ func TestDatasetBrowser_CollapsedDatasetsAreSavedAndRestored(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 
 	testutil.OnUiThread(t, app, func() { browser.setCollapsed("tank", true) })
-	require.NoError(t, store.Flush())
-
-	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(tview.NewApplication())
+	var restored *DatasetBrowserComponent
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
 	assert.Equal(t, map[string]bool{"tank": true}, restored.collapsed)
 
 	// expanding is saved as well
-	state.Current = store
 	testutil.OnUiThread(t, app, func() { browser.setCollapsed("tank", false) })
-	require.NoError(t, store.Flush())
-	state.Current = state.Load(path)
-	assert.Empty(t, NewDatasetBrowser(tview.NewApplication()).collapsed)
-	state.Current = store
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
+	assert.Empty(t, restored.collapsed)
 }
 
 // hidePermissions hides the permissions column, so no permissions are read in the background (and outlive the test).
@@ -852,13 +825,8 @@ func TestDatasetBrowser_ClickOnHiddenUnmountedShowsThem(t *testing.T) {
 			{Name: "rpool/b"},
 		}, nil
 	})
-	// like the application, so two clicks are not a double click
-	originalInterval := tview.DoubleClickInterval
-	tview.DoubleClickInterval = 0
-	t.Cleanup(func() { tview.DoubleClickInterval = originalInterval })
 	app, browser, screen := newBrowserApp(t)
 	screen.SetSize(100, 20)
-	app.EnableMouse(true)
 	testutil.OnUiThread(t, app, func() {
 		if !browser.IsHidingUnmounted() {
 			browser.ToggleHideUnmounted()
@@ -868,26 +836,7 @@ func TestDatasetBrowser_ClickOnHiddenUnmountedShowsThem(t *testing.T) {
 	t.Cleanup(func() { state.Current.SetToggle(toggleHideUnmounted, false) })
 
 	// the position of the text in the bottom border, once drawn
-	findText := func(text string) (x int, y int, found bool) {
-		testutil.OnUiThread(t, app, func() {
-			app.ForceDraw()
-			cells, width, height := screen.GetContents()
-			for row := 0; row < height && !found; row++ {
-				var line []rune
-				for column := 0; column < width; column++ {
-					if runes := cells[row*width+column].Runes; len(runes) > 0 {
-						line = append(line, runes[0])
-					} else {
-						line = append(line, ' ')
-					}
-				}
-				if index := strings.Index(string(line), text); index >= 0 {
-					x, y, found = len([]rune(string(line)[:index])), row, true
-				}
-			}
-		})
-		return x, y, found
-	}
+	findText := func(text string) (x int, y int, found bool) { return testutil.FindText(t, app, screen, text) }
 	var x, y int
 	require.Eventually(t, func() bool {
 		var found bool
@@ -896,13 +845,10 @@ func TestDatasetBrowser_ClickOnHiddenUnmountedShowsThem(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 
 	// next to it, on the border: nothing
-	screen.InjectMouse(x-4, y, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(x-4, y, tcell.ButtonNone, tcell.ModNone)
-	testutil.WaitForEvents(t, app, screen)
+	testutil.Click(t, app, screen, x-4, y)
 	assert.True(t, browser.IsHidingUnmounted())
 
-	screen.InjectMouse(x+2, y, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(x+2, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.Click(t, app, screen, x+2, y)
 	require.Eventually(t, func() bool {
 		hiding := true
 		testutil.OnUiThread(t, app, func() { hiding = browser.IsHidingUnmounted() })

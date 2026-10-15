@@ -27,12 +27,9 @@ func newActionDialogTest(t *testing.T) *actionDialogTest {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644))
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	fileBrowser := NewFileBrowser(app)
-	app.SetRoot(fileBrowser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, fileBrowser.GetLayout())
 
 	ft := &actionDialogTest{t: t, app: app, screen: screen, fileBrowser: fileBrowser, dir: dir}
 	testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })
@@ -50,10 +47,10 @@ func newActionDialogTest(t *testing.T) *actionDialogTest {
 
 // selectMenuOption opens the action menu of the selected file and selects the option with the given number.
 func (ft *actionDialogTest) selectMenuOption(number rune) {
-	ft.screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(ft.t, ft.app, ft.screen, tcell.KeyEnter, 0)
 	require.Eventually(ft.t, func() bool { return ft.hasDialog("ActionDialog") }, 2*time.Second, 20*time.Millisecond)
-	ft.screen.InjectKey(tcell.KeyRune, number, tcell.ModNone)
-	ft.screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(ft.t, ft.app, ft.screen, tcell.KeyRune, number)
+	testutil.Press(ft.t, ft.app, ft.screen, tcell.KeyEnter, 0)
 }
 
 func (ft *actionDialogTest) hasDialog(name string) bool {
@@ -67,9 +64,7 @@ func (ft *actionDialogTest) hasDialog(name string) bool {
 }
 
 func setCreateSnapshot(t *testing.T, f func(path string) (string, error)) {
-	original := createSnapshot
-	createSnapshot = f
-	t.Cleanup(func() { createSnapshot = original })
+	testutil.Replace(t, &createSnapshot, f)
 }
 
 // Regression test: creating a snapshot from the file action menu emitted its event from the dialog's background

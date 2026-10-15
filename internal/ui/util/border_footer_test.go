@@ -3,11 +3,11 @@ package util
 import (
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // newFooterTestWindow creates a bordered and padded window with a child, like the table windows.
@@ -19,29 +19,9 @@ func newFooterTestWindow() (*tview.Flex, *tview.Box) {
 	return window, child
 }
 
-func drawToScreen(t *testing.T, primitive tview.Primitive, width, height int) tcell.SimulationScreen {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	t.Cleanup(screen.Fini)
-	screen.SetSize(width, height)
-	primitive.SetRect(0, 0, width, height)
-	primitive.Draw(screen)
-	return screen
-}
-
 // bottomBorder returns the expected bottom border line of the given width, with the text right-aligned in it.
 func bottomBorder(width int, text string) string {
 	return "└" + strings.Repeat("─", width-2-len([]rune(text))) + text + "┘"
-}
-
-func screenLine(screen tcell.SimulationScreen, y int) string {
-	width, _ := screen.Size()
-	var line strings.Builder
-	for x := 0; x < width; x++ {
-		str, _, _ := screen.Get(x, y)
-		line.WriteString(str)
-	}
-	return line.String()
 }
 
 func TestBorderFooter_DrawsRightAlignedIntoBottomBorder(t *testing.T) {
@@ -50,23 +30,23 @@ func TestBorderFooter_DrawsRightAlignedIntoBottomBorder(t *testing.T) {
 	footer := NewBorderFooter(window.Box)
 	footer.SetText("16 of 589")
 
-	screen := drawToScreen(t, window, 30, 5)
+	screen := testutil.DrawToScreen(t, window, 30, 5)
 
-	bottom := screenLine(screen, 4)
+	bottom := testutil.ScreenLines(screen)[4]
 	// like the title, which starts right after the top left corner, the footer ends right before the bottom right corner
 	assert.Equal(t, bottomBorder(30, " 16 of 589 "), bottom)
 	// the title in the top border is not affected
-	assert.Contains(t, screenLine(screen, 0), " Title ")
+	assert.Contains(t, testutil.ScreenLines(screen)[0], " Title ")
 	assert.Equal(t, "16 of 589", footer.GetText())
 }
 
 func TestBorderFooter_KeepsTheDefaultInnerRect(t *testing.T) {
 	withoutFooter, childWithoutFooter := newFooterTestWindow()
-	drawToScreen(t, withoutFooter, 30, 6)
+	testutil.DrawToScreen(t, withoutFooter, 30, 6)
 
 	withFooter, childWithFooter := newFooterTestWindow()
 	NewBorderFooter(withFooter.Box).SetText("footer")
-	drawToScreen(t, withFooter, 30, 6)
+	testutil.DrawToScreen(t, withFooter, 30, 6)
 
 	// border and padding are respected, exactly like without a footer
 	x, y, width, height := childWithFooter.GetRect()
@@ -75,7 +55,7 @@ func TestBorderFooter_KeepsTheDefaultInnerRect(t *testing.T) {
 	assert.Equal(t, [4]int{ex, ey, ewidth, eheight}, [4]int{x, y, width, height})
 
 	// also after a resize
-	drawToScreen(t, withFooter, 20, 10)
+	testutil.DrawToScreen(t, withFooter, 20, 10)
 	x, y, width, height = childWithFooter.GetRect()
 	assert.Equal(t, [4]int{2, 1, 16, 8}, [4]int{x, y, width, height})
 }
@@ -90,22 +70,22 @@ func TestBorderFooter_KeepsAnExistingDrawFunc(t *testing.T) {
 	})
 	NewBorderFooter(window.Box).SetText("footer")
 
-	screen := drawToScreen(t, window, 30, 5)
+	screen := testutil.DrawToScreen(t, window, 30, 5)
 
 	assert.True(t, called)
 	x, _, width, _ := child.GetRect()
 	assert.Equal(t, 1, x)
 	assert.Equal(t, 28, width)
-	assert.Contains(t, screenLine(screen, 4), " footer ")
+	assert.Contains(t, testutil.ScreenLines(screen)[4], " footer ")
 }
 
 func TestBorderFooter_TruncatesLongText(t *testing.T) {
 	window, _ := newFooterTestWindow()
 	NewBorderFooter(window.Box).SetText("this text is way too long for the window")
 
-	screen := drawToScreen(t, window, 20, 4)
+	screen := testutil.DrawToScreen(t, window, 20, 4)
 
-	bottom := screenLine(screen, 3)
+	bottom := testutil.ScreenLines(screen)[3]
 	// the beginning is kept, the corners stay intact
 	assert.Equal(t, "└ this text is way…┘", bottom)
 }
@@ -115,13 +95,13 @@ func TestBorderFooter_StyleTagsAndEmptyText(t *testing.T) {
 	footer := NewBorderFooter(window.Box)
 
 	footer.SetText("")
-	screen := drawToScreen(t, window, 20, 4)
-	assert.Equal(t, bottomBorder(20, ""), screenLine(screen, 3))
+	screen := testutil.DrawToScreen(t, window, 20, 4)
+	assert.Equal(t, bottomBorder(20, ""), testutil.ScreenLines(screen)[3])
 
 	// style tags are interpreted, not printed
 	footer.SetText("[#ff0000]red[-] text")
-	screen = drawToScreen(t, window, 20, 4)
-	bottom := screenLine(screen, 3)
+	screen = testutil.DrawToScreen(t, window, 20, 4)
+	bottom := testutil.ScreenLines(screen)[3]
 	assert.Equal(t, bottomBorder(20, " red text "), bottom)
 	x := strings.Index(bottom, "red")
 	x = len([]rune(bottom[:x]))
@@ -136,8 +116,8 @@ func TestBorderFooter_LeftAndRight(t *testing.T) {
 	footer.SetText("2 of 4")
 	footer.SetLeftText("Filter: x")
 
-	screen := drawToScreen(t, window, 30, 4)
-	assert.Equal(t, "└ Filter: x "+strings.Repeat("─", 30-2-11-8)+" 2 of 4 ┘", screenLine(screen, 3))
+	screen := testutil.DrawToScreen(t, window, 30, 4)
+	assert.Equal(t, "└ Filter: x "+strings.Repeat("─", 30-2-11-8)+" 2 of 4 ┘", testutil.ScreenLines(screen)[3])
 }
 
 func TestBorderFooter_LeftGetsTheRemainingWidth(t *testing.T) {
@@ -151,11 +131,11 @@ func TestBorderFooter_LeftGetsTheRemainingWidth(t *testing.T) {
 		return strings.Repeat("x", 40)
 	})
 
-	screen := drawToScreen(t, window, 30, 4)
+	screen := testutil.DrawToScreen(t, window, 30, 4)
 
 	// the right part keeps its width, the left part is cut off before it, with a border character in between:
 	// 28 between the corners - 8 for " 2 of 4 " - 1 border character = 19 for " xxx…"
-	assert.Equal(t, "└ "+strings.Repeat("x", 17)+"…─ 2 of 4 ┘", screenLine(screen, 3))
+	assert.Equal(t, "└ "+strings.Repeat("x", 17)+"…─ 2 of 4 ┘", testutil.ScreenLines(screen)[3])
 	// the func is asked for the actual width it gets (without padding)
 	assert.Equal(t, 30-2-8-1-2, requestedWidths[len(requestedWidths)-1])
 }
@@ -167,8 +147,8 @@ func TestBorderFooter_RightIsHiddenIfTooNarrow(t *testing.T) {
 	footer.SetLeftText("Filter: *.txt")
 
 	// 26 between the corners: the counts (20) would leave less than the minimum for the filter
-	screen := drawToScreen(t, window, 28, 4)
-	assert.Equal(t, "└ Filter: *.txt ───────────┘", screenLine(screen, 3))
+	screen := testutil.DrawToScreen(t, window, 28, 4)
+	assert.Equal(t, "└ Filter: *.txt ───────────┘", testutil.ScreenLines(screen)[3])
 }
 
 func TestBorderFooter_EmptyLeftTextKeepsTheRightOnlyLayout(t *testing.T) {
@@ -178,10 +158,10 @@ func TestBorderFooter_EmptyLeftTextKeepsTheRightOnlyLayout(t *testing.T) {
 	footer.SetLeftText("Filter: x")
 	footer.SetLeftText("")
 
-	screen := drawToScreen(t, window, 20, 4)
-	assert.Equal(t, bottomBorder(20, " 2 of 4 "), screenLine(screen, 3))
+	screen := testutil.DrawToScreen(t, window, 20, 4)
+	assert.Equal(t, bottomBorder(20, " 2 of 4 "), testutil.ScreenLines(screen)[3])
 
 	footer.SetLeftFunc(func(int) string { return "" })
-	screen = drawToScreen(t, window, 20, 4)
-	assert.Equal(t, bottomBorder(20, " 2 of 4 "), screenLine(screen, 3))
+	screen = testutil.DrawToScreen(t, window, 20, 4)
+	assert.Equal(t, bottomBorder(20, " 2 of 4 "), testutil.ScreenLines(screen)[3])
 }

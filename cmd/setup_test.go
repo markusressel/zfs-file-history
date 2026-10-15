@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"zfs-file-history/internal/disk"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/stretchr/testify/assert"
@@ -14,9 +15,7 @@ import (
 )
 
 func TestAskForRules(t *testing.T) {
-	original := disk.SmartctlInstalled
-	t.Cleanup(func() { disk.SmartctlInstalled = original })
-	disk.SmartctlInstalled = func() bool { return true }
+	testutil.Replace(t, &disk.SmartctlInstalled, func() bool { return true })
 	file := zfs.ParseSudoersFile(zfs.SudoersRuleEvents.Lines("alice"))
 	var out strings.Builder
 
@@ -33,7 +32,7 @@ func TestAskForRules(t *testing.T) {
 	assert.Equal(t, []*zfs.SudoersRule{zfs.SudoersRulePoolActions}, rules)
 
 	// without smartctl, its rule is not asked for
-	disk.SmartctlInstalled = func() bool { return false }
+	testutil.Replace(t, &disk.SmartctlInstalled, func() bool { return false })
 	out.Reset()
 	rules = askForRules(strings.NewReader("n\nn\nn\n"), &out, file, "alice")
 	assert.Empty(t, rules)

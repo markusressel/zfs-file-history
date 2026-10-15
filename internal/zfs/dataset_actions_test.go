@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -114,9 +115,7 @@ func (b *actionBackend) CreateSnapshot(dataset string, name string, recursive bo
 
 // useActionBackend replaces the backend with b for the test.
 func useActionBackend(t *testing.T, b *actionBackend) *actionBackend {
-	original := backend
-	t.Cleanup(func() { SetBackend(original) })
-	SetBackend(b)
+	testutil.Replace[Backend](t, &backend, b)
 	return b
 }
 

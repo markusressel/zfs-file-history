@@ -1,12 +1,11 @@
 package ui
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
-	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/path_overview"
@@ -37,53 +36,26 @@ func TestAdjacentPage(t *testing.T) {
 	assert.Equal(t, Main, adjacentPage(two, "other", false))
 }
 
-// screenText returns the text currently drawn on the screen, with non-breaking spaces
-// (used within shortcut entries) replaced by regular spaces.
-// It reads the screen on the UI thread, which is where the application draws to it.
+// screenText returns the text on the screen (see testutil.ScreenText), with the non-breaking spaces of the shortcut
+// entries replaced by spaces.
 func screenText(t *testing.T, app *tview.Application, screen tcell.SimulationScreen) string {
-	var cells []tcell.SimCell
-	var width, height int
-	// drawn first, see testutil.ScreenText
-	testutil.OnUiThread(t, app, func() {
-		app.ForceDraw()
-		cells, width, height = screen.GetContents()
-	})
-
-	var text strings.Builder
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			if runes := cells[y*width+x].Runes; len(runes) > 0 && runes[0] != '\u00a0' {
-				text.WriteRune(runes[0])
-			} else {
-				text.WriteRune(' ')
-			}
-		}
-		text.WriteRune('\n')
-	}
-	return text.String()
+	return strings.ReplaceAll(testutil.ScreenText(t, app, screen), "\u00a0", " ")
 }
 
 func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
-	startPath := t.TempDir()
-	app, _, datasetPage := createUi(startPath, true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	app, _, datasetPage := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
-	// Like in real usage, let the hidden dataset page finish loading (and selecting) its datasets
-	// before switching to it. Otherwise the selection while it is visible would update its shortcuts anyway.
-	// Once a dataset is selected, the path changes from the start path to the dataset's mount path.
-	// Tests have no ZFS (see testSystem): loading fails and nothing is selected, which is just as fine for this test.
-	datasetsSelected := func() bool {
-		selected := false
-		testutil.OnUiThread(t, app, func() { selected = datasetPage.datasetBrowser.GetPath() != startPath })
-		return selected
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	for !datasetsSelected() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
+	// Like in real usage, let the hidden dataset page finish loading (and selecting) its datasets before switching to
+	// it. Otherwise the selection while it is visible would update its shortcuts anyway. Tests have no ZFS (see
+	// testSystem): loading fails and nothing is selected, which is just as fine for this test. It waits for the load
+	// to end, not for a selection, which never comes.
+	require.Eventually(t, func() bool {
+		loading := true
+		testutil.OnUiThread(t, app, func() { loading = datasetPage.datasetBrowser.IsLoading() })
+		return !loading
+	}, 10*time.Second, 20*time.Millisecond, "datasets loaded")
 
 	waitForText := func(text string) {
 		assert.Eventually(t, func() bool {
@@ -102,27 +74,21 @@ func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 	waitForText(mainPageShortcut)
 
 	// dataset page, without any further key press
-	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, '2')
 	waitForTextGone(mainPageShortcut)
 	waitForText("[/ǀctrl+f]: Filter")
 
 	// and back
-	screen.InjectKey(tcell.KeyRune, '1', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, '1')
 	waitForText(mainPageShortcut)
 }
 
 func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	app, mainPage, _ := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
-	// Key events and queued updates are processed from different channels, so instead of waiting for the
-	// event loop, each step waits for its visible effect.
-	press := func(key tcell.Key, r rune) {
-		screen.InjectKey(key, r, tcell.ModNone)
-	}
+	press := func(key tcell.Key, r rune) { testutil.Press(t, app, screen, key, r) }
 	frontPage := func() (name string) {
 		testutil.OnUiThread(t, app, func() { name, _ = mainPage.pages.GetFrontPage() })
 		return name
@@ -176,10 +142,8 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 }
 
 func TestPageTabs(t *testing.T) {
-	app, _, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	app, _, _ := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	headerLine := func() string { return strings.SplitN(screenText(t, app, screen), "\n", 2)[0] }
@@ -194,8 +158,7 @@ func TestPageTabs(t *testing.T) {
 	styleAt := func(x int) (style tcell.Style) {
 		testutil.OnUiThread(t, app, func() {
 			app.ForceDraw()
-			cells, _, _ := screen.GetContents()
-			style = cells[x].Style
+			_, style, _ = screen.Get(x, 0)
 		})
 		return style
 	}
@@ -212,13 +175,12 @@ func TestPageTabs(t *testing.T) {
 	assert.Equal(t, theme.Colors.Header.PageNumberBackground, background)
 
 	// the keys work as before
-	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, '2')
 	assert.Eventually(t, shows(" 1  2 DATASETS  3  4 "), 3*time.Second, 20*time.Millisecond)
-	screen.InjectKey(tcell.KeyRune, '4', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, '4')
 	assert.Eventually(t, shows(" 1  2  3  4 DISKS    "), 3*time.Second, 20*time.Millisecond)
 	// there is no fifth page
-	screen.InjectKey(tcell.KeyRune, '5', tcell.ModNone)
-	testutil.WaitForEvents(t, app, screen)
+	testutil.Press(t, app, screen, tcell.KeyRune, '5')
 	assert.True(t, shows(" 1  2  3  4 DISKS    ")())
 
 	// the numbers can be clicked, the one below the mouse is highlighted
@@ -229,17 +191,14 @@ func TestPageTabs(t *testing.T) {
 		_, background, _ := styleAt(numberX).Decompose()
 		return background == theme.Colors.Header.PageNumberHoverBackground
 	}, 3*time.Second, 20*time.Millisecond)
-	screen.InjectMouse(numberX, 0, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(numberX, 0, tcell.ButtonNone, tcell.ModNone)
+	testutil.Click(t, app, screen, numberX, 0)
 	assert.Eventually(t, shows(" 1  2  3 POOLS     4 "), 3*time.Second, 20*time.Millisecond)
 	assert.Equal(t, utf8.RuneCountInString(line), utf8.RuneCountInString(headerLine()), "the numbers behind the shown page stay where they are")
 }
 
 func TestRelativeTimesKey(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 30)
+	app, mainPage, _ := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 30))
 	testutil.RunApp(t, app)
 	t.Cleanup(func() {
 		if util.IsRelativeTimes() {
@@ -247,26 +206,23 @@ func TestRelativeTimesKey(t *testing.T) {
 		}
 	})
 
-	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'T')
 	assert.Eventually(t, util.IsRelativeTimes, 2*time.Second, 10*time.Millisecond)
-	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'T')
 	assert.Eventually(t, func() bool { return !util.IsRelativeTimes() }, 2*time.Second, 10*time.Millisecond)
 
 	// typed into a filter instead
 	testutil.OnUiThread(t, app, func() { app.SetFocus(mainPage.fileBrowser.GetLayout()) })
-	screen.InjectKey(tcell.KeyCtrlF, 0, tcell.ModNone)
-	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
-	testutil.WaitForEvents(t, app, screen)
+	testutil.Press(t, app, screen, tcell.KeyCtrlF, 0)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'T')
 	assert.False(t, util.IsRelativeTimes())
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 }
 
 // Dialogs and overlays (e.g. the histories) are pages of their own: T applies to their tables as well.
 func TestRelativeTimesKeyInDialogs(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 30)
+	app, mainPage, _ := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 30))
 	testutil.RunApp(t, app)
 	t.Cleanup(func() {
 		if util.IsRelativeTimes() {
@@ -277,22 +233,21 @@ func TestRelativeTimesKeyInDialogs(t *testing.T) {
 	testutil.OnUiThread(t, app, func() {
 		dialog.ShowDialogOnPages(app, mainPage.pages, dialog.NewSuccessDialog(app, "Done", "done"), nil)
 	})
-	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'T')
 	assert.Eventually(t, util.IsRelativeTimes, 2*time.Second, 10*time.Millisecond)
 
 	// typed into an input instead
 	testutil.OnUiThread(t, app, func() {
 		dialog.ShowDialogOnPages(app, mainPage.pages, dialog.NewTextInputDialog(app, "Input", "Input", "", "", nil), nil)
 	})
-	screen.InjectKey(tcell.KeyRune, 'T', tcell.ModNone)
-	testutil.WaitForEvents(t, app, screen)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'T')
 	assert.True(t, util.IsRelativeTimes())
 }
 
 // The dataset info is only shown on the dataset page: on the main page, Tab goes from the file browser straight
 // to the snapshots, which use the whole height of the right column.
 func TestMainPageHasNoDatasetInfo(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	assert.Equal(t, []FocusableUiComponent{mainPage.fileBrowser, mainPage.snapshotBrowser}, mainPage.focusableComponents())
 	assert.Equal(t, 2, mainPage.split.GetItemCount())
 	assert.Same(t, mainPage.snapshotBrowser.GetLayout(), mainPage.split.GetItem(1))
@@ -306,16 +261,9 @@ func TestMainPageHasNoDatasetInfo(t *testing.T) {
 // o hides the overview below the file browser (making room for the files) and shows it again; the setting is
 // remembered. While typing a filter, it is typed.
 func TestOverviewKey(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
-	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
+	store := statetest.Use(t)
+	app, mainPage, _ := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
 	overviewHeight := func() int {
@@ -334,30 +282,26 @@ func TestOverviewKey(t *testing.T) {
 	require.Equal(t, path_overview.Height, overviewHeight())
 	assert.Equal(t, "Hide overview", shortcut())
 
-	screen.InjectKey(tcell.KeyRune, 'o', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'o')
 	assert.Eventually(t, func() bool { return overviewHeight() == 0 }, 2*time.Second, 10*time.Millisecond)
 	assert.True(t, store.Toggle(toggleHideOverview, false), "remembered")
 	assert.Equal(t, "Show overview", shortcut())
 
-	screen.InjectKey(tcell.KeyRune, 'o', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'o')
 	assert.Eventually(t, func() bool { return overviewHeight() == path_overview.Height }, 2*time.Second, 10*time.Millisecond)
 
 	// typed into a filter instead
 	testutil.OnUiThread(t, app, func() { app.SetFocus(mainPage.fileBrowser.GetLayout()) })
-	screen.InjectKey(tcell.KeyCtrlF, 0, tcell.ModNone)
-	screen.InjectKey(tcell.KeyRune, 'o', tcell.ModNone)
-	testutil.WaitForEvents(t, app, screen)
+	testutil.Press(t, app, screen, tcell.KeyCtrlF, 0)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'o')
 	assert.Equal(t, path_overview.Height, overviewHeight())
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 }
 
 // The boundaries between the panes of both pages can be dragged with the mouse (see uiutil.ResizableSplit).
 func TestPageBoundariesCanBeDragged(t *testing.T) {
-	app, mainPage, datasetPage := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
-	app.EnableMouse(true)
+	app, mainPage, datasetPage := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
 	rect := func(primitive tview.Primitive) (x, y, width, height int) {
@@ -367,13 +311,7 @@ func TestPageBoundariesCanBeDragged(t *testing.T) {
 		})
 		return x, y, width, height
 	}
-	drag := func(fromX, fromY, toX, toY int) {
-		screen.InjectMouse(fromX, fromY, tcell.Button1, tcell.ModNone)
-		time.Sleep(50 * time.Millisecond)
-		screen.InjectMouse(toX, toY, tcell.Button1, tcell.ModNone)
-		time.Sleep(50 * time.Millisecond)
-		screen.InjectMouse(toX, toY, tcell.ButtonNone, tcell.ModNone)
-	}
+	drag := func(fromX, fromY, toX, toY int) { testutil.Drag(t, app, screen, fromX, fromY, toX, toY) }
 
 	// files page: the file browser and the snapshots, side by side
 	snapshotsX, _, _, _ := rect(mainPage.snapshotBrowser.GetLayout())
@@ -384,7 +322,7 @@ func TestPageBoundariesCanBeDragged(t *testing.T) {
 	}, 2*time.Second, 20*time.Millisecond, "dragged to the left")
 
 	// dataset page: the datasets next to the info above the snapshots
-	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, '2')
 	// Regression: the test waited for a width of the split, which it has before the page was ever drawn (the default
 	// size of tview boxes), and measured where the boundaries are before the page was shown. And the info is sized by
 	// its content, which is loaded after the page is shown: until then, the boundary below it moves.
@@ -428,11 +366,8 @@ func TestPageBoundariesCanBeDragged(t *testing.T) {
 // pages, covering only its area: the snapshot list next to it could still be clicked, and keys of the page (e.g.
 // ⭾) still worked. They are shown on the pages of the application now, and are modal for the whole screen.
 func TestComponentDialogsAreModal(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
-	app.EnableMouse(true)
+	app, mainPage, _ := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
 	frontPage := func() string {
@@ -448,26 +383,23 @@ func TestComponentDialogsAreModal(t *testing.T) {
 
 	// a dialog of the file browser (the column dialog, like its action dialog)
 	testutil.OnUiThread(t, app, func() { app.SetFocus(mainPage.fileBrowser.GetLayout()) })
-	screen.InjectKey(tcell.KeyF2, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyF2, 0)
 	require.Eventually(t, func() bool { return frontPage() != string(Main) }, 2*time.Second, 10*time.Millisecond,
 		"shown on the pages of the application")
 
 	// ⭾ does not move the focus to the snapshot list behind the dialog
-	screen.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
-	testutil.WaitForEvents(t, app, screen)
+	testutil.Press(t, app, screen, tcell.KeyTab, 0)
 	assert.False(t, snapshotsFocused())
 
 	// neither does a click on it
 	var x, y, width, height int
 	testutil.OnUiThread(t, app, func() { x, y, width, height = mainPage.snapshotBrowser.GetLayout().GetRect() })
-	screen.InjectMouse(x+width-3, y+height-3, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(x+width-3, y+height-3, tcell.ButtonNone, tcell.ModNone)
-	testutil.WaitForEvents(t, app, screen)
+	testutil.Click(t, app, screen, x+width-3, y+height-3)
 	assert.False(t, snapshotsFocused())
 	assert.NotEqual(t, string(Main), frontPage(), "the dialog is still open")
 
 	// closed, the focus is back in the file browser
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 	require.Eventually(t, func() bool { return frontPage() == string(Main) }, 2*time.Second, 10*time.Millisecond)
 	var fileBrowserFocused bool
 	testutil.OnUiThread(t, app, func() { fileBrowserFocused = mainPage.fileBrowser.HasFocus() })

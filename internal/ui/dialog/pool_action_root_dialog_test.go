@@ -10,7 +10,6 @@ import (
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +20,7 @@ func newScrubNeedsRoot() *zfs.PoolActionNeedsRootError {
 }
 
 func TestNewErrorDialog_PoolActionNeedsRoot(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 
 	assert.Equal(t, "PoolActionRootDialog", NewErrorDialog(app, "Failed", newScrubNeedsRoot()).GetName())
 	// also if wrapped
@@ -40,13 +39,10 @@ func TestFormatPoolActionNeedsRoot(t *testing.T) {
 }
 
 func TestSetupPoolActionsCommand(t *testing.T) {
-	original := executablePath
-	t.Cleanup(func() { executablePath = original })
-
-	executablePath = func() (string, error) { return "/opt/zfs-file-history", nil }
+	testutil.Replace(t, &executablePath, func() (string, error) { return "/opt/zfs-file-history", nil })
 	assert.Equal(t, []string{"/opt/zfs-file-history", "setup", "--pool-actions"}, setupPoolActionsCommand())
 
-	executablePath = func() (string, error) { return "", errors.New("unknown") }
+	testutil.Replace(t, &executablePath, func() (string, error) { return "", errors.New("unknown") })
 	assert.Equal(t, []string{"zfs-file-history", "setup", "--pool-actions"}, setupPoolActionsCommand())
 }
 
@@ -62,36 +58,27 @@ type rootDialogTest struct {
 // clipboard are never used.
 func newRootDialogTest(t *testing.T, withRetry bool, sudoErr error) *rootDialogTest {
 	dt := &rootDialogTest{permissionsDialogTest: permissionsDialogTest{t: t}}
-	originalGrant, originalCopy, originalExecutable := grantPermissions, copyToClipboard, executablePath
-	originalPoolsChanged := zfs.PoolsChanged
-	t.Cleanup(func() {
-		grantPermissions, copyToClipboard, executablePath = originalGrant, originalCopy, originalExecutable
-		zfs.PoolsChanged = originalPoolsChanged
-	})
 	// an emitter of this test, so its listener does not outlive it
-	zfs.PoolsChanged = util.NewEmitter[struct{}]()
+	testutil.Replace(t, &zfs.PoolsChanged, util.NewEmitter[struct{}]())
 	zfs.PoolsChanged.Subscribe(func(struct{}) { dt.poolsChanged.Add(1) })
-	executablePath = func() (string, error) { return "/usr/bin/zfs-file-history", nil }
-	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
+	testutil.Replace(t, &executablePath, func() (string, error) { return "/usr/bin/zfs-file-history", nil })
+	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		dt.recordUiThread()
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.ran = append(dt.ran, commands...)
 		return sudoErr
-	}
-	copyToClipboard = func(text string) error {
+	})
+	testutil.Replace(t, &copyToClipboard, func(text string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.copied = append(dt.copied, text)
 		return nil
-	}
+	})
 
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 
 	var retry func()
 	if withRetry {

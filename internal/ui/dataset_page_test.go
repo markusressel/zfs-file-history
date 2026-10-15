@@ -6,9 +6,8 @@ import (
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/zfs/zfstest"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,13 +16,10 @@ import (
 func TestDatasetPage_CyclingFocusKeepsTheLayout(t *testing.T) {
 	for _, width := range []int{80, 100, 120, 160, 200} {
 		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
-			app := tview.NewApplication()
-			screen := tcell.NewSimulationScreen("UTF-8")
-			app.SetScreen(screen)
-			screen.SetSize(width, 50)
+			zfstest.UseNewEmitters(t)
+			app, _ := testutil.NewApp(testutil.WithSize(width, 50))
 			page := NewDatasetPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), "/")
-			app.SetRoot(page.layout, true)
-			testutil.RunApp(t, app)
+			testutil.StartApp(t, app, page.layout)
 
 			// each step on the UI thread at once, so loading the datasets (a failed load, too), which changes the
 			// shortcuts of the dataset browser, cannot happen in between

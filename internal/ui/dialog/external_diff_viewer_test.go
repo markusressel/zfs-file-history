@@ -12,7 +12,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestExternalDiffViewer_IsAvailable(t *testing.T) {
@@ -101,12 +100,10 @@ func TestDiffPaths(t *testing.T) {
 
 // Regression: the screen was resumed after the viewer exited but not drawn, so it stayed black until the next key.
 func TestRunExternalDiffEditor_DrawsWhenTheViewerExits(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	app := tview.NewApplication().SetScreen(screen).SetRoot(tview.NewBox(), true)
+	app, screen := testutil.NewApp()
 	var draws atomic.Int32
 	app.SetAfterDrawFunc(func(tcell.Screen) { draws.Add(1) })
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, tview.NewBox())
 	testutil.WaitForEvents(t, app, screen)
 	var before int32
 	// after the draw of the key of WaitForEvents, which runs before the next update

@@ -27,12 +27,9 @@ type textInputDialogTest struct {
 
 func newTextInputDialogTest(t *testing.T, initialText string) *textInputDialogTest {
 	dt := &textInputDialogTest{t: t}
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("main", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 
 	dt.dialog = NewTextInputDialog(dt.app, "TextInputTest", " Title ", "Name of the thing:", initialText, func(text string) {
 		dt.mu.Lock()
@@ -44,13 +41,11 @@ func newTextInputDialogTest(t *testing.T, initialText string) *textInputDialogTe
 }
 
 func (dt *textInputDialogTest) press(key tcell.Key, r rune) {
-	dt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, key, r)
 }
 
 func (dt *textInputDialogTest) typeText(text string) {
-	for _, r := range text {
-		dt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(dt.t, dt.app, dt.screen, text)
 }
 
 func (dt *textInputDialogTest) text() (text string) {
@@ -58,9 +53,8 @@ func (dt *textInputDialogTest) text() (text string) {
 	return text
 }
 
-func (dt *textInputDialogTest) isShown() (shown bool) {
-	testutil.OnUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage("TextInputTest") })
-	return shown
+func (dt *textInputDialogTest) isShown() bool {
+	return testutil.HasPage(dt.t, dt.app, dt.pages, "TextInputTest")
 }
 
 func (dt *textInputDialogTest) getSubmitted() []string {
@@ -92,7 +86,7 @@ func TestTextInputDialog_EmptyTextIsNotSubmitted(t *testing.T) {
 	require.Eventually(t, func() bool { return dt.text() == "   " }, 2*time.Second, 10*time.Millisecond)
 
 	dt.press(tcell.KeyEnter, 0)
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForUpdates(t, dt.app)
 	assert.Empty(t, dt.getSubmitted())
 	assert.True(t, dt.isShown(), "the dialog stays open")
 }

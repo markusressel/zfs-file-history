@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/util"
 
@@ -89,18 +90,14 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	require.NoError(t, os.Mkdir(folder, 0o700))
 	start := Start{Path: launchDir, LaunchDir: launchDir, RestoreSession: true}
 
-	store := state.Load(statePath)
-	state.Current = store
-	t.Cleanup(func() { state.Current = nil })
-	app, mainPage, datasetPage := createUiFor(start, true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
+	store := statetest.UseFile(t, statePath)
+	app, mainPage, datasetPage := newUiFor(t, start)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	stop := testutil.RunApp(t, app)
 
 	testutil.OnUiThread(t, app, func() { mainPage.fileBrowser.SetPath(folder, false) })
-	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
-	screen.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, '2')
+	testutil.Press(t, app, screen, tcell.KeyTab, 0)
 	assert.Eventually(t, func() bool {
 		var focused bool
 		testutil.OnUiThread(t, app, func() { focused = datasetPage.datasetInfo.HasFocus() })
@@ -109,12 +106,15 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	stop()
 	require.NoError(t, store.Flush())
 
-	// returns the folder of the file browser, the page in front and the title of its focused component
+	// Returns the folder of the file browser, the page in front and the title of its focused component. The app of
+	// the restart before is stopped first, like the application: it read state.Current while it was replaced.
+	stopPrevious := func() {}
 	restart := func(start Start) (string, util.Page, string) {
-		state.Current = state.Load(statePath)
-		app, mainPage, datasetPage := createUiFor(start, true)
-		app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-		testutil.RunApp(t, app)
+		stopPrevious()
+		statetest.UseFile(t, statePath)
+		app, mainPage, datasetPage := newUiFor(t, start)
+		testutil.UseSimulationScreen(app)
+		stopPrevious = testutil.RunApp(t, app)
 		var path, focused string
 		var front util.Page
 		testutil.OnUiThread(t, app, func() {
@@ -147,11 +147,10 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 func TestNewerStateVersionIsShown(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	require.NoError(t, os.WriteFile(statePath, []byte(`{"version": 7, "compatibleVersion": 7}`), 0o600))
-	state.Current = state.Load(statePath)
-	t.Cleanup(func() { state.Current = nil })
+	statetest.UseFile(t, statePath)
 
-	app, mainPage, _ := createUi(t.TempDir(), true)
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, mainPage, _ := newUi(t, t.TempDir())
+	testutil.UseSimulationScreen(app)
 	testutil.RunApp(t, app)
 	var history []string
 	testutil.OnUiThread(t, app, func() {

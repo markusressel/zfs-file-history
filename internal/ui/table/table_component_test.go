@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 
@@ -24,7 +25,7 @@ func (m mockEntry) TableRowId() string {
 }
 
 func TestTableSorting(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	cols := []*Column{
 		{Id: 0, Title: "Col0"},
 		{Id: 1, Title: "Col1"},
@@ -58,7 +59,7 @@ func TestTableSorting(t *testing.T) {
 }
 
 func TestMultiSelection(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	table := NewTableContainer[mockEntry](
 		app,
 		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
@@ -93,7 +94,7 @@ func TestMultiSelection(t *testing.T) {
 }
 
 func TestCreateMultiSelectionEntryId(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	table := NewTableContainer[mockEntry](
 		app,
 		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell { return nil },
@@ -105,7 +106,7 @@ func TestCreateMultiSelectionEntryId(t *testing.T) {
 }
 
 func newSortHighlightTestTable() (*RowSelectionTable[mockEntry], []*Column) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	cols := []*Column{
 		{Id: 0, Title: "Col0"},
 		{Id: 1, Title: "Col1"},
@@ -164,23 +165,6 @@ func TestSortColumnHeaderHasSelectedStyle(t *testing.T) {
 	assertHighlighted(2)
 }
 
-// findText returns the position of the first occurrence of text on the screen.
-func findText(screen tcell.SimulationScreen, text string) (int, int, bool) {
-	width, height := screen.Size()
-	for y := 0; y < height; y++ {
-		var line []rune
-		for x := 0; x < width; x++ {
-			// one rune per cell, so the index in line is the column
-			str, _, _ := screen.Get(x, y)
-			line = append(line, []rune(str)[0])
-		}
-		if index := strings.Index(string(line), text); index >= 0 {
-			return len([]rune(string(line)[:index])), y, true
-		}
-	}
-	return 0, 0, false
-}
-
 func backgroundAt(screen tcell.SimulationScreen, x, y int) tcell.Color {
 	_, style, _ := screen.Get(x, y)
 	_, background, _ := style.Decompose()
@@ -190,10 +174,7 @@ func backgroundAt(screen tcell.SimulationScreen, x, y int) tcell.Color {
 func TestSortColumnHeaderHighlightRendering(t *testing.T) {
 	table, _ := newSortHighlightTestTable()
 
-	screen := tcell.NewSimulationScreen("UTF-8")
-	assert.NoError(t, screen.Init())
-	defer screen.Fini()
-	screen.SetSize(60, 8)
+	screen := testutil.NewScreen(t, 60, 8)
 
 	draw := func() {
 		screen.Clear()
@@ -204,26 +185,26 @@ func TestSortColumnHeaderHighlightRendering(t *testing.T) {
 	// data row selected: no highlight in the header
 	table.Select(table.GetEntries()[0])
 	draw()
-	x, y, found := findText(screen, "Col1")
+	x, y, found := testutil.FindInScreen(screen, "Col1")
 	assert.True(t, found)
 	assert.NotEqual(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
 
 	// header row selected: the sort column is highlighted, other columns use the regular selection color
 	table.SelectHeader()
 	draw()
-	x, y, found = findText(screen, "Col1")
+	x, y, found = testutil.FindInScreen(screen, "Col1")
 	assert.True(t, found)
 	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
-	x, y, found = findText(screen, "Col0")
+	x, y, found = testutil.FindInScreen(screen, "Col0")
 	assert.True(t, found)
 	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
 
 	// the highlight follows the sort column
 	table.nextSortOrder()
 	draw()
-	x, y, _ = findText(screen, "Col2")
+	x, y, _ = testutil.FindInScreen(screen, "Col2")
 	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
-	x, y, _ = findText(screen, "Col1")
+	x, y, _ = testutil.FindInScreen(screen, "Col1")
 	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
 }
 
@@ -236,10 +217,7 @@ func isBoldAt(screen tcell.SimulationScreen, x, y int) bool {
 func TestHeaderIsBold(t *testing.T) {
 	table, _ := newSortHighlightTestTable()
 
-	screen := tcell.NewSimulationScreen("UTF-8")
-	assert.NoError(t, screen.Init())
-	defer screen.Fini()
-	screen.SetSize(60, 8)
+	screen := testutil.NewScreen(t, 60, 8)
 
 	draw := func() {
 		screen.Clear()
@@ -251,11 +229,11 @@ func TestHeaderIsBold(t *testing.T) {
 	table.Select(table.GetEntries()[0])
 	draw()
 	for _, title := range []string{"Col0", "Col1", "Col2"} {
-		x, y, found := findText(screen, title)
+		x, y, found := testutil.FindInScreen(screen, title)
 		assert.True(t, found)
 		assert.True(t, isBoldAt(screen, x, y), title)
 	}
-	x, y, found := findText(screen, "cell")
+	x, y, found := testutil.FindInScreen(screen, "cell")
 	assert.True(t, found)
 	assert.False(t, isBoldAt(screen, x, y), "data cells are not bold")
 
@@ -263,7 +241,7 @@ func TestHeaderIsBold(t *testing.T) {
 	table.SelectHeader()
 	draw()
 	for _, title := range []string{"Col0", "Col1", "Col2"} {
-		x, y, _ := findText(screen, title)
+		x, y, _ := testutil.FindInScreen(screen, title)
 		assert.True(t, isBoldAt(screen, x, y), title)
 	}
 }
@@ -272,10 +250,7 @@ func TestHeaderBackground(t *testing.T) {
 	table, _ := newSortHighlightTestTable()
 	headerBackground := theme.Colors.Layout.Table.HeaderBackground
 
-	screen := tcell.NewSimulationScreen("UTF-8")
-	assert.NoError(t, screen.Init())
-	defer screen.Fini()
-	screen.SetSize(60, 8)
+	screen := testutil.NewScreen(t, 60, 8)
 
 	draw := func() {
 		screen.Clear()
@@ -286,23 +261,23 @@ func TestHeaderBackground(t *testing.T) {
 	table.Select(table.GetEntries()[0])
 	draw()
 
-	col0X, headerY, _ := findText(screen, "Col0")
-	col2X, _, _ := findText(screen, "Col2")
+	col0X, headerY, _ := testutil.FindInScreen(screen, "Col0")
+	col2X, _, _ := testutil.FindInScreen(screen, "Col2")
 	// the whole header from the first to the last title is one band, including the gaps between columns
 	for x := col0X; x <= col2X; x++ {
 		assert.Equal(t, headerBackground, backgroundAt(screen, x, headerY), "x=%d", x)
 	}
 
 	// data rows keep the default background
-	cellX, cellY, _ := findText(screen, "cell")
+	cellX, cellY, _ := testutil.FindInScreen(screen, "cell")
 	assert.NotEqual(t, headerBackground, backgroundAt(screen, cellX, cellY))
 
 	// while selected, the selection colors replace the header background
 	table.SelectHeader()
 	draw()
-	x, y, _ := findText(screen, "Col0")
+	x, y, _ := testutil.FindInScreen(screen, "Col0")
 	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, backgroundAt(screen, x, y))
-	x, y, _ = findText(screen, "Col1")
+	x, y, _ = testutil.FindInScreen(screen, "Col1")
 	assert.Equal(t, theme.Colors.Layout.Table.SortColumnSelectedBackground, backgroundAt(screen, x, y))
 }
 
@@ -315,7 +290,7 @@ func (e namedEntry) TableRowId() string {
 }
 
 func newFilterTestTable() (*RowSelectionTable[namedEntry], []*namedEntry, *[]tcell.Key, *int) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	cols := []*Column{{Id: 0, Title: "Name"}}
 	table := NewTableContainer[namedEntry](
 		app,
@@ -544,10 +519,7 @@ type filterFooter struct {
 
 // drawFilterFooter draws the table window and returns the left part of its bottom border.
 func drawFilterFooter(t *testing.T, table *RowSelectionTable[namedEntry]) filterFooter {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	defer screen.Fini()
-	screen.SetSize(40, 8)
+	screen := testutil.NewScreen(t, 40, 8)
 	table.layout.SetRect(0, 0, 40, 8)
 	table.layout.Draw(screen)
 
@@ -570,19 +542,11 @@ func TestFilter_FooterAndCountsDoNotOverlap(t *testing.T) {
 	table.SetFooter("2 of 4 things")
 	table.SetFilterText("daily")
 
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	defer screen.Fini()
-	screen.SetSize(40, 8)
+	screen := testutil.NewScreen(t, 40, 8)
 	table.layout.SetRect(0, 0, 40, 8)
 	table.layout.Draw(screen)
 
-	var line strings.Builder
-	for x := 0; x < 40; x++ {
-		str, _, _ := screen.Get(x, 7)
-		line.WriteString(str)
-	}
-	assert.Equal(t, "└ Filter: daily ──────── 2 of 4 things ┘", line.String())
+	assert.Equal(t, "└ Filter: daily ──────── 2 of 4 things ┘", testutil.ScreenLines(screen)[7])
 }
 
 // newWideTestTable returns a table with the given number of columns (20 characters each, so 21 with the space
@@ -593,7 +557,7 @@ func newWideTestTable(columnCount int) (*RowSelectionTable[namedEntry], []*named
 		cols = append(cols, &Column{Id: ColumnId(i), Title: fmt.Sprintf("col%d", i)})
 	}
 	table := NewTableContainer[namedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
 			var cells []*tview.TableCell
 			for _, column := range columns {
@@ -709,23 +673,13 @@ func TestTable_EmbedInFrame(t *testing.T) {
 	table.SetFooter("4 things")
 	table.SetFilterText("daily")
 
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 8)
+	screen := testutil.NewScreen(t, 40, 8)
 	frame.SetRect(0, 0, 40, 8)
 	frame.Draw(screen)
-	screen.Show()
 
-	cells, width, height := screen.GetContents()
-	line := func(y int) string {
-		var text strings.Builder
-		for x := 0; x < width; x++ {
-			if runes := cells[y*width+x].Runes; len(runes) > 0 {
-				text.WriteRune(runes[0])
-			}
-		}
-		return text.String()
-	}
+	lines := testutil.ScreenLines(screen)
+	line := func(y int) string { return lines[y] }
+	height := len(lines)
 
 	bottom := line(height - 1)
 	assert.Contains(t, bottom, "4 things", "the footer is drawn into the frame")
@@ -744,9 +698,7 @@ func drawTableLayout(table *RowSelectionTable[namedEntry], screen tcell.Screen) 
 
 func TestTable_ScrollbarReachesTheEndWithPgDn(t *testing.T) {
 	table, entries, _ := newWideTestTable(1)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 12)
+	screen := testutil.NewScreen(t, 40, 12)
 	table.GetLayout().SetRect(0, 0, 40, 12)
 	// like in the application: tview's Flex draws the focused item (the table) last, after the scrollbar
 	table.table.Focus(func(tview.Primitive) {})
@@ -773,9 +725,7 @@ func TestTable_ScrollbarReachesTheEndWithPgDn(t *testing.T) {
 }
 
 func TestTable_ScrollbarVisibility(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 12)
+	screen := testutil.NewScreen(t, 40, 12)
 
 	// 12 lines: the border (2) and the header row (1) leave 9 lines for data rows
 	tests := []struct {
@@ -800,7 +750,7 @@ func TestTable_ScrollbarVisibility(t *testing.T) {
 func TestTable_RendersAgainWhenTheTimeFormatChanged(t *testing.T) {
 	then := time.Now().Add(-2 * time.Hour)
 	table := NewTableContainer[namedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell(uiutil.FormatTime(then))}
 		},
@@ -809,9 +759,7 @@ func TestTable_RendersAgainWhenTheTimeFormatChanged(t *testing.T) {
 	cols := []*Column{{Id: 0, Title: "Time"}}
 	table.SetColumnSpec(cols, cols[0], false)
 	table.SetData([]*namedEntry{{name: "a"}})
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 6)
+	screen := testutil.NewScreen(t, 40, 6)
 	table.GetLayout().SetRect(0, 0, 40, 6)
 	t.Cleanup(func() {
 		if uiutil.IsRelativeTimes() {
@@ -831,9 +779,7 @@ func TestTable_RendersAgainWhenTheTimeFormatChanged(t *testing.T) {
 // loaded), so the next data would be shown scrolled to the end, also hiding the selected row
 func TestTable_NewDataIsNotScrolledToTheEnd(t *testing.T) {
 	table, entries, _ := newWideTestTable(1)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 12)
+	screen := testutil.NewScreen(t, 40, 12)
 	table.GetLayout().SetRect(0, 0, 40, 12)
 	table.table.Focus(func(tview.Primitive) {})
 
@@ -862,25 +808,12 @@ func TestTable_NewDataIsNotScrolledToTheEnd(t *testing.T) {
 // newTextDrawer returns a function that draws the table (its layout at 40x12) and returns the text on the screen, a
 // line per row.
 func newTextDrawer(t *testing.T, table *RowSelectionTable[namedEntry]) func() string {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 12)
+	screen := testutil.NewScreen(t, 40, 12)
 	table.GetLayout().SetRect(0, 0, 40, 12)
 	return func() string {
 		screen.Clear()
 		drawTableLayout(table, screen)
-		screen.Show()
-		cells, width, _ := screen.GetContents()
-		var text strings.Builder
-		for i, cell := range cells {
-			if i > 0 && i%width == 0 {
-				text.WriteRune('\n')
-			}
-			if len(cell.Runes) > 0 {
-				text.WriteRune(cell.Runes[0])
-			}
-		}
-		return text.String()
+		return strings.Join(testutil.ScreenLines(screen), "\n")
 	}
 }
 
@@ -926,7 +859,7 @@ func TestTable_NoMatchesForTheFilter(t *testing.T) {
 func TestTable_Resort(t *testing.T) {
 	cols := []*Column{{Id: 0, Title: "Name"}}
 	table := NewTableContainer[namedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell(entry.name)}
 		},
@@ -982,12 +915,10 @@ func TestTable_HeaderClicks(t *testing.T) {
 	table, cols := newSortHighlightTestTable()
 	var layoutChanges int
 	table.SetColumnLayoutChangedCallback(func(ColumnLayout) { layoutChanges++ })
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 10)
+	screen := testutil.NewScreen(t, 40, 10)
 	table.table.SetRect(0, 0, 40, 10)
 	table.table.Draw(screen)
-	col0X, headerY, found := findText(screen, "Col0")
+	col0X, headerY, found := testutil.FindInScreen(screen, "Col0")
 	require.True(t, found)
 	table.Select(table.GetEntries()[0])
 	require.NotNil(t, table.GetSelectedEntry())
@@ -1011,7 +942,7 @@ func TestTable_HeaderClicks(t *testing.T) {
 	assert.True(t, table.sortInverted)
 	// the sort indicator moved the column
 	table.table.Draw(screen)
-	col1X, _, _ := findText(screen, "Col1")
+	col1X, _, _ := testutil.FindInScreen(screen, "Col1")
 	pressAndClick(table, col1X, headerY)
 	assert.True(t, table.IsSortedBy(cols[1]))
 	assert.True(t, table.sortInverted, "the direction is kept")
@@ -1031,12 +962,10 @@ func TestTable_HeaderClicks(t *testing.T) {
 // The header is selected, but another pane is focused: the click focuses the table, without sorting.
 func TestTable_HeaderClickWhileNotFocused(t *testing.T) {
 	table, cols := newSortHighlightTestTable()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 10)
+	screen := testutil.NewScreen(t, 40, 10)
 	table.table.SetRect(0, 0, 40, 10)
 	table.table.Draw(screen)
-	col0X, headerY, _ := findText(screen, "Col0")
+	col0X, headerY, _ := testutil.FindInScreen(screen, "Col0")
 	table.SelectHeader()
 	table.table.Blur()
 
@@ -1048,9 +977,7 @@ func TestTable_HeaderClickWhileNotFocused(t *testing.T) {
 // Regression: a click into the empty space to the right of a row selected it.
 func TestTable_ClickBesideTheColumnsKeepsTheSelection(t *testing.T) {
 	table, entries, _, _ := newFilterTestTable()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 10)
+	screen := testutil.NewScreen(t, 40, 10)
 	table.table.SetRect(0, 0, 40, 10)
 	table.table.Draw(screen)
 	table.Select(entries[1])
@@ -1116,7 +1043,7 @@ func TestTable_FindByRowId(t *testing.T) {
 func TestSelectedRowKeepsTextColors(t *testing.T) {
 	cols := []*Column{{Id: 0, Title: "Col0"}}
 	table := NewTableContainer[mockEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell("ONLINE").SetTextColor(tcell.ColorGreen)}
 		},

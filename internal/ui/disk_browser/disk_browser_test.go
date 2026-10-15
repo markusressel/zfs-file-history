@@ -67,10 +67,7 @@ func newDiskBrowserTest(t *testing.T) *diskBrowserTest {
 		"sdb":                              {IsDisk: true, Idle: true},
 		"nvme0n1p1":                        {IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 50}},
 	})}
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
-	dt.app.EnableMouse(true)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.screen.SetSize(140, 40)
 	testutil.RunApp(t, dt.app)
 
@@ -102,7 +99,7 @@ func (dt *diskBrowserTest) waitFor(message string, condition func() bool) {
 }
 
 func (dt *diskBrowserTest) press(key tcell.Key, r rune) {
-	dt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, key, r)
 }
 
 // rows returns the disks shown, as "pool device disk".
@@ -136,20 +133,7 @@ func (dt *diskBrowserTest) attributeNames() []string {
 }
 
 func (dt *diskBrowserTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(dt.t, dt.app, func() {
-		dt.app.ForceDraw()
-		cells, width, height := dt.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(dt.t, dt.app, dt.screen)
 }
 
 func TestDiskBrowser_ListsDisksOfAllPools(t *testing.T) {
@@ -209,8 +193,7 @@ func TestDiskBrowser_SelectDevice(t *testing.T) {
 }
 
 func TestDiskBrowser_SelectDeviceBeforeLoaded(t *testing.T) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 	var browser *DiskBrowserComponent
 	selected := ""
@@ -253,25 +236,7 @@ func TestDiskBrowser_SetupFromFooter(t *testing.T) {
 	var setups atomic.Int32
 	testutil.OnUiThread(t, dt.app, func() { dt.browser.SetOnSetup(func() { setups.Add(1) }) })
 
-	x, y := -1, -1
-	testutil.OnUiThread(t, dt.app, func() {
-		dt.app.ForceDraw()
-		cells, width, height := dt.screen.GetContents()
-		for row := 0; row < height && y < 0; row++ {
-			var line strings.Builder
-			for column := 0; column < width; column++ {
-				if runes := cells[row*width+column].Runes; len(runes) > 0 {
-					line.WriteRune(runes[0])
-				}
-			}
-			if index := strings.Index(line.String(), "SMART needs root"); index >= 0 {
-				x, y = len([]rune(line.String()[:index])), row
-			}
-		}
-	})
-	require.GreaterOrEqual(t, y, 0)
-	dt.screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-	dt.screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.ClickText(t, dt.app, dt.screen, "SMART needs root")
 	dt.waitFor("setup offered", func() bool { return setups.Load() == 1 })
 }
 
@@ -503,8 +468,7 @@ func TestDiskDetails_ClickDoesNotFocus(t *testing.T) {
 		dt.app.ForceDraw()
 		x, y, _, _ = dt.details.details.GetInnerRect()
 	})
-	dt.screen.InjectMouse(x+1, y, tcell.Button1, tcell.ModNone)
-	dt.screen.InjectMouse(x+1, y, tcell.ButtonNone, tcell.ModNone)
+	testutil.Click(dt.t, dt.app, dt.screen, x+1, y)
 	// the table of the disks keeps the focus; nothing changes when the events were handled, so wait for them
 	testutil.WaitForEvents(t, dt.app, dt.screen)
 	focused := false

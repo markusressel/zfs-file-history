@@ -2,9 +2,7 @@ package dialog
 
 import (
 	"fmt"
-	"strings"
 	"testing"
-	"time"
 	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
@@ -16,18 +14,13 @@ import (
 // Regression: tview hands mouse events to all pages until one consumes them (https://github.com/rivo/tview/issues/926),
 // and the empty space around a dialog did not: a click next to it selected an entry of the page behind it.
 func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(100, 40)
-	app.EnableMouse(true)
+	app, screen := testutil.NewApp(testutil.WithSize(100, 40))
 	background := tview.NewTable().SetSelectable(true, false)
 	for i := 0; i < 100; i++ {
 		background.SetCell(i, 0, tview.NewTableCell(fmt.Sprintf("row %d", i)))
 	}
 	pages := tview.NewPages().AddPage("background", background, true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	chosen := make(chan DialogActionId, 1)
 	var dialog *SelectionDialog
@@ -47,12 +40,7 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 		})
 		return row, offset
 	}
-	click := func(x, y int) {
-		screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-		time.Sleep(30 * time.Millisecond)
-		screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
-		testutil.WaitForEvents(t, app, screen)
-	}
+	click := func(x, y int) { testutil.Click(t, app, screen, x, y) }
 	state()
 
 	// row 2 of the table behind, at the top left, outside the centered dialog
@@ -74,31 +62,13 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 	var frameX, frameY, frameHeight int
 	testutil.OnUiThread(t, app, func() { frameX, frameY, _, frameHeight = dialogFrame(dialog.GetLayout()).GetRect() })
 	require.Positive(t, frameHeight)
-	time.Sleep(tview.DoubleClickInterval)
 	click(frameX, frameY+frameHeight/2)
 	row, _ = state()
 	assert.Equal(t, 0, row, "the selection of the page behind is unchanged")
 
 	// clicks on the dialog still work: they select its options
-	var closeX, closeY int
-	testutil.OnUiThread(t, app, func() {
-		app.ForceDraw()
-		cells, width, height := screen.GetContents()
-		for y := 0; y < height && closeY == 0; y++ {
-			var line strings.Builder
-			for x := 0; x < width; x++ {
-				line.WriteString(string(cells[y*width+x].Runes))
-			}
-			// the option, not the title of the dialog
-			if index := strings.Index(line.String(), "Close"); index >= 0 {
-				closeX, closeY = len([]rune(line.String()[:index])), y
-			}
-		}
-	})
-	require.NotZero(t, closeY, "the close option is shown")
-	// otherwise, tview takes it as a double click with the click above (even at another position)
-	time.Sleep(tview.DoubleClickInterval)
-	click(closeX, closeY)
+	// the option, not the title of the dialog
+	testutil.ClickText(t, app, screen, "Close")
 	var selected string
 	testutil.OnUiThread(t, app, func() {
 		row, _ := dialog.optionTable.GetSelection()

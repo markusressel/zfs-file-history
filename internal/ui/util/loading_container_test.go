@@ -11,9 +11,7 @@ import (
 )
 
 func TestLoadingContainer(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	content := tview.NewBox()
@@ -47,9 +45,7 @@ func TestLoadingContainer(t *testing.T) {
 }
 
 func TestLoadingView_EdgeCases(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	loadingView := NewLoadingView(app, "Title", "Message")
@@ -80,7 +76,7 @@ func TestLoadingView_EdgeCases(t *testing.T) {
 }
 
 func TestLoadingContainer_SetBorderColorAndMessage(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 
 	// Content is a Box
 	boxContent := tview.NewBox()
@@ -102,7 +98,7 @@ func TestLoadingContainer_SetBorderColorAndMessage(t *testing.T) {
 // Regression: switching between loading and content while the container has the focus left the container marked as
 // focused after the focus moved on (e.g. to a dialog), so its page took the keys of the dialog.
 func TestLoadingContainer_SwitchingKeepsNoStaleFocus(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	content := tview.NewTable()
 	container := NewLoadingContainer(app, content, "Snapshots", "Loading...")
 	app.SetFocus(container)

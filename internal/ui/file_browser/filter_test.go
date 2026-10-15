@@ -51,9 +51,7 @@ type fileBrowserState struct {
 }
 
 func newFileBrowserTest(t *testing.T, filterOnDirectoryChange configuration.FileBrowserFilterOnDirectoryChange) *fileBrowserTest {
-	originalConfig := configuration.CurrentConfig
-	configuration.CurrentConfig.FileBrowser.FilterOnDirectoryChange = filterOnDirectoryChange
-	t.Cleanup(func() { configuration.CurrentConfig = originalConfig })
+	testutil.Replace(t, &configuration.CurrentConfig.FileBrowser.FilterOnDirectoryChange, filterOnDirectoryChange)
 
 	dir := t.TempDir()
 	for _, name := range []string{"a.txt", "b.txt", "c.log"} {
@@ -63,13 +61,10 @@ func newFileBrowserTest(t *testing.T, filterOnDirectoryChange configuration.File
 	require.NoError(t, os.Mkdir(sub, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(sub, "x.txt"), []byte("x"), 0o644))
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	fileBrowser := NewFileBrowser(app)
 	// set the root before the event loop starts, like CreateUi does
-	app.SetRoot(fileBrowser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, fileBrowser.GetLayout())
 
 	return &fileBrowserTest{t: t, app: app, screen: screen, fileBrowser: fileBrowser, dir: dir, sub: sub}
 }
@@ -97,7 +92,7 @@ func (ft *fileBrowserTest) waitFor(message string, condition func(s fileBrowserS
 }
 
 func (ft *fileBrowserTest) pressKey(key tcell.Key, r rune) {
-	ft.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(ft.t, ft.app, ft.screen, key, r)
 }
 
 // openWithTxtFilter opens the temporary directory and filters it with "*.txt".
@@ -107,9 +102,7 @@ func (ft *fileBrowserTest) openWithTxtFilter() {
 	assert.Equal(ft.t, []string{"a.txt", "b.txt", "c.log", "sub"}, s.visible)
 
 	ft.pressKey(tcell.KeyCtrlF, 0)
-	for _, r := range "*.txt" {
-		ft.pressKey(tcell.KeyRune, r)
-	}
+	testutil.Type(ft.t, ft.app, ft.screen, "*.txt")
 	s = ft.waitFor("filtered", func(s fileBrowserState) bool { return s.footer == "2 of 4 entries" })
 	assert.Equal(ft.t, []string{"a.txt", "b.txt"}, s.visible)
 }
@@ -130,9 +123,19 @@ func TestFileBrowser_Filter(t *testing.T) {
 		assert.FileExists(t, filepath.Join(ft.dir, name))
 	}
 
-	// a reload of the same directory keeps the filter
+	// a reload of the same directory keeps the filter: once it was loaded again (the footer was the same before)
+	reloaded := make(chan struct{}, 10)
+	ft.fileBrowser.Events.Subscribe(func(event Event) {
+		if _, ok := event.(EntriesLoadedEvent); ok {
+			reloaded <- struct{}{}
+		}
+	})
 	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.Refresh(false) })
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-reloaded:
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "not loaded again")
+	}
 	s := ft.waitFor("filter kept after reload", func(s fileBrowserState) bool { return s.footer == "2 of 4 entries" })
 	assert.Equal(t, "*.txt", s.filter)
 }
@@ -174,10 +177,8 @@ func TestFileBrowser_FilterDeleteWords(t *testing.T) {
 	ft.screen.InjectKey(tcell.KeyBackspace2, 0, tcell.ModCtrl)
 	ft.waitFor("word before the cursor deleted", func(s fileBrowserState) bool { return s.filter == "*." })
 
-	ft.screen.InjectKey(tcell.KeyHome, 0, tcell.ModNone)
-	for _, r := range "sub" {
-		ft.pressKey(tcell.KeyRune, r)
-	}
+	ft.pressKey(tcell.KeyHome, 0)
+	testutil.Type(ft.t, ft.app, ft.screen, "sub")
 	ft.waitFor("typed at the start", func(s fileBrowserState) bool { return s.filter == "sub*." })
 	ft.pressKey(tcell.KeyHome, 0)
 	ft.screen.InjectKey(tcell.KeyDelete, 0, tcell.ModCtrl)

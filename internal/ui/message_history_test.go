@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,41 +15,27 @@ import (
 
 // m shows the messages and marks them as seen; a later key press dismisses an error from the status bar
 func TestMessageHistoryKey(t *testing.T) {
-	app, mainPage, datasetPage := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	app, mainPage, _ := newUi(t, t.TempDir())
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	messages := mainPage.messages
-	// once the datasets are loaded: tests have no ZFS (see testSystem), so loading them fails with an error message,
-	// which would replace the one of this test and be counted as well
+	// Tests have no ZFS (see testSystem): loading the datasets and the pools fails with an error message each, which
+	// would replace the one of this test and be counted as well. It waits for both, how long they take depends on the
+	// load of the machine. It does not wait for a while without new messages: that took a second in every run.
+	failedLoads := []string{"Could not load datasets", "Could not load pools"}
 	assert.Eventually(t, func() bool {
-		loading := true
-		testutil.OnUiThread(t, app, func() { loading = datasetPage.datasetBrowser.IsLoading() })
-		return !loading
-	}, 10*time.Second, 20*time.Millisecond, "datasets loaded")
-	// Other loads that started with the UI can fail later than the datasets (the pools, the file browser, ...), how
-	// much later depends on the load of the machine. Their messages would replace the one of this test, so it waits
-	// until no new one came for a while.
-	newest := func() (count int, message *status_message.StatusMessage) {
-		testutil.OnUiThread(t, app, func() {
-			history := messages.History()
-			count = len(history)
-			if count > 0 {
-				message = history[0]
+		var history []*status_message.StatusMessage
+		testutil.OnUiThread(t, app, func() { history = messages.History() })
+		for _, failedLoad := range failedLoads {
+			if !slices.ContainsFunc(history, func(message *status_message.StatusMessage) bool {
+				return strings.HasPrefix(message.Message, failedLoad)
+			}) {
+				return false
 			}
-		})
-		return count, message
-	}
-	lastCount, lastMessage := newest()
-	lastChange := time.Now()
-	assert.Eventually(t, func() bool {
-		if count, message := newest(); count != lastCount || message != lastMessage {
-			lastCount, lastMessage, lastChange = count, message, time.Now()
 		}
-		return time.Since(lastChange) >= time.Second
-	}, 15*time.Second, 20*time.Millisecond, "no new messages")
+		return true
+	}, 15*time.Second, 20*time.Millisecond, "the loads failed")
 	testutil.OnUiThread(t, app, func() {
 		messages.MarkRead()
 		messages.Dismiss()
@@ -71,18 +58,21 @@ func TestMessageHistoryKey(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { name, _ = mainPage.pages.GetFrontPage() })
 		return name
 	}
-	screen.InjectKey(tcell.KeyRune, 'm', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'm')
 	assert.Eventually(t, func() bool { return frontPage() == string(dialog.MessageHistoryDialogPage) },
 		3*time.Second, 20*time.Millisecond)
 	assert.Eventually(t, func() bool { return !strings.Contains(screenText(t, app, screen), "⚠ 1") },
 		3*time.Second, 20*time.Millisecond, "the badge is gone once the messages were seen")
 
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 	assert.Eventually(t, func() bool { return frontPage() == string(Main) }, 3*time.Second, 20*time.Millisecond)
 
-	// the key presses came too early to dismiss the error, the next one after a while does
-	time.Sleep(status_message.MinKeyPressDisplayTime)
-	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
-	assert.Eventually(t, func() bool { return !strings.Contains(screenText(t, app, screen), "something failed") },
-		3*time.Second, 20*time.Millisecond)
+	// The key presses came too early to dismiss the error, the next one after a while does. The error is made older
+	// instead of waiting for that while.
+	testutil.OnUiThread(t, app, func() {
+		current := messages.History()[0]
+		current.Time = current.Time.Add(-status_message.MinKeyPressDisplayTime)
+	})
+	testutil.Press(t, app, screen, tcell.KeyDown, 0)
+	testutil.WaitForNoText(t, app, screen, "something failed", 3*time.Second)
 }

@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -11,7 +12,7 @@ import (
 
 // The confirmations of actions that lose data have a red border, other dialogs do not.
 func TestDangerBorder(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	borderOf := func(frame *tview.Flex) tcell.Color { return frame.GetBorderColor() }
 
 	assert.Equal(t, theme.Colors.Dialog.DangerBorder, borderOf(NewConfirmByNameDialog(app, "n", "t", "d", "pool/x", func() {}).frame))

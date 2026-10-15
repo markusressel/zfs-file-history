@@ -25,6 +25,21 @@ test:
     go clean --testcache
     go test -v ./...
 
+# Run all tests with the race detector, without the test cache
+test-race:
+    go test -race -count=1 ./...
+
+# Fail if a file is not formatted with gofmt
+fmt-check:
+    @files="$(gofmt -l .)"; if [ -n "$files" ]; then echo "Not formatted with gofmt:"; echo "$files"; exit 1; fi
+
+# Run go vet
+vet:
+    go vet ./...
+
+# What CI checks (except codespell), to run before a commit
+check: fmt-check vet test-race demo-test
+
 # Run all tests with coverage and show summary
 coverage:
     go test -coverprofile=coverage.out ./...

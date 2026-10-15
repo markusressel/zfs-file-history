@@ -42,33 +42,27 @@ func newActionTest(t *testing.T) *actionTest {
 			{Name: "pool/data", MountPath: "/data"},
 		}, nil
 	})
-	originalCreate, originalPreviewPromote, originalPromote := createSnapshot, previewPromote, promoteClone
-	originalPreviewDestroy, originalDestroy := previewDestroyClone, destroyClone
-	t.Cleanup(func() {
-		createSnapshot, previewPromote, promoteClone = originalCreate, originalPreviewPromote, originalPromote
-		previewDestroyClone, destroyClone = originalPreviewDestroy, originalDestroy
-	})
-	createSnapshot = func(dataset string, name string, recursive bool) error {
+	testutil.Replace(t, &createSnapshot, func(dataset string, name string, recursive bool) error {
 		at.record("snapshot %s recursive=%t", dataset, recursive)
 		return nil
-	}
-	previewPromote = func(name string) (*zfs.PromotePreview, error) {
+	})
+	testutil.Replace(t, &previewPromote, func(name string) (*zfs.PromotePreview, error) {
 		at.record("preview promote %s", name)
 		return &zfs.PromotePreview{Clone: name, Origin: "pool/data@daily", Moved: []string{"pool/data@daily"}}, nil
-	}
-	promoteClone = func(name string) error {
+	})
+	testutil.Replace(t, &promoteClone, func(name string) error {
 		at.record("promote %s", name)
 		return nil
-	}
-	previewDestroyClone = func(name string) (*zfs.DestroyPreview, error) {
+	})
+	testutil.Replace(t, &previewDestroyClone, func(name string) (*zfs.DestroyPreview, error) {
 		at.record("preview destroy %s", name)
 		return at.destroyPreview, nil
-	}
-	destroyClone = func(name string, recursive bool, confirmed *zfs.DestroyPreview) error {
+	})
+	testutil.Replace(t, &destroyClone, func(name string, recursive bool, confirmed *zfs.DestroyPreview) error {
 		at.record("destroy %s recursive=%t", name, recursive)
 		assert.Same(t, at.destroyPreview, confirmed, "destroys what was confirmed")
 		return nil
-	}
+	})
 
 	at.app, at.browser, at.screen = newBrowserApp(t)
 	testutil.OnUiThread(t, at.app, func() { at.browser.Refresh(false) })
@@ -99,13 +93,11 @@ func (at *actionTest) selectDataset(name string) {
 }
 
 func (at *actionTest) press(key tcell.Key, r rune) {
-	at.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(at.t, at.app, at.screen, key, r)
 }
 
 func (at *actionTest) typeText(text string) {
-	for _, r := range text {
-		at.press(tcell.KeyRune, r)
-	}
+	testutil.Type(at.t, at.app, at.screen, text)
 }
 
 // screenText returns the text on the screen, a line per row.
@@ -114,9 +106,7 @@ func (at *actionTest) screenText() string {
 }
 
 func (at *actionTest) hasDialog(name string) bool {
-	shown := false
-	testutil.OnUiThread(at.t, at.app, func() { shown = at.browser.layout.HasPage(name) })
-	return shown
+	return testutil.HasPage(at.t, at.app, at.browser.layout, name)
 }
 
 func (at *actionTest) waitForDialog(name string) {

@@ -131,19 +131,15 @@ func TestFindEntryToSelect(t *testing.T) {
 }
 
 func setListPools(t *testing.T, f func() ([]*zfs.PoolListEntry, error)) {
-	original := listPools
-	listPools = f
-	t.Cleanup(func() { listPools = original })
+	testutil.Replace(t, &listPools, f)
 }
 
 // newBrowserApp creates a browser as the root of a running application.
 // The root is set before the event loop starts, like in CreateUi, to avoid racing with the first draw.
 func newBrowserApp(t *testing.T) (*tview.Application, *PoolBrowserComponent) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	browser := NewPoolBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 	return app, browser
 }
 
@@ -326,7 +322,7 @@ func TestPoolBrowser_Focus(t *testing.T) {
 }
 
 func TestPoolBrowser_Shortcuts(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	browser := NewPoolBrowser(app)
 
 	var keys []string
@@ -392,14 +388,12 @@ func TestPoolBrowser_ColumnsKey(t *testing.T) {
 func setRunPoolAction(t *testing.T, err error) func() []string {
 	var mu sync.Mutex
 	var actions []string
-	original := runPoolAction
-	runPoolAction = func(action zfs.PoolAction, pool string) error {
+	testutil.Replace(t, &runPoolAction, func(action zfs.PoolAction, pool string) error {
 		mu.Lock()
 		defer mu.Unlock()
 		actions = append(actions, strings.Join(append(append([]string{}, action.Args...), pool), " "))
 		return err
-	}
-	t.Cleanup(func() { runPoolAction = original })
+	})
 	return func() []string {
 		mu.Lock()
 		defer mu.Unlock()
@@ -455,10 +449,8 @@ func TestPoolBrowser_Actions(t *testing.T) {
 		}
 	})
 	var reloads atomic.Int32
-	original := zfs.PoolsChanged
-	t.Cleanup(func() { zfs.PoolsChanged = original })
 	// an emitter of this test, so its listener does not outlive it
-	zfs.PoolsChanged = util.NewEmitter[struct{}]()
+	testutil.Replace(t, &zfs.PoolsChanged, util.NewEmitter[struct{}]())
 	zfs.PoolsChanged.Subscribe(func(struct{}) { reloads.Add(1) })
 
 	// e.g. from the command menu

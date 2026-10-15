@@ -25,22 +25,17 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 	var mu sync.Mutex
 	var calls []cloneCall
 	var app *tview.Application
-	original := cloneSnapshot
-	cloneSnapshot = func(snapshot *zfs.Snapshot, targetName string) error {
+	testutil.Replace(t, &cloneSnapshot, func(snapshot *zfs.Snapshot, targetName string) error {
 		call := cloneCall{snapshot: snapshot.FullName, target: targetName, onUiThread: testutil.IsOnUiThread(app)}
 		mu.Lock()
 		calls = append(calls, call)
 		mu.Unlock()
 		return cloneErr
-	}
-	t.Cleanup(func() { cloneSnapshot = original })
+	})
 
-	app = tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 
 	entry := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "daily-1", FullName: "pool/data@daily-1"}}
 	testutil.OnUiThread(t, app, func() {
@@ -48,12 +43,8 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 		browser.tableContainer.Select(entry)
 	})
 
-	hasDialog := func(name string) bool {
-		has := false
-		testutil.OnUiThread(t, app, func() { has = browser.container.Pages.HasPage(name) })
-		return has
-	}
-	press := func(key tcell.Key, r rune) { screen.InjectKey(key, r, tcell.ModNone) }
+	hasDialog := func(name string) bool { return testutil.HasPage(t, app, browser.container.Pages, name) }
+	press := func(key tcell.Key, r rune) { testutil.Press(t, app, screen, key, r) }
 
 	// Enter: snapshot menu, option 2: Clone
 	press(tcell.KeyEnter, 0)
@@ -64,9 +55,7 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 
 	// the suggested name is prefilled, replace it
 	press(tcell.KeyCtrlU, 0)
-	for _, r := range "pool/clone" {
-		press(tcell.KeyRune, r)
-	}
+	testutil.Type(t, app, screen, "pool/clone")
 	press(tcell.KeyEnter, 0)
 
 	require.Eventually(t, func() bool {

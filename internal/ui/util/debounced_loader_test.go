@@ -6,14 +6,11 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDebouncedLoader_StartCancel(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	var showSpinnerCalled bool
@@ -52,9 +49,7 @@ func TestDebouncedLoader_StartCancel(t *testing.T) {
 }
 
 func TestDebouncedLoader_ShowSpinner(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	var showSpinnerCalled bool
@@ -68,22 +63,18 @@ func TestDebouncedLoader_ShowSpinner(t *testing.T) {
 
 	_, seq := loader.Start()
 
-	// Wait for the timer to fire and the queued update to execute
-	time.Sleep(200 * time.Millisecond)
-
+	// the timer fires, then the update it queued runs
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return showSpinnerCalled
+	}, 3*time.Second, 5*time.Millisecond, "expected onShowSpinner to be called")
 	if !loader.ShowLoadingSpinner() {
 		t.Fatal("expected ShowLoadingSpinner to be true")
 	}
 
-	mu.Lock()
-	if !showSpinnerCalled {
-		t.Fatal("expected onShowSpinner to be called")
-	}
-	mu.Unlock()
-
+	// Stop removes the timer itself, there is nothing to wait for
 	loader.Stop(seq)
-
-	time.Sleep(50 * time.Millisecond)
 
 	loader.mutex.Lock()
 	if loader.timer != nil {
@@ -93,9 +84,7 @@ func TestDebouncedLoader_ShowSpinner(t *testing.T) {
 }
 
 func TestDebouncedLoader_SequenceMismatchAndEdgeCases(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	loader := NewDebouncedLoader(app, func() {})
@@ -124,9 +113,7 @@ func TestDebouncedLoader_SequenceMismatchAndEdgeCases(t *testing.T) {
 }
 
 func BenchmarkDebouncedLoader_StartCancel(b *testing.B) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(b, app)
 
 	loader := NewDebouncedLoader(app, func() {})

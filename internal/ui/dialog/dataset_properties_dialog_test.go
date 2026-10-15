@@ -49,11 +49,7 @@ type propertiesTest struct {
 
 func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 	pt := &propertiesTest{t: t, properties: newTestProperties()}
-	originalList, originalSet, originalInherit, originalGrant := listProperties, setProperty, inheritProperty, grantPermissions
-	t.Cleanup(func() {
-		listProperties, setProperty, inheritProperty, grantPermissions = originalList, originalSet, originalInherit, originalGrant
-	})
-	setProperty = func(dataset string, name string, value string) error {
+	testutil.Replace(t, &setProperty, func(dataset string, name string, value string) error {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.set = append(pt.set, fmt.Sprintf("%s %s=%s", dataset, name, value))
@@ -61,15 +57,15 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 			pt.apply(name, value, "local")
 		}
 		return pt.setErr
-	}
-	inheritProperty = func(dataset string, name string) error {
+	})
+	testutil.Replace(t, &inheritProperty, func(dataset string, name string) error {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.inherited = append(pt.inherited, dataset+" "+name)
 		pt.apply(name, "off", "default")
 		return nil
-	}
-	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
+	})
+	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.sudo = append(pt.sudo, commands...)
@@ -77,8 +73,8 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 			pt.apply("compression", "lz4", "local")
 		}
 		return pt.sudoErr
-	}
-	listProperties = func(dataset string) ([]*zfs.Property, error) {
+	})
+	testutil.Replace(t, &listProperties, func(dataset string) ([]*zfs.Property, error) {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.reloads++
@@ -88,14 +84,11 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 			copied = append(copied, &copy)
 		}
 		return copied, nil
-	}
+	})
 
-	pt.app = tview.NewApplication()
-	pt.screen = tcell.NewSimulationScreen("UTF-8")
-	pt.app.SetScreen(pt.screen)
+	pt.app, pt.screen = testutil.NewApp()
 	pt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	pt.app.SetRoot(pt.pages, true)
-	testutil.RunApp(t, pt.app)
+	testutil.StartApp(t, pt.app, pt.pages)
 
 	testutil.OnUiThread(t, pt.app, func() {
 		pt.dialog = NewDatasetPropertiesDialog(pt.app, "pool/data", newTestProperties(), isRoot, func() {
@@ -121,13 +114,11 @@ func (pt *propertiesTest) apply(name string, value string, source string) {
 }
 
 func (pt *propertiesTest) press(key tcell.Key, r rune) {
-	pt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(pt.t, pt.app, pt.screen, key, r)
 }
 
 func (pt *propertiesTest) hasPage(name string) bool {
-	shown := false
-	testutil.OnUiThread(pt.t, pt.app, func() { shown = pt.pages.HasPage(name) })
-	return shown
+	return testutil.HasPage(pt.t, pt.app, pt.pages, name)
 }
 
 func (pt *propertiesTest) waitFor(message string, condition func() bool) {
@@ -164,7 +155,7 @@ func (pt *propertiesTest) details() string {
 }
 
 func TestDatasetPropertiesDialog_Content(t *testing.T) {
-	d := NewDatasetPropertiesDialog(tview.NewApplication(), "pool/data", newTestProperties(), false, nil)
+	d := NewDatasetPropertiesDialog(testutil.App(), "pool/data", newTestProperties(), false, nil)
 
 	var names []string
 	for _, property := range d.table.GetEntries() {
@@ -188,7 +179,7 @@ func TestDatasetPropertiesDialog_Content(t *testing.T) {
 }
 
 func TestDatasetPropertiesDialog_Details(t *testing.T) {
-	d := NewDatasetPropertiesDialog(tview.NewApplication(), "pool/data", newTestProperties(), false, nil)
+	d := NewDatasetPropertiesDialog(testutil.App(), "pool/data", newTestProperties(), false, nil)
 	selectByName := func(name string) {
 		for _, property := range d.table.GetEntries() {
 			if property.Name == name {
@@ -207,7 +198,7 @@ func TestDatasetPropertiesDialog_Details(t *testing.T) {
 }
 
 func TestDatasetPropertiesDialog_ShortcutsFit(t *testing.T) {
-	shortcuts := shortcut_helper.NewShortcutMap(tview.NewApplication())
+	shortcuts := shortcut_helper.NewShortcutMap(testutil.App())
 	shortcuts.SetEntries(datasetPropertiesShortcuts())
 	assert.LessOrEqual(t, shortcuts.CalculateHeightForWidth(76+6-2), datasetPropertiesShortcutLines)
 }
@@ -219,9 +210,7 @@ func TestDatasetPropertiesDialog_Edit(t *testing.T) {
 	pt.press(tcell.KeyEnter, 0)
 	pt.waitFor("edit dialog", func() bool { return pt.hasPage("EditPropertyDialog") })
 	pt.press(tcell.KeyCtrlU, 0)
-	for _, r := range "noauto" {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, "noauto")
 	pt.press(tcell.KeyEnter, 0)
 
 	pt.waitFor("set and reloaded", func() bool { return pt.value("canmount") == "noauto (local)" })
@@ -253,7 +242,7 @@ func TestDatasetPropertiesDialog_ReadOnlyCannotBeEdited(t *testing.T) {
 
 	pt.press(tcell.KeyEnter, 0)
 	pt.press(tcell.KeyRune, 'i')
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForUpdates(t, pt.app)
 	assert.False(t, pt.hasPage("EditPropertyDialog"))
 	assert.False(t, pt.hasPage("InheritPropertyDialog"))
 }
@@ -266,9 +255,7 @@ func TestDatasetPropertiesDialog_EditWithSudo(t *testing.T) {
 	pt.press(tcell.KeyEnter, 0)
 	pt.waitFor("edit dialog", func() bool { return pt.hasPage("EditPropertyDialog") })
 	pt.press(tcell.KeyCtrlU, 0)
-	for _, r := range "lz4" {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, "lz4")
 	pt.press(tcell.KeyEnter, 0)
 
 	pt.waitFor("set with sudo", func() bool { return pt.value("compression") == "lz4 (local)" })
@@ -285,9 +272,7 @@ func TestDatasetPropertiesDialog_EditFails(t *testing.T) {
 	pt.press(tcell.KeyEnter, 0)
 	pt.waitFor("edit dialog", func() bool { return pt.hasPage("EditPropertyDialog") })
 	pt.press(tcell.KeyCtrlU, 0)
-	for _, r := range "fast" {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, "fast")
 	pt.press(tcell.KeyEnter, 0)
 
 	pt.waitFor("error", func() bool { return pt.hasPage("ErrorDialog") })
@@ -305,7 +290,7 @@ func TestDatasetPropertiesDialog_Inherit(t *testing.T) {
 	// only local values can be reset
 	pt.selectProperty("compression")
 	pt.press(tcell.KeyRune, 'i')
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForUpdates(t, pt.app)
 	assert.False(t, pt.hasPage("InheritPropertyDialog"))
 
 	pt.selectProperty("canmount")
@@ -332,7 +317,7 @@ func TestDatasetPropertiesDialog_EscClosesUnlessFiltering(t *testing.T) {
 		return count == 2 // canmount, compression
 	})
 	pt.press(tcell.KeyEscape, 0)
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForUpdates(t, pt.app)
 	assert.True(t, pt.hasPage("DatasetPropertiesDialog"), "Esc ends typing the filter first")
 
 	pt.press(tcell.KeyEscape, 0)
@@ -340,26 +325,11 @@ func TestDatasetPropertiesDialog_EscClosesUnlessFiltering(t *testing.T) {
 }
 
 func (pt *propertiesTest) typeText(text string) {
-	for _, r := range text {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, text)
 }
 
 func (pt *propertiesTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(pt.t, pt.app, func() {
-		pt.app.ForceDraw()
-		cells, width, height := pt.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(pt.t, pt.app, pt.screen)
 }
 
 func (pt *propertiesTest) selectedName() string {

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
@@ -14,9 +15,7 @@ import (
 
 // setNow sets the time formatTimeLeft takes as now, until the end of the test.
 func setNow(t *testing.T, current time.Time) {
-	original := now
-	t.Cleanup(func() { now = original })
-	now = func() time.Time { return current }
+	testutil.Replace(t, &now, func() time.Time { return current })
 }
 
 func TestTimeLeftMode_Next(t *testing.T) {

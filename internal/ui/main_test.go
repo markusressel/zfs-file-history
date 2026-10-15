@@ -9,6 +9,9 @@ import (
 	"time"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/zfs"
+	"zfs-file-history/internal/zfs/zfstest"
+
+	"github.com/rivo/tview"
 )
 
 // noDisks is a disk.TemperatureSampler and disk.SmartSource for devices that are not stored on disks.
@@ -101,4 +104,16 @@ func TestMain(m *testing.M) {
 	newTemperatureSampler = func() disk.TemperatureSampler { return noDisks{} }
 	newSmartSource = func() disk.SmartSource { return noDisks{} }
 	os.Exit(m.Run())
+}
+
+// newUi creates the UI like createUi does, with new zfs emitters (see zfstest.UseNewEmitters).
+func newUi(t *testing.T, path string) (*tview.Application, *MainPage, *DatasetPage) {
+	zfstest.UseNewEmitters(t)
+	return createUi(path, true)
+}
+
+// newUiFor creates the UI like createUiFor does, with new zfs emitters (see zfstest.UseNewEmitters).
+func newUiFor(t *testing.T, start Start) (*tview.Application, *MainPage, *DatasetPage) {
+	zfstest.UseNewEmitters(t)
+	return createUiFor(start, true)
 }

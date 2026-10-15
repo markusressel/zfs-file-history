@@ -3,6 +3,7 @@ package util
 import (
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -13,12 +14,10 @@ import (
 
 // newTestSplit draws a split of 100 columns with two bordered panes (1:1).
 func newTestSplit(t *testing.T) (*ResizableSplit, tcell.SimulationScreen, *tview.Box, *tview.Box) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(100, 10)
+	screen := testutil.NewScreen(t, 100, 10)
 	left := tview.NewBox().SetBorder(true)
 	right := tview.NewBox().SetBorder(true)
-	split := NewResizableSplit(tview.NewApplication(), left, right, 1, 1)
+	split := NewResizableSplit(testutil.App(), left, right, 1, 1)
 	split.SetRect(0, 0, 100, 10)
 	split.Draw(screen)
 	return split, screen, left, right
@@ -93,12 +92,10 @@ func TestResizableSplit_Disabled(t *testing.T) {
 
 // One pane above the other: the boundary is a row, dragged up and down.
 func TestResizableSplit_Vertical(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 30)
+	screen := testutil.NewScreen(t, 40, 30)
 	top := tview.NewBox().SetBorder(true)
 	bottom := tview.NewBox().SetBorder(true)
-	split := NewVerticalResizableSplit(tview.NewApplication(), top, bottom, 1, 2)
+	split := NewVerticalResizableSplit(testutil.App(), top, bottom, 1, 2)
 	split.SetRect(0, 0, 40, 30)
 	split.Draw(screen)
 	height := func(box *tview.Box) int {

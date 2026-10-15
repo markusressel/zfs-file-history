@@ -6,7 +6,6 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,10 +13,8 @@ import (
 
 // newTestCenter returns a center of a running application, and a function that runs code on its UI thread.
 func newTestCenter(t *testing.T) (*Center, func(func())) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-	app.SetRoot(tview.NewBox(), true)
-	testutil.RunApp(t, app)
+	app, _ := testutil.NewApp()
+	testutil.StartApp(t, app, tview.NewBox())
 	onUiThread := func(f func()) {
 		done := make(chan struct{})
 		app.QueueUpdate(func() {

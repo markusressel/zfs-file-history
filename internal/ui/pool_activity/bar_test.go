@@ -2,7 +2,6 @@ package pool_activity
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -171,30 +170,28 @@ func TestTextColor(t *testing.T) {
 	}
 }
 
-// drawnBar draws a bar of width 10 at column 2 of a screen 20 columns wide, and returns its cells.
-func drawnBar(t *testing.T, percent float64, text string) []tcell.SimCell {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(20, 1)
+// barCell is a cell of the screen drawnBar drew on.
+type barCell struct {
+	text  string
+	Style tcell.Style
+}
+
+// drawnBar draws a bar of width 10 at column 2 of a screen 20 columns wide, and returns its text and its cells.
+func drawnBar(t *testing.T, percent float64, text string) (string, []barCell) {
+	screen := testutil.NewScreen(t, 20, 1)
 	drawProgressBar(screen, 2, 0, 10, percent, text)
-	screen.Show()
-	cells, _, _ := screen.GetContents()
-	return cells
+	cells := make([]barCell, 20)
+	for x := range cells {
+		cells[x].text, cells[x].Style, _ = screen.Get(x, 0)
+	}
+	return testutil.ScreenLines(screen)[0], cells
 }
 
 func TestDrawProgressBar(t *testing.T) {
-	cells := drawnBar(t, 50, " 50.0%  fast")
+	text, cells := drawnBar(t, 50, " 50.0%  fast")
 
-	var text strings.Builder
-	for _, cell := range cells {
-		if len(cell.Runes) > 0 {
-			text.WriteRune(cell.Runes[0])
-		} else {
-			text.WriteRune(' ')
-		}
-	}
 	// cut off at the end of the bar
-	assert.Equal(t, "   50.0%  fa        ", text.String())
+	assert.Equal(t, "   50.0%  fa        ", text)
 
 	colors := theme.Colors.Activity
 	for x := 2; x < 12; x++ {
@@ -217,53 +214,39 @@ func TestDrawProgressBar(t *testing.T) {
 func TestDrawProgressBar_PartialCell(t *testing.T) {
 	colors := theme.Colors.Activity
 	// 33% of 80 eighths: 26, so 3 cells and 2 eighths of the fourth
-	cells := drawnBar(t, 33, "")
+	_, cells := drawnBar(t, 33, "")
 
-	assert.Equal(t, []rune("▎"), cells[5].Runes)
+	assert.Equal(t, "▎", cells[5].text)
 	foreground, background, _ := cells[5].Style.Decompose()
 	assert.Equal(t, uiutil.GradientColor(colors.BarFilled, 3.0/9, 0), foreground)
 	assert.Equal(t, colors.BarTrack, background)
-	assert.Equal(t, []rune(" "), cells[6].Runes)
+	assert.Equal(t, " ", cells[6].text)
 
 	// text on the partly filled cell (28 eighths: 4 of the fourth): the background of the larger part, from half on the
 	// filled one
-	cells = drawnBar(t, 35, "1234567890")
-	assert.Equal(t, []rune("4"), cells[5].Runes)
+	_, cells = drawnBar(t, 35, "1234567890")
+	assert.Equal(t, "4", cells[5].text)
 	foreground, background, _ = cells[5].Style.Decompose()
 	assert.Equal(t, uiutil.GradientColor(colors.BarFilled, 3.0/9, 0), background)
 	assert.Equal(t, colors.BarDarkText, foreground)
 }
 
 func TestDrawProgressBar_Centered(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(12, 1)
+	screen := testutil.NewScreen(t, 12, 1)
 
 	drawProgressBar(screen, 0, 0, 12, 0, "50.0%")
-	screen.Show()
 
-	cells, width, _ := screen.GetContents()
-	var text strings.Builder
-	for x := 0; x < width; x++ {
-		if runes := cells[x].Runes; len(runes) > 0 {
-			text.WriteRune(runes[0])
-		}
-	}
-	assert.Equal(t, "   50.0%    ", text.String())
+	assert.Equal(t, "   50.0%    ", testutil.ScreenLines(screen)[0])
 }
 
 func TestDrawProgressBar_NoWidth(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(5, 1)
+	screen := testutil.NewScreen(t, 5, 1)
 
 	// e.g. the labels take the whole width
 	drawProgressBar(screen, 0, 0, 0, 50, " 50.0%")
 	drawProgressBar(screen, 0, 0, -3, 50, " 50.0%")
-	screen.Show()
-
-	cells, _, _ := screen.GetContents()
-	_, background, _ := cells[0].Style.Decompose()
+	_, style, _ := screen.Get(0, 0)
+	_, background, _ := style.Decompose()
 	assert.Equal(t, tcell.ColorDefault, background)
 }
 
@@ -324,23 +307,13 @@ func idle(name string) *zfs.PoolStatus {
 // the bar are recorded, and applied to the layout.
 func setupTest(t *testing.T, statuses []*zfs.PoolStatus) (*tview.Application, *Monitor, *Bar, *fakeStatuses, func() []int) {
 	fake := &fakeStatuses{statuses: statuses}
-	originalLoad, originalActive, originalIdle, originalDataErrors := loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors
-	loadPoolStatuses = fake.load
-	loadDataErrors = noDataErrors
-	activeRefreshInterval = 50 * time.Millisecond
-	idleRefreshInterval = time.Hour
-	originalDataErrorsInterval := dataErrorsRefreshInterval
-	dataErrorsRefreshInterval = 0
-	t.Cleanup(func() {
-		dataErrorsRefreshInterval = originalDataErrorsInterval
-		loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors = originalLoad, originalActive, originalIdle, originalDataErrors
-	})
+	testutil.Replace(t, &loadPoolStatuses, fake.load)
+	testutil.Replace(t, &loadDataErrors, noDataErrors)
+	testutil.Replace(t, &activeRefreshInterval, 50*time.Millisecond)
+	testutil.Replace(t, &idleRefreshInterval, time.Hour)
+	testutil.Replace(t, &dataErrorsRefreshInterval, 0)
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	app.EnableMouse(true)
-	screen.SetSize(80, 10)
+	app, _ := testutil.NewApp(testutil.WithSize(80, 10))
 
 	var mu sync.Mutex
 	var heights []int
@@ -532,14 +505,11 @@ func TestBar_HoverHighlightsPart(t *testing.T) {
 
 	// backgrounds of the label (column 2), the bar (column 30) and the time left field (column 77) of the line at 2
 	backgrounds := func() (label tcell.Color, progress tcell.Color, timeLeft tcell.Color) {
-		screen := tcell.NewSimulationScreen("UTF-8")
-		require.NoError(t, screen.Init())
-		screen.SetSize(80, 10)
+		screen := testutil.NewScreen(t, 80, 10)
 		testutil.OnUiThread(t, app, func() { bar.Draw(screen) })
-		screen.Show()
-		cells, width, _ := screen.GetContents()
 		background := func(x int) tcell.Color {
-			_, color, _ := cells[2*width+x].Style.Decompose()
+			_, style, _ := screen.Get(x, 2)
+			_, color, _ := style.Decompose()
 			return color
 		}
 		return background(2), background(30), background(77)

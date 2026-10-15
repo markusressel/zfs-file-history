@@ -5,6 +5,7 @@ import (
 	"testing"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -13,7 +14,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCreateSnapshotBrowserTableCells_ClonesColumn(t *testing.T) {
@@ -154,9 +154,7 @@ func TestHeldSnapshotName(t *testing.T) {
 	tableView.SetCell(0, 1, tview.NewTableCell("A"))
 	tableView.SetCell(1, 0, tview.NewTableCell(formatName(free)))
 	tableView.SetCell(1, 1, tview.NewTableCell("B"))
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 2)
+	screen := testutil.NewScreen(t, 40, 2)
 	tableView.SetRect(0, 0, 40, 2)
 	tableView.Draw(screen)
 	column := func(y int, r rune) int {
