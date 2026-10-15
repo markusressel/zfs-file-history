@@ -110,6 +110,22 @@ func (c *RowSelectionTable[T]) CanResetColumnLayout() bool {
 	return c.savedLayout != nil
 }
 
+// SaveColumnLayout saves the layout under key in store, for tables that are not a RowSelectionTable (e.g. one with
+// virtual content, see tview.TableContent). Does nothing if store is nil.
+func SaveColumnLayout(store *state.Store, key string, layout ColumnLayout) {
+	store.SetTableLayout(key, toSavedLayout(layout))
+}
+
+// LoadColumnLayout returns the layout saved under key in store with SaveColumnLayout, false if there is none or
+// none of its columns is left. allColumns are all columns of the table, used to resolve the saved column keys.
+func LoadColumnLayout(store *state.Store, key string, allColumns []*Column) (ColumnLayout, bool) {
+	saved, ok := store.TableLayout(key)
+	if !ok {
+		return ColumnLayout{}, false
+	}
+	return fromSavedLayout(saved, allColumns)
+}
+
 func toSavedLayout(layout ColumnLayout) state.TableLayout {
 	saved := state.TableLayout{SortInverted: layout.SortInverted}
 	for _, column := range layout.Columns {

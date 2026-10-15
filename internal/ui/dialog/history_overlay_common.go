@@ -78,6 +78,7 @@ const (
 	stateKeyFolderHistoryTimeline = "folderHistory.timeline"
 	stateKeyFolderHistoryChanges  = "folderHistory.changes"
 	stateKeyPropertiesTable       = "properties"
+	stateKeyPoolHistoryTable      = "poolHistory"
 
 	// toggleFileHistoryComparePrevious: compare versions to the previous version instead of the working copy
 	toggleFileHistoryComparePrevious = "fileHistory.comparePrevious"
