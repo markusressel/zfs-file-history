@@ -57,10 +57,15 @@ of the code.
   read: it runs with `sudo -n` (rule `--history`) unless the application runs as root. It can be hundreds of thousands
   of records (tens of MB), so it is parsed without regular expressions and only read on demand. Records of ioctls are
   skipped: they repeat the command logged next to them, and dump their arguments as they are (binary data, e.g. the
-  key of `zfs load-key`). `dialog.PoolHistoryDialog` lists it newest first in a virtual table (`tview.TableContent`),
-  with a filter and the events ZFS logged itself (`i`): `h` on the pools page (the pool) and the datasets page (the
-  dataset with its children and snapshots), only offered while the rule is allowed (`SetOnShowHistory`, updated on
-  `zfs.SudoersChanged`).
+  key of `zfs load-key`). `pool_history_groups.go` groups the records (`GroupPoolHistory`, each record in exactly one
+  group): scrubs, resilvers and TRIMs from their start to their end (by the events ZFS logs for them; the commands that
+  cancel them are logged after the end), a command with the events ZFS logged for it (logged before it, while it ran,
+  and between the records of other commands: matched by dataset, not by position), and the commands one user ran less
+  than a minute apart (e.g. a backup tool). Groups may overlap in time. `dialog.PoolHistoryDialog` lists the groups
+  newest first in a virtual table (`tview.TableContent`), expanded like the dataset tree (Enter, `+`, `-`, `*`), or
+  with `b` each record in the order they were logged, with the events ZFS logged itself (`i`); a filter in both:
+  `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
+  while the rule is allowed (`SetOnShowHistory`, updated on `zfs.SudoersChanged`).
 - `internal/zfs/pool_action.go`: the actions on pools (`zfs.PoolActions`: scrub start/pause/cancel, TRIM
   start/cancel, clear). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
   denied, and returns a `PoolActionNeedsRootError` if that is not allowed either: `dialog.NewErrorDialogWithRetry`

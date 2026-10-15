@@ -31,7 +31,8 @@
 * [x] Disk temperatures and SMART health of the disks of all pools, without waking sleeping disks
 * [x] Damaged files (data errors) marked in the file and snapshot browsers, including the snapshots holding them
 * [x] Start, pause and cancel scrubs and TRIMs, clear pool errors
-* [x] History of pools and datasets (`zpool history`): what was done, when and by whom, including destroyed snapshots
+* [x] History of pools and datasets (`zpool history`): what was done, when and by whom, including destroyed snapshots,
+  grouped into scrubs, resilvers, TRIMs and runs of commands
 * [x] Live updates using zpool events
 * [x] Filter, sort and configure the columns of all lists
 * [x] Copy any text with the mouse (drag, or double-click a word), also over SSH (needs a terminal with OSC 52)
