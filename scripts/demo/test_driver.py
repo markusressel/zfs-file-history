@@ -52,7 +52,10 @@ FAKE_APP = """\
         with open(os.environ["KEYS"], "a") as keys:
             keys.write(repr(key) + "\\n")
         press = re.search(r"\\x1b\\[<0;(\\d+);(\\d+)M", key)
-        if press:
+        # keys typed right after each other (without a screen to wait for in between) are read at once, e.g. " \\x11"
+        if "\\x11" in key:
+            break
+        elif press:
             show(f"MAIN CLICKED {press[1]};{press[2]}")
         elif search is not None and key == "\\r":
             search = None
@@ -66,8 +69,6 @@ FAKE_APP = """\
             show("MAIN DIALOG")
         elif key == "\\x1b":
             show("MAIN")
-        elif key == "\\x11":
-            break
 """
 
 
