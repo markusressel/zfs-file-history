@@ -585,7 +585,8 @@ func TestMonitor_OnStatusesLoaded(t *testing.T) {
 	// every load, also if the activities did not change
 	fake.set([]*zfs.PoolStatus{idle("tank"), scrubbing("backup", 10)}, nil)
 	testutil.OnUiThread(t, app, monitor.Refresh)
-	require.Eventually(t, func() bool { return len(get()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	// at least: the next load comes 50 ms later, on a busy machine before the condition is checked again
+	require.Eventually(t, func() bool { return len(get()) >= 1 }, 2*time.Second, 10*time.Millisecond)
 	require.Eventually(t, func() bool { return len(get()) >= 2 }, 2*time.Second, 10*time.Millisecond, "reloaded while the scrub runs")
 	assert.Equal(t, []string{"tank", "backup"}, get()[0])
 
@@ -593,6 +594,8 @@ func TestMonitor_OnStatusesLoaded(t *testing.T) {
 	fake.set(nil, errors.New("zpool failed"))
 	loads := fake.getLoads()
 	require.Eventually(t, func() bool { return fake.getLoads() > loads }, 2*time.Second, 10*time.Millisecond)
+	// the result of a load from before the error may still be on its way to the UI thread
+	testutil.OnUiThread(t, app, func() {})
 	count := len(get())
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, count, len(get()))
