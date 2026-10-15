@@ -7,6 +7,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -281,4 +282,17 @@ func TestSelectionDialog_SetOptionName(t *testing.T) {
 	assert.Equal(t, "Copied", d.optionTable.GetCell(0, 1).Text)
 	assert.Equal(t, "Copied", options[0].Name)
 	assert.Equal(t, "Other", d.optionTable.GetCell(1, 1).Text)
+}
+
+// A selected destructive action is red text on the selection of all tables, not a red bar (tview swapped the colors
+// of cells without a selected style), which glared on the dark background.
+func TestOptionTable_SelectedOptionKeepsSeverityColor(t *testing.T) {
+	options := []*DialogOption{
+		{Id: DialogActionId(1), Name: "Destroy", Severity: DialogSeverityDanger},
+		{Id: DialogCloseActionId, Name: "Close"},
+	}
+
+	optionTable := createOptionTable(tview.NewApplication(), options, func(*DialogOption) {})
+
+	assert.Equal(t, theme.SelectedStyle(theme.Colors.Dialog.Danger), optionTable.GetCell(0, 1).SelectedStyle)
 }

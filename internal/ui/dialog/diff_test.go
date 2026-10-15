@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -38,15 +40,15 @@ func TestFormatDiffText(t *testing.T) {
 
 	// Test without filtering headers
 	outNoFilter := FormatDiffText(diffInput, false)
-	assert.Contains(t, outNoFilter, "[red]-Hello[white]")
-	assert.Contains(t, outNoFilter, "[green]+World[white]")
+	assert.Contains(t, outNoFilter, txwidgets.ColorTag(theme.Colors.Info.Error)+"-Hello[white]")
+	assert.Contains(t, outNoFilter, txwidgets.ColorTag(theme.Colors.Info.Ok)+"+World[white]")
 	assert.Contains(t, outNoFilter, "--- old.txt")
 	assert.Contains(t, outNoFilter, "+++ new.txt")
 
 	// Test with filtering headers
 	outWithFilter := FormatDiffText(diffInput, true)
-	assert.Contains(t, outWithFilter, "[red]-Hello[white]")
-	assert.Contains(t, outWithFilter, "[green]+World[white]")
+	assert.Contains(t, outWithFilter, txwidgets.ColorTag(theme.Colors.Info.Error)+"-Hello[white]")
+	assert.Contains(t, outWithFilter, txwidgets.ColorTag(theme.Colors.Info.Ok)+"+World[white]")
 	assert.NotContains(t, outWithFilter, "--- old.txt")
 	assert.NotContains(t, outWithFilter, "+++ new.txt")
 }

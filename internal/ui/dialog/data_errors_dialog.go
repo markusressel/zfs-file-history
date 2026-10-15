@@ -78,7 +78,7 @@ func (d *DataErrorsDialog) createLayout(index *zfs.DataErrorIndex) {
 	d.helpView.SetTextColor(theme.Colors.Alert.Hint)
 
 	d.table = tview.NewTable().SetSelectable(true, false).SetFixed(1, 0)
-	d.table.SetSelectedStyle(tcell.StyleDefault.Foreground(theme.Colors.Layout.Table.SelectedForeground).Background(theme.Colors.Layout.Table.SelectedBackground))
+	util.SetSelectionStyle(d.table)
 	d.table.SetSelectedFunc(func(row int, column int) {
 		d.showRow(row)
 	})
@@ -146,10 +146,10 @@ func (d *DataErrorsDialog) SetIndex(index *zfs.DataErrorIndex) {
 	dataErrors := sortedDataErrors(index)
 	for i, dataError := range dataErrors {
 		where, whereColor := formatDataErrorLocation(dataError)
-		d.table.SetCell(i+1, 0, tview.NewTableCell(tview.Escape(dataError.Pool)).SetTextColor(theme.Colors.Alert.Pool))
-		d.table.SetCell(i+1, 1, tview.NewTableCell(tview.Escape(where)).SetTextColor(whereColor))
-		d.table.SetCell(i+1, 2, tview.NewTableCell(tview.Escape(formatDataErrorFile(dataError))).SetTextColor(theme.Colors.Alert.Message).
-			SetExpansion(1).SetReference(dataError))
+		d.table.SetCell(i+1, 0, util.KeepColorWhenSelected(tview.NewTableCell(tview.Escape(dataError.Pool)).SetTextColor(theme.Colors.Alert.Pool)))
+		d.table.SetCell(i+1, 1, util.KeepColorWhenSelected(tview.NewTableCell(tview.Escape(where)).SetTextColor(whereColor)))
+		d.table.SetCell(i+1, 2, util.KeepColorWhenSelected(tview.NewTableCell(tview.Escape(formatDataErrorFile(dataError))).SetTextColor(theme.Colors.Alert.Message).
+			SetExpansion(1).SetReference(dataError)))
 	}
 	if len(dataErrors) > 0 {
 		d.table.Select(min(max(selected, 1), len(dataErrors)), 0)

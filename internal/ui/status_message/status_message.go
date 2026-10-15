@@ -2,6 +2,7 @@ package status_message
 
 import (
 	"time"
+	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -55,11 +56,11 @@ func (statusMessage *StatusMessage) Color() tcell.Color {
 func (level Level) Color() tcell.Color {
 	switch level {
 	case LevelSuccess:
-		return tcell.ColorGreen
+		return theme.Colors.Info.Ok
 	case LevelWarning:
-		return tcell.ColorYellow
+		return theme.Colors.Info.Warning
 	case LevelError:
-		return tcell.ColorRed
+		return theme.Colors.Info.Error
 	default:
 		return tcell.ColorLightGray
 	}

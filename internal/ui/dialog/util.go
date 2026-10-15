@@ -249,7 +249,7 @@ func createResizingModalWithFrame(title string, content tview.Primitive, sizeCon
 }
 
 func createOptionTable(application *tview.Application, options []*DialogOption, onSelect func(option *DialogOption)) *tview.Table {
-	optionTable := tview.NewTable()
+	optionTable := uiutil.SetSelectionStyle(tview.NewTable())
 	optionTable.SetSelectable(true, false)
 	uiutil.IgnoreClicksBelowRows(optionTable)
 	optionTable.Select(0, 0)
@@ -264,9 +264,9 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 		case DialogSeverityNeutral, DialogSeveritySafe:
 			textColor = tcell.ColorWhite
 		case DialogSeverityWarning:
-			textColor = tcell.ColorYellow
+			textColor = theme.Colors.Info.Warning
 		case DialogSeverityDanger:
-			textColor = tcell.ColorRed
+			textColor = theme.Colors.Dialog.Danger
 		}
 
 		if option.Id == DialogCloseActionId && hasMultipleOptions {
@@ -290,10 +290,11 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 			Foreground(tcell.ColorGray).
 			Background(tview.Styles.PrimitiveBackgroundColor))
 
-		nameCell := tview.NewTableCell(option.Name).
+		// selected in the color of its severity: a destructive action stays red
+		nameCell := uiutil.KeepColorWhenSelected(tview.NewTableCell(option.Name).
 			SetTextColor(textColor).
 			SetAlign(tview.AlignLeft).
-			SetExpansion(1)
+			SetExpansion(1))
 		nameCell.SetReference(option)
 
 		optionTable.SetCell(tableRow, 0, prefixCell)

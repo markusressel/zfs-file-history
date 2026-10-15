@@ -313,41 +313,10 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 			SetTextColor(color).
 			SetAlign(align)
 
-		statusColor := o.determineStatusColor(entry)
-		cell.SetSelectedStyle(
-			tcell.StyleDefault.
-				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(statusColor),
-		)
+		cell.SetSelectedStyle(theme.SelectedStyle(color))
 		result = append(result, cell)
 	}
 	return result
-}
-
-func (o *FileHistoryOverlay) determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
-	if o.currentDiffMode == diffModeWorkingCopy {
-		switch entry.WorkingCopyDiffState {
-		case diff_state.Deleted:
-			return theme.Colors.FileBrowser.Table.State.Added
-		case diff_state.Added:
-			return theme.Colors.FileBrowser.Table.State.Deleted
-		case diff_state.Modified:
-			return theme.Colors.FileBrowser.Table.State.Modified
-		default:
-			return theme.Colors.FileBrowser.Table.State.Equal
-		}
-	} else {
-		switch entry.DiffState {
-		case diff_state.Added:
-			return theme.Colors.FileBrowser.Table.State.Added
-		case diff_state.Deleted:
-			return theme.Colors.FileBrowser.Table.State.Deleted
-		case diff_state.Modified:
-			return theme.Colors.FileBrowser.Table.State.Modified
-		default:
-			return theme.Colors.FileBrowser.Table.State.Equal
-		}
-	}
 }
 
 func (o *FileHistoryOverlay) createLayout() *tview.Flex {
@@ -654,13 +623,13 @@ func formatCompareField(oldVal, newVal string, changed bool, isPresence bool) st
 	if isPresence {
 		formatEx := func(val string) string {
 			if val == "Exists" {
-				return "[green]Exists[white]"
+				return txwidgets.ColorTag(theme.Colors.Info.Ok) + "Exists[white]"
 			}
-			return "[red]Missing[white]"
+			return txwidgets.ColorTag(theme.Colors.Info.Error) + "Missing[white]"
 		}
 		return fmt.Sprintf("%s  ->  %s", oldVal, formatEx(newVal))
 	}
-	return fmt.Sprintf("%s  ->  [yellow]%s[white]", oldVal, newVal)
+	return fmt.Sprintf("%s  ->  %s%s[white]", oldVal, txwidgets.ColorTag(theme.Colors.Info.Warning), newVal)
 }
 
 func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) string {

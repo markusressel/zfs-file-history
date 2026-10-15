@@ -147,7 +147,7 @@ func TestSortColumnHeaderHasSelectedStyle(t *testing.T) {
 		}
 		// data rows are not affected
 		for column := range cols {
-			assert.Equal(t, tcell.StyleDefault, table.table.GetCell(1, column).SelectedStyle)
+			assert.NotEqual(t, sortColumnStyle, table.table.GetCell(1, column).SelectedStyle)
 		}
 	}
 
@@ -1108,4 +1108,22 @@ func TestTable_FindByRowId(t *testing.T) {
 	assert.Nil(t, table.FindByRowId("yearly-1"))
 	table.SetFilterText("daily")
 	assert.Nil(t, table.FindByRowId("weekly-1"), "only the displayed ones")
+}
+
+// Regression: the cells of the selected row keep their own text color (on the background of the selection), so
+// colors that mean something (e.g. the health of a pool) stay visible while a row is selected. The color was read
+// from TableCell.Color, but tview.NewTableCell keeps it in the style of the cell, so selected rows were all white.
+func TestSelectedRowKeepsTextColors(t *testing.T) {
+	cols := []*Column{{Id: 0, Title: "Col0"}}
+	table := NewTableContainer[mockEntry](
+		tview.NewApplication(),
+		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
+			return []*tview.TableCell{tview.NewTableCell("ONLINE").SetTextColor(tcell.ColorGreen)}
+		},
+		func(entries []*mockEntry, column *Column, inverted bool) []*mockEntry { return entries },
+	)
+	table.SetColumnSpec(cols, cols[0], false)
+	table.SetData([]*mockEntry{{id: "1"}})
+
+	assert.Equal(t, theme.SelectedStyle(tcell.ColorGreen), table.table.GetCell(1, 0).SelectedStyle)
 }

@@ -89,12 +89,12 @@ func (d *ColumnSelectionDialog) SetResetFunc(f func() []*table.Column) *ColumnSe
 }
 
 func (d *ColumnSelectionDialog) createLayout() {
-	d.activeTable = tview.NewTable().SetSelectable(true, false)
+	d.activeTable = util.SetSelectionStyle(tview.NewTable()).SetSelectable(true, false)
 	d.activeTable.SetBorder(true)
 	d.activeTable.SetTitle(" Active ")
 	d.activeTable.SetTitleAlign(tview.AlignLeft)
 
-	d.availableTable = tview.NewTable().SetSelectable(true, false)
+	d.availableTable = util.SetSelectionStyle(tview.NewTable()).SetSelectable(true, false)
 	d.availableTable.SetBorder(true)
 	d.availableTable.SetTitle(" Available ")
 	d.availableTable.SetTitleAlign(tview.AlignLeft)

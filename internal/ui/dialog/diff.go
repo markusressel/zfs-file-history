@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 )
 
 const (
@@ -63,9 +65,9 @@ func FormatDiffText(diffText string, filterHeaders bool) string {
 			}
 		}
 		if strings.HasPrefix(line, "+") {
-			resultLines = append(resultLines, `[green]`+line+`[white]`)
+			resultLines = append(resultLines, txwidgets.ColorTag(theme.Colors.Info.Ok)+line+`[white]`)
 		} else if strings.HasPrefix(line, "-") {
-			resultLines = append(resultLines, `[red]`+line+`[white]`)
+			resultLines = append(resultLines, txwidgets.ColorTag(theme.Colors.Info.Error)+line+`[white]`)
 		} else {
 			resultLines = append(resultLines, line)
 		}

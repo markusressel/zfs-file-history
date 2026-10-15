@@ -1,6 +1,8 @@
 package dialog
 
 import (
+	uiutil "zfs-file-history/internal/ui/util"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -31,7 +33,7 @@ func checklistWidth(items []*ChecklistItem) int {
 // checklistInputCapture). Its selection is only shown while it has the focus, so only one row of the dialog is
 // highlighted.
 func (d *SelectionDialog) createChecklistTable() *tview.Table {
-	checklistTable := tview.NewTable()
+	checklistTable := uiutil.SetSelectionStyle(tview.NewTable())
 	checklistTable.SetSelectable(false, false)
 	for row, item := range d.checklist {
 		cell := tview.NewTableCell(formatChecklistItem(item)).SetExpansion(1)

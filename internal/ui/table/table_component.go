@@ -578,14 +578,23 @@ func (c *RowSelectionTable[T]) UpdateEntry(entry *T) {
 
 	cells := c.toTableCells(index, c.visibleColumns(), entry)
 	for column, cell := range cells {
-		if c.isInMultiSelection(entry) {
-			cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
-			cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionForeground)
-			cell.SetSelectedStyle(
-				tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
-			)
-		}
+		c.styleCell(entry, cell)
 		c.table.SetCell(row, column, cell)
+	}
+}
+
+// styleCell colors a cell of the entry: in the colors of the multi-selection if it is in it, otherwise in its own text
+// color while its row is selected (unless the cell has a selected style of its own), see theme.SelectedStyle.
+func (c *RowSelectionTable[T]) styleCell(entry *T, cell *tview.TableCell) {
+	switch {
+	case c.isInMultiSelection(entry):
+		cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
+		cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionForeground)
+		cell.SetSelectedStyle(
+			tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
+		)
+	case cell.SelectedStyle == tcell.StyleDefault:
+		uiutil.KeepColorWhenSelected(cell)
 	}
 }
 
@@ -759,13 +768,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 		c.rowEntries = append(c.rowEntries, entry)
 		cells := c.toTableCells(index, columns, entry)
 		for column, cell := range cells {
-			if c.isInMultiSelection(entry) {
-				cell.SetBackgroundColor(theme.Colors.Layout.Table.MultiSelectionBackground)
-				cell.SetTextColor(theme.Colors.Layout.Table.MultiSelectionForeground)
-				cell.SetSelectedStyle(
-					tcell.StyleDefault.Background(theme.Colors.Layout.Table.MultiSelectionBackground),
-				)
-			}
+			c.styleCell(entry, cell)
 			table.SetCell(row, column, cell)
 		}
 	}

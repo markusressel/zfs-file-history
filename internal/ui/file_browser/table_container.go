@@ -61,7 +61,7 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 			switch {
 			case entry.IsLoading && fileBrowser.diffLoader != nil && fileBrowser.diffLoader.ShowLoadingSpinner():
 				cellText = "⟳"
-				cellColor = tcell.ColorYellow
+				cellColor = theme.Colors.Info.Warning
 			case entry.IsLoading && entry.DiffState == diff_state.Unknown:
 				// empty until it is known (or the spinner shows up), so it does not flash "N/A"
 				cellText = ""
@@ -123,14 +123,8 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
 
-		// Keep row statusCellText visible while selected by using statusCellColor as selected background. Unknown
-		// states (e.g. while they are determined) have the color of equal ones, so the selection only changes its
-		// color for entries that differ, instead of flashing for all of them when a folder is entered.
-		cell.SetSelectedStyle(
-			tcell.StyleDefault.
-				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(statusCellColor),
-		)
+		// the state stays visible in the colors of the text while the row is selected
+		cell.SetSelectedStyle(theme.SelectedStyle(cellColor))
 		cells = append(cells, cell)
 	}
 
@@ -142,7 +136,7 @@ func determineTypeCellColor(entry *data.FileBrowserEntry) tcell.Color {
 	case data.Directory:
 		return theme.Colors.Layout.Table.Accent
 	case data.Link:
-		return tcell.ColorYellow
+		return theme.Colors.Info.Warning
 	case data.File:
 		fallthrough
 	default:

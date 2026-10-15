@@ -25,10 +25,14 @@ var (
 	// PanelBackground is the background of the panels below the header (activities and alerts), which sets them apart
 	// from the views of the page
 	PanelBackground = tcell.ColorIsRGB | tcell.ColorValid | 0x16191C
-	// Degraded and Faulted are the colors of problems: something that still works with less redundancy, and something
-	// that does not work or lost data
-	Degraded = tcell.ColorYellow
-	Faulted  = tcell.ColorRed
+	// Ok, Degraded and Faulted are the colors of states: all well, something that still works with less redundancy
+	// (or needs attention), and something that does not work or lost data. Fixed RGB values, not the green, yellow
+	// and red of the terminal: those were drawn in the colors of its palette in tables, but as their RGB values in
+	// texts (style tags, see txwidgets.ColorTag), two different shades. Similar in lightness and saturation, so they
+	// look like one palette next to the orange accent.
+	Ok       = tcell.ColorIsRGB | tcell.ColorValid | 0x46C95B
+	Degraded = tcell.ColorIsRGB | tcell.ColorValid | 0xF0C93C
+	Faulted  = tcell.ColorIsRGB | tcell.ColorValid | 0xF2514A
 )
 
 var (
@@ -50,9 +54,9 @@ var (
 		},
 		Dialog: DialogColors{
 			Border:       Secondary,
-			Error:        tcell.ColorRed,
-			Danger:       tcell.ColorRed,
-			DangerBorder: tcell.ColorRed,
+			Error:        Faulted,
+			Danger:       Faulted,
+			DangerBorder: Faulted,
 			Highlight:    Accent,
 			// a lighter Secondary, readable on the background
 			SectionTitle: tcell.ColorIsRGB | tcell.ColorValid | 0x8C99A6,
@@ -61,9 +65,9 @@ var (
 			Table: FileBrowserTableColors{
 				State: FileBrowserTableStatusColors{
 					Unknown:  tcell.ColorGray,
-					Modified: tcell.ColorYellow,
-					Added:    tcell.ColorGreen,
-					Deleted:  tcell.ColorRed,
+					Modified: Degraded,
+					Added:    Ok,
+					Deleted:  Faulted,
 					Equal:    tcell.ColorGray,
 				},
 			},
@@ -72,9 +76,9 @@ var (
 			Table: SnapshotBrowserTableColors{
 				State: SnapshotBrowserTableStatusColors{
 					Unknown:      tcell.ColorGray,
-					Modified:     tcell.ColorYellow,
-					LocalOnly:    tcell.ColorRed,
-					SnapshotOnly: tcell.ColorGreen,
+					Modified:     Degraded,
+					LocalOnly:    Faulted,
+					SnapshotOnly: Ok,
 					Equal:        tcell.ColorGray,
 				},
 				Changed:   tcell.ColorWhite,
@@ -110,8 +114,12 @@ var (
 				// and from the multi-selection background (Secondary).
 				HeaderBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x2B3137,
 
-				SelectedForeground: tcell.ColorBlack,
-				SelectedBackground: tcell.ColorWhite,
+				// A dark blue bar with light text, not a light bar with dark text: a light row glared on the dark
+				// background, and its text was harder to read than that of the other rows. Cells keep their own text
+				// color on it (see SelectedStyle); bluer than the multi-selection (Secondary) and the header, less
+				// saturated than the text selection (Layout.SelectionBackground).
+				SelectedForeground: tcell.ColorWhite,
+				SelectedBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x2D4560,
 
 				SortColumnSelectedForeground: OnPrimary,
 				SortColumnSelectedBackground: Primary,
@@ -146,13 +154,13 @@ var (
 		Magnitude: []GradientStop{
 			{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x7D8A96},
 			{Position: 0.5, Color: Accent},
-			{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
+			{Position: 1, Color: Faulted},
 		},
 		Permissions: PermissionColors{
-			Granted: tcell.ColorGreen,
+			Granted: Ok,
 			Missing: tcell.ColorGray,
 			Unknown: tcell.ColorDarkGray,
-			Pending: tcell.ColorYellow,
+			Pending: Degraded,
 		},
 		Properties: PropertyColors{
 			Value:    tcell.ColorLightGray,
@@ -161,19 +169,19 @@ var (
 			Hint:     tcell.ColorGray,
 		},
 		Pool: PoolColors{
-			Online:   tcell.ColorGreen,
+			Online:   Ok,
 			Degraded: Degraded,
 			Faulted:  Faulted,
 			Offline:  tcell.ColorGray,
 			Group:    Accent,
-			Errors:   tcell.ColorRed,
+			Errors:   Faulted,
 			NoErrors: tcell.ColorGray,
 			// from cool blue over green to red, hot when it reaches the warning temperature of the disk
 			Temperature: []GradientStop{
 				{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x6CB6E8},
 				{Position: 0.4, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x8CC98C},
 				{Position: 0.75, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFFB84D},
-				{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
+				{Position: 1, Color: Faulted},
 			},
 			TemperatureIdle:    tcell.ColorGray,
 			TemperatureUnknown: tcell.ColorDarkGray,
@@ -210,7 +218,7 @@ var (
 			Section: Accent,
 			Value:   tcell.ColorWhite,
 			Muted:   tcell.ColorGray,
-			Ok:      tcell.ColorGreen,
+			Ok:      Ok,
 			Warning: Degraded,
 			Error:   Faulted,
 			// a darker gray than the labels, so the bar stays visible
@@ -220,7 +228,7 @@ var (
 				{Position: 0, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x8CC98C},
 				{Position: 0.75, Color: tcell.ColorIsRGB | tcell.ColorValid | 0x8CC98C},
 				{Position: 0.85, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFFB84D},
-				{Position: 1, Color: tcell.ColorIsRGB | tcell.ColorValid | 0xFF4D2E},
+				{Position: 1, Color: Faulted},
 			},
 			// blue, unlike the states (green, yellow, red); the snapshots lighter, the children darker
 			SpaceData:      tcell.ColorIsRGB | tcell.ColorValid | 0x4A9EE0,

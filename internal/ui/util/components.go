@@ -3,8 +3,8 @@ package util
 import (
 	"fmt"
 	"zfs-file-history/internal/ui/shortcut_helper"
+	"zfs-file-history/internal/ui/theme"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -16,7 +16,7 @@ func CreateAttentionText(text string) string {
 
 func CreateAttentionTextView(text string) *tview.TextView {
 	abortText := CreateAttentionText(text)
-	return tview.NewTextView().SetText(abortText).SetTextColor(tcell.ColorYellow).SetTextAlign(tview.AlignRight)
+	return tview.NewTextView().SetText(abortText).SetTextColor(theme.Colors.Info.Warning).SetTextAlign(tview.AlignRight)
 }
 
 var (

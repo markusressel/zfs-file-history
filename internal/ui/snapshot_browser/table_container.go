@@ -31,7 +31,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTable(appl
 
 func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells(row int, columns []*table.Column, entry *data.SnapshotBrowserEntry) (cells []*tview.TableCell) {
 	result := []*tview.TableCell{}
-	statusColor := determineStatusColor(entry)
 	for _, column := range columns {
 		cellText := "N/A"
 		cellAlign := tview.AlignLeft
@@ -48,7 +47,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			cellAlign = tview.AlignCenter
 			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
 				cellText = "⟳"
-				cellColor = tcell.ColorYellow
+				cellColor = theme.Colors.Info.Warning
 			} else if entry.IsLoading && entry.DiffState == diff_state.Unknown {
 				// empty until it is known (or the spinner shows up), so it does not flash "?"
 				cellText = ""
@@ -103,11 +102,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			SetTextColor(cellColor).
 			SetAlign(cellAlign)
 
-		cell.SetSelectedStyle(
-			tcell.StyleDefault.
-				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(statusColor),
-		)
+		cell.SetSelectedStyle(theme.SelectedStyle(cellColor))
 		result = append(result, cell)
 	}
 	return result
@@ -227,23 +222,6 @@ func formatHolds(holds uint64) string {
 		return ""
 	}
 	return fmt.Sprintf("%d", holds)
-}
-
-func determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
-	switch entry.DiffState {
-	case diff_state.Equal:
-		return theme.Colors.SnapshotBrowser.Table.State.Equal
-	case diff_state.Deleted:
-		return theme.Colors.SnapshotBrowser.Table.State.SnapshotOnly
-	case diff_state.Added:
-		return theme.Colors.SnapshotBrowser.Table.State.LocalOnly
-	case diff_state.Modified:
-		return theme.Colors.SnapshotBrowser.Table.State.Modified
-	case diff_state.Unknown:
-		fallthrough
-	default:
-		return theme.Colors.SnapshotBrowser.Table.State.Unknown
-	}
 }
 
 func createSnapshotBrowserTableSortFunction(entries []*data.SnapshotBrowserEntry, columnToSortBy *table.Column, inverted bool) []*data.SnapshotBrowserEntry {
