@@ -118,8 +118,7 @@ func newDestroyTest(t *testing.T) *destroyTest {
 	dt.app.SetScreen(dt.screen)
 	dt.browser = NewSnapshotBrowser(dt.app)
 	dt.app.SetRoot(dt.browser.GetLayout(), true)
-	go func() { _ = dt.app.Run() }()
-	t.Cleanup(dt.app.Stop)
+	testutil.RunApp(t, dt.app)
 
 	dt.entries = []*data.SnapshotBrowserEntry{
 		{Snapshot: &zfs.Snapshot{Name: "daily-1", FullName: "pool/data@daily-1", Path: "/pool/data/.zfs/snapshot/daily-1"}},
@@ -155,19 +154,7 @@ func (dt *destroyTest) calls() (previews []destroyCall, destroys []destroyCall) 
 }
 
 func (dt *destroyTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(dt.t, dt.app, func() {
-		cells, width, height := dt.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(dt.t, dt.app, dt.screen)
 }
 
 // selectAll selects both snapshots with the space key.

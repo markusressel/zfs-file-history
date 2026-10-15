@@ -23,11 +23,10 @@ func TestDatasetPage_CyclingFocusKeepsTheLayout(t *testing.T) {
 			screen.SetSize(width, 50)
 			page := NewDatasetPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), "/")
 			app.SetRoot(page.layout, true)
-			go func() { _ = app.Run() }()
-			defer app.Stop()
+			testutil.RunApp(t, app)
 
-			// each step on the UI thread at once, so loading the datasets (with ZFS), which changes the shortcuts of
-			// the dataset browser, cannot happen in between
+			// each step on the UI thread at once, so loading the datasets (a failed load, too), which changes the
+			// shortcuts of the dataset browser, cannot happen in between
 			testutil.OnUiThread(t, app, func() {
 				app.ForceDraw()
 				page.datasetBrowser.Focus()

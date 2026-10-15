@@ -19,8 +19,7 @@ func TestApplicationHeader_ShowsMessages(t *testing.T) {
 	messages := status_message.NewCenter(app)
 	header := NewApplicationHeader(app, messages)
 	app.SetRoot(header.layout, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	texts := func() (status string, badge string) {
 		testutil.OnUiThread(t, app, func() {

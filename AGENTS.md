@@ -30,10 +30,8 @@ of the code.
   every storyboard is safe to run) and runs ruff.
 - Before committing: `gofmt -l .` is empty, `go vet ./...` and `go test ./...` pass, the touched packages pass with
   `-race`. CI also runs codespell (see `.codespellignore`).
-- `TestOverviewKey` in `internal/ui` fails with `-race` (a test writes `state.Current` while the UI runs). Known, not
-  caused by other changes.
-- Tests never need ZFS or root: everything that runs `zfs`/`zpool` or calls libzfs is replaceable (see Tests). Tests
-  that use the pools of the system skip themselves without them.
+- Tests never need ZFS or root: everything that runs `zfs`/`zpool` or calls libzfs is replaceable (see Tests). They
+  never use the ZFS of the system either, so they behave the same on every machine (see Tests).
 
 ## Structure
 
@@ -62,7 +60,7 @@ of the code.
 - `internal/zfs/zfs_evemt_watcher.go`: follows `zpool events` and emits the emitters of `common.go`:
   `DatasetsLoaded` (snapshots created/destroyed, pools imported/exported, also after F5 via `RefreshZfsData`) and
   `PoolsChanged` (state changes, scrub/resilver/trim, vdev changes, `ereport.*`/`resource.*`; throttled to once a
-  second).
+  second). Emitters are safe for concurrent use (the UI subscribes while the watcher emits).
 - `internal/zfs/pool_history.go`: the history of the pools (`zpool history -il`, `PoolHistory`), which only root may
   read: it runs with `sudo -n` (rule `--history`) unless the application runs as root. It can be hundreds of thousands
   of records (tens of MB), so it is parsed without regular expressions and only read on demand. Records of ioctls are
@@ -269,9 +267,19 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 - Functions that run processes or call libzfs are package variables, replaceable in tests (e.g. `listPools`,
   `loadPoolStatus`, `loadDatasetPermissions`; commented "replaceable in tests"). Replace them with `t.Cleanup` to
   restore.
-- UI tests run a real `tview.Application` on a `tcell.NewSimulationScreen("UTF-8")`, and read or change widgets only
-  via `testutil.OnUiThread`. Wait for background loads with `require.Eventually`. `testutil.StripTags` removes style
-  tags from text.
+- Test binaries use `zfs.NoSystem` (everything fails with `zfs.ErrNoSystem`, like a system without ZFS) unless a test
+  sets another backend: with the System, tests saw the pools of each machine (none in CI) and passed on one but not on
+  another. The tests of `internal/zfs` test the System itself (with its commands replaced). `internal/ui` sets
+  `testSystem` once (loads of earlier tests may still run), which a test gives pools with `setPools`.
+- UI tests run a real `tview.Application` on a `tcell.NewSimulationScreen("UTF-8")`, started with `testutil.RunApp`,
+  which waits until its event loop returned when the test ends (`Stop` alone does not: a handler still running raced
+  with the cleanups of the test, `TestAppsAreRunWithRunApp`). They read or change widgets only
+  via `testutil.OnUiThread` (which does not draw). Read the screen with `testutil.ScreenText`, which draws first: a
+  change is only shown once something draws, and a test that relied on a background load to redraw in time failed on
+  slower machines (`TestScreenIsDrawnBeforeRead` checks that readers of the screen draw). Wait for background loads
+  with `require.Eventually`, for a state rather than for a time. Injected keys and clicks are handled in another
+  queue than `OnUiThread`: before checking that one changed nothing, wait with `testutil.WaitForEvents` (not a
+  sleep, too short on a busy machine). `testutil.StripTags` removes style tags from text.
 - Regression tests start their comment with `// Regression:` and fail without the fix.
 - Fixtures from real systems go into `testdata/`, with serial numbers and other identifying data replaced.
 

@@ -31,8 +31,7 @@ func TestSnapshotBrowser_ShowsSnapshotsAgainAfterUnreadableFolder(t *testing.T) 
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	browser := NewSnapshotBrowser(app)
 	app.SetRoot(browser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	snapshotCount := func() int {
 		var count int
@@ -65,8 +64,7 @@ func TestSnapshotBrowser_ShowsLoadErrorInPlaceOfSnapshots(t *testing.T) {
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	browser := NewSnapshotBrowser(app)
 	app.SetRoot(browser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	placeholder := func() (text string) {
 		testutil.OnUiThread(t, app, func() { text = browser.tableContainer.GetPlaceholder() })

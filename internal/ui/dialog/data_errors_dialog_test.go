@@ -152,8 +152,7 @@ func TestDataErrorsDialog_ShowsFile(t *testing.T) {
 	app.SetScreen(screen)
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	var mu sync.Mutex
 	var shown []string

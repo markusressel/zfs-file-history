@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -16,8 +17,7 @@ func newTestCenter(t *testing.T) (*Center, func(func())) {
 	app := tview.NewApplication()
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	app.SetRoot(tview.NewBox(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	onUiThread := func(f func()) {
 		done := make(chan struct{})
 		app.QueueUpdate(func() {

@@ -3,6 +3,7 @@ package util
 import (
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -13,8 +14,7 @@ func TestLoadingContainer(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	content := tview.NewBox()
 	container := NewLoadingContainer(app, content, "Test Container", "Please wait...")
@@ -50,8 +50,7 @@ func TestLoadingView_EdgeCases(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	loadingView := NewLoadingView(app, "Title", "Message")
 

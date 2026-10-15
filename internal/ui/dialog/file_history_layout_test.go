@@ -48,8 +48,7 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	screen.SetSize(140, 30)
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	path := filepath.Join(ds.root, "notes.txt")
 	file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}
@@ -144,8 +143,7 @@ func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
 			app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 			pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 			app.SetRoot(pages, true)
-			go func() { _ = app.Run() }()
-			t.Cleanup(app.Stop)
+			testutil.RunApp(t, app)
 
 			path := filepath.Join(ds.root, "notes.txt")
 			file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}

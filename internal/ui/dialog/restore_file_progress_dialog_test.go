@@ -114,26 +114,11 @@ func startDialogTestApp(t *testing.T) (*tview.Application, tcell.SimulationScree
 	list := tview.NewList().AddItem("entry", "", 0, nil)
 	pages := tview.NewPages().AddPage("main", list, true, true)
 	app.SetRoot(pages, true).SetFocus(list)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	return app, screen, pages, list
 }
 
 // dialogScreenText returns the text on the screen, one line per row.
 func dialogScreenText(t *testing.T, app *tview.Application, screen tcell.SimulationScreen) string {
-	var text strings.Builder
-	// on the UI thread: the cells are the ones of the screen, not a copy
-	testutil.OnUiThread(t, app, func() {
-		screen.Show()
-		cells, width, height := screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(t, app, screen)
 }

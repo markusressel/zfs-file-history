@@ -20,8 +20,7 @@ func TestCommandMenuKey(t *testing.T) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	screen.SetSize(200, 30)
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	frontPage := func() (name string) {
 		testutil.OnUiThread(t, app, func() { name, _ = mainPage.pages.GetFrontPage() })
@@ -82,8 +81,7 @@ func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	screen.SetSize(200, 30)
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	screen.InjectKey(tcell.KeyCtrlF, 0, tcell.ModNone)
 	require.Eventually(t, func() bool { return strings.Contains(screenText(t, app, screen), "Filter:") },
@@ -102,8 +100,7 @@ func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
 func TestCommandSections_OtherComponents(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	var titles []string
 	var unfocused []bool

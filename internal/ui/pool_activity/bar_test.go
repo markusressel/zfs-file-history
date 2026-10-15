@@ -358,8 +358,7 @@ func setupTest(t *testing.T, statuses []*zfs.PoolStatus) (*tview.Application, *M
 	})
 	app.SetRoot(layout, true)
 	monitor.Refresh()
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	recorded := func() []int {
 		mu.Lock()

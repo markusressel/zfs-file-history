@@ -3,6 +3,7 @@ package shortcut_helper
 import (
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -134,8 +135,7 @@ func TestDrawReportsHeightChanges(t *testing.T) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	require.NoError(t, screen.Init())
 	app.SetScreen(screen)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	sm := NewShortcutMap(app)
 	heights := make(chan int, 10)
 	sm.SetOnHeightChanged(func(height int) { heights <- height })

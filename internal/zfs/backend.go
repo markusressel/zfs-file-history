@@ -103,10 +103,10 @@ type Mount struct {
 }
 
 // backend is the Backend used by the functions of this package, see SetBackend.
-var backend Backend = System{}
+var backend = defaultBackend()
 
-// SetBackend replaces the Backend (System by default). Must be called before anything uses this package, it is not
-// safe for concurrent use.
+// SetBackend replaces the Backend (System by default, NoSystem in tests). Must be called before anything uses this
+// package, it is not safe for concurrent use.
 func SetBackend(newBackend Backend) {
 	backend = newBackend
 }

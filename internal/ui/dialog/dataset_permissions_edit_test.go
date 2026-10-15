@@ -155,8 +155,7 @@ func newPermissionsEditTest(t *testing.T, permissions *zfs.DatasetPermissions) *
 	et.app.SetScreen(et.screen)
 	et.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	et.app.SetRoot(et.pages, true)
-	go func() { _ = et.app.Run() }()
-	t.Cleanup(et.app.Stop)
+	testutil.RunApp(t, et.app)
 
 	testutil.OnUiThread(t, et.app, func() {
 		et.dialog = NewDatasetPermissionsDialog(et.app, permissions, func() {

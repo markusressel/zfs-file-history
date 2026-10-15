@@ -4,24 +4,21 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
-// setupTestApp creates a headless tview application for testing QueueUpdateDraw
-func setupTestApp() (*tview.Application, func()) {
+// setupTestApp runs a headless tview application for testing QueueUpdateDraw, stopped at the end of the test.
+func setupTestApp(t *testing.T) *tview.Application {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	simScreen.Init()
 	app.SetScreen(simScreen)
-
-	go app.Run()
-
-	return app, func() {
-		app.Stop()
-	}
+	testutil.RunApp(t, app)
+	return app
 }
 
 func TestSelectionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
@@ -43,8 +40,7 @@ func TestSelectionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
 }
 
 func TestSelectionDialog_SelectOtherOption_ExecutesHandlerAndOnComplete(t *testing.T) {
-	app, cleanup := setupTestApp()
-	defer cleanup()
+	app := setupTestApp(t)
 
 	handlerCalled := make(chan bool, 1)
 	onCompleteCalled := make(chan bool, 1)
@@ -93,8 +89,7 @@ func TestSelectionDialog_SelectOtherOption_ExecutesHandlerAndOnComplete(t *testi
 }
 
 func TestSelectionDialog_SelectOtherOption_PropagatesErrorToOnComplete(t *testing.T) {
-	app, cleanup := setupTestApp()
-	defer cleanup()
+	app := setupTestApp(t)
 
 	handlerCalled := make(chan bool, 1)
 	onCompleteCalled := make(chan bool, 1)

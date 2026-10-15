@@ -144,8 +144,7 @@ func setupTest(t *testing.T) (*tview.Application, *PoolStatusComponent, *fakeLoa
 	})
 	// set the root before the event loop starts, like CreateUi does
 	app.SetRoot(poolStatus.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	return app, poolStatus, fake, statuses
 }
 

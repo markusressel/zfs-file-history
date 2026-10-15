@@ -58,8 +58,7 @@ func startBrowser(t *testing.T) (*SnapshotBrowserComponent, *tview.Application) 
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	browser := NewSnapshotBrowser(app)
 	app.SetRoot(browser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	return browser, app
 }
 

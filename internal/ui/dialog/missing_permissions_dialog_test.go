@@ -115,8 +115,7 @@ func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copy
 	dt.app.SetScreen(dt.screen)
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	dt.app.SetRoot(dt.pages, true)
-	go func() { _ = dt.app.Run() }()
-	t.Cleanup(dt.app.Stop)
+	testutil.RunApp(t, dt.app)
 
 	var retry func()
 	if withRetry {
@@ -176,19 +175,7 @@ func (dt *permissionsDialogTest) counts() (verified int, retried int) {
 }
 
 func (dt *permissionsDialogTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(dt.t, dt.app, func() {
-		cells, width, height := dt.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(dt.t, dt.app, dt.screen)
 }
 
 func TestMissingPermissionsDialog_GrantVerifiesAndRetries(t *testing.T) {

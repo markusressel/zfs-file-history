@@ -56,8 +56,7 @@ func TestShowDialogOnPages(t *testing.T) {
 	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
 	// set the root before the event loop starts, like CreateUi does
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "Cancel"},
@@ -102,8 +101,7 @@ func TestShowDialogOnPages_DialogShownFromDialog_RestoresOriginalFocus(t *testin
 	main := tview.NewFlex().AddItem(first, 0, 1, true).AddItem(second, 0, 1, false)
 	pages := tview.NewPages().AddPage("main", main, true, true)
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "OK"},
@@ -145,8 +143,7 @@ func TestShowDialogOnPages_DialogShownFromDialog_ReturnsFocusToTheOther(t *testi
 	behind := tview.NewTable()
 	pages := tview.NewPages().AddPage("main", behind, true, true)
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "OK"},

@@ -95,8 +95,7 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 	pt.app.SetScreen(pt.screen)
 	pt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	pt.app.SetRoot(pt.pages, true)
-	go func() { _ = pt.app.Run() }()
-	t.Cleanup(pt.app.Stop)
+	testutil.RunApp(t, pt.app)
 
 	testutil.OnUiThread(t, pt.app, func() {
 		pt.dialog = NewDatasetPropertiesDialog(pt.app, "pool/data", newTestProperties(), isRoot, func() {
