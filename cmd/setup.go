@@ -41,7 +41,7 @@ zfs-file-history also offers this in the application ("Set up permissions" in
 the command menu), and asks for your sudo password in the terminal.
 
 You MUST run this command with sudo:
-  sudo zfs-file-history setup [--events] [--data-errors] [--smart] [--pool-actions]`,
+  sudo zfs-file-history setup [--events] [--data-errors] [--history] [--smart] [--pool-actions]`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// When run with sudo, $USER becomes "root".
 		// We need $SUDO_USER to get the name of the actual person running the command.

@@ -119,6 +119,7 @@ func TestSetupPermissionsDialog_AllowChecked(t *testing.T) {
 	// the rules that only read are checked
 	dt.waitForText("● Live updates: snapshots")
 	dt.waitForText("● Damaged files")
+	dt.waitForText("● Pool history")
 	dt.waitForText("○ Pool actions")
 
 	// from the first option up into the checklist: pool actions on, live updates off
@@ -127,23 +128,25 @@ func TestSetupPermissionsDialog_AllowChecked(t *testing.T) {
 	dt.waitForText("● Pool actions")
 	dt.key(tcell.KeyUp, 0)
 	dt.key(tcell.KeyUp, 0)
+	dt.key(tcell.KeyUp, 0)
 	dt.key(tcell.KeyEnter, 0)
 	dt.waitForText("○ Live updates: snapshots")
 	// down out of the checklist to the first option
 	dt.key(tcell.KeyDown, 0)
 	dt.key(tcell.KeyDown, 0)
 	dt.key(tcell.KeyDown, 0)
+	dt.key(tcell.KeyDown, 0)
 	dt.key(tcell.KeyEnter, 0)
 
 	dt.waitForClosed("SuccessDialog")
-	dt.waitForText("Allowed: Damaged files, Pool actions.")
-	assert.Equal(t, [][]string{{"/usr/bin/zfs-file-history", "setup", "--data-errors", "--pool-actions"}}, dt.commands())
+	dt.waitForText("Allowed: Damaged files, Pool history, Pool actions.")
+	assert.Equal(t, [][]string{{"/usr/bin/zfs-file-history", "setup", "--data-errors", "--history", "--pool-actions"}}, dt.commands())
 	assert.Equal(t, int32(1), dt.sudoersChanged.Load(), "e.g. the event watcher starts again")
 	assert.False(t, dt.onUiThread, "sudo runs from the background")
 }
 
 func TestSetupPermissionsDialog_Smart(t *testing.T) {
-	dt := newSetupDialogTestWithSmartctl(t, map[string]bool{"events": true, "data-errors": true}, false, nil, true)
+	dt := newSetupDialogTestWithSmartctl(t, map[string]bool{"events": true, "data-errors": true, "history": true}, false, nil, true)
 	// it only reads
 	dt.waitForText("● Disk health: SMART values")
 	dt.waitForText("○ Pool actions")
@@ -160,12 +163,12 @@ func TestSetupPermissionsDialog_AllowAll(t *testing.T) {
 	dt.choose('2')
 
 	dt.waitForClosed("SuccessDialog")
-	dt.waitForText("Allowed: Damaged files, Pool actions.")
-	assert.Equal(t, [][]string{{"/usr/bin/zfs-file-history", "setup", "--data-errors", "--pool-actions"}}, dt.commands())
+	dt.waitForText("Allowed: Damaged files, Pool history, Pool actions.")
+	assert.Equal(t, [][]string{{"/usr/bin/zfs-file-history", "setup", "--data-errors", "--history", "--pool-actions"}}, dt.commands())
 }
 
 func TestSetupPermissionsDialog_OnlyNotAllowedOnes(t *testing.T) {
-	dt := newSetupDialogTest(t, map[string]bool{"events": true, "data-errors": true}, false, nil)
+	dt := newSetupDialogTest(t, map[string]bool{"events": true, "data-errors": true, "history": true}, false, nil)
 	dt.waitForText("○ Pool actions")
 	assert.NotContains(t, dt.screenText(), "Live updates")
 	assert.NotContains(t, dt.screenText(), "Don't ask again", "only offered when shown by itself")
@@ -178,7 +181,7 @@ func TestSetupPermissionsDialog_OnlyNotAllowedOnes(t *testing.T) {
 }
 
 func TestSetupPermissionsDialog_AllAllowed(t *testing.T) {
-	dt := newSetupDialogTest(t, map[string]bool{"events": true, "data-errors": true, "pool-actions": true}, true, nil)
+	dt := newSetupDialogTest(t, map[string]bool{"events": true, "data-errors": true, "history": true, "pool-actions": true}, true, nil)
 	dt.waitForText("Your user may already run all commands")
 	assert.NotContains(t, dt.screenText(), "Allow checked")
 }
@@ -202,7 +205,7 @@ func TestSetupPermissionsDialog_Copy(t *testing.T) {
 
 	dt.waitForText("Copied, run it in a terminal")
 	dt.mu.Lock()
-	assert.Equal(t, []string{"sudo /usr/bin/zfs-file-history setup --events --data-errors"}, dt.copied)
+	assert.Equal(t, []string{"sudo /usr/bin/zfs-file-history setup --events --data-errors --history"}, dt.copied)
 	dt.mu.Unlock()
 	assert.Empty(t, dt.commands())
 }

@@ -82,6 +82,8 @@ type Backend interface {
 	// DataErrorStatuses returns the status of all pools with their damaged files (PoolStatus.ErrorEntries), and the
 	// pools whose damaged files cannot be listed (e.g. without root).
 	DataErrorStatuses() (statuses []*PoolStatus, unavailable []string, err error)
+	// PoolHistory returns the history of all pools, oldest first per pool.
+	PoolHistory() ([]PoolHistoryEntry, error)
 	// PoolsWithoutHeadErrlog returns the pools of the given ones whose feature head_errlog is disabled.
 	PoolsWithoutHeadErrlog(pools []string) []string
 	// RunPoolAction runs the action on the pool. Returns a PoolActionNeedsRootError if the user may not.

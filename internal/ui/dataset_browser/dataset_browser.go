@@ -161,6 +161,9 @@ type DatasetBrowserComponent struct {
 	matchedCount int
 	// permissions are the ZFS permissions of the current user, loaded for the displayed datasets
 	permissions permissionLoader
+	// onShowHistory shows the history of a dataset (h), nil: not offered, see SetOnShowHistory. Only accessed on the
+	// UI thread.
+	onShowHistory func(dataset string)
 }
 
 func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent {
@@ -407,6 +410,10 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 		}
 		if event.Rune() == 'e' && datasetBrowser.tableContainer.GetSelectedEntry() != nil {
 			datasetBrowser.openPropertiesDialog(datasetBrowser.tableContainer.GetSelectedEntry())
+			return nil
+		}
+		if event.Rune() == 'h' && datasetBrowser.tableContainer.GetSelectedEntry() != nil && datasetBrowser.onShowHistory != nil {
+			datasetBrowser.onShowHistory(datasetBrowser.tableContainer.GetSelectedEntry().Name)
 			return nil
 		}
 
@@ -724,6 +731,12 @@ func (datasetBrowser *DatasetBrowserComponent) SetDialogPages(pages *tview.Pages
 	datasetBrowser.dialogPages = pages
 }
 
+// SetOnShowHistory sets the function that shows the history of a dataset (h, see zfs.PoolHistory), nil while it
+// cannot be read (it needs root). Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) SetOnShowHistory(onShowHistory func(dataset string)) {
+	datasetBrowser.onShowHistory = onShowHistory
+}
+
 func (datasetBrowser *DatasetBrowserComponent) GetPath() string {
 	return datasetBrowser.currentPath
 }
@@ -777,6 +790,11 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"p"}, Name: "Permissions", Description: "Show and change the delegated ZFS permissions (zfs allow)", Run: func() { datasetBrowser.openPermissionsDialog(selection) }, MenuOnly: true},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"e"}, Name: "Properties", Description: "Show and change the ZFS properties (zfs get/set)", Run: func() { datasetBrowser.openPropertiesDialog(selection) }, MenuOnly: true},
 		)
+		if datasetBrowser.onShowHistory != nil {
+			shortcuts = append(shortcuts, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History",
+				Description: "What was done to the dataset, its children and snapshots, when and by whom (zpool history)",
+				Run:         func() { datasetBrowser.onShowHistory(selection.Name) }, MenuOnly: true})
+		}
 	}
 	return shortcuts
 }

@@ -31,6 +31,7 @@
 * [x] Disk temperatures and SMART health of the disks of all pools, without waking sleeping disks
 * [x] Damaged files (data errors) marked in the file and snapshot browsers, including the snapshots holding them
 * [x] Start, pause and cancel scrubs and TRIMs, clear pool errors
+* [x] History of pools and datasets (`zpool history`): what was done, when and by whom, including destroyed snapshots
 * [x] Live updates using zpool events
 * [x] Filter, sort and configure the columns of all lists
 * [x] Copy any text with the mouse (drag, or double-click a word), also over SSH (needs a terminal with OSC 52)
@@ -81,6 +82,7 @@ permissions:
 
 - **Live updates** (`zpool events`): new snapshots and changes of the pools show up right away.
 - **Damaged files** (`zpool status -v`): which files are damaged by data errors.
+- **Pool history** (`zpool history -il`): what was done to the pools and datasets, when and by whom.
 - **Disk health** (`smartctl`, if smartmontools is installed): the SMART values of the disks of the pools.
 - **Pool actions** (`zpool scrub`, `trim`, `clear`): scrubs, TRIMs and clearing the errors of a pool. Destroying,
   exporting or upgrading pools is not offered by zfs-file-history at all.
@@ -91,7 +93,7 @@ commands without a password. The setup can also be run by hand; it asks for each
 
 ```shell
 sudo zfs-file-history setup
-sudo zfs-file-history setup --events --data-errors --smart --pool-actions
+sudo zfs-file-history setup --events --data-errors --history --smart --pool-actions
 ```
 
 ### Permissions

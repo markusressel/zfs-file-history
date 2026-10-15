@@ -3,6 +3,7 @@ package zfs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
@@ -334,6 +335,25 @@ func (System) PoolStatuses() ([]*PoolStatus, error) {
 		return nil, err
 	}
 	return parsePoolStatuses(output)
+}
+
+// PoolHistory reads the history, which needs root: unless the application runs as root, zpool runs with "sudo -n",
+// which works with the sudoers rule of the setup command. Without root zpool fails anyway, so it is not tried first.
+func (System) PoolHistory() ([]PoolHistoryEntry, error) {
+	var output string
+	var err error
+	if isRoot() {
+		output, err = runPoolCommand("zpool", historyArgs...)
+	} else {
+		output, err = runSudoCommand(append([]string{"-n", ZpoolPath()}, historyArgs...)...)
+		if err != nil && isSudoDenied(err) {
+			return nil, fmt.Errorf("%w. %s", err, SetupHistoryHint)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parsePoolHistory(output), nil
 }
 
 // DataErrorStatuses lists the damaged files, which needs root: if zpool does not list them, it is run again with

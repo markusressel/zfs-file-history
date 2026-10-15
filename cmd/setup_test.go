@@ -20,21 +20,22 @@ func TestAskForRules(t *testing.T) {
 	file := zfs.ParseSudoersFile(zfs.SudoersRuleEvents.Lines("alice"))
 	var out strings.Builder
 
-	// data errors and SMART: Enter (allowed by default, they only read), pool actions: Enter (not allowed by default)
-	rules := askForRules(strings.NewReader("\n\n\n"), &out, file, "alice")
+	// data errors, history and SMART: Enter (allowed by default, they only read), pool actions: Enter (not allowed by
+	// default)
+	rules := askForRules(strings.NewReader("\n\n\n\n"), &out, file, "alice")
 
-	assert.Equal(t, []*zfs.SudoersRule{zfs.SudoersRuleDataErrors, zfs.SudoersRuleSmart}, rules)
+	assert.Equal(t, []*zfs.SudoersRule{zfs.SudoersRuleDataErrors, zfs.SudoersRuleHistory, zfs.SudoersRuleSmart}, rules)
 	assert.Contains(t, out.String(), "Live updates: already allowed")
 	assert.Contains(t, out.String(), "Allow for alice? [Y/n]")
 	assert.Contains(t, out.String(), "Allow for alice? [y/N]")
 
-	rules = askForRules(strings.NewReader("n\nn\nyes\n"), &out, file, "alice")
+	rules = askForRules(strings.NewReader("n\nn\nn\nyes\n"), &out, file, "alice")
 	assert.Equal(t, []*zfs.SudoersRule{zfs.SudoersRulePoolActions}, rules)
 
 	// without smartctl, its rule is not asked for
 	disk.SmartctlInstalled = func() bool { return false }
 	out.Reset()
-	rules = askForRules(strings.NewReader("n\nn\n"), &out, file, "alice")
+	rules = askForRules(strings.NewReader("n\nn\nn\n"), &out, file, "alice")
 	assert.Empty(t, rules)
 	assert.Contains(t, out.String(), "Disk health: not installed")
 

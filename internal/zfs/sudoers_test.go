@@ -126,26 +126,32 @@ func TestAllowedSudoersRules(t *testing.T) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " events -v -f, " + ZpoolPath() + " status -p -v\n", nil
 	}
-	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "smart": false, "pool-actions": false}, AllowedSudoersRules())
+	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "history": false, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
 	// all commands of the rule are needed
 	listSudoRules = func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " scrub [a-zA-Z]*\n", nil
 	}
-	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "smart": false, "pool-actions": false}, AllowedSudoersRules())
+	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": false, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
 	listSudoRules = func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + disk.SmartctlPath() + " -j -i -H -A -n standby -- /dev/*\n", nil
 	}
-	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "smart": true, "pool-actions": false}, AllowedSudoersRules())
+	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": false, "smart": true, "pool-actions": false}, AllowedSudoersRules())
+
+	listSudoRules = func() (string, error) {
+		return "User alice may run the following commands on host:\n" +
+			"    (root) NOPASSWD: " + ZpoolPath() + " history -il\n", nil
+	}
+	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": true, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
 	listSudoRules = func() (string, error) { return "", errors.New("sudo: a password is required") }
 	assert.Equal(t, map[string]bool{}, AllowedSudoersRules())
 
 	isRoot = func() bool { return true }
-	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "smart": true, "pool-actions": true}, AllowedSudoersRules())
+	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "history": true, "smart": true, "pool-actions": true}, AllowedSudoersRules())
 }
 
 func TestSudoersRuleSmart(t *testing.T) {
