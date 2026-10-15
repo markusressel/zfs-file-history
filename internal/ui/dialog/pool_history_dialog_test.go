@@ -337,3 +337,54 @@ func TestPoolHistoryDialog_LongDetails(t *testing.T) {
 	dt.waitForText("User")
 	dt.waitForText("alice")
 }
+
+// Regression: a group expanded further down the list stayed selected, but was scrolled to the last line of the list,
+// its records out of sight.
+func TestPoolHistoryDialog_ExpandKeepsTheLine(t *testing.T) {
+	var runs []zfs.PoolHistoryEntry
+	for i := range 100 {
+		// two commands of a user less than a minute apart are a run, the runs are apart
+		start := historyAt(0).Add(time.Duration(i) * 10 * time.Minute)
+		runs = append(runs,
+			zfs.PoolHistoryEntry{Pool: "tank", Time: start, Event: "zfs snapshot", User: "root"},
+			zfs.PoolHistoryEntry{Pool: "tank", Time: start.Add(30 * time.Second), Event: "zfs destroy", User: "root"})
+	}
+	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return runs, nil })
+	dt.waitForText("100 of 100 groups")
+	line := func() (line int) {
+		dt.screenText()
+		testutil.OnUiThread(t, dt.app, func() {
+			row, _ := dt.dialog.table.GetSelection()
+			offset, _ := dt.dialog.table.GetOffset()
+			line = row - offset
+		})
+		return line
+	}
+	waitForSelectedRow := func(row int) {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			selected := 0
+			testutil.OnUiThread(t, dt.app, func() { selected, _ = dt.dialog.table.GetSelection() })
+			assert.Equal(c, row, selected)
+		}, 3*time.Second, 10*time.Millisecond)
+	}
+	// down far enough to scroll, then up, so the selection is in the middle of the list
+	for range 60 {
+		dt.key(tcell.KeyDown, 0)
+	}
+	waitForSelectedRow(61)
+	dt.screenText()
+	for range 10 {
+		dt.key(tcell.KeyUp, 0)
+	}
+	waitForSelectedRow(51)
+	before := line()
+	require.Greater(t, before, 1)
+
+	dt.key(tcell.KeyEnter, 0)
+	require.EventuallyWithT(t, func(c *assert.CollectT) { assert.Equal(c, 102, len(dt.shownEvents())) }, 3*time.Second, 10*time.Millisecond)
+	assert.Equal(t, before, line(), "the group stays on its line")
+
+	dt.key(tcell.KeyEnter, 0)
+	require.EventuallyWithT(t, func(c *assert.CollectT) { assert.Equal(c, 100, len(dt.shownEvents())) }, 3*time.Second, 10*time.Millisecond)
+	assert.Equal(t, before, line(), "also when collapsed")
+}
