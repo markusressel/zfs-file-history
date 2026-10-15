@@ -2,7 +2,6 @@ package snapshot_browser
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -10,6 +9,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -30,20 +30,21 @@ type folderChangesStub struct {
 
 func stubFolderChanges(t *testing.T, result map[string]folder_listing.SnapshotChanges) *folderChangesStub {
 	stub := &folderChangesStub{}
-	originalCompare, originalRead := compareSnapshots, readWorkingCopy
-	t.Cleanup(func() { compareSnapshots, readWorkingCopy = originalCompare, originalRead })
-	compareSnapshots = func(ctx context.Context, folderPath string, snapshots []*zfs.Snapshot, workingCopy folder_listing.Listing) (map[string]folder_listing.SnapshotChanges, error) {
+	// Shorter than in the application, the tests wait for it (also to see that nothing was compared). Set before the
+	// browser is created, which creates its debouncer with it.
+	testutil.Replace(t, &folderChangesDelay, 50*time.Millisecond)
+	testutil.Replace(t, &compareSnapshots, func(ctx context.Context, folderPath string, snapshots []*zfs.Snapshot, workingCopy folder_listing.Listing) (map[string]folder_listing.SnapshotChanges, error) {
 		stub.mu.Lock()
 		defer stub.mu.Unlock()
 		stub.compared = append(stub.compared, workingCopy)
 		return result, nil
-	}
-	readWorkingCopy = func(path string) folder_listing.Listing {
+	})
+	testutil.Replace(t, &readWorkingCopy, func(path string) folder_listing.Listing {
 		stub.mu.Lock()
 		defer stub.mu.Unlock()
 		stub.readFolders = append(stub.readFolders, path)
 		return folder_listing.Listing{Exists: true, Entries: map[string]folder_listing.Entry{"read": {Name: "read"}}}
-	}
+	})
 	return stub
 }
 
@@ -190,12 +191,7 @@ func TestSortByFolderChanges(t *testing.T) {
 
 // Each page has its own columns; a layout saved before (shared by both pages) is taken over by both.
 func TestUseColumnLayout(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	statetest.Use(t)
 	keys := func(browser *SnapshotBrowserComponent) string {
 		var result []string
 		for _, column := range browser.tableContainer.GetColumnSpec() {
@@ -218,26 +214,19 @@ func TestUseColumnLayout(t *testing.T) {
 	assert.Equal(t, "name,creation,used,written,referenced,holds,damaged", keys(datasets))
 
 	// taken over from before the pages had their own
-	legacy := state.Load(filepath.Join(t.TempDir(), "legacy.json"))
-	state.Current = legacy
+	legacy := statetest.Use(t)
 	legacy.SetTableLayout(legacyLayoutStateKey, state.TableLayout{Columns: []string{"name", "holds"}, SortColumn: "name"})
 	for _, layout := range []ColumnLayout{FilesLayout, DatasetsLayout} {
 		browser := NewSnapshotBrowser(testutil.App())
 		browser.UseColumnLayout(layout)
 		assert.Equal(t, "name,holds", keys(browser))
 	}
-	_ = legacy.Flush()
 }
 
 // Regression: a reset of the layout was undone by the next start, which took over the layout saved before the pages
 // had their own again.
 func TestUseColumnLayout_ResetIsKept(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	store := statetest.Use(t)
 	store.SetTableLayout(legacyLayoutStateKey, state.TableLayout{Columns: []string{"name", "holds"}, SortColumn: "name"})
 
 	files := NewSnapshotBrowser(testutil.App())

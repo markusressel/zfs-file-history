@@ -9,6 +9,7 @@ import (
 	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDataLoader_LoadSuccess(t *testing.T) {
@@ -38,8 +39,7 @@ func TestDataLoader_LoadSuccess(t *testing.T) {
 		return "hello data", nil
 	})
 
-	// Wait for async task and QueueUpdateDraw to execute
-	time.Sleep(100 * time.Millisecond)
+	waitForDelivered(t, loader)
 
 	mu.Lock()
 	assert.True(t, startCalled)
@@ -73,7 +73,7 @@ func TestDataLoader_LoadQuietly(t *testing.T) {
 		return "quiet hello", nil
 	})
 
-	time.Sleep(100 * time.Millisecond)
+	waitForDelivered(t, loader)
 
 	mu.Lock()
 	assert.False(t, startCalled)
@@ -103,7 +103,7 @@ func TestDataLoader_LoadError(t *testing.T) {
 		return "", expectedErr
 	})
 
-	time.Sleep(100 * time.Millisecond)
+	waitForDelivered(t, loader)
 
 	mu.Lock()
 	assert.True(t, errCalled)
@@ -146,10 +146,18 @@ func TestDataLoader_CancellationAndSequenceTracking(t *testing.T) {
 		return "second", nil
 	})
 
-	time.Sleep(150 * time.Millisecond)
+	// Once the second one was delivered, the first one cannot be anymore: it is outdated.
+	waitForDelivered(t, loader)
 
 	mu.Lock()
 	assert.False(t, firstLoadCalled, "expected first load to be cancelled and ignored")
 	assert.True(t, secondLoadCalled, "expected second load to complete")
 	mu.Unlock()
+}
+
+// waitForDelivered waits until the result of the last load was handed to OnLoad or OnError, instead of a time that is
+// too short on a busy machine.
+func waitForDelivered[T any](t *testing.T, loader *DataLoader[T]) {
+	t.Helper()
+	require.Eventually(t, func() bool { return !loader.IsLoading() }, 3*time.Second, 5*time.Millisecond)
 }

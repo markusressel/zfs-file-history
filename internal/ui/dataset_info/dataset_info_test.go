@@ -59,9 +59,7 @@ func (f *fakeLoader) getRequests() []datasetInfoRequest {
 
 func setupTest(t *testing.T) (*tview.Application, *DatasetInfoComponent, *fakeLoader) {
 	fake := &fakeLoader{block: map[string]chan struct{}{}, fail: map[string]bool{}}
-	original := loadDatasetInfo
-	loadDatasetInfo = fake.load
-	t.Cleanup(func() { loadDatasetInfo = original })
+	testutil.Replace(t, &loadDatasetInfo, fake.load)
 
 	app, _ := testutil.NewApp()
 	datasetInfo := NewDatasetInfo(app)

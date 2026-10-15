@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,16 +20,14 @@ type fakePoolCommands struct {
 
 func setupFakePoolCommands(t *testing.T, zpoolErr error, sudoErr error) *fakePoolCommands {
 	fake := &fakePoolCommands{zpoolErr: zpoolErr, sudoErr: sudoErr}
-	originalPool, originalSudo := runPoolCommand, runSudoCommand
-	runPoolCommand = func(name string, args ...string) (string, error) {
+	testutil.Replace(t, &runPoolCommand, func(name string, args ...string) (string, error) {
 		fake.commands = append(fake.commands, name+" "+strings.Join(args, " "))
 		return "", fake.zpoolErr
-	}
-	runSudoCommand = func(args ...string) (string, error) {
+	})
+	testutil.Replace(t, &runSudoCommand, func(args ...string) (string, error) {
 		fake.commands = append(fake.commands, "sudo "+strings.Join(args, " "))
 		return "", fake.sudoErr
-	}
-	t.Cleanup(func() { runPoolCommand, runSudoCommand = originalPool, originalSudo })
+	})
 	return fake
 }
 

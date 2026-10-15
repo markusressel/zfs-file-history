@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -179,10 +180,8 @@ type fakeSmartctl struct {
 
 func newFakeSmartctl(t *testing.T) *fakeSmartctl {
 	fake := &fakeSmartctl{outputs: map[string][]byte{}}
-	original, originalInstalled := runSmartctl, SmartctlInstalled
-	runSmartctl = fake.run
-	SmartctlInstalled = func() bool { return true }
-	t.Cleanup(func() { runSmartctl, SmartctlInstalled = original, originalInstalled })
+	testutil.Replace(t, &runSmartctl, fake.run)
+	testutil.Replace(t, &SmartctlInstalled, func() bool { return true })
 	return fake
 }
 
@@ -297,6 +296,6 @@ func TestSmartReader_Errors(t *testing.T) {
 	reader.Reset()
 	assert.NoError(t, reader.ReadDevices([]string{"sda"}, time.Hour)["sda"][0].Err)
 
-	SmartctlInstalled = func() bool { return false }
+	testutil.Replace(t, &SmartctlInstalled, func() bool { return false })
 	assert.ErrorIs(t, reader.ReadDevices([]string{"sda"}, 0)["sda"][0].Err, ErrSmartctlMissing)
 }

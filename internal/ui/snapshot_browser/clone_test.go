@@ -25,15 +25,13 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 	var mu sync.Mutex
 	var calls []cloneCall
 	var app *tview.Application
-	original := cloneSnapshot
-	cloneSnapshot = func(snapshot *zfs.Snapshot, targetName string) error {
+	testutil.Replace(t, &cloneSnapshot, func(snapshot *zfs.Snapshot, targetName string) error {
 		call := cloneCall{snapshot: snapshot.FullName, target: targetName, onUiThread: testutil.IsOnUiThread(app)}
 		mu.Lock()
 		calls = append(calls, call)
 		mu.Unlock()
 		return cloneErr
-	}
-	t.Cleanup(func() { cloneSnapshot = original })
+	})
 
 	app, screen := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)

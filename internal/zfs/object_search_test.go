@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,10 +23,8 @@ func setupSnapshotTree(t *testing.T, snapshots map[string][]string, order []stri
 			require.NoError(t, os.WriteFile(filePath, []byte(file), 0o644))
 		}
 	}
-	originalMounts, originalSnapshots := readZfsMounts, listSnapshotNames
-	readZfsMounts = func() ([]Mount, error) { return []Mount{{Name: "tank/home", Mountpoint: mountpoint}}, nil }
-	listSnapshotNames = func(dataset string) ([]string, error) { return order, nil }
-	t.Cleanup(func() { readZfsMounts, listSnapshotNames = originalMounts, originalSnapshots })
+	testutil.Replace(t, &readZfsMounts, func() ([]Mount, error) { return []Mount{{Name: "tank/home", Mountpoint: mountpoint}}, nil })
+	testutil.Replace(t, &listSnapshotNames, func(dataset string) ([]string, error) { return order, nil })
 	return mountpoint
 }
 

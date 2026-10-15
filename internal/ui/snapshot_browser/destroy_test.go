@@ -61,11 +61,7 @@ func fullSnapshotNames(snapshots []*zfs.Snapshot) []string {
 func newDestroyTest(t *testing.T) *destroyTest {
 	dt := &destroyTest{t: t}
 
-	originalPreview, originalDestroy := previewDestroySnapshots, destroySnapshots
-	t.Cleanup(func() { previewDestroySnapshots, destroySnapshots = originalPreview, originalDestroy })
-	originalList, originalHold, originalRelease := listHolds, holdSnapshots, releaseSnapshots
-	t.Cleanup(func() { listHolds, holdSnapshots, releaseSnapshots = originalList, originalHold, originalRelease })
-	listHolds = func(names []string, recursive bool) ([]zfs.Hold, error) {
+	testutil.Replace(t, &listHolds, func(names []string, recursive bool) ([]zfs.Hold, error) {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.holdsListed = append(dt.holdsListed, holdCall{names, recursive, testutil.IsOnUiThread(dt.app)})
@@ -79,20 +75,20 @@ func newDestroyTest(t *testing.T) *destroyTest {
 			}
 		}
 		return result, nil
-	}
-	holdSnapshots = func(names []string) error {
+	})
+	testutil.Replace(t, &holdSnapshots, func(names []string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.holdCalls = append(dt.holdCalls, holdCall{snapshots: names, onUiThread: testutil.IsOnUiThread(dt.app)})
 		return nil
-	}
-	releaseSnapshots = func(names []string) error {
+	})
+	testutil.Replace(t, &releaseSnapshots, func(names []string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.releaseCalls = append(dt.releaseCalls, holdCall{snapshots: names, onUiThread: testutil.IsOnUiThread(dt.app)})
 		return nil
-	}
-	previewDestroySnapshots = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) (*zfs.DestroyPreview, error) {
+	})
+	testutil.Replace(t, &previewDestroySnapshots, func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) (*zfs.DestroyPreview, error) {
 		dt.mu.Lock()
 		dt.previews = append(dt.previews, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, testutil.IsOnUiThread(dt.app)})
 		err := dt.previewError
@@ -105,13 +101,13 @@ func newDestroyTest(t *testing.T) *destroyTest {
 			destroyed = append(destroyed, "pool/data/child@daily-1")
 		}
 		return &zfs.DestroyPreview{Destroyed: destroyed, Reclaim: 3 * 1024 * 1024 * 1024}, nil
-	}
-	destroySnapshots = func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) error {
+	})
+	testutil.Replace(t, &destroySnapshots, func(snapshots []*zfs.Snapshot, recursive bool, dependantClones bool) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.destroys = append(dt.destroys, destroyCall{fullSnapshotNames(snapshots), recursive, dependantClones, testutil.IsOnUiThread(dt.app)})
 		return nil
-	}
+	})
 
 	dt.app, dt.screen = testutil.NewApp()
 	dt.browser = NewSnapshotBrowser(dt.app)

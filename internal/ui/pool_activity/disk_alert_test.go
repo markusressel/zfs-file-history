@@ -109,9 +109,7 @@ func TestSmartAlert(t *testing.T) {
 }
 
 func TestMonitor_SmartAlerts(t *testing.T) {
-	originalInterval := smartInterval
-	t.Cleanup(func() { smartInterval = originalInterval })
-	smartInterval = time.Hour
+	testutil.Replace(t, &smartInterval, time.Hour)
 
 	app, monitor, _, _, _ := setupAlertTest(t, []*zfs.PoolStatus{withDisks("tank", "sda", "sdb")})
 	smart := disktest.NewSmart(map[string][]disk.SmartReport{"sdb": smartReport(smartError)})

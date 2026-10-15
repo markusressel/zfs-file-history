@@ -72,17 +72,11 @@ func noDataErrors() (*zfs.DataErrorIndex, error) {
 // setupAlertTestWith is setupAlertTest with the given function that lists the damaged files.
 func setupAlertTestWith(t *testing.T, statuses []*zfs.PoolStatus, listDataErrors func() (*zfs.DataErrorIndex, error)) (*tview.Application, *Monitor, *AlertBar, *fakeStatuses, func() []int) {
 	fake := &fakeStatuses{statuses: statuses}
-	originalLoad, originalActive, originalIdle, originalDataErrors := loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors
-	loadPoolStatuses = fake.load
-	loadDataErrors = listDataErrors
-	activeRefreshInterval = 50 * time.Millisecond
-	idleRefreshInterval = time.Hour
-	originalDataErrorsInterval := dataErrorsRefreshInterval
-	dataErrorsRefreshInterval = 0
-	t.Cleanup(func() {
-		dataErrorsRefreshInterval = originalDataErrorsInterval
-		loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors = originalLoad, originalActive, originalIdle, originalDataErrors
-	})
+	testutil.Replace(t, &loadPoolStatuses, fake.load)
+	testutil.Replace(t, &loadDataErrors, listDataErrors)
+	testutil.Replace(t, &activeRefreshInterval, 50*time.Millisecond)
+	testutil.Replace(t, &idleRefreshInterval, time.Hour)
+	testutil.Replace(t, &dataErrorsRefreshInterval, 0)
 
 	app, _ := testutil.NewApp(testutil.WithSize(80, 10))
 

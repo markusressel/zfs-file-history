@@ -3,6 +3,7 @@ package zfs
 import (
 	"errors"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,14 +90,12 @@ func TestEffectivePermissions_SetCycle(t *testing.T) {
 
 // stubPermissions replaces the current user and the delegations read from zfs.
 func stubPermissions(t *testing.T, who Identity, delegations string) *[]string {
-	originalIdentity, originalRead := currentIdentity, readDelegations
-	t.Cleanup(func() { currentIdentity, readDelegations = originalIdentity, originalRead })
 	var read []string
-	currentIdentity = func() (Identity, error) { return who, nil }
-	readDelegations = func(dataset string) (string, error) {
+	testutil.Replace(t, &currentIdentity, func() (Identity, error) { return who, nil })
+	testutil.Replace(t, &readDelegations, func(dataset string) (string, error) {
 		read = append(read, dataset)
 		return delegations, nil
-	}
+	})
 	return &read
 }
 
@@ -125,7 +124,7 @@ func TestCheckPermissions_RootIsNotChecked(t *testing.T) {
 
 func TestCheckPermissions_UnknownDelegationsDoNotBlock(t *testing.T) {
 	stubPermissions(t, alice, "")
-	readDelegations = func(dataset string) (string, error) { return "", errors.New("zfs not found") }
+	testutil.Replace(t, &readDelegations, func(dataset string) (string, error) { return "", errors.New("zfs not found") })
 	assert.NoError(t, checkPermissions("destroy the snapshot", PermissionGap{"pool/data", destroyPermissions}))
 }
 
@@ -211,7 +210,7 @@ func TestMissingPermissionsError_Verify(t *testing.T) {
 
 func TestMissingPermissionsError_VerifyCannotReadDelegations(t *testing.T) {
 	stubPermissions(t, alice, "")
-	readDelegations = func(dataset string) (string, error) { return "", errors.New("zfs not found") }
+	testutil.Replace(t, &readDelegations, func(dataset string) (string, error) { return "", errors.New("zfs not found") })
 	missing := &MissingPermissionsError{Missing: []PermissionGap{{"pool/data", []Permission{PermissionHold}}}}
 
 	err := missing.Verify()

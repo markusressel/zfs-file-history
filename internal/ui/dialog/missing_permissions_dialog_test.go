@@ -76,29 +76,23 @@ type permissionsDialogTest struct {
 // sudo, zfs and the clipboard are never used.
 func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copyErr error, verifyResults ...error) *permissionsDialogTest {
 	dt := &permissionsDialogTest{t: t, verifyResults: verifyResults}
-	originalGrant, originalCopy, originalVerify := grantPermissions, copyToClipboard, verifyPermissions
-	originalPermissionsChanged := zfs.PermissionsChanged
-	t.Cleanup(func() {
-		grantPermissions, copyToClipboard, verifyPermissions = originalGrant, originalCopy, originalVerify
-		zfs.PermissionsChanged = originalPermissionsChanged
-	})
 	// an emitter of this test, so its listener does not outlive it
-	zfs.PermissionsChanged = util.NewEmitter[struct{}]()
+	testutil.Replace(t, &zfs.PermissionsChanged, util.NewEmitter[struct{}]())
 	zfs.PermissionsChanged.Subscribe(func(struct{}) { dt.permissionsChanged.Add(1) })
-	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
+	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		dt.recordUiThread()
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.granted = append(dt.granted, commands...)
 		return grantErr
-	}
-	copyToClipboard = func(text string) error {
+	})
+	testutil.Replace(t, &copyToClipboard, func(text string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.copied = append(dt.copied, text)
 		return copyErr
-	}
-	verifyPermissions = func(missing *zfs.MissingPermissionsError) error {
+	})
+	testutil.Replace(t, &verifyPermissions, func(missing *zfs.MissingPermissionsError) error {
 		dt.recordUiThread()
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
@@ -107,7 +101,7 @@ func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copy
 			return dt.verifyResults[dt.verified-1]
 		}
 		return nil
-	}
+	})
 
 	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)

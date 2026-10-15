@@ -101,14 +101,12 @@ func TestMonitor_FindObjects(t *testing.T) {
 		return zfs.NewDataErrorIndex([]zfs.DataError{object}, nil), nil
 	})
 	file := t.TempDir()
-	original := findObjects
-	t.Cleanup(func() { findObjects = original })
-	findObjects = func(ctx context.Context, index *zfs.DataErrorIndex, progress func(zfs.ObjectSearchProgress)) (map[zfs.ObjectKey][]zfs.ObjectLocation, error) {
+	testutil.Replace(t, &findObjects, func(ctx context.Context, index *zfs.DataErrorIndex, progress func(zfs.ObjectSearchProgress)) (map[zfs.ObjectKey][]zfs.ObjectLocation, error) {
 		progress(zfs.ObjectSearchProgress{Total: 1, Done: 1, Found: 1, Wanted: 1})
 		return map[zfs.ObjectKey][]zfs.ObjectLocation{
 			{Dataset: "rpool/home", Object: 0x20}: {{Snapshot: "daily", Path: "/x", LivePath: "/home/x", File: file}},
 		}, nil
-	}
+	})
 	require.Eventually(t, func() bool {
 		loaded := false
 		testutil.OnUiThread(t, app, func() { loaded = monitor.DataErrors().HasUnresolvedObjects() })
@@ -167,7 +165,8 @@ func TestMonitor_RefreshDataErrorsThrottled(t *testing.T) {
 	dataErrors := &fakeDataErrors{}
 	app, monitor, _, fake, _ := setupAlertTestWith(t, []*zfs.PoolStatus{withDataErrors("rpool")}, dataErrors.load)
 	require.Eventually(t, func() bool { return dataErrors.getLoads() == 1 }, 2*time.Second, 10*time.Millisecond)
-	testutil.OnUiThread(t, app, func() { dataErrorsRefreshInterval = time.Hour })
+	// within the interval (0 in these tests): the damaged files were loaded in the future
+	testutil.OnUiThread(t, app, func() { monitor.dataErrorsLoaded = time.Now().Add(time.Hour) })
 
 	// e.g. sanoid creates snapshots every minute: sudo zpool status -v is not run for each
 	loads := fake.getLoads()
@@ -177,7 +176,7 @@ func TestMonitor_RefreshDataErrorsThrottled(t *testing.T) {
 	assert.Equal(t, 1, dataErrors.getLoads())
 
 	// but after the interval, with a later load of the statuses
-	testutil.OnUiThread(t, app, func() { dataErrorsRefreshInterval = 0 })
+	testutil.OnUiThread(t, app, func() { monitor.dataErrorsLoaded = time.Time{} })
 	testutil.OnUiThread(t, app, monitor.Refresh)
 	require.Eventually(t, func() bool { return dataErrors.getLoads() == 2 }, 2*time.Second, 10*time.Millisecond)
 }
@@ -197,13 +196,11 @@ func TestMonitor_SearchEndsWhileLoading(t *testing.T) {
 		}
 		return zfs.NewDataErrorIndex([]zfs.DataError{object}, nil), nil
 	})
-	original := findObjects
-	t.Cleanup(func() { findObjects = original })
-	findObjects = func(ctx context.Context, index *zfs.DataErrorIndex, progress func(zfs.ObjectSearchProgress)) (map[zfs.ObjectKey][]zfs.ObjectLocation, error) {
+	testutil.Replace(t, &findObjects, func(ctx context.Context, index *zfs.DataErrorIndex, progress func(zfs.ObjectSearchProgress)) (map[zfs.ObjectKey][]zfs.ObjectLocation, error) {
 		return map[zfs.ObjectKey][]zfs.ObjectLocation{
 			{Dataset: "rpool/home", Object: 0x20}: {{Snapshot: "daily", Path: "/x", LivePath: "/home/x", File: "/nonexistent"}},
 		}, nil
-	}
+	})
 	damaged := func() bool {
 		result := false
 		testutil.OnUiThread(t, app, func() { result = monitor.DataErrors().IsDamaged("/home/x", "rpool/home@daily") })

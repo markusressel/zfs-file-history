@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
@@ -81,11 +82,9 @@ func TestFileBrowser_RemembersSelectionWhenEnteringADirectoryAgain(t *testing.T)
 
 	// enter the child directory again: the previously selected entry is selected again
 	pressKey(tcell.KeyRight)
-	s := waitFor("child loaded again", func(s state) bool { return s.path == child && s.count == 20 })
-	time.Sleep(200 * time.Millisecond)
-	s = getState()
-	require.Equal(t, selectedInChild, s.selected, "remembered selection restored (state: %+v)", s)
-	require.Equal(t, 10, s.index)
+	waitFor("child loaded again, remembered selection restored", func(s state) bool {
+		return s.path == child && s.count == 20 && s.selected == selectedInChild && s.index == 10
+	})
 }
 
 // The selections of the folders are remembered between runs.
@@ -95,11 +94,10 @@ func TestFileBrowser_RemembersSelectionBetweenRuns(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644))
 	}
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	t.Cleanup(func() { state.Current = nil })
 
 	// opens dir in a new browser, like after a restart, and returns it once its entries are shown
 	open := func() (*tview.Application, *FileBrowserComponent, tcell.SimulationScreen) {
-		state.Current = state.Load(statePath)
+		statetest.UseFile(t, statePath)
 		app, screen := testutil.NewApp()
 		fileBrowser := NewFileBrowser(app)
 		testutil.StartApp(t, app, fileBrowser.GetLayout())

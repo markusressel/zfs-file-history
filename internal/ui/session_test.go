@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/util"
 
@@ -89,10 +90,8 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	require.NoError(t, os.Mkdir(folder, 0o700))
 	start := Start{Path: launchDir, LaunchDir: launchDir, RestoreSession: true}
 
-	store := state.Load(statePath)
-	state.Current = store
-	t.Cleanup(func() { state.Current = nil })
-	app, mainPage, datasetPage := createUiFor(start, true)
+	store := statetest.UseFile(t, statePath)
+	app, mainPage, datasetPage := newUiFor(t, start)
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	stop := testutil.RunApp(t, app)
 
@@ -109,8 +108,8 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 
 	// returns the folder of the file browser, the page in front and the title of its focused component
 	restart := func(start Start) (string, util.Page, string) {
-		state.Current = state.Load(statePath)
-		app, mainPage, datasetPage := createUiFor(start, true)
+		statetest.UseFile(t, statePath)
+		app, mainPage, datasetPage := newUiFor(t, start)
 		testutil.UseSimulationScreen(app)
 		testutil.RunApp(t, app)
 		var path, focused string
@@ -145,10 +144,9 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 func TestNewerStateVersionIsShown(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	require.NoError(t, os.WriteFile(statePath, []byte(`{"version": 7, "compatibleVersion": 7}`), 0o600))
-	state.Current = state.Load(statePath)
-	t.Cleanup(func() { state.Current = nil })
+	statetest.UseFile(t, statePath)
 
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	testutil.UseSimulationScreen(app)
 	testutil.RunApp(t, app)
 	var history []string

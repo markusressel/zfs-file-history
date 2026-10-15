@@ -18,21 +18,19 @@ import (
 
 // stubRollback replaces the rollback with recording, and returns the recorded calls.
 func stubRollback(t *testing.T, dt *destroyTest) func() []string {
-	originalPreview, originalRollback := previewRollback, rollback
-	t.Cleanup(func() { previewRollback, rollback = originalPreview, originalRollback })
 	var calls []string
-	previewRollback = func(snapshot string) (*zfs.RollbackPreview, error) {
+	testutil.Replace(t, &previewRollback, func(snapshot string) (*zfs.RollbackPreview, error) {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		calls = append(calls, "preview "+snapshot)
 		return &zfs.RollbackPreview{Snapshot: snapshot, Destroyed: []string{"pool/data@daily-2"}}, nil
-	}
-	rollback = func(confirmed *zfs.RollbackPreview) error {
+	})
+	testutil.Replace(t, &rollback, func(confirmed *zfs.RollbackPreview) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		calls = append(calls, "rollback "+confirmed.Snapshot+" "+strings.Join(confirmed.Destroyed, ","))
 		return nil
-	}
+	})
 	return func() []string {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()

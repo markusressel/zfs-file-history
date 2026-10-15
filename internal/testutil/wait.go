@@ -47,3 +47,12 @@ func WaitForNoPage(t testing.TB, app *tview.Application, pages *tview.Pages, nam
 	t.Helper()
 	require.Eventually(t, func() bool { return !HasPage(t, app, pages, name) }, timeout, waitTick, "no page %s", name)
 }
+
+// WaitForUpdates waits until the UI thread of the running app ran the updates queued before, e.g. by the handler of a
+// key that closes a dialog (after Press, which waits until the key was handled). It is for checking that a key did
+// nothing, without waiting for a time that is long on a fast machine and too short on a busy one. It does not wait
+// for work in the background (loads) or for updates queued from it.
+func WaitForUpdates(t testing.TB, app *tview.Application) {
+	t.Helper()
+	OnUiThread(t, app, func() {})
+}

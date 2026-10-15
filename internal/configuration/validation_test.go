@@ -2,18 +2,15 @@ package configuration
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestValidate(t *testing.T) {
-	// Save original
-	original := CurrentConfig
-	defer func() { CurrentConfig = original }()
-
-	CurrentConfig = Configuration{
+	testutil.Replace(t, &CurrentConfig, Configuration{
 		FileBrowser: FileBrowserConfig{Permissions: FileBrowserPermissionsFormatOctal, Owner: FileBrowserOwnerFormatID},
-	}
+	})
 
 	err := Validate("test.yaml")
 	assert.NoError(t, err)

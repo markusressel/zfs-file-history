@@ -40,9 +40,7 @@ type permissionStub struct {
 
 func stubPermissions(t *testing.T, granted map[string][]zfs.Permission) *permissionStub {
 	stub := &permissionStub{granted: granted}
-	original := loadDatasetPermissions
-	t.Cleanup(func() { loadDatasetPermissions = original })
-	loadDatasetPermissions = func(dataset string) (*zfs.DatasetPermissions, error) {
+	testutil.Replace(t, &loadDatasetPermissions, func(dataset string) (*zfs.DatasetPermissions, error) {
 		stub.mu.Lock()
 		stub.read = append(stub.read, dataset)
 		block := stub.block
@@ -59,7 +57,7 @@ func stubPermissions(t *testing.T, granted map[string][]zfs.Permission) *permiss
 			grants[permission] = []zfs.Grant{{Delegation: zfs.Delegation{Dataset: dataset, Scope: zfs.ScopeLocalAndDescendent, WhoType: zfs.WhoUser, Who: "alice"}}}
 		}
 		return &zfs.DatasetPermissions{Dataset: dataset, User: "alice", Grants: grants, Delegations: &zfs.Delegations{Dataset: dataset}}, nil
-	}
+	})
 	return stub
 }
 
@@ -160,9 +158,7 @@ func TestDatasetBrowser_PermissionsAreOnlyLoadedForTheColumn(t *testing.T) {
 
 func TestDatasetBrowser_RootReadsNoPermissions(t *testing.T) {
 	stub := stubPermissions(t, nil)
-	originalRoot := isCurrentUserRoot
-	t.Cleanup(func() { isCurrentUserRoot = originalRoot })
-	isCurrentUserRoot = func() bool { return true }
+	testutil.Replace(t, &isCurrentUserRoot, func() bool { return true })
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
 	})
@@ -212,11 +208,9 @@ func TestDatasetBrowser_PermissionsDialogError(t *testing.T) {
 }
 
 func TestDatasetBrowser_PropertiesDialog(t *testing.T) {
-	original := listDatasetProperties
-	t.Cleanup(func() { listDatasetProperties = original })
 	var read []string
 	var mu sync.Mutex
-	listDatasetProperties = func(dataset string) ([]*zfs.Property, error) {
+	testutil.Replace(t, &listDatasetProperties, func(dataset string) ([]*zfs.Property, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		read = append(read, dataset)
@@ -224,7 +218,7 @@ func TestDatasetBrowser_PropertiesDialog(t *testing.T) {
 			return nil, errors.New("cannot open 'rpool/broken'")
 		}
 		return []*zfs.Property{{Name: "compression", Value: "zstd", Source: "local"}}, nil
-	}
+	})
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}, {Name: "rpool/broken", MountPath: "/b"}}, nil
 	})

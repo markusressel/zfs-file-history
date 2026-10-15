@@ -27,12 +27,33 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '^1.23'
+          go-version-file: go.mod
 
       - uses: extractions/setup-just@v4
 
+      - name: Check the formatting
+        run: just fmt-check
+
+      - name: Vet
+        run: just vet
+
+      # with the race detector: the UI tests run the event loop of tview next to the goroutines of the test
       - name: Test
-        run: just test
+        run: just test-race
+
+  demo-test:
+    name: Test the demo driver
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+
+      - uses: extractions/setup-just@v4
+
+      - name: Test and lint
+        run: just demo-test
 
   build:
     name: Build linux/${{ matrix.goarch }}
@@ -119,7 +140,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '^1.23'
+          go-version-file: go.mod
 
       - uses: extractions/setup-just@v4
 

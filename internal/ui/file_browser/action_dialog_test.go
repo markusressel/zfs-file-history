@@ -64,9 +64,7 @@ func (ft *actionDialogTest) hasDialog(name string) bool {
 }
 
 func setCreateSnapshot(t *testing.T, f func(path string) (string, error)) {
-	original := createSnapshot
-	createSnapshot = f
-	t.Cleanup(func() { createSnapshot = original })
+	testutil.Replace(t, &createSnapshot, f)
 }
 
 // Regression test: creating a snapshot from the file action menu emitted its event from the dialog's background

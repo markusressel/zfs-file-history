@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/table"
@@ -400,7 +401,7 @@ func (dt *historyDialogTest) click(text string) {
 
 // the header row sorts like in the other tables: ← and → choose the column, Enter the direction; saved
 func TestPoolHistoryDialog_Sort(t *testing.T) {
-	store := useTestState(t)
+	store := statetest.Use(t)
 	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return testHistory, nil })
 	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
 	dt.waitForText("Time ↓")
@@ -436,7 +437,7 @@ func TestPoolHistoryDialog_Sort(t *testing.T) {
 
 // the first click on the header row selects it, the next ones sort by the clicked column
 func TestPoolHistoryDialog_SortByClick(t *testing.T) {
-	useTestState(t)
+	statetest.Use(t)
 	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return testHistory, nil })
 	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
 
@@ -453,7 +454,7 @@ func TestPoolHistoryDialog_SortByClick(t *testing.T) {
 
 // F2 chooses the columns, like in the other tables; saved
 func TestPoolHistoryDialog_Columns(t *testing.T) {
-	store := useTestState(t)
+	store := statetest.Use(t)
 	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return testHistory, nil })
 	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
 

@@ -76,7 +76,7 @@ func TestSnapshotBrowser_NoHistoryWithoutTarget(t *testing.T) {
 
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SnapshotActionDialog")
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForUpdates(t, dt.app)
 	assert.NotContains(t, dt.screenText(), "History of")
 
 	var shortcuts []string

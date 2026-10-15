@@ -292,7 +292,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 
 	// + on a leaf does nothing
 	typeRune('+')
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForUpdates(t, app)
 	_, selected, _ := state()
 	assert.Equal(t, "rpool/home", selected)
 
@@ -302,7 +302,11 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	testutil.Press(t, app, screen, tcell.KeyRune, 't')
 	waitFor("tree is collapsed again", func(visible []string, _ string) bool { return len(visible) == 3 })
 	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
-	time.Sleep(100 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		loading := true
+		testutil.OnUiThread(t, app, func() { loading = browser.IsLoading() })
+		return !loading
+	}, 5*time.Second, 10*time.Millisecond, "loaded again")
 	waitFor("still collapsed after reload", func(visible []string, _ string) bool { return len(visible) == 3 })
 
 	// + on a collapsed dataset expands it, then + selects its first child, - on a leaf selects the parent
@@ -319,7 +323,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	// ← and → on data rows are left to the table (horizontal scrolling), they don't change the tree
 	pressKey(tcell.KeyLeft)
 	pressKey(tcell.KeyRight)
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForUpdates(t, app)
 	visible, selected, _ := state()
 	assert.Len(t, visible, 5)
 	assert.Equal(t, "rpool/var", selected)

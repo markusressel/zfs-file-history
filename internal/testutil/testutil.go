@@ -89,8 +89,54 @@ func RunApp(t testing.TB, app *tview.Application) (stop func()) {
 			}
 		})
 	}
+	stop = runningApps.add(t, stop)
 	t.Cleanup(stop)
 	return stop
+}
+
+// runningApps are the stop functions of the apps of each test (see RunApp), which Replace calls before it restores a
+// variable: the app could still read it otherwise.
+var runningApps = &appStops{stops: map[testing.TB]map[*func()]bool{}}
+
+type appStops struct {
+	mutex sync.Mutex
+	// stops are guarded by mutex
+	stops map[testing.TB]map[*func()]bool
+}
+
+// add adds the stop function of an app of the test, and returns it, removing itself once called: every app is
+// stopped when its test ends, so nothing is left.
+func (apps *appStops) add(t testing.TB, stop func()) func() {
+	apps.mutex.Lock()
+	defer apps.mutex.Unlock()
+	var remove func()
+	remove = func() {
+		stop()
+		apps.mutex.Lock()
+		defer apps.mutex.Unlock()
+		delete(apps.stops[t], &remove)
+		if len(apps.stops[t]) == 0 {
+			delete(apps.stops, t)
+		}
+	}
+	if apps.stops[t] == nil {
+		apps.stops[t] = map[*func()]bool{}
+	}
+	apps.stops[t][&remove] = true
+	return remove
+}
+
+// stopAll stops the apps of the test that still run, and waits until they stopped.
+func (apps *appStops) stopAll(t testing.TB) {
+	apps.mutex.Lock()
+	var stops []func()
+	for stop := range apps.stops[t] {
+		stops = append(stops, *stop)
+	}
+	apps.mutex.Unlock()
+	for _, stop := range stops {
+		stop()
+	}
 }
 
 // OnUiThread runs f on the UI thread of the running app and waits for it, failing the test instead of hanging on

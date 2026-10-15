@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 	"zfs-file-history/cmd/global"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/pterm/pterm"
 	"github.com/stretchr/testify/assert"
@@ -13,10 +14,10 @@ import (
 
 // Regression: the version was only written to the log file, not to the terminal.
 func TestVersionCommandPrintsTheVersion(t *testing.T) {
-	previous := []string{global.Version, global.Commit, global.Date}
-	global.Version, global.Commit, global.Date = "2.0.0", "abc1234", "2026-10-03T00:00:00Z"
+	testutil.Replace(t, &global.Version, "2.0.0")
+	testutil.Replace(t, &global.Commit, "abc1234")
+	testutil.Replace(t, &global.Date, "2026-10-03T00:00:00Z")
 	t.Cleanup(func() {
-		global.Version, global.Commit, global.Date = previous[0], previous[1], previous[2]
 		pterm.SetDefaultOutput(os.Stdout)
 		rootCmd.SetArgs(nil)
 	})
@@ -31,7 +32,8 @@ func TestVersionCommandPrintsTheVersion(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.args[len(test.args)-1], func(t *testing.T) {
-			long, global.Verbose = false, false
+			testutil.Replace(t, &long, false)
+			testutil.Replace(t, &global.Verbose, false)
 			var output bytes.Buffer
 			pterm.SetDefaultOutput(&output)
 			rootCmd.SetArgs(test.args)

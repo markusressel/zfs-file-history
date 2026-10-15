@@ -25,12 +25,14 @@ func TestFileBrowser_HistoryKey(t *testing.T) {
 			requested <- e.FileEntry
 		}
 	})
+	// The key handler emits the event itself, so it came once the key was handled (see testutil.Press), and a key that
+	// requests no history needs no wait.
 	historyOf := func(key rune) *data.FileBrowserEntry {
 		ft.pressKey(tcell.KeyRune, key)
 		select {
 		case entry := <-requested:
 			return entry
-		case <-time.After(time.Second):
+		default:
 			return nil
 		}
 	}

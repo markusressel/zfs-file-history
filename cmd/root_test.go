@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 	"zfs-file-history/cmd/global"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -19,23 +20,14 @@ func TestRootCmd_FlagsAndArgs(t *testing.T) {
 }
 
 func TestSetupUi(t *testing.T) {
-	oldVerbose := global.Verbose
-	oldNoColor := global.NoColor
-	oldNoStyle := global.NoStyle
-	defer func() {
-		global.Verbose = oldVerbose
-		global.NoColor = oldNoColor
-		global.NoStyle = oldNoStyle
-	}()
-
-	global.Verbose = true
-	global.NoColor = true
-	global.NoStyle = true
+	testutil.Replace(t, &global.Verbose, true)
+	testutil.Replace(t, &global.NoColor, true)
+	testutil.Replace(t, &global.NoStyle, true)
 	setupUi()
 
-	global.Verbose = false
-	global.NoColor = false
-	global.NoStyle = false
+	testutil.Replace(t, &global.Verbose, false)
+	testutil.Replace(t, &global.NoColor, false)
+	testutil.Replace(t, &global.NoStyle, false)
 	setupUi()
 }
 

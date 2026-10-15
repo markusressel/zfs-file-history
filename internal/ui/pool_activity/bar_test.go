@@ -307,17 +307,11 @@ func idle(name string) *zfs.PoolStatus {
 // the bar are recorded, and applied to the layout.
 func setupTest(t *testing.T, statuses []*zfs.PoolStatus) (*tview.Application, *Monitor, *Bar, *fakeStatuses, func() []int) {
 	fake := &fakeStatuses{statuses: statuses}
-	originalLoad, originalActive, originalIdle, originalDataErrors := loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors
-	loadPoolStatuses = fake.load
-	loadDataErrors = noDataErrors
-	activeRefreshInterval = 50 * time.Millisecond
-	idleRefreshInterval = time.Hour
-	originalDataErrorsInterval := dataErrorsRefreshInterval
-	dataErrorsRefreshInterval = 0
-	t.Cleanup(func() {
-		dataErrorsRefreshInterval = originalDataErrorsInterval
-		loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors = originalLoad, originalActive, originalIdle, originalDataErrors
-	})
+	testutil.Replace(t, &loadPoolStatuses, fake.load)
+	testutil.Replace(t, &loadDataErrors, noDataErrors)
+	testutil.Replace(t, &activeRefreshInterval, 50*time.Millisecond)
+	testutil.Replace(t, &idleRefreshInterval, time.Hour)
+	testutil.Replace(t, &dataErrorsRefreshInterval, 0)
 
 	app, _ := testutil.NewApp(testutil.WithSize(80, 10))
 

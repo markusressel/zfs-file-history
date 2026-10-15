@@ -17,14 +17,11 @@ import (
 )
 
 func TestSetupCommand(t *testing.T) {
-	original := executablePath
-	t.Cleanup(func() { executablePath = original })
-
-	executablePath = func() (string, error) { return "/opt/zfs-file-history", nil }
+	testutil.Replace(t, &executablePath, func() (string, error) { return "/opt/zfs-file-history", nil })
 	assert.Equal(t, []string{"/opt/zfs-file-history", "setup", "--events", "--pool-actions"},
 		setupCommand([]*zfs.SudoersRule{zfs.SudoersRuleEvents, zfs.SudoersRulePoolActions}))
 
-	executablePath = func() (string, error) { return "", errors.New("unknown") }
+	testutil.Replace(t, &executablePath, func() (string, error) { return "", errors.New("unknown") })
 	assert.Equal(t, []string{"zfs-file-history", "setup", "--data-errors"}, setupCommand([]*zfs.SudoersRule{zfs.SudoersRuleDataErrors}))
 }
 
@@ -54,33 +51,25 @@ func newSetupDialogTest(t *testing.T, allowed map[string]bool, automatic bool, s
 
 // newSetupDialogTestWithSmartctl is newSetupDialogTest, with smartctl installed or not.
 func newSetupDialogTestWithSmartctl(t *testing.T, allowed map[string]bool, automatic bool, sudoErr error, smartctl bool) *setupDialogTest {
-	originalInstalled := disk.SmartctlInstalled
-	t.Cleanup(func() { disk.SmartctlInstalled = originalInstalled })
-	disk.SmartctlInstalled = func() bool { return smartctl }
+	testutil.Replace(t, &disk.SmartctlInstalled, func() bool { return smartctl })
 	dt := &setupDialogTest{rootDialogTest: rootDialogTest{permissionsDialogTest: permissionsDialogTest{t: t}}}
-	originalGrant, originalCopy, originalExecutable := grantPermissions, copyToClipboard, executablePath
-	originalSudoersChanged := zfs.SudoersChanged
-	t.Cleanup(func() {
-		grantPermissions, copyToClipboard, executablePath = originalGrant, originalCopy, originalExecutable
-		zfs.SudoersChanged = originalSudoersChanged
-	})
 	// an emitter of this test, so its listener does not outlive it
-	zfs.SudoersChanged = util.NewEmitter[struct{}]()
+	testutil.Replace(t, &zfs.SudoersChanged, util.NewEmitter[struct{}]())
 	zfs.SudoersChanged.Subscribe(func(struct{}) { dt.sudoersChanged.Add(1) })
-	executablePath = func() (string, error) { return "/usr/bin/zfs-file-history", nil }
-	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
+	testutil.Replace(t, &executablePath, func() (string, error) { return "/usr/bin/zfs-file-history", nil })
+	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		dt.recordUiThread()
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.ran = append(dt.ran, commands...)
 		return sudoErr
-	}
-	copyToClipboard = func(text string) error {
+	})
+	testutil.Replace(t, &copyToClipboard, func(text string) error {
 		dt.mu.Lock()
 		defer dt.mu.Unlock()
 		dt.copied = append(dt.copied, text)
 		return nil
-	}
+	})
 
 	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)

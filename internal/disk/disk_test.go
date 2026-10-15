@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,9 +21,8 @@ type fakeSystem struct {
 func newFakeSystem(t *testing.T) *fakeSystem {
 	root := t.TempDir()
 	system := &fakeSystem{t: t, dev: filepath.Join(root, "dev"), sys: filepath.Join(root, "sys")}
-	oldDev, oldSys := devDir, sysDir
-	devDir, sysDir = system.dev, system.sys
-	t.Cleanup(func() { devDir, sysDir = oldDev, oldSys })
+	testutil.Replace(t, &devDir, system.dev)
+	testutil.Replace(t, &sysDir, system.sys)
 	return system
 }
 

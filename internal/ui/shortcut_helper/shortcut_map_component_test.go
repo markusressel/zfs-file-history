@@ -39,9 +39,8 @@ func TestSetOnHeightChanged(t *testing.T) {
 }
 
 func TestSetEntriesAndClear(t *testing.T) {
-	// Setup custom theme colors if needed (or fallback to default theme color struct)
-	theme.Colors.ShortcutMap.KeyCombo = 0
-	theme.Colors.ShortcutMap.Name = 0
+	testutil.Replace(t, &theme.Colors.ShortcutMap.KeyCombo, 0)
+	testutil.Replace(t, &theme.Colors.ShortcutMap.Name, 0)
 
 	app, _ := testutil.NewApp()
 	sm := NewShortcutMap(app)

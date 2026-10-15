@@ -37,9 +37,7 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	ds.addSnapshot("d1", day(1), map[string]string{"notes.txt": "one\n"})
 	ds.addSnapshot("d2", day(2), map[string]string{"notes.txt": "one\ntwo\n"})
 	ds.writeFile(ds.root, "notes.txt", "one\ntwo\nthree\n", fileTime.Add(time.Hour))
-	original := findSnapshotsOfPath
-	t.Cleanup(func() { findSnapshotsOfPath = original })
-	findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
+	testutil.Replace(t, &findSnapshotsOfPath, func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil })
 
 	app, screen := testutil.NewApp(testutil.WithSize(140, 30))
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
@@ -110,9 +108,7 @@ func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
 			ds.addSnapshot("d2", day(2), map[string]string{"notes.txt": "one\n"})
 			ds.addSnapshot("d3", day(3), map[string]string{"notes.txt": "one\ntwo\n"})
 			ds.writeFile(ds.root, "notes.txt", "one\ntwo\n", fileTime)
-			original := findSnapshotsOfPath
-			t.Cleanup(func() { findSnapshotsOfPath = original })
-			findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
+			testutil.Replace(t, &findSnapshotsOfPath, func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil })
 
 			app, _ := testutil.NewApp()
 			pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)

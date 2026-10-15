@@ -86,7 +86,7 @@ func TestTextInputDialog_EmptyTextIsNotSubmitted(t *testing.T) {
 	require.Eventually(t, func() bool { return dt.text() == "   " }, 2*time.Second, 10*time.Millisecond)
 
 	dt.press(tcell.KeyEnter, 0)
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForUpdates(t, dt.app)
 	assert.Empty(t, dt.getSubmitted())
 	assert.True(t, dt.isShown(), "the dialog stays open")
 }

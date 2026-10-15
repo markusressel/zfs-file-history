@@ -52,11 +52,9 @@ func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overl
 	}
 	require.NoError(t, os.Chtimes(filepath.Join(ds.root, "docs", "c"), fileTime, fileTime))
 
-	original := findSnapshotsOfPath
-	t.Cleanup(func() { findSnapshotsOfPath = original })
-	findSnapshotsOfPath = func(path string, cachedEntries []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) {
+	testutil.Replace(t, &findSnapshotsOfPath, func(path string, cachedEntries []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) {
 		return ds.snapshots, nil
-	}
+	})
 
 	ft := &folderHistoryTest{t: t, ds: ds}
 	ft.app, ft.screen = testutil.NewApp()
@@ -219,7 +217,7 @@ func TestFolderHistoryOverlay_NoRestoreOfEntriesNotInTheSnapshot(t *testing.T) {
 	ft.waitFor("hint", func() bool { return strings.Contains(ft.screenText(), "not in d3, nothing to restore") })
 
 	ft.press(tcell.KeyEnter, 0)
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForUpdates(t, ft.app)
 	assert.False(t, ft.hasPage(string(RestoreFileDialogPage)))
 }
 

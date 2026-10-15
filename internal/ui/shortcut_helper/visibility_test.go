@@ -1,9 +1,8 @@
 package shortcut_helper
 
 import (
-	"path/filepath"
 	"testing"
-	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -11,14 +10,10 @@ import (
 )
 
 func TestToggleShortcuts(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
-	collapsibleMaps = nil
+	store := statetest.Use(t)
+	testutil.Replace(t, &collapsibleMaps, nil)
 	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
 		shortcutsHidden.Store(false)
-		collapsibleMaps = nil
 	})
 	InitShortcutVisibility()
 	require.False(t, ShortcutsHidden(), "shown by default")
@@ -65,8 +60,7 @@ func TestToggleShortcuts(t *testing.T) {
 }
 
 func TestSetCollapsibleRegistersOnce(t *testing.T) {
-	collapsibleMaps = nil
-	t.Cleanup(func() { collapsibleMaps = nil })
+	testutil.Replace(t, &collapsibleMaps, nil)
 
 	shortcutMap := NewShortcutMap(testutil.App())
 	shortcutMap.SetCollapsible().SetCollapsible()

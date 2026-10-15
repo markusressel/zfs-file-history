@@ -3,6 +3,7 @@ package zfs
 import (
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -127,9 +128,7 @@ func (b *childListBackend) ListChildDatasets(parents []string) ([]*DatasetListEn
 
 func TestListDatasetsAlong(t *testing.T) {
 	fake := &childListBackend{}
-	original := backend
-	t.Cleanup(func() { SetBackend(original) })
-	SetBackend(fake)
+	testutil.Replace[Backend](t, &backend, fake)
 
 	entries, err := ListDatasetsAlong("tank/a/x")
 	require.NoError(t, err)

@@ -1,12 +1,11 @@
 package ui
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
-	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/path_overview"
@@ -44,24 +43,19 @@ func screenText(t *testing.T, app *tview.Application, screen tcell.SimulationScr
 }
 
 func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
-	startPath := t.TempDir()
-	app, _, datasetPage := createUi(startPath, true)
+	app, _, datasetPage := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
-	// Like in real usage, let the hidden dataset page finish loading (and selecting) its datasets
-	// before switching to it. Otherwise the selection while it is visible would update its shortcuts anyway.
-	// Once a dataset is selected, the path changes from the start path to the dataset's mount path.
-	// Tests have no ZFS (see testSystem): loading fails and nothing is selected, which is just as fine for this test.
-	datasetsSelected := func() bool {
-		selected := false
-		testutil.OnUiThread(t, app, func() { selected = datasetPage.datasetBrowser.GetPath() != startPath })
-		return selected
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	for !datasetsSelected() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
+	// Like in real usage, let the hidden dataset page finish loading (and selecting) its datasets before switching to
+	// it. Otherwise the selection while it is visible would update its shortcuts anyway. Tests have no ZFS (see
+	// testSystem): loading fails and nothing is selected, which is just as fine for this test. It waits for the load
+	// to end, not for a selection, which never comes.
+	require.Eventually(t, func() bool {
+		loading := true
+		testutil.OnUiThread(t, app, func() { loading = datasetPage.datasetBrowser.IsLoading() })
+		return !loading
+	}, 10*time.Second, 20*time.Millisecond, "datasets loaded")
 
 	waitForText := func(text string) {
 		assert.Eventually(t, func() bool {
@@ -90,7 +84,7 @@ func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 }
 
 func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
@@ -148,7 +142,7 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 }
 
 func TestPageTabs(t *testing.T) {
-	app, _, _ := createUi(t.TempDir(), true)
+	app, _, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
@@ -203,7 +197,7 @@ func TestPageTabs(t *testing.T) {
 }
 
 func TestRelativeTimesKey(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 30))
 	testutil.RunApp(t, app)
 	t.Cleanup(func() {
@@ -227,7 +221,7 @@ func TestRelativeTimesKey(t *testing.T) {
 
 // Dialogs and overlays (e.g. the histories) are pages of their own: T applies to their tables as well.
 func TestRelativeTimesKeyInDialogs(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 30))
 	testutil.RunApp(t, app)
 	t.Cleanup(func() {
@@ -253,7 +247,7 @@ func TestRelativeTimesKeyInDialogs(t *testing.T) {
 // The dataset info is only shown on the dataset page: on the main page, Tab goes from the file browser straight
 // to the snapshots, which use the whole height of the right column.
 func TestMainPageHasNoDatasetInfo(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	assert.Equal(t, []FocusableUiComponent{mainPage.fileBrowser, mainPage.snapshotBrowser}, mainPage.focusableComponents())
 	assert.Equal(t, 2, mainPage.split.GetItemCount())
 	assert.Same(t, mainPage.snapshotBrowser.GetLayout(), mainPage.split.GetItem(1))
@@ -267,13 +261,8 @@ func TestMainPageHasNoDatasetInfo(t *testing.T) {
 // o hides the overview below the file browser (making room for the files) and shows it again; the setting is
 // remembered. While typing a filter, it is typed.
 func TestOverviewKey(t *testing.T) {
-	store := state.Load(filepath.Join(t.TempDir(), "state.json"))
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	store := statetest.Use(t)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
@@ -311,7 +300,7 @@ func TestOverviewKey(t *testing.T) {
 
 // The boundaries between the panes of both pages can be dragged with the mouse (see uiutil.ResizableSplit).
 func TestPageBoundariesCanBeDragged(t *testing.T) {
-	app, mainPage, datasetPage := createUi(t.TempDir(), true)
+	app, mainPage, datasetPage := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
@@ -377,7 +366,7 @@ func TestPageBoundariesCanBeDragged(t *testing.T) {
 // pages, covering only its area: the snapshot list next to it could still be clicked, and keys of the page (e.g.
 // ⭾) still worked. They are shown on the pages of the application now, and are modal for the whole screen.
 func TestComponentDialogsAreModal(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 

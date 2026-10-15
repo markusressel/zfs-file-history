@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
@@ -112,9 +113,7 @@ func (r *recordedEvents) get() []string {
 }
 
 func setListDatasets(t *testing.T, f func() ([]*zfs.DatasetListEntry, error)) {
-	original := listDatasets
-	listDatasets = f
-	t.Cleanup(func() { listDatasets = original })
+	testutil.Replace(t, &listDatasets, f)
 }
 
 // newBrowserApp creates a browser as the root of a running application.
@@ -618,12 +617,7 @@ func TestDatasetBrowser_ShortcutMapContainsColumns(t *testing.T) {
 
 func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store := state.Load(path)
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	store := statetest.UseFile(t, path)
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
 	})
@@ -647,13 +641,11 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { focused = browser.HasFocus() })
 		return focused
 	}, 2*time.Second, 10*time.Millisecond, "the table has the focus again")
-	require.NoError(t, store.Flush())
 
 	// a new browser (e.g. after a restart) restores the layout from the file
-	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(testutil.App())
+	var restored *DatasetBrowserComponent
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
 	assert.Equal(t, tableColumns[1:], restored.tableContainer.GetColumnSpec())
-	state.Current = store
 
 	// reset in the dialog restores the default columns and removes the saved layout
 	pressKey(tcell.KeyF2, 0)
@@ -669,12 +661,7 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 
 func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store := state.Load(path)
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	statetest.UseFile(t, path)
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{{Name: "rpool/a", MountPath: "/a"}}, nil
 	})
@@ -693,11 +680,10 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { hiding, tree = browser.IsHidingUnmounted(), browser.IsTreeView() })
 		return !hiding && !tree
 	}, 2*time.Second, 10*time.Millisecond)
-	require.NoError(t, store.Flush())
 
 	// a new browser (e.g. after a restart) restores the toggles from the file
-	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(testutil.App())
+	var restored *DatasetBrowserComponent
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
 	assert.False(t, restored.IsHidingUnmounted())
 	assert.False(t, restored.IsTreeView())
 	assert.NotNil(t, findEntry(restored.GetShortcutMap(), "Hide unmounted"))
@@ -779,18 +765,17 @@ func TestDatasetBrowser_SelectOnLoad(t *testing.T) {
 		browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/home"))
 		browser.Refresh(false)
 	})
-	time.Sleep(50 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		loading := true
+		testutil.OnUiThread(t, app, func() { loading = browser.IsLoading() })
+		return !loading
+	}, 5*time.Second, 10*time.Millisecond, "loaded again")
 	assert.Equal(t, "rpool/home", selected())
 }
 
 func TestDatasetBrowser_CollapsedDatasetsAreSavedAndRestored(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store := state.Load(path)
-	state.Current = store
-	t.Cleanup(func() {
-		_ = store.Flush()
-		state.Current = nil
-	})
+	statetest.UseFile(t, path)
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{
 			{Name: "rpool", MountPath: "/rpool"},
@@ -811,19 +796,14 @@ func TestDatasetBrowser_CollapsedDatasetsAreSavedAndRestored(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 
 	testutil.OnUiThread(t, app, func() { browser.setCollapsed("tank", true) })
-	require.NoError(t, store.Flush())
-
-	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(testutil.App())
+	var restored *DatasetBrowserComponent
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
 	assert.Equal(t, map[string]bool{"tank": true}, restored.collapsed)
 
 	// expanding is saved as well
-	state.Current = store
 	testutil.OnUiThread(t, app, func() { browser.setCollapsed("tank", false) })
-	require.NoError(t, store.Flush())
-	state.Current = state.Load(path)
-	assert.Empty(t, NewDatasetBrowser(testutil.App()).collapsed)
-	state.Current = store
+	statetest.AfterRestart(t, path, func() { restored = NewDatasetBrowser(testutil.App()) })
+	assert.Empty(t, restored.collapsed)
 }
 
 // hidePermissions hides the permissions column, so no permissions are read in the background (and outlive the test).

@@ -49,11 +49,7 @@ type propertiesTest struct {
 
 func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 	pt := &propertiesTest{t: t, properties: newTestProperties()}
-	originalList, originalSet, originalInherit, originalGrant := listProperties, setProperty, inheritProperty, grantPermissions
-	t.Cleanup(func() {
-		listProperties, setProperty, inheritProperty, grantPermissions = originalList, originalSet, originalInherit, originalGrant
-	})
-	setProperty = func(dataset string, name string, value string) error {
+	testutil.Replace(t, &setProperty, func(dataset string, name string, value string) error {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.set = append(pt.set, fmt.Sprintf("%s %s=%s", dataset, name, value))
@@ -61,15 +57,15 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 			pt.apply(name, value, "local")
 		}
 		return pt.setErr
-	}
-	inheritProperty = func(dataset string, name string) error {
+	})
+	testutil.Replace(t, &inheritProperty, func(dataset string, name string) error {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.inherited = append(pt.inherited, dataset+" "+name)
 		pt.apply(name, "off", "default")
 		return nil
-	}
-	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
+	})
+	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.sudo = append(pt.sudo, commands...)
@@ -77,8 +73,8 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 			pt.apply("compression", "lz4", "local")
 		}
 		return pt.sudoErr
-	}
-	listProperties = func(dataset string) ([]*zfs.Property, error) {
+	})
+	testutil.Replace(t, &listProperties, func(dataset string) ([]*zfs.Property, error) {
 		pt.mu.Lock()
 		defer pt.mu.Unlock()
 		pt.reloads++
@@ -88,7 +84,7 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 			copied = append(copied, &copy)
 		}
 		return copied, nil
-	}
+	})
 
 	pt.app, pt.screen = testutil.NewApp()
 	pt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
@@ -246,7 +242,7 @@ func TestDatasetPropertiesDialog_ReadOnlyCannotBeEdited(t *testing.T) {
 
 	pt.press(tcell.KeyEnter, 0)
 	pt.press(tcell.KeyRune, 'i')
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForUpdates(t, pt.app)
 	assert.False(t, pt.hasPage("EditPropertyDialog"))
 	assert.False(t, pt.hasPage("InheritPropertyDialog"))
 }
@@ -294,7 +290,7 @@ func TestDatasetPropertiesDialog_Inherit(t *testing.T) {
 	// only local values can be reset
 	pt.selectProperty("compression")
 	pt.press(tcell.KeyRune, 'i')
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForUpdates(t, pt.app)
 	assert.False(t, pt.hasPage("InheritPropertyDialog"))
 
 	pt.selectProperty("canmount")
@@ -321,7 +317,7 @@ func TestDatasetPropertiesDialog_EscClosesUnlessFiltering(t *testing.T) {
 		return count == 2 // canmount, compression
 	})
 	pt.press(tcell.KeyEscape, 0)
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForUpdates(t, pt.app)
 	assert.True(t, pt.hasPage("DatasetPropertiesDialog"), "Esc ends typing the filter first")
 
 	pt.press(tcell.KeyEscape, 0)

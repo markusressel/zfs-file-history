@@ -122,23 +122,19 @@ type permissionsEditTest struct {
 
 func newPermissionsEditTest(t *testing.T, permissions *zfs.DatasetPermissions) *permissionsEditTest {
 	et := &permissionsEditTest{t: t}
-	originalApply, originalLoad, originalGrant := applyDelegationChange, loadDatasetPermissions, grantPermissions
-	t.Cleanup(func() {
-		applyDelegationChange, loadDatasetPermissions, grantPermissions = originalApply, originalLoad, originalGrant
-	})
-	applyDelegationChange = func(change zfs.DelegationChange) error {
+	testutil.Replace(t, &applyDelegationChange, func(change zfs.DelegationChange) error {
 		et.mu.Lock()
 		defer et.mu.Unlock()
 		et.applied = append(et.applied, change)
 		return et.applyErr
-	}
-	grantPermissions = func(application *tview.Application, explanation string, commands [][]string) error {
+	})
+	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		et.mu.Lock()
 		defer et.mu.Unlock()
 		et.sudo = append(et.sudo, commands...)
 		return et.sudoErr
-	}
-	loadDatasetPermissions = func(dataset string) (*zfs.DatasetPermissions, error) {
+	})
+	testutil.Replace(t, &loadDatasetPermissions, func(dataset string) (*zfs.DatasetPermissions, error) {
 		et.mu.Lock()
 		defer et.mu.Unlock()
 		et.reloads++
@@ -148,7 +144,7 @@ func newPermissionsEditTest(t *testing.T, permissions *zfs.DatasetPermissions) *
 		reloaded.Delegations.Entries = append(reloaded.Delegations.Entries, destroy)
 		reloaded.Grants[zfs.PermissionDestroy] = []zfs.Grant{{Delegation: destroy}}
 		return reloaded, nil
-	}
+	})
 
 	et.app, et.screen = testutil.NewApp()
 	et.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
@@ -271,6 +267,6 @@ func TestDatasetPermissionsDialog_ApplyFails(t *testing.T) {
 func TestDatasetPermissionsDialog_ApplyWithoutChanges(t *testing.T) {
 	et := newPermissionsEditTest(t, newTestDatasetPermissions())
 	et.press(tcell.KeyRune, 'a')
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForUpdates(t, et.app)
 	assert.False(t, et.hasPage("ApplyDelegationsDialog"))
 }

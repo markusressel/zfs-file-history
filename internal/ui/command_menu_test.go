@@ -15,7 +15,7 @@ import (
 // ':' opens the command menu with the commands of the focused component, the page and the global ones; Enter runs
 // the selected one
 func TestCommandMenuKey(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
@@ -69,7 +69,7 @@ func TestCommandMenuKey(t *testing.T) {
 
 // ':' is typed into a filter instead of opening the command menu
 func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
@@ -86,7 +86,7 @@ func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
 // The commands of the components without the focus are listed as well, after the page; running one focuses its
 // component first, like after pressing its key there.
 func TestCommandSections_OtherComponents(t *testing.T) {
-	app, mainPage, _ := createUi(t.TempDir(), true)
+	app, mainPage, _ := newUi(t, t.TempDir())
 	testutil.UseSimulationScreen(app)
 	testutil.RunApp(t, app)
 

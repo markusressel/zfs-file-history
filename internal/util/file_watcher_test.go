@@ -5,12 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestFileWatcher(t *testing.T) {
+	useWatchInterval(t, 20*time.Millisecond)
 	tempDir := t.TempDir()
 
 	fw := NewFileWatcher(tempDir)
@@ -74,9 +76,7 @@ func TestFileWatcherRecursive(t *testing.T) {
 
 // Regression: after the first event, the action ran every second (reloading the directory) until the next one.
 func TestFileWatcherCallsTheActionOncePerChange(t *testing.T) {
-	previousInterval := watchInterval
-	watchInterval = 20 * time.Millisecond
-	t.Cleanup(func() { watchInterval = previousInterval })
+	useWatchInterval(t, 20*time.Millisecond)
 
 	tempDir := t.TempDir()
 	fw := NewFileWatcher(tempDir)
@@ -102,4 +102,10 @@ func TestFileWatcherCallsTheActionOncePerChange(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for the second file watcher event")
 	}
+}
+
+// useWatchInterval sets watchInterval until the end of the test, so it does not wait for the second of the
+// application before the first event.
+func useWatchInterval(t *testing.T, interval time.Duration) {
+	testutil.Replace(t, &watchInterval, interval)
 }

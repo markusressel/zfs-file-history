@@ -29,7 +29,8 @@ of the code.
   `FILES_PAGE`), not for names of datasets or pools. `just demo-test` tests them against fake applications (and that
   every storyboard is safe to run) and runs ruff.
 - Before committing: `gofmt -l .` is empty, `go vet ./...` and `go test ./...` pass, the touched packages pass with
-  `-race`. CI also runs codespell (see `.codespellignore`).
+  `-race`. `just check` runs what CI runs (gofmt, vet, all tests with `-race`: `just test-race`, `just demo-test`),
+  except codespell (see `.codespellignore`).
 - Tests never need ZFS or root: everything that runs `zfs`/`zpool` or calls libzfs is replaceable (see Tests). They
   never use the ZFS of the system either, so they behave the same on every machine (see Tests).
 
@@ -285,10 +286,17 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 
 - testify (`assert`/`require`). Table tests where several inputs share an assertion.
 - Functions that run processes or call libzfs are package variables, replaceable in tests (e.g. `listPools`,
-  `loadPoolStatus`, `loadDatasetPermissions`; commented "replaceable in tests"). Replace them with `t.Cleanup` to
-  restore.
+  `loadPoolStatus`, `loadDatasetPermissions`; commented "replaceable in tests"). Tests change package variables only
+  with `testutil.Replace(t, &variable, value)` (`TestPackageVariablesAreReplacedWithReplace`; `TestMain` may set them
+  for the whole package): it restores them when the test ends, after the apps of the test stopped, and fails a test
+  that runs in parallel (the variables are shared by the tests of a package; packages run in processes of their own).
+  Each test has its own state with `statetest.Use` (`state.Current` is nil without it: nothing is saved), and new zfs
+  emitters with `zfstest.UseNewEmitters` (the UI of `internal/ui` is created with `newUi`, which does that):
+  subscriptions are never removed, an emit reached the UI of every earlier test.
+- Test-only code: shared helpers of UI tests in `internal/testutil`; helpers and fakes for the users of one package
+  in `<package>/<package>test` (`disktest`, `statetest`, `zfstest`).
 - Test binaries use `zfs.NoSystem` (everything fails with `zfs.ErrNoSystem`, like a system without ZFS) unless a test
-  sets another backend: with the System, tests saw the pools of each machine (none in CI) and passed on one but not on
+  sets another backend (`testutil.Replace` on `backend` in `internal/zfs`, `TestMain` elsewhere): with the System, tests saw the pools of each machine (none in CI) and passed on one but not on
   another. The tests of `internal/zfs` test the System itself (with its commands replaced). `internal/ui` sets
   `testSystem` once (loads of earlier tests may still run), which a test gives pools with `setPools`.
 - UI tests run a real `tview.Application` created with `testutil.NewApp` (`testutil.App` without its screen; the one of
@@ -305,7 +313,8 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   Injected keys and clicks are handled in another queue than `OnUiThread`: `testutil.Press`, `Type`, `Click`,
   `ClickText` and `Drag` wait until they were handled (`testutil.WaitForEvents`; not a sleep, too short on a busy
   machine; `TestClicksUseTestutil`). Updates the handlers queue (e.g. closing a dialog) can still run after that: wait
-  for their result. Tests that draw a primitive themselves get their screen from `testutil.NewScreen` or
+  for their result, or with `testutil.WaitForUpdates` until the queued ones ran, to check that a key did nothing
+  (instead of a sleep). Wait for a load with what it ends with (`IsLoading`, an event), not for a time. Tests that draw a primitive themselves get their screen from `testutil.NewScreen` or
   `DrawToScreen`; the text is read with `testutil.ScreenLines` and `FindInScreen` (a rune per cell, so it lines up with
   the columns), a cell with `screen.Get` (`TestScreenIsReadWithTestutil`). `testutil.StripTags` removes style tags
   from text.

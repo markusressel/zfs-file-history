@@ -51,9 +51,7 @@ type fileBrowserState struct {
 }
 
 func newFileBrowserTest(t *testing.T, filterOnDirectoryChange configuration.FileBrowserFilterOnDirectoryChange) *fileBrowserTest {
-	originalConfig := configuration.CurrentConfig
-	configuration.CurrentConfig.FileBrowser.FilterOnDirectoryChange = filterOnDirectoryChange
-	t.Cleanup(func() { configuration.CurrentConfig = originalConfig })
+	testutil.Replace(t, &configuration.CurrentConfig.FileBrowser.FilterOnDirectoryChange, filterOnDirectoryChange)
 
 	dir := t.TempDir()
 	for _, name := range []string{"a.txt", "b.txt", "c.log"} {
@@ -125,9 +123,19 @@ func TestFileBrowser_Filter(t *testing.T) {
 		assert.FileExists(t, filepath.Join(ft.dir, name))
 	}
 
-	// a reload of the same directory keeps the filter
+	// a reload of the same directory keeps the filter: once it was loaded again (the footer was the same before)
+	reloaded := make(chan struct{}, 10)
+	ft.fileBrowser.Events.Subscribe(func(event Event) {
+		if _, ok := event.(EntriesLoadedEvent); ok {
+			reloaded <- struct{}{}
+		}
+	})
 	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.Refresh(false) })
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-reloaded:
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "not loaded again")
+	}
 	s := ft.waitFor("filter kept after reload", func(s fileBrowserState) bool { return s.footer == "2 of 4 entries" })
 	assert.Equal(t, "*.txt", s.filter)
 }

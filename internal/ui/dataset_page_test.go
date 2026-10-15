@@ -6,6 +6,7 @@ import (
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/zfs/zfstest"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -15,6 +16,7 @@ import (
 func TestDatasetPage_CyclingFocusKeepsTheLayout(t *testing.T) {
 	for _, width := range []int{80, 100, 120, 160, 200} {
 		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			zfstest.UseNewEmitters(t)
 			app, _ := testutil.NewApp(testutil.WithSize(width, 50))
 			page := NewDatasetPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), "/")
 			testutil.StartApp(t, app, page.layout)

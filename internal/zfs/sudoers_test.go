@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"zfs-file-history/internal/disk"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -130,46 +131,44 @@ func TestParseNoPasswordCommands(t *testing.T) {
 }
 
 func TestAllowedSudoersRules(t *testing.T) {
-	originalList, originalRoot := listSudoRules, isRoot
-	t.Cleanup(func() { listSudoRules, isRoot = originalList, originalRoot })
-	isRoot = func() bool { return false }
+	testutil.Replace(t, &isRoot, func() bool { return false })
 
-	listSudoRules = func() (string, error) {
+	testutil.Replace(t, &listSudoRules, func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " events -v -f, " + ZpoolPath() + " status -p -v\n", nil
-	}
+	})
 	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "history": false, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
 	// all commands of the rule are needed
-	listSudoRules = func() (string, error) {
+	testutil.Replace(t, &listSudoRules, func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " scrub [a-zA-Z]*\n", nil
-	}
+	})
 	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": false, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
-	listSudoRules = func() (string, error) {
+	testutil.Replace(t, &listSudoRules, func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + disk.SmartctlPath() + " -j -i -H -A -n standby -- /dev/*\n", nil
-	}
+	})
 	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": false, "smart": true, "pool-actions": false}, AllowedSudoersRules())
 
-	listSudoRules = func() (string, error) {
+	testutil.Replace(t, &listSudoRules, func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " history -il [a-zA-Z]*\n", nil
-	}
+	})
 	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": true, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
 	// the history of all pools, allowed by former versions of the rule, still works
-	listSudoRules = func() (string, error) {
+	testutil.Replace(t, &listSudoRules, func() (string, error) {
 		return "User alice may run the following commands on host:\n" +
 			"    (root) NOPASSWD: " + ZpoolPath() + " history -il\n", nil
-	}
+	})
 	assert.Equal(t, map[string]bool{"events": false, "data-errors": false, "history": true, "smart": false, "pool-actions": false}, AllowedSudoersRules())
 
-	listSudoRules = func() (string, error) { return "", errors.New("sudo: a password is required") }
+	testutil.Replace(t, &listSudoRules, func() (string, error) { return "", errors.New("sudo: a password is required") })
 	assert.Equal(t, map[string]bool{}, AllowedSudoersRules())
 
-	isRoot = func() bool { return true }
+	testutil.Replace(t, &isRoot, func() bool { return true })
 	assert.Equal(t, map[string]bool{"events": true, "data-errors": true, "history": true, "smart": true, "pool-actions": true}, AllowedSudoersRules())
 }
 
@@ -189,11 +188,9 @@ func TestSudoersRuleSmart(t *testing.T) {
 	assert.True(t, file.Has("alice", SudoersRuleSmart))
 	assert.False(t, file.Has("alice", SudoersRuleEvents))
 
-	original := disk.SmartctlInstalled
-	t.Cleanup(func() { disk.SmartctlInstalled = original })
-	disk.SmartctlInstalled = func() bool { return false }
+	testutil.Replace(t, &disk.SmartctlInstalled, func() bool { return false })
 	assert.False(t, SudoersRuleSmart.IsAvailable(), "not offered without smartctl")
 	assert.True(t, SudoersRuleEvents.IsAvailable())
-	disk.SmartctlInstalled = func() bool { return true }
+	testutil.Replace(t, &disk.SmartctlInstalled, func() bool { return true })
 	assert.True(t, SudoersRuleSmart.IsAvailable())
 }
