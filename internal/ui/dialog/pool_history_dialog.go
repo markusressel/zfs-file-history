@@ -64,7 +64,7 @@ type PoolHistoryDialog struct {
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
 	filterInput   *tview.InputField
-	table         *poolHistoryTable
+	table         *scrollbar.Table
 	// tableArea shows the table, or loadingView while the history is read
 	tableArea   *tview.Pages
 	loadingView *util.LoadingView
@@ -249,7 +249,7 @@ func (d *PoolHistoryDialog) createLayout() {
 		}
 		return d.handleHeaderClick(action, event)
 	})
-	d.table = &poolHistoryTable{Table: list, scrollbar: scrollbar.NewScrollbarComponent(d.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)}
+	d.table = scrollbar.NewTable(list, 1)
 
 	d.loadingView = util.NewLoadingView(d.application, "", "Reading the history (zpool history)…")
 	d.loadingView.SetBorder(false)
@@ -908,33 +908,6 @@ func (d *PoolHistoryDialog) Close() {
 	go func() {
 		d.actionChannel <- DialogCloseActionId
 	}()
-}
-
-// poolHistoryTable is the list, with a scrollbar on its right while not all rows fit (like table.RowSelectionTable).
-// The bar is drawn after the table: tview sets the row offset while drawing it (e.g. to keep the selection visible).
-type poolHistoryTable struct {
-	*tview.Table
-	scrollbar *scrollbar.ScrollbarComponent
-}
-
-func (t *poolHistoryTable) Draw(screen tcell.Screen) {
-	x, y, width, height := t.GetRect()
-	// without the (fixed) header row
-	rows := t.GetRowCount() - 1
-	if rows <= height-1 || width < 2 {
-		t.Table.Draw(screen)
-		return
-	}
-	t.SetRect(x, y, width-1, height)
-	t.Table.Draw(screen)
-	t.SetRect(x, y, width, height)
-	offset, _ := t.GetOffset()
-	t.scrollbar.SetMax(rows)
-	t.scrollbar.SetPosition(offset)
-	t.scrollbar.SetWidth(max(height-1, 1))
-	layout := t.scrollbar.GetLayout()
-	layout.SetRect(x+width-1, y, 1, height)
-	layout.Draw(screen)
 }
 
 // poolHistoryContent are the rows of the list, created when drawn (see tview.TableContent): a table with cells for

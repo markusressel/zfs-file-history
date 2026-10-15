@@ -251,7 +251,10 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 
 ## Tables
 
-- Lists use `table.RowSelectionTable[T]` (entries implement `TableRowId()`); dialogs use plain `tview.Table`s.
+- Lists use `table.RowSelectionTable[T]` (entries implement `TableRowId()`); dialogs use plain `tview.Table`s. Plain
+  tables that may have more rows than lines (the command menu, the damaged files, the history of a pool) are placed
+  in the layout as `scrollbar.Table`, which shows a scrollbar while not all rows fit, like
+  `RowSelectionTable` and `scrollbar.TextView` do.
 - The selected row is a dark bar on which each cell keeps its own text color (`theme.SelectedStyle`, lightened where
   it would be hard to read), so colors that mean something (states, a destructive action) stay visible.
   `RowSelectionTable` does this for all cells; plain tables use `uiutil.SetSelectionStyle` and

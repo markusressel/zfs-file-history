@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -91,7 +92,7 @@ func (d *DataErrorsDialog) createLayout(index *zfs.DataErrorIndex) {
 
 	d.content = tview.NewFlex().SetDirection(tview.FlexRow)
 	d.content.AddItem(d.helpView, 1, 0, false)
-	d.content.AddItem(d.table, 0, 1, true)
+	d.content.AddItem(scrollbar.NewTable(d.table, 1), 0, 1, true)
 	d.content.AddItem(d.searchView, 0, 0, false)
 	d.content.AddItem(d.hintView, 1, 0, false)
 	// the explanation gets as many lines as it needs at the width of the dialog
