@@ -30,7 +30,7 @@ func newMissingRelease() *zfs.MissingPermissionsError {
 }
 
 func TestNewErrorDialog_MissingPermissions(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 
 	assert.Equal(t, "ErrorDialog", NewErrorDialog(app, "Failed", errors.New("dataset is busy")).GetName())
 	assert.Equal(t, "MissingPermissionsDialog", NewErrorDialog(app, "Failed", newMissingRelease()).GetName())
@@ -110,12 +110,9 @@ func newPermissionsDialogTest(t *testing.T, withRetry bool, grantErr error, copy
 		return nil
 	}
 
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 
 	var retry func()
 	if withRetry {

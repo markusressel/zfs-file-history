@@ -90,12 +90,9 @@ func newPropertiesTest(t *testing.T, isRoot bool) *propertiesTest {
 		return copied, nil
 	}
 
-	pt.app = tview.NewApplication()
-	pt.screen = tcell.NewSimulationScreen("UTF-8")
-	pt.app.SetScreen(pt.screen)
+	pt.app, pt.screen = testutil.NewApp()
 	pt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	pt.app.SetRoot(pt.pages, true)
-	testutil.RunApp(t, pt.app)
+	testutil.StartApp(t, pt.app, pt.pages)
 
 	testutil.OnUiThread(t, pt.app, func() {
 		pt.dialog = NewDatasetPropertiesDialog(pt.app, "pool/data", newTestProperties(), isRoot, func() {
@@ -164,7 +161,7 @@ func (pt *propertiesTest) details() string {
 }
 
 func TestDatasetPropertiesDialog_Content(t *testing.T) {
-	d := NewDatasetPropertiesDialog(tview.NewApplication(), "pool/data", newTestProperties(), false, nil)
+	d := NewDatasetPropertiesDialog(testutil.App(), "pool/data", newTestProperties(), false, nil)
 
 	var names []string
 	for _, property := range d.table.GetEntries() {
@@ -188,7 +185,7 @@ func TestDatasetPropertiesDialog_Content(t *testing.T) {
 }
 
 func TestDatasetPropertiesDialog_Details(t *testing.T) {
-	d := NewDatasetPropertiesDialog(tview.NewApplication(), "pool/data", newTestProperties(), false, nil)
+	d := NewDatasetPropertiesDialog(testutil.App(), "pool/data", newTestProperties(), false, nil)
 	selectByName := func(name string) {
 		for _, property := range d.table.GetEntries() {
 			if property.Name == name {
@@ -207,7 +204,7 @@ func TestDatasetPropertiesDialog_Details(t *testing.T) {
 }
 
 func TestDatasetPropertiesDialog_ShortcutsFit(t *testing.T) {
-	shortcuts := shortcut_helper.NewShortcutMap(tview.NewApplication())
+	shortcuts := shortcut_helper.NewShortcutMap(testutil.App())
 	shortcuts.SetEntries(datasetPropertiesShortcuts())
 	assert.LessOrEqual(t, shortcuts.CalculateHeightForWidth(76+6-2), datasetPropertiesShortcutLines)
 }

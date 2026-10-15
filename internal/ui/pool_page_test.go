@@ -12,20 +12,16 @@ import (
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func newPoolPageApp(t *testing.T, width int, height int) (*tview.Application, *PoolPage) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	screen.SetSize(width, height)
 	page := NewPoolPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), noDisks{}, noDisks{})
-	app.SetRoot(page.layout, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, page.layout)
 	return app, page
 }
 

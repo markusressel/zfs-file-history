@@ -11,7 +11,6 @@ import (
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +65,7 @@ func TestFileHistoryOverlay_ModeIsRemembered(t *testing.T) {
 	original := findSnapshotsOfPath
 	t.Cleanup(func() { findSnapshotsOfPath = original })
 	findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: filepath.Join(ds.root, "notes.txt")}}
 
 	overlay := NewFileHistoryOverlay(app, file, nil)

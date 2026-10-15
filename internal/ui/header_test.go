@@ -8,18 +8,15 @@ import (
 	"zfs-file-history/internal/ui/status_message"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestApplicationHeader_ShowsMessages(t *testing.T) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	messages := status_message.NewCenter(app)
 	header := NewApplicationHeader(app, messages)
-	app.SetRoot(header.layout, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, header.layout)
 
 	texts := func() (status string, badge string) {
 		testutil.OnUiThread(t, app, func() {
@@ -53,7 +50,7 @@ func TestApplicationHeader_ShowsMessages(t *testing.T) {
 
 // The hint how to show the shortcuts again is only shown while they are hidden.
 func TestApplicationHeader_ShortcutHint(t *testing.T) {
-	header := NewApplicationHeader(tview.NewApplication(), status_message.NewCenter(tview.NewApplication()))
+	header := NewApplicationHeader(testutil.App(), status_message.NewCenter(testutil.App()))
 	t.Cleanup(func() {
 		if shortcut_helper.ShortcutsHidden() {
 			shortcut_helper.ToggleShortcuts()

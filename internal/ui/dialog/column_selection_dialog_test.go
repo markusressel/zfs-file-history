@@ -30,7 +30,7 @@ func TestComputeAvailableColumns(t *testing.T) {
 }
 
 func TestColumnSelectionDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	all := []*table.Column{
 		{Id: table.ColumnId(1), Title: "Col 1"},
 		{Id: table.ColumnId(2), Title: "Col 2"},
@@ -46,7 +46,7 @@ func TestColumnSelectionDialog(t *testing.T) {
 }
 
 func TestColumnSelectionDialog_Actions(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	all := []*table.Column{
 		{Id: table.ColumnId(1), Title: "Col 1"},
 		{Id: table.ColumnId(2), Title: "Col 2"},
@@ -97,7 +97,7 @@ func TestColumnSelectionDialog_Actions(t *testing.T) {
 }
 
 func TestColumnSelectionDialog_Reset(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	all := []*table.Column{
 		{Id: table.ColumnId(1), Title: "Col 1"},
 		{Id: table.ColumnId(2), Title: "Col 2"},
@@ -135,7 +135,7 @@ func shortcutNames(d *ColumnSelectionDialog) []string {
 }
 
 func TestColumnSelectionDialog_ShortcutsFit(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	all := []*table.Column{{Id: table.ColumnId(1), Title: "Col 1"}}
 	d := NewColumnSelectionDialog(app, "Columns", all, all, nil)
 	d.SetResetFunc(func() []*table.Column { return all })
@@ -153,13 +153,10 @@ func TestColumnSelectionDialog_ShortcutsFit(t *testing.T) {
 
 // Enter moves the selected column to the other side, on both sides; ←/→, ⭾ and shift+⭾ switch the side
 func TestColumnSelectionDialog_Keys(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	screen.SetSize(100, 30)
 	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	all := []*table.Column{{Id: 1, Title: "Col 1"}, {Id: 2, Title: "Col 2"}, {Id: 3, Title: "Col 3"}}
 	var d *ColumnSelectionDialog

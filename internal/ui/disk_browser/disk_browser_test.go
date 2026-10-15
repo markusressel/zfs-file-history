@@ -67,10 +67,7 @@ func newDiskBrowserTest(t *testing.T) *diskBrowserTest {
 		"sdb":                              {IsDisk: true, Idle: true},
 		"nvme0n1p1":                        {IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 50}},
 	})}
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
-	dt.app.EnableMouse(true)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.screen.SetSize(140, 40)
 	testutil.RunApp(t, dt.app)
 
@@ -209,8 +206,7 @@ func TestDiskBrowser_SelectDevice(t *testing.T) {
 }
 
 func TestDiskBrowser_SelectDeviceBeforeLoaded(t *testing.T) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 	var browser *DiskBrowserComponent
 	selected := ""

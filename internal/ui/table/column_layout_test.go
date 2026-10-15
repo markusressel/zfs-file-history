@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
@@ -21,7 +22,7 @@ var (
 // sorted by name.
 func newLayoutTestTable() *RowSelectionTable[mockEntry] {
 	table := NewTableContainer[mockEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
 			return nil
 		},

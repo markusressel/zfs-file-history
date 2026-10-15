@@ -6,16 +6,13 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDebouncer(t *testing.T) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-	app.SetRoot(tview.NewBox(), true)
-	testutil.RunApp(t, app)
+	app, _ := testutil.NewApp()
+	testutil.StartApp(t, app, tview.NewBox())
 	onUiThread := func(f func()) {
 		done := make(chan struct{})
 		app.QueueUpdate(func() { f(); close(done) })

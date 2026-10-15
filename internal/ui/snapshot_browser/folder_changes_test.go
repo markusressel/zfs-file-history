@@ -54,11 +54,9 @@ func (stub *folderChangesStub) counts() (compared int, read int) {
 }
 
 func startBrowser(t *testing.T) (*SnapshotBrowserComponent, *tview.Application) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 	return browser, app
 }
 
@@ -206,16 +204,16 @@ func TestUseColumnLayout(t *testing.T) {
 		return strings.Join(result, ",")
 	}
 
-	files := NewSnapshotBrowser(tview.NewApplication())
+	files := NewSnapshotBrowser(testutil.App())
 	files.UseColumnLayout(FilesLayout)
-	datasets := NewSnapshotBrowser(tview.NewApplication())
+	datasets := NewSnapshotBrowser(testutil.App())
 	datasets.UseColumnLayout(DatasetsLayout)
 	assert.Equal(t, "name,creation,diff,entryChange,entrySize,entryModified,holds,damaged", keys(files))
 	assert.Equal(t, "name,creation,used,written,referenced,holds,damaged", keys(datasets))
 
 	// a change on one page does not change the other
 	files.tableContainer.SetActiveColumns([]*table.Column{columnName, columnUsed})
-	datasets = NewSnapshotBrowser(tview.NewApplication())
+	datasets = NewSnapshotBrowser(testutil.App())
 	datasets.UseColumnLayout(DatasetsLayout)
 	assert.Equal(t, "name,creation,used,written,referenced,holds,damaged", keys(datasets))
 
@@ -224,7 +222,7 @@ func TestUseColumnLayout(t *testing.T) {
 	state.Current = legacy
 	legacy.SetTableLayout(legacyLayoutStateKey, state.TableLayout{Columns: []string{"name", "holds"}, SortColumn: "name"})
 	for _, layout := range []ColumnLayout{FilesLayout, DatasetsLayout} {
-		browser := NewSnapshotBrowser(tview.NewApplication())
+		browser := NewSnapshotBrowser(testutil.App())
 		browser.UseColumnLayout(layout)
 		assert.Equal(t, "name,holds", keys(browser))
 	}
@@ -242,13 +240,13 @@ func TestUseColumnLayout_ResetIsKept(t *testing.T) {
 	})
 	store.SetTableLayout(legacyLayoutStateKey, state.TableLayout{Columns: []string{"name", "holds"}, SortColumn: "name"})
 
-	files := NewSnapshotBrowser(tview.NewApplication())
+	files := NewSnapshotBrowser(testutil.App())
 	files.UseColumnLayout(FilesLayout)
 	files.tableContainer.ResetColumnLayout()
 
 	// the next start
 	for _, layout := range []ColumnLayout{FilesLayout, DatasetsLayout} {
-		browser := NewSnapshotBrowser(tview.NewApplication())
+		browser := NewSnapshotBrowser(testutil.App())
 		browser.UseColumnLayout(layout)
 		var keys []string
 		for _, column := range browser.tableContainer.GetColumnSpec() {

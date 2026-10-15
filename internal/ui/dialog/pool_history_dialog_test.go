@@ -66,12 +66,10 @@ func newHistoryDialogTest(t *testing.T, pool string, dataset string, load func()
 
 // newHistoryDialogTestWithCache shows the history of the pool or dataset from the cache.
 func newHistoryDialogTestWithCache(t *testing.T, pool string, dataset string, cache *PoolHistoryCache) *historyDialogTest {
-	dt := &historyDialogTest{t: t, app: tview.NewApplication(), screen: tcell.NewSimulationScreen("UTF-8"), cache: cache}
-	dt.app.SetScreen(dt.screen)
-	dt.screen.SetSize(140, 40)
+	dt := &historyDialogTest{t: t, cache: cache}
+	dt.app, dt.screen = testutil.NewApp(testutil.WithSize(140, 40))
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 	testutil.OnUiThread(t, dt.app, func() {
 		dt.dialog = NewPoolHistoryDialog(dt.app, pool, dataset, cache)
 		ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
@@ -472,10 +470,6 @@ func TestPoolHistoryDialog_Sort(t *testing.T) {
 // the first click on the header row selects it, the next ones sort by the clicked column
 func TestPoolHistoryDialog_SortByClick(t *testing.T) {
 	useTestState(t)
-	// as in the application (see root.go): the second click would be a double click
-	originalInterval := tview.DoubleClickInterval
-	tview.DoubleClickInterval = 0
-	t.Cleanup(func() { tview.DoubleClickInterval = originalInterval })
 	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return testHistory, nil })
 	dt.waitForRows("Scrub ▸", "zfs destroy", "zfs snapshot ▸")
 

@@ -74,6 +74,33 @@ func TestAppsAreRunWithRunApp(t *testing.T) {
 	})
 }
 
+// Test applications are created with NewApp (or get their screen with UseSimulationScreen), so they are set up like
+// the application: tests that created their own forgot to enable the mouse or to disable double clicks, and their
+// clicks did nothing.
+func TestAppsAreCreatedWithNewApp(t *testing.T) {
+	inspectTests(t, func(files *token.FileSet, file *ast.File) {
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if pkg, ok := selector.X.(*ast.Ident); ok && pkg.Name == "tview" && selector.Sel.Name == "NewApplication" {
+				assert.Fail(t, "creates an app without NewApp", "%s: use testutil.NewApp (or testutil.App)",
+					files.Position(call.Pos()))
+			}
+			if selector.Sel.Name == "SetScreen" {
+				assert.Fail(t, "sets a screen without UseSimulationScreen", "%s: use testutil.NewApp or "+
+					"testutil.UseSimulationScreen", files.Position(call.Pos()))
+			}
+			return true
+		})
+	})
+}
+
 // inspectTests calls inspect with each test file of the module.
 func inspectTests(t *testing.T, inspect func(files *token.FileSet, file *ast.File)) {
 	root, err := filepath.Abs("../..")

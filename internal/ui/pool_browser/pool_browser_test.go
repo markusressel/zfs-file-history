@@ -139,11 +139,9 @@ func setListPools(t *testing.T, f func() ([]*zfs.PoolListEntry, error)) {
 // newBrowserApp creates a browser as the root of a running application.
 // The root is set before the event loop starts, like in CreateUi, to avoid racing with the first draw.
 func newBrowserApp(t *testing.T) (*tview.Application, *PoolBrowserComponent) {
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	browser := NewPoolBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 	return app, browser
 }
 
@@ -326,7 +324,7 @@ func TestPoolBrowser_Focus(t *testing.T) {
 }
 
 func TestPoolBrowser_Shortcuts(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	browser := NewPoolBrowser(app)
 
 	var keys []string

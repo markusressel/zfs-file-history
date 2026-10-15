@@ -11,7 +11,6 @@ import (
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -128,8 +127,7 @@ func setupTest(t *testing.T) (*tview.Application, *PoolStatusComponent, *fakeLoa
 	loadPoolStatus = fake.load
 	t.Cleanup(func() { loadPoolStatus = original })
 
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	poolStatus := NewPoolStatus(app)
 	statuses := &recordedStatuses{}
 	poolStatus.Events.Subscribe(func(event Event) {
@@ -144,8 +142,7 @@ func setupTest(t *testing.T) (*tview.Application, *PoolStatusComponent, *fakeLoa
 		}
 	})
 	// set the root before the event loop starts, like CreateUi does
-	app.SetRoot(poolStatus.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, poolStatus.GetLayout())
 	return app, poolStatus, fake, statuses
 }
 

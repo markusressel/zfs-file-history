@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -26,7 +27,7 @@ func (e groupedEntry) TableRowId() string {
 func newGroupingTestTable() (*RowSelectionTable[groupedEntry], []*groupedEntry) {
 	cols := []*Column{{Id: 0, Key: "name", Title: "Name"}}
 	table := NewTableContainer[groupedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *groupedEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell(entry.name)}
 		},

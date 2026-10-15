@@ -66,9 +66,7 @@ func screenText(t *testing.T, app *tview.Application, screen tcell.SimulationScr
 func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 	startPath := t.TempDir()
 	app, _, datasetPage := createUi(startPath, true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	// Like in real usage, let the hidden dataset page finish loading (and selecting) its datasets
@@ -113,9 +111,7 @@ func TestSwitchingPagesShowsShortcutsOfThePage(t *testing.T) {
 
 func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	// Key events and queued updates are processed from different channels, so instead of waiting for the
@@ -177,9 +173,7 @@ func TestHelpKeyIsTypedIntoAFilter(t *testing.T) {
 
 func TestPageTabs(t *testing.T) {
 	app, _, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	headerLine := func() string { return strings.SplitN(screenText(t, app, screen), "\n", 2)[0] }
@@ -237,9 +231,7 @@ func TestPageTabs(t *testing.T) {
 
 func TestRelativeTimesKey(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 30))
 	testutil.RunApp(t, app)
 	t.Cleanup(func() {
 		if util.IsRelativeTimes() {
@@ -264,9 +256,7 @@ func TestRelativeTimesKey(t *testing.T) {
 // Dialogs and overlays (e.g. the histories) are pages of their own: T applies to their tables as well.
 func TestRelativeTimesKeyInDialogs(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 30))
 	testutil.RunApp(t, app)
 	t.Cleanup(func() {
 		if util.IsRelativeTimes() {
@@ -313,9 +303,7 @@ func TestOverviewKey(t *testing.T) {
 		state.Current = nil
 	})
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
 	overviewHeight := func() int {
@@ -354,10 +342,7 @@ func TestOverviewKey(t *testing.T) {
 // The boundaries between the panes of both pages can be dragged with the mouse (see uiutil.ResizableSplit).
 func TestPageBoundariesCanBeDragged(t *testing.T) {
 	app, mainPage, datasetPage := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
-	app.EnableMouse(true)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
 	rect := func(primitive tview.Primitive) (x, y, width, height int) {
@@ -429,10 +414,7 @@ func TestPageBoundariesCanBeDragged(t *testing.T) {
 // ⭾) still worked. They are shown on the pages of the application now, and are modal for the whole screen.
 func TestComponentDialogsAreModal(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
-	app.EnableMouse(true)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	testutil.RunApp(t, app)
 
 	frontPage := func() string {

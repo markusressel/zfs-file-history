@@ -15,9 +15,7 @@ import (
 // m shows the messages and marks them as seen; a later key press dismisses an error from the status bar
 func TestMessageHistoryKey(t *testing.T) {
 	app, mainPage, datasetPage := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	messages := mainPage.messages

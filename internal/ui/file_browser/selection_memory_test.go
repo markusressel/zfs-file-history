@@ -27,12 +27,9 @@ func TestFileBrowser_RemembersSelectionWhenEnteringADirectoryAgain(t *testing.T)
 		require.NoError(t, os.WriteFile(filepath.Join(child, fmt.Sprintf("f%02d", i)), []byte("x"), 0o644))
 	}
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	fileBrowser := NewFileBrowser(app)
-	app.SetRoot(fileBrowser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, fileBrowser.GetLayout())
 
 	type state struct {
 		path     string
@@ -103,12 +100,9 @@ func TestFileBrowser_RemembersSelectionBetweenRuns(t *testing.T) {
 	// opens dir in a new browser, like after a restart, and returns it once its entries are shown
 	open := func() (*tview.Application, *FileBrowserComponent, tcell.SimulationScreen) {
 		state.Current = state.Load(statePath)
-		app := tview.NewApplication()
-		screen := tcell.NewSimulationScreen("UTF-8")
-		app.SetScreen(screen)
+		app, screen := testutil.NewApp()
 		fileBrowser := NewFileBrowser(app)
-		app.SetRoot(fileBrowser.GetLayout(), true)
-		testutil.RunApp(t, app)
+		testutil.StartApp(t, app, fileBrowser.GetLayout())
 		testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })
 		require.Eventually(t, func() bool {
 			var count int

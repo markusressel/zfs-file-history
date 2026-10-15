@@ -59,13 +59,10 @@ func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overl
 	}
 
 	ft := &folderHistoryTest{t: t, ds: ds}
-	ft.app = tview.NewApplication()
-	ft.screen = tcell.NewSimulationScreen("UTF-8")
-	ft.app.SetScreen(ft.screen)
+	ft.app, ft.screen = testutil.NewApp()
 	ft.screen.SetSize(140, 40)
 	ft.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	ft.app.SetRoot(ft.pages, true)
-	testutil.RunApp(t, ft.app)
+	testutil.StartApp(t, ft.app, ft.pages)
 
 	testutil.OnUiThread(t, ft.app, func() {
 		ft.overlay = NewFolderHistoryOverlay(ft.app, filepath.Join(ds.root, "docs"), nil)

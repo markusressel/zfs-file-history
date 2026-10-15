@@ -82,12 +82,9 @@ func newSetupDialogTestWithSmartctl(t *testing.T, allowed map[string]bool, autom
 		return nil
 	}
 
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 
 	var onNeverAsk func()
 	if automatic {

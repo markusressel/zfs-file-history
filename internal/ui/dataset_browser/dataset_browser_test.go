@@ -120,12 +120,9 @@ func setListDatasets(t *testing.T, f func() ([]*zfs.DatasetListEntry, error)) {
 // newBrowserApp creates a browser as the root of a running application.
 // The root is set before the event loop starts, like in CreateUi, to avoid racing with the first draw.
 func newBrowserApp(t *testing.T) (*tview.Application, *DatasetBrowserComponent, tcell.SimulationScreen) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	browser := NewDatasetBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 	return app, browser, screen
 }
 
@@ -624,7 +621,7 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 }
 
 func TestDatasetBrowser_ShortcutMapContainsColumns(t *testing.T) {
-	browser := NewDatasetBrowser(tview.NewApplication())
+	browser := NewDatasetBrowser(testutil.App())
 	columns := findEntry(browser.GetShortcutMap(), uiutil.TableComponentShortcutColumns.Name)
 	if assert.NotNil(t, columns) {
 		assert.Equal(t, uiutil.TableComponentShortcutColumns.KeyCombo, columns.KeyCombo)
@@ -659,7 +656,7 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 
 	// a new browser (e.g. after a restart) restores the layout from the file
 	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(tview.NewApplication())
+	restored := NewDatasetBrowser(testutil.App())
 	assert.Equal(t, tableColumns[1:], restored.tableContainer.GetColumnSpec())
 	state.Current = store
 
@@ -704,7 +701,7 @@ func TestDatasetBrowser_TogglesAreSavedAndRestored(t *testing.T) {
 
 	// a new browser (e.g. after a restart) restores the toggles from the file
 	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(tview.NewApplication())
+	restored := NewDatasetBrowser(testutil.App())
 	assert.False(t, restored.IsHidingUnmounted())
 	assert.False(t, restored.IsTreeView())
 	assert.NotNil(t, findEntry(restored.GetShortcutMap(), "Hide unmounted"))
@@ -724,7 +721,7 @@ func findEntry(entries []shortcut_helper.ShortcutEntry, name string) *shortcut_h
 // The size columns are colored by how big their sizes are compared to all datasets, 0 dimmed. The available space
 // is not colored: it is mostly the same for all datasets of a pool.
 func TestDatasetBrowser_SizeColors(t *testing.T) {
-	browser := NewDatasetBrowser(tview.NewApplication())
+	browser := NewDatasetBrowser(testutil.App())
 	// without the permissions column, so no permissions are read in the background (and outlive the test)
 	var columns []*table.Column
 	for _, column := range tableColumns {
@@ -821,7 +818,7 @@ func TestDatasetBrowser_CollapsedDatasetsAreSavedAndRestored(t *testing.T) {
 	require.NoError(t, store.Flush())
 
 	state.Current = state.Load(path)
-	restored := NewDatasetBrowser(tview.NewApplication())
+	restored := NewDatasetBrowser(testutil.App())
 	assert.Equal(t, map[string]bool{"tank": true}, restored.collapsed)
 
 	// expanding is saved as well
@@ -829,7 +826,7 @@ func TestDatasetBrowser_CollapsedDatasetsAreSavedAndRestored(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { browser.setCollapsed("tank", false) })
 	require.NoError(t, store.Flush())
 	state.Current = state.Load(path)
-	assert.Empty(t, NewDatasetBrowser(tview.NewApplication()).collapsed)
+	assert.Empty(t, NewDatasetBrowser(testutil.App()).collapsed)
 	state.Current = store
 }
 
@@ -852,13 +849,8 @@ func TestDatasetBrowser_ClickOnHiddenUnmountedShowsThem(t *testing.T) {
 			{Name: "rpool/b"},
 		}, nil
 	})
-	// like the application, so two clicks are not a double click
-	originalInterval := tview.DoubleClickInterval
-	tview.DoubleClickInterval = 0
-	t.Cleanup(func() { tview.DoubleClickInterval = originalInterval })
 	app, browser, screen := newBrowserApp(t)
 	screen.SetSize(100, 20)
-	app.EnableMouse(true)
 	testutil.OnUiThread(t, app, func() {
 		if !browser.IsHidingUnmounted() {
 			browser.ToggleHideUnmounted()

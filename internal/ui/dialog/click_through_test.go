@@ -16,18 +16,14 @@ import (
 // Regression: tview hands mouse events to all pages until one consumes them (https://github.com/rivo/tview/issues/926),
 // and the empty space around a dialog did not: a click next to it selected an entry of the page behind it.
 func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	screen.SetSize(100, 40)
-	app.EnableMouse(true)
 	background := tview.NewTable().SetSelectable(true, false)
 	for i := 0; i < 100; i++ {
 		background.SetCell(i, 0, tview.NewTableCell(fmt.Sprintf("row %d", i)))
 	}
 	pages := tview.NewPages().AddPage("background", background, true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	chosen := make(chan DialogActionId, 1)
 	var dialog *SelectionDialog
@@ -74,7 +70,6 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 	var frameX, frameY, frameHeight int
 	testutil.OnUiThread(t, app, func() { frameX, frameY, _, frameHeight = dialogFrame(dialog.GetLayout()).GetRect() })
 	require.Positive(t, frameHeight)
-	time.Sleep(tview.DoubleClickInterval)
 	click(frameX, frameY+frameHeight/2)
 	row, _ = state()
 	assert.Equal(t, 0, row, "the selection of the page behind is unchanged")
@@ -96,8 +91,6 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 		}
 	})
 	require.NotZero(t, closeY, "the close option is shown")
-	// otherwise, tview takes it as a double click with the click above (even at another position)
-	time.Sleep(tview.DoubleClickInterval)
 	click(closeX, closeY)
 	var selected string
 	testutil.OnUiThread(t, app, func() {

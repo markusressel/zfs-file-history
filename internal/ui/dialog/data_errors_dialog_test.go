@@ -98,7 +98,7 @@ func TestFormatDataErrorsHelp(t *testing.T) {
 }
 
 func TestDataErrorsDialog_FindAndUpdate(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	finds := 0
 	index := zfs.NewDataErrorIndex([]zfs.DataError{liveError, gone, metadata}, nil)
 	closes := 0
@@ -127,7 +127,7 @@ func TestDataErrorsDialog_FindAndUpdate(t *testing.T) {
 }
 
 func TestDataErrorsDialog_Setup(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	setups := 0
 	key := tcell.NewEventKey(tcell.KeyRune, 's', tcell.ModNone)
 
@@ -145,14 +145,10 @@ func TestDataErrorsDialog_Setup(t *testing.T) {
 }
 
 func TestDataErrorsDialog_ShowsFile(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
+	app, screen := testutil.NewApp()
 	screen.SetSize(140, 40)
-	app.SetScreen(screen)
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	var mu sync.Mutex
 	var shown []string
@@ -189,7 +185,7 @@ func TestDataErrorsDialog_ShowsFile(t *testing.T) {
 }
 
 func TestFileHistoryOverlay_MarksDamagedVersions(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{Name: "a", RealFile: &data.RealFile{Name: "a", Path: "/home/a"}, Type: data.File}
 	overlay := NewFileHistoryOverlay(app, file, nil)
 	daily := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "daily", FullName: "rpool/home@daily"}}

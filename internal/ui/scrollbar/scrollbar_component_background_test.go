@@ -2,6 +2,7 @@ package scrollbar
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -24,7 +25,7 @@ func TestScrollbar_HasWidgetBackground(t *testing.T) {
 		{ScrollBarHorizontal, 10, 1},
 	}
 	for _, test := range tests {
-		scrollbar := NewScrollbarComponent(tview.NewApplication(), test.orientation, 0, 100, 30, 20)
+		scrollbar := NewScrollbarComponent(testutil.App(), test.orientation, 0, 100, 30, 20)
 		screen.Clear()
 		scrollbar.DrawFunc(screen, 0, 0, test.width, test.height)
 

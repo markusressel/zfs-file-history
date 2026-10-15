@@ -2,6 +2,7 @@ package shortcut_helper
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -38,7 +39,7 @@ func newTestBar(t *testing.T, entries []ShortcutEntry) (*shortcutBar, tcell.Simu
 	screen := tcell.NewSimulationScreen("UTF-8")
 	require.NoError(t, screen.Init())
 	screen.SetSize(40, 2)
-	bar := newShortcutBar(tview.NewApplication())
+	bar := newShortcutBar(testutil.App())
 	var pressed []*tcell.EventKey
 	bar.pressKey = func(event *tcell.EventKey) { pressed = append(pressed, event) }
 	bar.setEntries(entries)

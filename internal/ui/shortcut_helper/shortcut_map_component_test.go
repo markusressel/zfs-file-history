@@ -7,13 +7,11 @@ import (
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewShortcutMap(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	sm := NewShortcutMap(app)
 
 	assert.NotNil(t, sm)
@@ -22,7 +20,7 @@ func TestNewShortcutMap(t *testing.T) {
 }
 
 func TestSetOnHeightChanged(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	sm := NewShortcutMap(app)
 
 	heightCalled := -1
@@ -45,7 +43,7 @@ func TestSetEntriesAndClear(t *testing.T) {
 	theme.Colors.ShortcutMap.KeyCombo = 0
 	theme.Colors.ShortcutMap.Name = 0
 
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	sm := NewShortcutMap(app)
 
 	entries := []ShortcutEntry{
@@ -68,7 +66,7 @@ func TestSetEntriesAndClear(t *testing.T) {
 }
 
 func TestCalculateHeightForWidth(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	sm := NewShortcutMap(app)
 
 	// No entries
@@ -116,7 +114,7 @@ func TestCalculateHeightForWidth(t *testing.T) {
 }
 
 func TestCalculateHeightFromTerminal(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	sm := NewShortcutMap(app)
 
 	sm.ShortCutEntries = []ShortcutEntry{
@@ -131,10 +129,7 @@ func TestCalculateHeightFromTerminal(t *testing.T) {
 
 // Drawing in a width the entries wrap differently in reports the new height.
 func TestDrawReportsHeightChanges(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	testutil.RunApp(t, app)
 	sm := NewShortcutMap(app)
 	heights := make(chan int, 10)

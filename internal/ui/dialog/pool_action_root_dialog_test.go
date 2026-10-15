@@ -10,7 +10,6 @@ import (
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +20,7 @@ func newScrubNeedsRoot() *zfs.PoolActionNeedsRootError {
 }
 
 func TestNewErrorDialog_PoolActionNeedsRoot(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 
 	assert.Equal(t, "PoolActionRootDialog", NewErrorDialog(app, "Failed", newScrubNeedsRoot()).GetName())
 	// also if wrapped
@@ -86,12 +85,9 @@ func newRootDialogTest(t *testing.T, withRetry bool, sudoErr error) *rootDialogT
 		return nil
 	}
 
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 
 	var retry func()
 	if withRetry {

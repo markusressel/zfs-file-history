@@ -6,23 +6,20 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
 // setupTestApp runs a headless tview application for testing QueueUpdateDraw, stopped at the end of the test.
 func setupTestApp(t *testing.T) *tview.Application {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	simScreen.Init()
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 	return app
 }
 
 func TestSelectionDialog_SelectCloseOption_EmitsCloseAction(t *testing.T) {
-	app := tview.NewApplication() // We don't need the event loop just for closing
+	// the event loop is not needed for closing
+	app := testutil.App()
 
 	d := NewSelectionDialog(
 		app,

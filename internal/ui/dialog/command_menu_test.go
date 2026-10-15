@@ -16,9 +16,7 @@ import (
 
 // startCommandMenuApp runs an app with a focused list on its pages, to show the command menu on.
 func startCommandMenuApp(t *testing.T) (*tview.Application, tcell.SimulationScreen, *tview.Pages, *tview.List) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	screen.SetSize(80, 24)
 	list := tview.NewList().AddItem("entry", "", 0, nil)
 	pages := tview.NewPages().AddPage("main", list, true, true)
@@ -198,7 +196,7 @@ func TestCommandMenu_ShowsSectionsAndDescriptions(t *testing.T) {
 }
 
 func TestSelectionDialog_OptionCommands(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	options := []*DialogOption{
 		{Id: 1, Name: "📸 Create Snapshot", Description: "Snapshot the dataset now"},
 		{Id: 2, Name: "📜 Browse history"},

@@ -27,12 +27,9 @@ type textInputDialogTest struct {
 
 func newTextInputDialogTest(t *testing.T, initialText string) *textInputDialogTest {
 	dt := &textInputDialogTest{t: t}
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.pages = tview.NewPages().AddPage("main", tview.NewBox(), true, true)
-	dt.app.SetRoot(dt.pages, true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.pages)
 
 	dt.dialog = NewTextInputDialog(dt.app, "TextInputTest", " Title ", "Name of the thing:", initialText, func(text string) {
 		dt.mu.Lock()

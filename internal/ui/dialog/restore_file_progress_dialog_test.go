@@ -16,7 +16,7 @@ import (
 )
 
 func TestRestoreFileProgressDialog(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	file := &data.FileBrowserEntry{
 		Name: "test.txt",
 		SnapshotFiles: []*data.SnapshotFile{
@@ -46,7 +46,7 @@ func TestRestoreFileProgressDialog(t *testing.T) {
 }
 
 func TestRestoreFileProgressDialog_AbsentFile(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	tempFile := filepath.Join(t.TempDir(), "to_delete.txt")
 	err := os.WriteFile(tempFile, []byte("hello"), 0644)
 	assert.NoError(t, err)
@@ -107,9 +107,7 @@ func TestRestoreFileProgressDialog_ShowsTheWholeError(t *testing.T) {
 
 // startDialogTestApp runs an app with a focused list on its pages, to show dialogs on.
 func startDialogTestApp(t *testing.T) (*tview.Application, tcell.SimulationScreen, *tview.Pages, *tview.List) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	screen.SetSize(80, 24)
 	list := tview.NewList().AddItem("entry", "", 0, nil)
 	pages := tview.NewPages().AddPage("main", list, true, true)

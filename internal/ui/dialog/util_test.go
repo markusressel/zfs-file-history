@@ -50,13 +50,10 @@ func TestCreateModal_Clamping(t *testing.T) {
 }
 
 func TestShowDialogOnPages(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, _ := testutil.NewApp()
 	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
 	// set the root before the event loop starts, like CreateUi does
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "Cancel"},
@@ -93,15 +90,12 @@ func TestShowDialogOnPages(t *testing.T) {
 // a dialog shown from another one returns the focus to where the other one was shown from, also when the other one
 // is closed first, e.g. the result of an action shown while the dialog of the action is closing
 func TestShowDialogOnPages_DialogShownFromDialog_RestoresOriginalFocus(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, _ := testutil.NewApp()
 	first := tview.NewTable()
 	second := tview.NewTable()
 	main := tview.NewFlex().AddItem(first, 0, 1, true).AddItem(second, 0, 1, false)
 	pages := tview.NewPages().AddPage("main", main, true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "OK"},
@@ -137,13 +131,10 @@ func TestShowDialogOnPages_DialogShownFromDialog_RestoresOriginalFocus(t *testin
 // Regression: a dialog shown from another one that is still shown (e.g. the columns of a table in a dialog) returned
 // the focus to the page behind the other one, so the keys went to a page that could not be seen.
 func TestShowDialogOnPages_DialogShownFromDialog_ReturnsFocusToTheOther(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, _ := testutil.NewApp()
 	behind := tview.NewTable()
 	pages := tview.NewPages().AddPage("main", behind, true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	options := []*DialogOption{
 		{Id: DialogCloseActionId, Name: "OK"},

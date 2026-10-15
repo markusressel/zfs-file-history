@@ -3,9 +3,9 @@ package scrollbar
 import (
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +13,7 @@ import (
 // drawTextView draws a bordered text view of 20x7 (5 lines inside) with the lines, scrolled to row, and returns the
 // column right of the text (the bar), top to bottom.
 func drawTextView(t *testing.T, lines int, row int) string {
-	view := NewTextView(tview.NewApplication())
+	view := NewTextView(testutil.App())
 	view.SetBorder(true)
 	text := make([]string, lines)
 	for i := range text {

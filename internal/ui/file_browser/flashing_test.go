@@ -6,6 +6,7 @@ import (
 	"testing"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 
@@ -22,7 +23,7 @@ func TestFileBrowser_NoFlashingWhileStatesAreDetermined(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("a"), 0o644))
 	stat, err := os.Lstat(path)
 	require.NoError(t, err)
-	fileBrowser := NewFileBrowser(tview.NewApplication())
+	fileBrowser := NewFileBrowser(testutil.App())
 	entry := func(state diff_state.DiffState, loading bool) *data.FileBrowserEntry {
 		return &data.FileBrowserEntry{Name: "a.txt", Type: data.File, RealFile: &data.RealFile{Name: "a.txt", Path: path, Stat: stat},
 			DiffState: state, IsLoading: loading}

@@ -13,14 +13,11 @@ import (
 // tview's Flex does not clear its area, so gaps between the children of a dialog (e.g. the padding of a table)
 // showed the page behind the dialog.
 func TestModal_HidesThePageBehind(t *testing.T) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	screen.SetSize(100, 30)
 	behind := tview.NewTextView().SetText(strings.Repeat(strings.Repeat("X", 100)+"\n", 30))
 	pages := tview.NewPages().AddPage("behind", behind, true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	var dialogX, dialogY, dialogWidth, dialogHeight int
 	var lines []string

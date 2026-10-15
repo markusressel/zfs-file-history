@@ -93,9 +93,7 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	state.Current = store
 	t.Cleanup(func() { state.Current = nil })
 	app, mainPage, datasetPage := createUiFor(start, true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(150, 40)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(150, 40))
 	stop := testutil.RunApp(t, app)
 
 	testutil.OnUiThread(t, app, func() { mainPage.fileBrowser.SetPath(folder, false) })
@@ -113,7 +111,7 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	restart := func(start Start) (string, util.Page, string) {
 		state.Current = state.Load(statePath)
 		app, mainPage, datasetPage := createUiFor(start, true)
-		app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+		testutil.UseSimulationScreen(app)
 		testutil.RunApp(t, app)
 		var path, focused string
 		var front util.Page
@@ -151,7 +149,7 @@ func TestNewerStateVersionIsShown(t *testing.T) {
 	t.Cleanup(func() { state.Current = nil })
 
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	testutil.UseSimulationScreen(app)
 	testutil.RunApp(t, app)
 	var history []string
 	testutil.OnUiThread(t, app, func() {

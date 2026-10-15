@@ -291,7 +291,11 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   sets another backend: with the System, tests saw the pools of each machine (none in CI) and passed on one but not on
   another. The tests of `internal/zfs` test the System itself (with its commands replaced). `internal/ui` sets
   `testSystem` once (loads of earlier tests may still run), which a test gives pools with `setPools`.
-- UI tests run a real `tview.Application` on a `tcell.NewSimulationScreen("UTF-8")`, started with `testutil.RunApp`,
+- UI tests run a real `tview.Application` created with `testutil.NewApp` (`testutil.App` without its screen; the one of
+  `CreateUi` gets its screen with `testutil.UseSimulationScreen`): a simulation screen (80x25 or `WithSize`), the mouse
+  enabled and no double clicks, like the application (`TestAppsAreCreatedWithNewApp`; tests that set up their own
+  forgot one of them, and their clicks did nothing). Started with `testutil.StartApp` (the root set before the event
+  loop) or `testutil.RunApp`,
   which waits until its event loop returned when the test ends (`Stop` alone does not: a handler still running raced
   with the cleanups of the test, `TestAppsAreRunWithRunApp`). They read or change widgets only
   via `testutil.OnUiThread` (which does not draw). Read the screen with `testutil.ScreenText`, which draws first: a

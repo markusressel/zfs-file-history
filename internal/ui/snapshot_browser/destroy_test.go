@@ -113,12 +113,9 @@ func newDestroyTest(t *testing.T) *destroyTest {
 		return nil
 	}
 
-	dt.app = tview.NewApplication()
-	dt.screen = tcell.NewSimulationScreen("UTF-8")
-	dt.app.SetScreen(dt.screen)
+	dt.app, dt.screen = testutil.NewApp()
 	dt.browser = NewSnapshotBrowser(dt.app)
-	dt.app.SetRoot(dt.browser.GetLayout(), true)
-	testutil.RunApp(t, dt.app)
+	testutil.StartApp(t, dt.app, dt.browser.GetLayout())
 
 	dt.entries = []*data.SnapshotBrowserEntry{
 		{Snapshot: &zfs.Snapshot{Name: "daily-1", FullName: "pool/data@daily-1", Path: "/pool/data/.zfs/snapshot/daily-1"}},

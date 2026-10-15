@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/testutil"
 
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,7 @@ func TestToggleShortcuts(t *testing.T) {
 	InitShortcutVisibility()
 	require.False(t, ShortcutsHidden(), "shown by default")
 
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	entries := []ShortcutEntry{{KeyCombo: []string{"q"}, Name: "Quit"}}
 	newMap := func(collapsible bool) (*ShortcutMapComponent, *int) {
 		shortcutMap := NewShortcutMap(app)
@@ -68,7 +68,7 @@ func TestSetCollapsibleRegistersOnce(t *testing.T) {
 	collapsibleMaps = nil
 	t.Cleanup(func() { collapsibleMaps = nil })
 
-	shortcutMap := NewShortcutMap(tview.NewApplication())
+	shortcutMap := NewShortcutMap(testutil.App())
 	shortcutMap.SetCollapsible().SetCollapsible()
 	assert.Len(t, collapsibleMaps, 1)
 }

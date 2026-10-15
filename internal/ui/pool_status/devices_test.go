@@ -116,7 +116,7 @@ func TestCounterAndNoteColors(t *testing.T) {
 }
 
 func TestPoolDevices_SetStatus(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 
 	devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
@@ -135,7 +135,7 @@ func TestPoolDevices_SetStatus(t *testing.T) {
 }
 
 func TestPoolDevices_Focus(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 	assert.False(t, devices.HasFocus())
 	devices.Focus()
@@ -209,14 +209,10 @@ func TestFormatDevices_SpareWithoutTemperature(t *testing.T) {
 
 // setupDevicesTest shows the devices of resilveringDevices with the readings of the sampler on a simulation screen.
 func setupDevicesTest(t *testing.T, sampler *disktest.Sampler) (*tview.Application, *PoolDevicesComponent, tcell.SimulationScreen) {
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	app.EnableMouse(true)
+	app, screen := testutil.NewApp()
 	screen.SetSize(100, 20)
 	devices := NewPoolDevices(app, sampler, nil)
-	app.SetRoot(devices.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, devices.GetLayout())
 	testutil.OnUiThread(t, app, func() { devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()}) })
 	// like the load of the status, which is drawn
 	app.QueueUpdateDraw(func() {})
@@ -290,7 +286,7 @@ func TestPoolDevices_KeyReadsAll(t *testing.T) {
 }
 
 func TestPoolDevices_NoDisks(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	devices := NewPoolDevices(app, disktest.NewSampler(nil), nil)
 	devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})
 	assert.Empty(t, devices.GetShortcutMap())
@@ -424,14 +420,10 @@ func TestFormatDevices_SmartWithoutTemperatures(t *testing.T) {
 // setupSmartTest shows the devices of resilveringDevices with the SMART reports of smart. showDisk is the last disk
 // shown on the disks page ("pool/device"), only accessed on the UI thread.
 func setupSmartTest(t *testing.T, smart *disktest.Smart) (app *tview.Application, devices *PoolDevicesComponent, showDisk *string, screen tcell.SimulationScreen) {
-	app = tview.NewApplication()
-	screen = tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	app.EnableMouse(true)
+	app, screen = testutil.NewApp()
 	screen.SetSize(120, 30)
 	devices = NewPoolDevices(app, disktest.NewSampler(nil), smart)
-	app.SetRoot(devices.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, devices.GetLayout())
 	shown := ""
 	testutil.OnUiThread(t, app, func() {
 		devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})

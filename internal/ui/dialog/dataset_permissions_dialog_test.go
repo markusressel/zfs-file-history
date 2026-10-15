@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,7 +45,7 @@ func tableRows(d *DatasetPermissionsDialog) []string {
 }
 
 func TestDatasetPermissionsDialog_Content(t *testing.T) {
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions(), nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), newTestDatasetPermissions(), nil)
 
 	assert.Equal(t, "DatasetPermissionsDialog", d.GetName())
 	assert.Equal(t, []string{
@@ -71,7 +71,7 @@ func TestDatasetPermissionsDialog_Content(t *testing.T) {
 }
 
 func TestDatasetPermissionsDialog_Details(t *testing.T) {
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions(), nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), newTestDatasetPermissions(), nil)
 
 	// the first permission is selected
 	assert.Equal(t, "snapshot: Create snapshots (also needs mount)\n"+
@@ -94,7 +94,7 @@ func TestDatasetPermissionsDialog_Details(t *testing.T) {
 }
 
 func TestDatasetPermissionsDialog_Root(t *testing.T) {
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), &zfs.DatasetPermissions{
+	d := NewDatasetPermissionsDialog(testutil.App(), &zfs.DatasetPermissions{
 		Dataset:     "pool/data",
 		User:        "root",
 		IsRoot:      true,
@@ -109,7 +109,7 @@ func TestDatasetPermissionsDialog_Root(t *testing.T) {
 func TestDatasetPermissionsDialog_EscapesNames(t *testing.T) {
 	permissions := newTestDatasetPermissions()
 	permissions.Delegations.Entries[0].Who = "[red]alice"
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions, nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), permissions, nil)
 	// escaped, so it is displayed as "[red]alice" instead of coloring the text
 	assert.Contains(t, d.delegations.GetText(true), "  user [red]alice: @backup,snapshot (local+descendent)")
 }
@@ -120,7 +120,7 @@ func TestDatasetPermissionsDialog_ScrollDelegations(t *testing.T) {
 		permissions.Delegations.Entries = append(permissions.Delegations.Entries,
 			zfs.Delegation{Dataset: "pool", Scope: zfs.ScopeLocal, WhoType: zfs.WhoUser, Who: fmt.Sprintf("user%d", i), Permissions: []string{"hold"}})
 	}
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions, nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), permissions, nil)
 	d.delegations.SetRect(0, 0, 40, 5)
 
 	press := func(key tcell.Key) {

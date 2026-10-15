@@ -35,12 +35,9 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 	}
 	t.Cleanup(func() { cloneSnapshot = original })
 
-	app = tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 
 	entry := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "daily-1", FullName: "pool/data@daily-1"}}
 	testutil.OnUiThread(t, app, func() {

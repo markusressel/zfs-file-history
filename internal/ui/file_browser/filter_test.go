@@ -63,13 +63,10 @@ func newFileBrowserTest(t *testing.T, filterOnDirectoryChange configuration.File
 	require.NoError(t, os.Mkdir(sub, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(sub, "x.txt"), []byte("x"), 0o644))
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	fileBrowser := NewFileBrowser(app)
 	// set the root before the event loop starts, like CreateUi does
-	app.SetRoot(fileBrowser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, fileBrowser.GetLayout())
 
 	return &fileBrowserTest{t: t, app: app, screen: screen, fileBrowser: fileBrowser, dir: dir, sub: sub}
 }

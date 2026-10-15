@@ -17,9 +17,7 @@ import (
 // the selected one
 func TestCommandMenuKey(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	frontPage := func() (name string) {
@@ -78,9 +76,7 @@ func TestCommandMenuKey(t *testing.T) {
 // ':' is typed into a filter instead of opening the command menu
 func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	screen.SetSize(200, 30)
+	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
 	screen.InjectKey(tcell.KeyCtrlF, 0, tcell.ModNone)
@@ -99,7 +95,7 @@ func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
 // component first, like after pressing its key there.
 func TestCommandSections_OtherComponents(t *testing.T) {
 	app, mainPage, _ := createUi(t.TempDir(), true)
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	testutil.UseSimulationScreen(app)
 	testutil.RunApp(t, app)
 
 	var titles []string

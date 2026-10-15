@@ -3,6 +3,7 @@ package util
 import (
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -18,7 +19,7 @@ func newTestSplit(t *testing.T) (*ResizableSplit, tcell.SimulationScreen, *tview
 	screen.SetSize(100, 10)
 	left := tview.NewBox().SetBorder(true)
 	right := tview.NewBox().SetBorder(true)
-	split := NewResizableSplit(tview.NewApplication(), left, right, 1, 1)
+	split := NewResizableSplit(testutil.App(), left, right, 1, 1)
 	split.SetRect(0, 0, 100, 10)
 	split.Draw(screen)
 	return split, screen, left, right
@@ -98,7 +99,7 @@ func TestResizableSplit_Vertical(t *testing.T) {
 	screen.SetSize(40, 30)
 	top := tview.NewBox().SetBorder(true)
 	bottom := tview.NewBox().SetBorder(true)
-	split := NewVerticalResizableSplit(tview.NewApplication(), top, bottom, 1, 2)
+	split := NewVerticalResizableSplit(testutil.App(), top, bottom, 1, 2)
 	split.SetRect(0, 0, 40, 30)
 	split.Draw(screen)
 	height := func(box *tview.Box) int {

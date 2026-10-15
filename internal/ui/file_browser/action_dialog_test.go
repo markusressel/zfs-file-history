@@ -27,12 +27,9 @@ func newActionDialogTest(t *testing.T) *actionDialogTest {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644))
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	fileBrowser := NewFileBrowser(app)
-	app.SetRoot(fileBrowser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, fileBrowser.GetLayout())
 
 	ft := &actionDialogTest{t: t, app: app, screen: screen, fileBrowser: fileBrowser, dir: dir}
 	testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })

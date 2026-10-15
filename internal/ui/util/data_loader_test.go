@@ -8,15 +8,11 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDataLoader_LoadSuccess(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)
@@ -53,9 +49,7 @@ func TestDataLoader_LoadSuccess(t *testing.T) {
 }
 
 func TestDataLoader_LoadQuietly(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)
@@ -88,9 +82,7 @@ func TestDataLoader_LoadQuietly(t *testing.T) {
 }
 
 func TestDataLoader_LoadError(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)
@@ -120,9 +112,7 @@ func TestDataLoader_LoadError(t *testing.T) {
 }
 
 func TestDataLoader_CancellationAndSequenceTracking(t *testing.T) {
-	app := tview.NewApplication()
-	simScreen := tcell.NewSimulationScreen("")
-	app.SetScreen(simScreen)
+	app, _ := testutil.NewApp()
 	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)

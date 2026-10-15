@@ -8,8 +8,6 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,11 +25,9 @@ func TestSnapshotBrowser_ShowsSnapshotsAgainAfterUnreadableFolder(t *testing.T) 
 	require.NoError(t, os.Mkdir(locked, 0o000))
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 
 	snapshotCount := func() int {
 		var count int
@@ -60,11 +56,9 @@ func TestSnapshotBrowser_ShowsLoadErrorInPlaceOfSnapshots(t *testing.T) {
 	require.NoError(t, os.Mkdir(locked, 0o000))
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	browser := NewSnapshotBrowser(app)
-	app.SetRoot(browser.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, browser.GetLayout())
 
 	placeholder := func() (text string) {
 		testutil.OnUiThread(t, app, func() { text = browser.tableContainer.GetPlaceholder() })

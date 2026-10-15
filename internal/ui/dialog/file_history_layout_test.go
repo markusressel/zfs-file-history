@@ -42,13 +42,10 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	t.Cleanup(func() { findSnapshotsOfPath = original })
 	findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
+	app, screen := testutil.NewApp()
 	screen.SetSize(140, 30)
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	app.SetRoot(pages, true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, pages)
 
 	path := filepath.Join(ds.root, "notes.txt")
 	file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}
@@ -139,11 +136,9 @@ func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
 			t.Cleanup(func() { findSnapshotsOfPath = original })
 			findSnapshotsOfPath = func(string, []*data.SnapshotBrowserEntry) ([]*zfs.Snapshot, error) { return ds.snapshots, nil }
 
-			app := tview.NewApplication()
-			app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+			app, _ := testutil.NewApp()
 			pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-			app.SetRoot(pages, true)
-			testutil.RunApp(t, app)
+			testutil.StartApp(t, app, pages)
 
 			path := filepath.Join(ds.root, "notes.txt")
 			file := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: path}}

@@ -336,10 +336,7 @@ func setupTest(t *testing.T, statuses []*zfs.PoolStatus) (*tview.Application, *M
 		loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors = originalLoad, originalActive, originalIdle, originalDataErrors
 	})
 
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	app.EnableMouse(true)
+	app, screen := testutil.NewApp()
 	screen.SetSize(80, 10)
 
 	var mu sync.Mutex

@@ -63,12 +63,10 @@ func setupTest(t *testing.T) (*tview.Application, *DatasetInfoComponent, *fakeLo
 	loadDatasetInfo = fake.load
 	t.Cleanup(func() { loadDatasetInfo = original })
 
-	app := tview.NewApplication()
-	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
+	app, _ := testutil.NewApp()
 	datasetInfo := NewDatasetInfo(app)
 	// set the root before the event loop starts, like CreateUi does
-	app.SetRoot(datasetInfo.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, datasetInfo.GetLayout())
 	return app, datasetInfo, fake
 }
 
@@ -407,17 +405,9 @@ func TestFormatInfo_PoolLink(t *testing.T) {
 
 // A click on the name of the pool shows the pool (on the pools page, see CreateUi), the rest of the text does not.
 func TestDatasetInfo_ClickOnPoolShowsIt(t *testing.T) {
-	// two clicks in a row would be a double click, which tview reports instead of the second click
-	originalInterval := tview.DoubleClickInterval
-	tview.DoubleClickInterval = 0
-	t.Cleanup(func() { tview.DoubleClickInterval = originalInterval })
-	app := tview.NewApplication()
-	screen := tcell.NewSimulationScreen("UTF-8")
-	app.SetScreen(screen)
-	app.EnableMouse(true)
+	app, screen := testutil.NewApp()
 	datasetInfo := NewDatasetInfo(app)
-	app.SetRoot(datasetInfo.GetLayout(), true)
-	testutil.RunApp(t, app)
+	testutil.StartApp(t, app, datasetInfo.GetLayout())
 	shown := make(chan string, 10)
 	testutil.OnUiThread(t, app, func() {
 		datasetInfo.SetOnShowPool(func(pool string) { shown <- pool })

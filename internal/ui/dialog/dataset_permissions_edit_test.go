@@ -23,7 +23,7 @@ func pressDialogKey(d *DatasetPermissionsDialog, key tcell.Key, r rune) *tcell.E
 }
 
 func TestDatasetPermissionsDialog_Toggle(t *testing.T) {
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions(), nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), newTestDatasetPermissions(), nil)
 	toggle := func(row int) {
 		d.table.Select(row, 0)
 		assert.Nil(t, pressDialogKey(d, tcell.KeyRune, ' '))
@@ -58,7 +58,7 @@ func TestDatasetPermissionsDialog_RevokeHintsAtOtherGrants(t *testing.T) {
 	permissions := newTestDatasetPermissions()
 	everyone := zfs.Delegation{Dataset: "pool", Scope: zfs.ScopeLocalAndDescendent, WhoType: zfs.WhoEveryone, Permissions: []string{"snapshot"}}
 	permissions.Grants[zfs.PermissionSnapshot] = append(permissions.Grants[zfs.PermissionSnapshot], zfs.Grant{Delegation: everyone})
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions, nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), permissions, nil)
 
 	d.table.Select(1, 0)
 	pressDialogKey(d, tcell.KeyRune, ' ')
@@ -69,7 +69,7 @@ func TestDatasetPermissionsDialog_RevokeHintsAtOtherGrants(t *testing.T) {
 func TestDatasetPermissionsDialog_RootCannotEdit(t *testing.T) {
 	permissions := newTestDatasetPermissions()
 	permissions.IsRoot = true
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), permissions, nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), permissions, nil)
 
 	d.table.Select(2, 0)
 	pressDialogKey(d, tcell.KeyRune, ' ')
@@ -79,7 +79,7 @@ func TestDatasetPermissionsDialog_RootCannotEdit(t *testing.T) {
 }
 
 func TestDatasetPermissionsDialog_EscDiscardsChangesFirst(t *testing.T) {
-	d := NewDatasetPermissionsDialog(tview.NewApplication(), newTestDatasetPermissions(), nil)
+	d := NewDatasetPermissionsDialog(testutil.App(), newTestDatasetPermissions(), nil)
 	d.table.Select(2, 0)
 	pressDialogKey(d, tcell.KeyRune, ' ')
 
@@ -96,7 +96,7 @@ func TestDatasetPermissionsDialog_EscDiscardsChangesFirst(t *testing.T) {
 }
 
 func TestDatasetPermissionsDialog_ShortcutsFit(t *testing.T) {
-	shortcuts := shortcut_helper.NewShortcutMap(tview.NewApplication())
+	shortcuts := shortcut_helper.NewShortcutMap(testutil.App())
 	shortcuts.SetEntries(datasetPermissionsShortcuts(false))
 	// the content width of the dialog, see CalculateDialogSize: the dialog frame has a border
 	width := datasetPermissionsContentWidth + 6 - 2
@@ -150,12 +150,9 @@ func newPermissionsEditTest(t *testing.T, permissions *zfs.DatasetPermissions) *
 		return reloaded, nil
 	}
 
-	et.app = tview.NewApplication()
-	et.screen = tcell.NewSimulationScreen("UTF-8")
-	et.app.SetScreen(et.screen)
+	et.app, et.screen = testutil.NewApp()
 	et.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
-	et.app.SetRoot(et.pages, true)
-	testutil.RunApp(t, et.app)
+	testutil.StartApp(t, et.app, et.pages)
 
 	testutil.OnUiThread(t, et.app, func() {
 		et.dialog = NewDatasetPermissionsDialog(et.app, permissions, func() {

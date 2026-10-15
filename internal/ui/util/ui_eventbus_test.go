@@ -3,13 +3,12 @@ package util
 import (
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/util"
-
-	"github.com/rivo/tview"
 )
 
 func TestSubscribeUI(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	emitter := util.NewEmitter[string]()
 
 	SubscribeUI(emitter, app, func(v string) {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 
@@ -24,7 +25,7 @@ func (m mockEntry) TableRowId() string {
 }
 
 func TestTableSorting(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	cols := []*Column{
 		{Id: 0, Title: "Col0"},
 		{Id: 1, Title: "Col1"},
@@ -58,7 +59,7 @@ func TestTableSorting(t *testing.T) {
 }
 
 func TestMultiSelection(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	table := NewTableContainer[mockEntry](
 		app,
 		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
@@ -93,7 +94,7 @@ func TestMultiSelection(t *testing.T) {
 }
 
 func TestCreateMultiSelectionEntryId(t *testing.T) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	table := NewTableContainer[mockEntry](
 		app,
 		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell { return nil },
@@ -105,7 +106,7 @@ func TestCreateMultiSelectionEntryId(t *testing.T) {
 }
 
 func newSortHighlightTestTable() (*RowSelectionTable[mockEntry], []*Column) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	cols := []*Column{
 		{Id: 0, Title: "Col0"},
 		{Id: 1, Title: "Col1"},
@@ -315,7 +316,7 @@ func (e namedEntry) TableRowId() string {
 }
 
 func newFilterTestTable() (*RowSelectionTable[namedEntry], []*namedEntry, *[]tcell.Key, *int) {
-	app := tview.NewApplication()
+	app, _ := testutil.NewApp()
 	cols := []*Column{{Id: 0, Title: "Name"}}
 	table := NewTableContainer[namedEntry](
 		app,
@@ -593,7 +594,7 @@ func newWideTestTable(columnCount int) (*RowSelectionTable[namedEntry], []*named
 		cols = append(cols, &Column{Id: ColumnId(i), Title: fmt.Sprintf("col%d", i)})
 	}
 	table := NewTableContainer[namedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
 			var cells []*tview.TableCell
 			for _, column := range columns {
@@ -800,7 +801,7 @@ func TestTable_ScrollbarVisibility(t *testing.T) {
 func TestTable_RendersAgainWhenTheTimeFormatChanged(t *testing.T) {
 	then := time.Now().Add(-2 * time.Hour)
 	table := NewTableContainer[namedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell(uiutil.FormatTime(then))}
 		},
@@ -926,7 +927,7 @@ func TestTable_NoMatchesForTheFilter(t *testing.T) {
 func TestTable_Resort(t *testing.T) {
 	cols := []*Column{{Id: 0, Title: "Name"}}
 	table := NewTableContainer[namedEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *namedEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell(entry.name)}
 		},
@@ -1116,7 +1117,7 @@ func TestTable_FindByRowId(t *testing.T) {
 func TestSelectedRowKeepsTextColors(t *testing.T) {
 	cols := []*Column{{Id: 0, Title: "Col0"}}
 	table := NewTableContainer[mockEntry](
-		tview.NewApplication(),
+		testutil.App(),
 		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
 			return []*tview.TableCell{tview.NewTableCell("ONLINE").SetTextColor(tcell.ColorGreen)}
 		},

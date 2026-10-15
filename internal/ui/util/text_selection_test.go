@@ -2,6 +2,7 @@ package util
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -32,7 +33,7 @@ func newSelectionTest(t *testing.T, left string) *selectionTest {
 	test.screen = tcell.NewSimulationScreen("UTF-8")
 	require.NoError(t, test.screen.Init())
 	test.screen.SetSize(40, 6)
-	test.selection = InstallTextSelection(tview.NewApplication(), root, func(text string) {
+	test.selection = InstallTextSelection(testutil.App(), root, func(text string) {
 		test.copied = append(test.copied, text)
 	})
 	test.draw()
