@@ -182,13 +182,13 @@ func (d *ColumnSelectionDialog) updateShortcutMap() {
 	}
 
 	entries := []shortcut_helper.ShortcutEntry{
-		{KeyCombo: []string{"←", "→"}, Name: "Switch Side", Group: shortcut_helper.GroupNavigation},
+		{KeyCombo: []string{"←", "→", shortcut_helper.KeyTab}, Name: "Switch Side", Group: shortcut_helper.GroupNavigation},
 		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close", Group: shortcut_helper.GroupGlobal},
 	}
 
 	if d.focusActive {
 		entries = append(entries,
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyDelete}, Name: "Deactivate"},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Deactivate"},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{shortcut_helper.Shift("↑"), shortcut_helper.Shift("↓")}, Name: "Reorder"},
 		)
 	} else {
@@ -244,27 +244,36 @@ func (d *ColumnSelectionDialog) captureInput(event *tcell.EventKey) *tcell.Event
 		d.Close()
 		return nil
 	case tcell.KeyLeft:
-		d.focusActive = true
-		d.updateShortcutMap()
-		d.application.SetFocus(d.activeTable)
+		d.focusSide(true)
 		return nil
 	case tcell.KeyRight:
-		d.focusActive = false
-		d.updateShortcutMap()
-		d.application.SetFocus(d.availableTable)
+		d.focusSide(false)
+		return nil
+	case tcell.KeyTab, tcell.KeyBacktab:
+		// two sides: both go to the other one
+		d.focusSide(!d.focusActive)
 		return nil
 	case tcell.KeyEnter:
-		if !d.focusActive {
-			d.addSelectedAvailableColumn()
-			return nil
-		}
-	case tcell.KeyDelete, tcell.KeyBackspace, tcell.KeyBackspace2:
+		// moves the column to the other side, the same key on both, so there is only one key to remember
 		if d.focusActive {
 			d.removeSelectedActiveColumn()
-			return nil
+		} else {
+			d.addSelectedAvailableColumn()
 		}
+		return nil
 	}
 	return event
+}
+
+// focusSide focuses the active columns, or the available ones. Must be called on the UI thread.
+func (d *ColumnSelectionDialog) focusSide(active bool) {
+	d.focusActive = active
+	d.updateShortcutMap()
+	if active {
+		d.application.SetFocus(d.activeTable)
+	} else {
+		d.application.SetFocus(d.availableTable)
+	}
 }
 
 func (d *ColumnSelectionDialog) addSelectedAvailableColumn() {

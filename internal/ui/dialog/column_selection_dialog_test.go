@@ -1,12 +1,16 @@
 package dialog
 
 import (
+	"slices"
 	"testing"
+	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestComputeAvailableColumns(t *testing.T) {
@@ -145,4 +149,67 @@ func TestColumnSelectionDialog_ShortcutsFit(t *testing.T) {
 		assert.LessOrEqual(t, d.shortcutMap.CalculateHeightForWidth(width), columnSelectionShortcutLines,
 			"shortcuts with focus on the active side: %v", focusActive)
 	}
+}
+
+// Enter moves the selected column to the other side, on both sides; ←/→, ⭾ and shift+⭾ switch the side
+func TestColumnSelectionDialog_Keys(t *testing.T) {
+	app := tview.NewApplication()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	screen.SetSize(100, 30)
+	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
+	app.SetRoot(pages, true)
+	go func() { _ = app.Run() }()
+	t.Cleanup(app.Stop)
+
+	all := []*table.Column{{Id: 1, Title: "Col 1"}, {Id: 2, Title: "Col 2"}, {Id: 3, Title: "Col 3"}}
+	var d *ColumnSelectionDialog
+	testutil.OnUiThread(t, app, func() {
+		d = NewColumnSelectionDialog(app, "Column Selection", all, all[:2], func([]*table.Column) {})
+		ShowDialogOnPages(app, pages, d, nil)
+	})
+	state := func() (active []*table.Column, focusActive bool) {
+		testutil.OnUiThread(t, app, func() { active, focusActive = slices.Clone(d.activeColumns), d.focusActive })
+		return active, focusActive
+	}
+	press := func(key tcell.Key) {
+		screen.InjectKey(key, 0, tcell.ModNone)
+		testutil.OnUiThread(t, app, func() {})
+	}
+
+	// the first active column moves to the available ones
+	press(tcell.KeyEnter)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		active, _ := state()
+		assert.Equal(c, []*table.Column{all[1]}, active)
+	}, 3*time.Second, 10*time.Millisecond)
+
+	press(tcell.KeyTab)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, focusActive := state()
+		assert.False(c, focusActive)
+	}, 3*time.Second, 10*time.Millisecond)
+	// the first available column (Col 1) moves back
+	press(tcell.KeyEnter)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		active, _ := state()
+		assert.Equal(c, []*table.Column{all[1], all[0]}, active)
+	}, 3*time.Second, 10*time.Millisecond)
+
+	press(tcell.KeyBacktab)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, focusActive := state()
+		assert.True(c, focusActive)
+	}, 3*time.Second, 10*time.Millisecond)
+	press(tcell.KeyTab)
+	press(tcell.KeyLeft)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, focusActive := state()
+		assert.True(c, focusActive)
+	}, 3*time.Second, 10*time.Millisecond)
+
+	// Delete does nothing anymore
+	press(tcell.KeyDelete)
+	active, _ := state()
+	assert.Equal(t, []*table.Column{all[1], all[0]}, active)
 }
