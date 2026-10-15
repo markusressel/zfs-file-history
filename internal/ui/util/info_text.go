@@ -147,6 +147,31 @@ func (info *InfoText) Field(label string, value string) {
 	}
 }
 
+// infoLabelGap separates the labels from the values.
+const infoLabelGap = "  "
+
+// LineCount returns the number of lines added so far, e.g. the line of the next field.
+func (info *InfoText) LineCount() int {
+	return len(info.lines)
+}
+
+// ValueColumn returns the column at which the values of the fields start (the labels are padded to the longest one,
+// see Lines), e.g. to find a value on the screen.
+func (info *InfoText) ValueColumn() int {
+	return info.labelWidth() + len(infoLabelGap)
+}
+
+// labelWidth returns the width of the longest label, to which all are padded.
+func (info *InfoText) labelWidth() int {
+	width := 0
+	for _, line := range info.lines {
+		if line.isField {
+			width = max(width, tview.TaggedStringWidth(line.label))
+		}
+	}
+	return width
+}
+
 // String returns the text, the labels padded to the longest one.
 func (info *InfoText) String() string {
 	return strings.Join(info.Lines(), "\n")
@@ -154,12 +179,7 @@ func (info *InfoText) String() string {
 
 // Lines returns the lines of the text, see String.
 func (info *InfoText) Lines() []string {
-	labelWidth := 0
-	for _, line := range info.lines {
-		if line.isField {
-			labelWidth = max(labelWidth, tview.TaggedStringWidth(line.label))
-		}
-	}
+	labelWidth := info.labelWidth()
 	colors := theme.Colors.Info
 	lines := make([]string, 0, len(info.lines))
 	for _, line := range info.lines {
@@ -168,7 +188,7 @@ func (info *InfoText) Lines() []string {
 			lines = append(lines, "[::b]"+txwidgets.Span(colors.Section, "%s", line.section)+"[::-]")
 		case line.isField:
 			padding := strings.Repeat(" ", labelWidth-tview.TaggedStringWidth(line.label))
-			lines = append(lines, txwidgets.Span(colors.Label, "%s", line.label)+padding+"  "+txwidgets.ColorTag(colors.Value)+line.value+"[-]")
+			lines = append(lines, txwidgets.Span(colors.Label, "%s", line.label)+padding+infoLabelGap+txwidgets.ColorTag(colors.Value)+line.value+"[-]")
 		default:
 			lines = append(lines, line.text)
 		}
