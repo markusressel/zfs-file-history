@@ -29,28 +29,48 @@ func TestMessageHistoryKey(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { loading = datasetPage.datasetBrowser.IsLoading() })
 		return !loading
 	}, 10*time.Second, 20*time.Millisecond, "datasets loaded")
-	// without ZFS, loading the pools fails as well, possibly later than the datasets
-	inHistory := func(text string) (found bool) {
+	// Other loads that started with the UI can fail later than the datasets (the pools, the file browser, ...), which
+	// depends on the system (e.g. with or without ZFS in CI). Their messages would replace the one of this test, so
+	// it waits until no new one came for a while.
+	newest := func() (count int, message *status_message.StatusMessage) {
 		testutil.OnUiThread(t, app, func() {
-			for _, message := range messages.History() {
-				found = found || strings.Contains(message.Message, text)
+			history := messages.History()
+			count = len(history)
+			if count > 0 {
+				message = history[0]
 			}
 		})
-		return found
+		return count, message
 	}
-	if inHistory("Could not load datasets") {
-		assert.Eventually(t, func() bool { return inHistory("Could not load pools") }, 10*time.Second, 20*time.Millisecond,
-			"pools loaded")
-	}
+	lastCount, lastMessage := newest()
+	lastChange := time.Now()
+	assert.Eventually(t, func() bool {
+		if count, message := newest(); count != lastCount || message != lastMessage {
+			lastCount, lastMessage, lastChange = count, message, time.Now()
+		}
+		return time.Since(lastChange) >= time.Second
+	}, 15*time.Second, 20*time.Millisecond, "no new messages")
 	testutil.OnUiThread(t, app, func() {
 		messages.MarkRead()
 		messages.Dismiss()
 	})
-	testutil.OnUiThread(t, app, func() { messages.Show(status_message.NewErrorStatusMessage("something failed")) })
-	assert.Eventually(t, func() bool {
+	// Drawn here: a queued update does not draw, and nothing else may redraw the screen once the loads are done.
+	testutil.OnUiThread(t, app, func() {
+		messages.Show(status_message.NewErrorStatusMessage("something failed"))
+		app.ForceDraw()
+	})
+	if !assert.Eventually(t, func() bool {
 		text := screenText(t, app, screen)
 		return strings.Contains(text, "something failed") && strings.Contains(text, "⚠ 1")
-	}, 3*time.Second, 20*time.Millisecond, "the error and the badge are shown")
+	}, 3*time.Second, 20*time.Millisecond, "the error and the badge are shown") {
+		// It logs the messages and the screen, to see what came in between.
+		testutil.OnUiThread(t, app, func() {
+			for _, message := range messages.History() {
+				t.Logf("message: %s", message.Message)
+			}
+		})
+		t.Logf("screen:\n%s", screenText(t, app, screen))
+	}
 
 	frontPage := func() (name string) {
 		testutil.OnUiThread(t, app, func() { name, _ = mainPage.pages.GetFrontPage() })
