@@ -106,12 +106,15 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	stop()
 	require.NoError(t, store.Flush())
 
-	// returns the folder of the file browser, the page in front and the title of its focused component
+	// Returns the folder of the file browser, the page in front and the title of its focused component. The app of
+	// the restart before is stopped first, like the application: it read state.Current while it was replaced.
+	stopPrevious := func() {}
 	restart := func(start Start) (string, util.Page, string) {
+		stopPrevious()
 		statetest.UseFile(t, statePath)
 		app, mainPage, datasetPage := newUiFor(t, start)
 		testutil.UseSimulationScreen(app)
-		testutil.RunApp(t, app)
+		stopPrevious = testutil.RunApp(t, app)
 		var path, focused string
 		var front util.Page
 		testutil.OnUiThread(t, app, func() {
