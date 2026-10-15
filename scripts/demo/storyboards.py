@@ -336,7 +336,67 @@ ALERTS = Storyboard(
     ],
 )
 
+# the dialog of the history of a pool, while it lists the groups or each record (b)
+POOL_HISTORY = r"History of "
+HISTORY_GROUPS = r"\d+ of \d+ groups"
+HISTORY_RECORDS = r"\d+ of \d+ records"
+# the records of an expanded group, below it
+HISTORY_EXPANDED = r"[├└]─ "
+
+POOL_HISTORY_STORYBOARD = Storyboard(
+    name="pool-history",
+    description="the history of a pool: what was done, grouped into scrubs and runs of commands, and each record",
+    # wide enough for the summaries of the groups and their user
+    size=(160, 40),
+    steps=[
+        *LOADED,
+        Key("3", 0.0, shows=POOLS_PAGE),
+        Wait(r"\d+ pools?\b"),
+        Ready(),
+        # the second pool, if there is one (the root pool usually has the more varied history)
+        Key(DOWN, 2.0),
+        Key("h", 1.5, shows=POOL_HISTORY),
+        Wait(HISTORY_GROUPS),
+        # the groups, newest first, the selected one in full below the list
+        Key(DOWN, 2.5),
+        Key(DOWN, 1.5),
+        Key(UP, 1.5),
+        Key(UP, 1.2),
+        # its records, and collapsed again
+        Key(ENTER, 1.5, shows=HISTORY_EXPANDED),
+        Key(DOWN, 2.0),
+        Key(DOWN, 0.8),
+        Key(DOWN, 0.8),
+        Key("-", 1.5, into=HISTORY_EXPANDED),
+        Key(ENTER, 1.5, hides=HISTORY_EXPANDED),
+        # the scrubs: from their start to their end, how they ended
+        Key("/", 2.0, into=POOL_HISTORY),
+        Search("scrub", until=r"Filter: scrub\b", into=r"Filter: ", delay=0.3),
+        Key(ENTER, 1.0, into=r"Filter: "),
+        Key(DOWN, 1.5),
+        Key(UP, 1.5),
+        Key(ENTER, 1.5, shows=HISTORY_EXPANDED),
+        # each record in the order they were logged, with the events ZFS logged itself, and the groups again
+        Key("b", 3.0, shows=HISTORY_RECORDS),
+        Key("i", 2.5, shows=r"hide events logged by ZFS"),
+        Key("b", 3.0, shows=HISTORY_GROUPS),
+        Key(ESC, 3.0, hides=POOL_HISTORY),
+        Quit(1.5),
+    ],
+)
+
 STORYBOARDS: dict[str, Storyboard] = {
     storyboard.name: storyboard
-    for storyboard in [OVERVIEW, FILES, DATASETS, POOLS, DISKS, COMMAND_MENU, FILE_HISTORY, ACTIVITY, ALERTS]
+    for storyboard in [
+        OVERVIEW,
+        FILES,
+        DATASETS,
+        POOLS,
+        DISKS,
+        COMMAND_MENU,
+        FILE_HISTORY,
+        POOL_HISTORY_STORYBOARD,
+        ACTIVITY,
+        ALERTS,
+    ]
 }
