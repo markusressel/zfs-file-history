@@ -397,9 +397,12 @@ func ShowDialogOnPages(
 		previousFocus = application.GetFocus()
 	}
 	// a dialog shown from another one (e.g. the result of an action) usually outlives it: it returns the focus to
-	// where the other one was shown from, instead of to the closed dialog
+	// where the other one was shown from, instead of to the closed dialog. If the other one is still shown (e.g. the
+	// columns of a table in a dialog), it returns the focus to it instead, not to the page behind it.
+	var openerFocus tview.Primitive
 	if opener, ok := focusedDialog(pages); ok {
 		previousFocus = opener.returnFocus
+		openerFocus = application.GetFocus()
 	}
 
 	go func() {
@@ -413,9 +416,12 @@ func ShowDialogOnPages(
 					pages.RemovePage(d.GetName())
 
 					if hadFocus {
-						if previousFocus != nil && isDescendantOf(pages, previousFocus) {
+						switch {
+						case openerFocus != nil && isDescendantOf(pages, openerFocus):
+							application.SetFocus(openerFocus)
+						case previousFocus != nil && isDescendantOf(pages, previousFocus):
 							application.SetFocus(previousFocus)
-						} else {
+						default:
 							application.SetFocus(pages)
 						}
 					}

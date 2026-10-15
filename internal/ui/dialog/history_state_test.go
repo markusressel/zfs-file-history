@@ -20,6 +20,7 @@ import (
 func TestDialogColumnKeysAreUnique(t *testing.T) {
 	for name, columns := range map[string][]*table.Column{
 		"history": historyColumns, "timeline": timelineColumns, "changes": changeColumns, "properties": propertyColumns,
+		"pool history": poolHistoryColumns,
 	} {
 		keys := map[string]bool{}
 		for _, column := range columns {

@@ -5,7 +5,9 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/scrollbar"
+	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/ui/util"
@@ -31,20 +33,32 @@ const poolHistoryTimeLayout = "2006-01-02 15:04:05"
 // poolHistoryDetailsHeight is the number of lines of the record shown in full below the list.
 const poolHistoryDetailsHeight = 3
 
-// poolHistoryColumns are the titles of the columns of the list. The details are last: they can be long (e.g. the
-// devices of zpool create), and are cut off where the list ends, not the columns after them; the selected row is
-// shown in full below the list.
-var poolHistoryColumns = []string{"Time", "Event", "Dataset", "User", "Details"}
+// The columns of the list. The details are last by default: they can be long (e.g. the devices of zpool create), and
+// are cut off where the list ends, not the columns after them; the selected row is shown in full below the list.
+var (
+	poolHistoryColumnTime    = &table.Column{Id: 0, Key: "time", Title: "Time", Alignment: tview.AlignLeft}
+	poolHistoryColumnEvent   = &table.Column{Id: 1, Key: "event", Title: "Event", Alignment: tview.AlignLeft}
+	poolHistoryColumnDataset = &table.Column{Id: 2, Key: "dataset", Title: "Dataset", Alignment: tview.AlignLeft}
+	poolHistoryColumnUser    = &table.Column{Id: 3, Key: "user", Title: "User", Alignment: tview.AlignLeft}
+	poolHistoryColumnDetails = &table.Column{Id: 4, Key: "details", Title: "Details", Alignment: tview.AlignLeft}
+	poolHistoryColumns       = []*table.Column{poolHistoryColumnTime, poolHistoryColumnEvent, poolHistoryColumnDataset, poolHistoryColumnUser, poolHistoryColumnDetails}
+)
+
+// poolHistoryDefaultLayout shows all columns, the newest first.
+var poolHistoryDefaultLayout = table.ColumnLayout{Columns: poolHistoryColumns, SortColumn: poolHistoryColumnTime, SortInverted: true}
 
 // PoolHistoryDialog lists the history of a pool, or of a dataset (with its children and snapshots), newest first
 // (see zfs.PoolHistory). The records are grouped into what was done (see zfs.GroupPoolHistory: a scrub from its start
 // to its end, a command with the events ZFS logged for it, the commands of a run of a tool), each group a row that is
 // expanded to its records like the tree of the datasets (Enter, +, -, *). b lists the records one by one instead, in
 // the order they were logged: the commands, and with i the events ZFS logged itself. / filters, the selected row is
-// shown in full below the list. A pool may have hundreds of thousands of records, so the list is a virtual table (see
-// poolHistoryContent).
+// shown in full below the list. The rows are sorted by a column (the groups, their records stay below them), chosen on
+// the header row like in the other tables; F2 chooses the columns. A pool may have hundreds of thousands of records,
+// so the list is a virtual table (see poolHistoryContent), not a table.RowSelectionTable.
 type PoolHistoryDialog struct {
-	application   *tview.Application
+	application *tview.Application
+	// pages are the pages the dialog is shown on, for the column dialog (see pagesAware)
+	pages         *tview.Pages
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
 	filterInput   *tview.InputField
@@ -75,6 +89,10 @@ type PoolHistoryDialog struct {
 	expanded map[*zfs.PoolHistoryGroup]bool
 	// internal is whether the events ZFS logged itself are shown in the chronological list
 	internal bool
+	// groupOrder and entryOrder are the indices of groups and all in the order they are shown, see sortRows
+	groupOrder, entryOrder []int
+	// headerWasSelected is whether the header row was selected when the mouse button went down, see handleHeaderClick
+	headerWasSelected bool
 }
 
 // NewPoolHistoryDialog shows the history of the pool, or of the dataset (with its children and snapshots) if dataset
@@ -91,6 +109,10 @@ func NewPoolHistoryDialog(application *tview.Application, pool string, dataset s
 		expanded:      map[*zfs.PoolHistoryGroup]bool{},
 	}
 	d.content = &poolHistoryContent{}
+	d.applyColumnLayout(poolHistoryDefaultLayout)
+	if layout, ok := table.LoadColumnLayout(state.Current, stateKeyPoolHistoryTable, poolHistoryColumns); ok {
+		d.applyColumnLayout(layout)
+	}
 	d.createLayout()
 	go func() {
 		entries, err := load()
@@ -131,11 +153,27 @@ func (d *PoolHistoryDialog) createLayout() {
 		d.application.SetFocus(d.table)
 	})
 
-	table := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0).SetContent(d.content)
-	table.SetSelectedStyle(tcell.StyleDefault.Foreground(theme.Colors.Layout.Table.SelectedForeground).Background(theme.Colors.Layout.Table.SelectedBackground))
-	table.SetSelectionChangedFunc(func(row int, column int) { d.updateDetails() })
-	util.IgnoreClicksBelowRows(table)
-	d.table = &poolHistoryTable{Table: table, scrollbar: scrollbar.NewScrollbarComponent(d.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)}
+	list := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0).SetContent(d.content)
+	list.SetSelectedStyle(tcell.StyleDefault.Foreground(theme.Colors.Layout.Table.SelectedForeground).Background(theme.Colors.Layout.Table.SelectedBackground))
+	list.SetSelectionChangedFunc(func(row int, column int) {
+		if row == 0 {
+			// tview keeps the offset when the (fixed) header row is selected, e.g. with PgUp: the first rows would
+			// stay out of sight
+			d.table.ScrollToBeginning()
+		}
+		d.updateDetails()
+		d.updateHint()
+	})
+	util.IgnoreClicksBelowRows(list)
+	ignoreClicksBelowRows := list.GetMouseCapture()
+	list.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		action, event = ignoreClicksBelowRows(action, event)
+		if event == nil {
+			return action, event
+		}
+		return d.handleHeaderClick(action, event)
+	})
+	d.table = &poolHistoryTable{Table: list, scrollbar: scrollbar.NewScrollbarComponent(d.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)}
 
 	d.loadingView = util.NewLoadingView(d.application, "", "Reading the history (zpool history)…")
 	d.loadingView.SetBorder(false)
@@ -167,6 +205,21 @@ func (d *PoolHistoryDialog) createLayout() {
 			return nil
 		case event.Key() == tcell.KeyRune && event.Rune() == '/', event.Key() == tcell.KeyCtrlF:
 			d.application.SetFocus(d.filterInput)
+			return nil
+		case event.Key() == tcell.KeyF2:
+			d.openColumnDialog()
+			return nil
+		case d.isHeaderSelected() && (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight):
+			step := 1
+			if event.Key() == tcell.KeyLeft {
+				step = -1
+			}
+			columns := d.content.columns
+			index := slices.Index(columns, d.content.sortColumn)
+			d.setSort(columns[(index+step+len(columns))%len(columns)], d.content.sortInverted)
+			return nil
+		case d.isHeaderSelected() && event.Key() == tcell.KeyEnter:
+			d.setSort(d.content.sortColumn, !d.content.sortInverted)
 			return nil
 		case event.Key() == tcell.KeyRune && event.Rune() == 'b':
 			d.toggleChronological()
@@ -205,7 +258,184 @@ func (d *PoolHistoryDialog) setEntries(entries []zfs.PoolHistoryEntry, groups []
 	if d.all == nil {
 		d.all = []zfs.PoolHistoryEntry{}
 	}
+	d.sortRows()
 	d.applyFilter()
+}
+
+// applyColumnLayout shows the columns of the layout and sorts by its column; by the time, the newest first, if its
+// column is not shown (or the first column if the time is not shown either). Does not sort the rows again (see
+// sortRows). Must be called on the UI thread.
+func (d *PoolHistoryDialog) applyColumnLayout(layout table.ColumnLayout) {
+	if len(layout.Columns) == 0 {
+		return
+	}
+	d.content.columns = slices.Clone(layout.Columns)
+	d.content.sortColumn, d.content.sortInverted = layout.SortColumn, layout.SortInverted
+	if !slices.Contains(d.content.columns, d.content.sortColumn) {
+		d.content.sortColumn, d.content.sortInverted = poolHistoryDefaultLayout.SortColumn, poolHistoryDefaultLayout.SortInverted
+		if !slices.Contains(d.content.columns, d.content.sortColumn) {
+			d.content.sortColumn = d.content.columns[0]
+		}
+	}
+}
+
+// columnLayout returns the columns shown and the sort order.
+func (d *PoolHistoryDialog) columnLayout() table.ColumnLayout {
+	return table.ColumnLayout{Columns: slices.Clone(d.content.columns), SortColumn: d.content.sortColumn, SortInverted: d.content.sortInverted}
+}
+
+// changeColumnLayout shows the columns of the layout, sorted by its column, and saves it. Must be called on the UI
+// thread.
+func (d *PoolHistoryDialog) changeColumnLayout(layout table.ColumnLayout) {
+	d.applyColumnLayout(layout)
+	table.SaveColumnLayout(state.Current, stateKeyPoolHistoryTable, d.columnLayout())
+	d.sortRows()
+	d.showRows(d.selectedRow())
+}
+
+// setSort sorts the rows by the column, descending if inverted, and saves it. Must be called on the UI thread.
+func (d *PoolHistoryDialog) setSort(column *table.Column, inverted bool) {
+	layout := d.columnLayout()
+	layout.SortColumn, layout.SortInverted = column, inverted
+	d.changeColumnLayout(layout)
+}
+
+// openColumnDialog lets the user choose and order the columns (F2), like in the other tables. Must be called on the
+// UI thread.
+func (d *PoolHistoryDialog) openColumnDialog() {
+	if d.pages == nil {
+		return
+	}
+	columns := NewColumnSelectionDialog(d.application, "Configure History Columns", poolHistoryColumns, d.content.columns,
+		func(columns []*table.Column) {
+			layout := d.columnLayout()
+			layout.Columns = columns
+			d.changeColumnLayout(layout)
+		})
+	columns.SetResetFunc(func() []*table.Column {
+		d.applyColumnLayout(poolHistoryDefaultLayout)
+		state.Current.DeleteTableLayout(stateKeyPoolHistoryTable)
+		d.sortRows()
+		d.showRows(d.selectedRow())
+		return slices.Clone(d.content.columns)
+	})
+	ShowDialogOnPages(d.application, d.pages, columns, nil)
+}
+
+func (d *PoolHistoryDialog) setPages(pages *tview.Pages) {
+	d.pages = pages
+}
+
+// isHeaderSelected returns whether the header row is selected, where ← and → choose the sort column and Enter the
+// direction.
+func (d *PoolHistoryDialog) isHeaderSelected() bool {
+	row, _ := d.table.GetSelection()
+	return row == 0 && len(d.content.rows) > 0
+}
+
+// handleHeaderClick handles clicks on the header row like table.RowSelectionTable: the first click selects it, the
+// next ones sort by the clicked column, or toggle the direction if it is the sort column already. Clicks elsewhere
+// are passed on. Runs as the mouse capture of the table.
+func (d *PoolHistoryDialog) handleHeaderClick(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+	x, y := event.Position()
+	switch action {
+	case tview.MouseLeftDown:
+		// before tview focuses the table: the click that selects the header must not sort as well
+		d.headerWasSelected = d.isHeaderSelected() && d.table.HasFocus()
+	case tview.MouseLeftClick:
+		if !d.table.InRect(x, y) || !d.headerWasSelected {
+			return action, event
+		}
+		row, column := d.table.CellAt(x, y)
+		if row != 0 || column < 0 || column >= len(d.content.columns) {
+			return action, event
+		}
+		if clicked := d.content.columns[column]; clicked == d.content.sortColumn {
+			d.setSort(clicked, !d.content.sortInverted)
+		} else {
+			d.setSort(clicked, d.content.sortInverted)
+		}
+		return tview.MouseConsumed, nil
+	default:
+	}
+	return action, event
+}
+
+// sortRows puts the groups and the records in the order of the sort column (see poolHistoryOrder). Sorted once, not
+// on each change of the filter: a pool may have hundreds of thousands of records. Must be called on the UI thread.
+func (d *PoolHistoryDialog) sortRows() {
+	if d.all == nil {
+		return
+	}
+	column := d.content.sortColumn
+	d.groupOrder = poolHistoryOrder(len(d.groups), column, d.content.sortInverted, func(i int) string {
+		return poolHistoryGroupSortKey(d.groups[i], column)
+	})
+	d.entryOrder = poolHistoryOrder(len(d.all), column, d.content.sortInverted, func(i int) string {
+		return poolHistoryEntrySortKey(&d.all[i], column)
+	})
+}
+
+// poolHistoryOrder returns the indices of n records or groups (oldest first, in the order they were logged) in the
+// order they are shown: by the time in the order they were logged, else by the key of the column, the newest first
+// where the keys are the same.
+func poolHistoryOrder(n int, column *table.Column, inverted bool, key func(i int) string) []int {
+	order := make([]int, n)
+	for i := range order {
+		order[i] = n - 1 - i
+	}
+	if column == poolHistoryColumnTime {
+		if !inverted {
+			slices.Reverse(order)
+		}
+		return order
+	}
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = key(i)
+	}
+	slices.SortStableFunc(order, func(a int, b int) int {
+		result := strings.Compare(keys[a], keys[b])
+		if inverted {
+			return -result
+		}
+		return result
+	})
+	return order
+}
+
+// poolHistoryGroupSortKey returns the text of the group in the column, without colors, to sort by.
+func poolHistoryGroupSortKey(group *zfs.PoolHistoryGroup, column *table.Column) string {
+	if group.Kind == zfs.PoolHistorySingle {
+		return poolHistoryEntrySortKey(group.Entries[0], column)
+	}
+	switch column {
+	case poolHistoryColumnEvent:
+		return poolHistoryGroupTitle(group)
+	case poolHistoryColumnDataset:
+		return poolHistoryCommonDataset(group)
+	case poolHistoryColumnUser:
+		return strings.Join(poolHistoryGroupUsers(group), ", ")
+	case poolHistoryColumnDetails:
+		summary, _ := poolHistoryGroupSummary(group)
+		return summary
+	}
+	return ""
+}
+
+// poolHistoryEntrySortKey returns the text of the record in the column, to sort by.
+func poolHistoryEntrySortKey(entry *zfs.PoolHistoryEntry, column *table.Column) string {
+	switch column {
+	case poolHistoryColumnEvent:
+		return entry.Event
+	case poolHistoryColumnDataset:
+		return entry.Dataset()
+	case poolHistoryColumnUser:
+		return entry.User
+	case poolHistoryColumnDetails:
+		return poolHistoryDetails(entry)
+	}
+	return ""
 }
 
 // applyFilter shows the groups or records that match the filter (in the event, datasets, details or user, ignoring
@@ -226,17 +456,21 @@ func (d *PoolHistoryDialog) showRows(selected poolHistoryRow) {
 	selectedRow, _ := d.table.GetSelection()
 	offset, _ := d.table.GetOffset()
 	line := max(selectedRow-offset, 1)
+	// e.g. while the sort column is chosen
+	headerSelected := shown && selectedRow == 0
 	filter := strings.TrimSpace(d.filterInput.GetText())
 	rows := d.content.rows[:0]
+	// the records of a group are listed newest first, unless the rows are sorted by the time, oldest first
+	oldestFirst := d.content.sortColumn == poolHistoryColumnTime && !d.content.sortInverted
 	if d.chronological {
-		for i := len(d.all) - 1; i >= 0; i-- {
+		for _, i := range d.entryOrder {
 			entry := &d.all[i]
 			if (d.internal || !entry.Internal) && (filter == "" || poolHistoryEntryMatches(entry, filter)) {
 				rows = append(rows, poolHistoryRow{entry: entry})
 			}
 		}
 	} else {
-		for i := len(d.groups) - 1; i >= 0; i-- {
+		for _, i := range d.groupOrder {
 			group := d.groups[i]
 			if filter != "" && !poolHistoryGroupMatches(group, filter) {
 				continue
@@ -247,8 +481,12 @@ func (d *PoolHistoryDialog) showRows(selected poolHistoryRow) {
 			}
 			rows = append(rows, poolHistoryRow{group: group, expanded: d.expanded[group]})
 			if d.expanded[group] {
-				for j := len(group.Entries) - 1; j >= 0; j-- {
-					rows = append(rows, poolHistoryRow{group: group, entry: group.Entries[j], child: true, last: j == 0})
+				for k := range group.Entries {
+					j := len(group.Entries) - 1 - k
+					if oldestFirst {
+						j = k
+					}
+					rows = append(rows, poolHistoryRow{group: group, entry: group.Entries[j], child: true, last: k == len(group.Entries)-1})
 				}
 			}
 		}
@@ -270,7 +508,9 @@ func (d *PoolHistoryDialog) showRows(selected poolHistoryRow) {
 		// records are at the top; the selection is scrolled to again
 		d.table.ScrollToBeginning()
 	}
-	if len(rows) > 0 {
+	if headerSelected && len(rows) > 0 {
+		d.table.Select(0, 0)
+	} else if len(rows) > 0 {
 		d.table.Select(row, 0)
 	}
 	d.updateDetails()
@@ -343,7 +583,12 @@ func (d *PoolHistoryDialog) handleTreeKey(key rune) {
 	case key == '+' && row.entry == nil && !d.expanded[row.group]:
 		d.setExpanded(row.group, true)
 	case key == '+' && row.entry == nil:
-		d.showRows(poolHistoryRow{group: row.group, entry: row.group.Entries[len(row.group.Entries)-1]})
+		// its first record, below it
+		first := row.group.Entries[len(row.group.Entries)-1]
+		if d.content.sortColumn == poolHistoryColumnTime && !d.content.sortInverted {
+			first = row.group.Entries[0]
+		}
+		d.showRows(poolHistoryRow{group: row.group, entry: first})
 	}
 }
 
@@ -462,6 +707,8 @@ func (d *PoolHistoryDialog) updateHint() {
 		d.hintView.SetText(tview.Escape(fmt.Sprintf("Could not read the history: %s", d.err)))
 	case d.all == nil:
 		d.hintView.SetText("")
+	case d.isHeaderSelected():
+		d.hintView.SetText("←/→: sort column · Enter: sort direction · F2: columns · Esc: close")
 	case d.chronological:
 		internalAction := "show"
 		if d.internal {
@@ -531,8 +778,14 @@ func (t *poolHistoryTable) Draw(screen tcell.Screen) {
 // hundreds of thousands of records would take long to fill and much memory.
 type poolHistoryContent struct {
 	tview.TableContentReadOnly
-	// rows are the rows shown, newest first. Only accessed on the UI thread.
+	// rows are the rows shown, in the order of the sort column. Only accessed on the UI thread.
 	rows []poolHistoryRow
+	// columns are the columns shown, in their order. Only accessed on the UI thread.
+	columns []*table.Column
+	// sortColumn is the column the rows are sorted by, sortInverted whether descending (e.g. the newest first). Only
+	// accessed on the UI thread.
+	sortColumn   *table.Column
+	sortInverted bool
 }
 
 // poolHistoryRow is a row of the list: a group (entry nil), a record of an expanded group (child), a group of one
@@ -540,7 +793,7 @@ type poolHistoryContent struct {
 type poolHistoryRow struct {
 	group *zfs.PoolHistoryGroup
 	entry *zfs.PoolHistoryEntry
-	// child is set for the records below an expanded group, last for its oldest one (drawn as the end of the tree)
+	// child is set for the records below an expanded group, last for the one drawn last (the end of the tree)
 	child, last bool
 	// expanded is set for a group whose records are shown below it
 	expanded bool
@@ -551,16 +804,16 @@ func (c *poolHistoryContent) GetRowCount() int {
 }
 
 func (c *poolHistoryContent) GetColumnCount() int {
-	return len(poolHistoryColumns)
+	return len(c.columns)
 }
 
-func (c *poolHistoryContent) GetCell(row int, column int) *tview.TableCell {
-	if column < 0 || column >= len(poolHistoryColumns) {
+func (c *poolHistoryContent) GetCell(row int, index int) *tview.TableCell {
+	if index < 0 || index >= len(c.columns) {
 		return nil
 	}
+	column := c.columns[index]
 	if row == 0 {
-		return tview.NewTableCell(poolHistoryColumns[column]).SetTextColor(theme.Colors.Layout.Table.HeaderForeground).
-			SetBackgroundColor(theme.Colors.Layout.Table.HeaderBackground).SetSelectable(false)
+		return c.headerCell(column)
 	}
 	if row > len(c.rows) {
 		return nil
@@ -575,9 +828,9 @@ func (c *poolHistoryContent) GetCell(row int, column int) *tview.TableCell {
 		color = theme.Colors.Info.Muted
 	}
 	switch column {
-	case 0:
+	case poolHistoryColumnTime:
 		return tview.NewTableCell(entry.Time.Format(poolHistoryTimeLayout)).SetTextColor(theme.Colors.Info.Label)
-	case 1:
+	case poolHistoryColumnEvent:
 		prefix := ""
 		if shown.child && shown.last {
 			prefix = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "└─ ")
@@ -585,13 +838,32 @@ func (c *poolHistoryContent) GetCell(row int, column int) *tview.TableCell {
 			prefix = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "├─ ")
 		}
 		return tview.NewTableCell(prefix + tview.Escape(entry.Event)).SetTextColor(color)
-	case 2:
+	case poolHistoryColumnDataset:
 		return tview.NewTableCell(tview.Escape(entry.Dataset())).SetTextColor(theme.Colors.Layout.Table.Accent).SetMaxWidth(50)
-	case 3:
+	case poolHistoryColumnUser:
 		return tview.NewTableCell(tview.Escape(entry.User)).SetTextColor(theme.Colors.Info.Label)
 	default:
 		return tview.NewTableCell(tview.Escape(poolHistoryDetails(entry))).SetTextColor(color).SetExpansion(1)
 	}
+}
+
+// headerCell returns the cell of the column in the header row, with the direction of the sort column (like
+// table.RowSelectionTable), highlighted while the header row is selected.
+func (c *poolHistoryContent) headerCell(column *table.Column) *tview.TableCell {
+	text := column.Title
+	if column == c.sortColumn && c.sortInverted {
+		text += " ↓"
+	} else if column == c.sortColumn {
+		text += " ↑"
+	}
+	cell := tview.NewTableCell(text).SetTextColor(theme.Colors.Layout.Table.HeaderForeground).
+		SetBackgroundColor(theme.Colors.Layout.Table.HeaderBackground).SetAttributes(tcell.AttrBold)
+	if column == c.sortColumn {
+		// a cell's selected style is only applied while its row is selected
+		cell.SetSelectedStyle(tcell.StyleDefault.Foreground(theme.Colors.Layout.Table.SortColumnSelectedForeground).
+			Background(theme.Colors.Layout.Table.SortColumnSelectedBackground))
+	}
+	return cell
 }
 
 // poolHistoryDetails returns what the record says besides its event and dataset: the arguments of a command (e.g.

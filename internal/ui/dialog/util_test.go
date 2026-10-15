@@ -136,6 +136,45 @@ func TestShowDialogOnPages_DialogShownFromDialog_RestoresOriginalFocus(t *testin
 	})
 }
 
+// Regression: a dialog shown from another one that is still shown (e.g. the columns of a table in a dialog) returned
+// the focus to the page behind the other one, so the keys went to a page that could not be seen.
+func TestShowDialogOnPages_DialogShownFromDialog_ReturnsFocusToTheOther(t *testing.T) {
+	app := tview.NewApplication()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	behind := tview.NewTable()
+	pages := tview.NewPages().AddPage("main", behind, true, true)
+	app.SetRoot(pages, true)
+	go func() { _ = app.Run() }()
+	defer app.Stop()
+
+	options := []*DialogOption{
+		{Id: DialogCloseActionId, Name: "OK"},
+	}
+	first := NewSelectionDialog(app, "first-dialog", "First", "Desc", options, nil, nil)
+	second := NewSelectionDialog(app, "second-dialog", "Second", "Desc", options, nil, nil)
+
+	var inFirst tview.Primitive
+	testutil.OnUiThread(t, app, func() {
+		app.SetFocus(behind)
+		ShowDialogOnPages(app, pages, first, nil)
+		inFirst = app.GetFocus()
+		ShowDialogOnPages(app, pages, second, nil)
+	})
+
+	second.Close()
+	assert.Eventually(t, func() bool {
+		removed := false
+		testutil.OnUiThread(t, app, func() { removed = !pages.HasPage("second-dialog") })
+		return removed
+	}, 2*time.Second, 10*time.Millisecond)
+
+	testutil.OnUiThread(t, app, func() {
+		assert.Same(t, inFirst, app.GetFocus())
+		assert.True(t, first.GetLayout().HasFocus())
+	})
+}
+
 // components that embed a Flex or Pages, e.g. util.ResizableSplit and util.LoadingContainer
 type embeddingFlex struct{ *tview.Flex }
 type embeddingPages struct{ *tview.Pages }

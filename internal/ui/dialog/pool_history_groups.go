@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/ui/util"
@@ -17,19 +18,19 @@ import (
 // poolHistoryGroupCell returns the cell of the row of a group in the column: when it started, what it was, the
 // dataset of all its records, who ran its commands, how it ended (or what its commands did). A collapsed group
 // says how many records it hides, like a collapsed dataset of the tree.
-func poolHistoryGroupCell(group *zfs.PoolHistoryGroup, column int, expanded bool) *tview.TableCell {
+func poolHistoryGroupCell(group *zfs.PoolHistoryGroup, column *table.Column, expanded bool) *tview.TableCell {
 	switch column {
-	case 0:
+	case poolHistoryColumnTime:
 		return tview.NewTableCell(group.Start().Format(poolHistoryTimeLayout)).SetTextColor(theme.Colors.Info.Label)
-	case 1:
+	case poolHistoryColumnEvent:
 		text := tview.Escape(poolHistoryGroupTitle(group))
 		if !expanded {
 			text += txwidgets.Span(theme.Colors.Layout.Table.TreeCollapsedIndicator, " ▸ +%d", len(group.Entries))
 		}
 		return tview.NewTableCell(text).SetTextColor(theme.Colors.Info.Value)
-	case 2:
+	case poolHistoryColumnDataset:
 		return tview.NewTableCell(tview.Escape(poolHistoryCommonDataset(group))).SetTextColor(theme.Colors.Layout.Table.Accent).SetMaxWidth(50)
-	case 3:
+	case poolHistoryColumnUser:
 		return tview.NewTableCell(tview.Escape(strings.Join(poolHistoryGroupUsers(group), ", "))).SetTextColor(theme.Colors.Info.Label)
 	default:
 		summary, color := poolHistoryGroupSummary(group)

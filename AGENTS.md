@@ -73,7 +73,9 @@ of the code.
   and between the records of other commands: matched by dataset, not by position), and the commands one user ran less
   than a minute apart (e.g. a backup tool). Groups may overlap in time. `dialog.PoolHistoryDialog` lists the groups
   newest first in a virtual table (`tview.TableContent`), expanded like the dataset tree (Enter, `+`, `-`, `*`), or
-  with `b` each record in the order they were logged, with the events ZFS logged itself (`i`); a filter in both:
+  with `b` each record in the order they were logged, with the events ZFS logged itself (`i`); sorted on the header
+  row and its columns chosen with F2 like a `RowSelectionTable` (sorted once, not on each change of the filter;
+  `table.SaveColumnLayout`); a filter in both:
   `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
   while the rule is allowed (`SetOnShowHistory`, updated on `zfs.SudoersChanged`).
 - `internal/zfs/pool_action.go`: the actions on pools (`zfs.PoolActions`: scrub start/pause/cancel, TRIM
