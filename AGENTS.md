@@ -258,6 +258,9 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   `uiutil.KeepColorWhenSelected` for their colored cells.
 - Clicks into the empty space below the rows do nothing (`uiutil.IgnoreClicksBelowRows`, for every table); in
   `RowSelectionTable` also clicks to the right of the columns.
+- Lists of switches in dialogs (the checklist of a `SelectionDialog`, the features of a pool, the permissions): a
+  click checks or unchecks only the highlighted row, like Space; a click on another row selects it
+  (`uiutil.OnClickOnSelectedRow`), so a stray click never changes one by accident.
 - The header row: `←`/`→` change the sort column, `Enter` the direction. With the mouse, the first click selects the
   header, the next ones sort by the clicked column or toggle the direction.
 

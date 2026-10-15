@@ -35,8 +35,8 @@ type PoolFeaturesDialog struct {
 	onEnable   func(features []string)
 }
 
-// NewPoolFeaturesDialog shows the features of the pool (see zfs.ListPoolFeatures). Space or a click checks a
-// feature, Enter closes the dialog and calls onEnable on the UI thread with the names of the checked ones, which
+// NewPoolFeaturesDialog shows the features of the pool (see zfs.ListPoolFeatures). Space or a click on the
+// highlighted one checks a feature, Enter closes the dialog and calls onEnable on the UI thread with the names of the checked ones, which
 // confirms them (see NewEnablePoolFeaturesDialog): enabling cannot be undone.
 func NewPoolFeaturesDialog(application *tview.Application, features *zfs.PoolFeatures, onEnable func(features []string)) *PoolFeaturesDialog {
 	d := &PoolFeaturesDialog{
@@ -58,6 +58,8 @@ func (d *PoolFeaturesDialog) createLayout(features *zfs.PoolFeatures) {
 	d.table = util.SetSelectionStyle(tview.NewTable())
 	d.table.SetSelectable(true, false)
 	util.IgnoreClicksBelowRows(d.table)
+	// a click checks only the highlighted feature, another one is selected first
+	util.OnClickOnSelectedRow(d.table, d.toggle)
 	nameWidth := 0
 	for _, feature := range d.features {
 		nameWidth = max(nameWidth, len(feature.Name))
@@ -77,10 +79,6 @@ func (d *PoolFeaturesDialog) createLayout(features *zfs.PoolFeatures) {
 		}
 		for column, cell := range cells {
 			util.KeepColorWhenSelected(cell)
-			cell.SetClickedFunc(func() bool {
-				d.toggle(row)
-				return false
-			})
 			d.table.SetCell(row, column, cell)
 		}
 	}

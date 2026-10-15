@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -146,4 +148,30 @@ func TestDatasetPermissionsDialog_ScrollDelegations(t *testing.T) {
 		press(tcell.KeyPgUp)
 	}
 	assert.Zero(t, offset())
+}
+
+// Like Space, a click grants or revokes only the highlighted permission: a click on another one selects it.
+func TestDatasetPermissionsDialog_ClickTogglesOnlyTheHighlighted(t *testing.T) {
+	app, screen := testutil.NewApp(testutil.WithSize(100, 40))
+	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
+	testutil.StartApp(t, app, pages)
+	d := NewDatasetPermissionsDialog(app, newTestDatasetPermissions(), nil)
+	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
+	testutil.WaitForText(t, app, screen, "destroy", 2*time.Second)
+	pending := func() (count int) {
+		testutil.OnUiThread(t, app, func() { count = len(d.pending) })
+		return count
+	}
+
+	testutil.ClickText(t, app, screen, "destroy")
+	assert.Equal(t, 0, pending(), "selected, not granted")
+	testutil.OnUiThread(t, app, func() {
+		row, _ := d.table.GetSelection()
+		assert.Equal(t, "destroy", d.table.GetCell(row, 0).Text)
+	})
+
+	testutil.ClickText(t, app, screen, "destroy")
+	assert.Equal(t, 1, pending(), "granted")
+	testutil.ClickText(t, app, screen, "destroy")
+	assert.Equal(t, 0, pending(), "the change is removed again")
 }

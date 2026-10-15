@@ -108,12 +108,26 @@ func TestPoolFeaturesDialog_UnavailableCannotBeChecked(t *testing.T) {
 	assert.Equal(t, []string{"large_blocks"}, dt.checked())
 	testutil.WaitForText(t, dt.app, dt.screen, "Cannot be enabled: not allowed by compatibility=grub2.", 2*time.Second)
 
-	testutil.ClickText(t, dt.app, dt.screen, "zstd_compress")
-	testutil.ClickText(t, dt.app, dt.screen, "async_destroy")
+	for _, name := range []string{"zstd_compress", "async_destroy"} {
+		testutil.ClickText(t, dt.app, dt.screen, name)
+		testutil.ClickText(t, dt.app, dt.screen, name)
+	}
 	assert.Equal(t, []string{"large_blocks"}, dt.checked())
+}
 
-	testutil.ClickText(t, dt.app, dt.screen, "bookmarks")
-	assert.Equal(t, []string{"bookmarks", "large_blocks"}, dt.checked(), "a click checks one that can be enabled")
+// Regression: a click on a feature checked it, also if another one was highlighted. Only a click on the highlighted
+// one does, like Space; a click on another one selects it.
+func TestPoolFeaturesDialog_ClickChecksOnlyTheHighlighted(t *testing.T) {
+	dt := newPoolFeaturesDialogTest(t, testPoolFeatures())
+
+	testutil.ClickText(t, dt.app, dt.screen, "large_blocks")
+	assert.Empty(t, dt.checked(), "selected, not checked")
+	testutil.WaitForText(t, dt.app, dt.screen, "large_blocks: Support for blocks", 2*time.Second)
+
+	testutil.ClickText(t, dt.app, dt.screen, "large_blocks")
+	assert.Equal(t, []string{"large_blocks"}, dt.checked())
+	testutil.ClickText(t, dt.app, dt.screen, "large_blocks")
+	assert.Empty(t, dt.checked(), "unchecked again")
 }
 
 // The name of the selected feature links to its section of zpool-features(7), the ones the installed ZFS does not
