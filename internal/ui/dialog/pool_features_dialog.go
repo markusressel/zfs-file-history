@@ -159,6 +159,13 @@ func formatPoolFeatures(features *zfs.PoolFeatures) string {
 	return text.String()
 }
 
+// featureUrl returns the address of the section of the feature (its short name) in zpool-features(7). The page of
+// the development version has all features: a page of each version exists only from 2.1 on, and the one of a new
+// version only once it is published.
+func featureUrl(name string) string {
+	return zpoolFeaturesUrl + "#" + name
+}
+
 // formatModuleLacksFeatures tells that the loaded kernel module does not support all features of the zfs tools, with
 // their versions if known.
 func formatModuleLacksFeatures(features *zfs.PoolFeatures) string {
@@ -218,7 +225,9 @@ func (d *PoolFeaturesDialog) showDetail(row int) {
 	if feature.ReadOnlyCompatible {
 		compatible = "read-only compatible"
 	}
-	detail := fmt.Sprintf("%s: %s (%s)", Highlight(feature.Name), tview.Escape(feature.Description), compatible)
+	// the name links to its section of zpool-features(7)
+	name := txwidgets.ColorTag(theme.Colors.Dialog.Highlight) + Link(feature.Name, featureUrl(feature.Name)) + "[-]"
+	detail := fmt.Sprintf("%s: %s (%s)", name, tview.Escape(feature.Description), compatible)
 	if feature.Unsupported {
 		// zpool knows nothing about it but its GUID and whether it is in use
 		detail = fmt.Sprintf("%s: a feature the installed ZFS does not know, e.g. enabled by a newer version.", Highlight(feature.Name))

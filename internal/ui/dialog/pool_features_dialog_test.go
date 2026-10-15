@@ -116,6 +116,31 @@ func TestPoolFeaturesDialog_UnavailableCannotBeChecked(t *testing.T) {
 	assert.Equal(t, []string{"bookmarks", "large_blocks"}, dt.checked(), "a click checks one that can be enabled")
 }
 
+// The name of the selected feature links to its section of zpool-features(7), the ones the installed ZFS does not
+// know have none.
+func TestPoolFeaturesDialog_LinksToTheDocumentation(t *testing.T) {
+	features := testPoolFeatures()
+	features.Features = append(features.Features, zfs.PoolFeature{Name: "org.example:new", State: zfs.PoolFeatureUnsupportedInactive,
+		Unsupported: true, Unavailable: "not supported by the installed ZFS, enabled but not in use"})
+	dt := newPoolFeaturesDialogTest(t, features)
+
+	testutil.OnUiThread(t, dt.app, func() {
+		assert.Contains(t, dt.dialog.detailView.GetText(false), "[::u:"+zpoolFeaturesUrl+"#bookmarks]bookmarks[::U:-]")
+	})
+	x, y, found := testutil.FindInScreen(dt.screen, "bookmarks: ")
+	require.True(t, found)
+	_, style, _ := dt.screen.Get(x, y)
+	assert.NotEqual(t, tcell.UnderlineStyleNone, style.GetUnderlineStyle())
+
+	for range len(features.Features) - 1 {
+		dt.press(tcell.KeyDown, 0)
+	}
+	testutil.WaitForText(t, dt.app, dt.screen, "org.example:new: a feature", 2*time.Second)
+	testutil.OnUiThread(t, dt.app, func() {
+		assert.NotContains(t, dt.dialog.detailView.GetText(false), "[::u:")
+	})
+}
+
 func TestPoolFeaturesDialog_UnavailableAreGrayedOut(t *testing.T) {
 	dt := newPoolFeaturesDialogTest(t, testPoolFeatures())
 	testutil.ScreenText(t, dt.app, dt.screen)
