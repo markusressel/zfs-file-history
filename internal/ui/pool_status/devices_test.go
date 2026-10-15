@@ -216,8 +216,7 @@ func setupDevicesTest(t *testing.T, sampler *disktest.Sampler) (*tview.Applicati
 	screen.SetSize(100, 20)
 	devices := NewPoolDevices(app, sampler, nil)
 	app.SetRoot(devices.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	testutil.OnUiThread(t, app, func() { devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()}) })
 	// like the load of the status, which is drawn
 	app.QueueUpdateDraw(func() {})
@@ -432,8 +431,7 @@ func setupSmartTest(t *testing.T, smart *disktest.Smart) (app *tview.Application
 	screen.SetSize(120, 30)
 	devices = NewPoolDevices(app, disktest.NewSampler(nil), smart)
 	app.SetRoot(devices.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	shown := ""
 	testutil.OnUiThread(t, app, func() {
 		devices.SetStatus(&zfs.PoolStatus{Name: "tank", Devices: resilveringDevices()})

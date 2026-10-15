@@ -96,7 +96,7 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	screen.SetSize(150, 40)
-	go func() { _ = app.Run() }()
+	stop := testutil.RunApp(t, app)
 
 	testutil.OnUiThread(t, app, func() { mainPage.fileBrowser.SetPath(folder, false) })
 	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
@@ -106,7 +106,7 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { focused = datasetPage.datasetInfo.HasFocus() })
 		return focused
 	}, 2*time.Second, 10*time.Millisecond)
-	app.Stop()
+	stop()
 	require.NoError(t, store.Flush())
 
 	// returns the folder of the file browser, the page in front and the title of its focused component
@@ -114,8 +114,7 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 		state.Current = state.Load(statePath)
 		app, mainPage, datasetPage := createUiFor(start, true)
 		app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-		go func() { _ = app.Run() }()
-		defer app.Stop()
+		testutil.RunApp(t, app)
 		var path, focused string
 		var front util.Page
 		testutil.OnUiThread(t, app, func() {
@@ -153,8 +152,7 @@ func TestNewerStateVersionIsShown(t *testing.T) {
 
 	app, mainPage, _ := createUi(t.TempDir(), true)
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 	var history []string
 	testutil.OnUiThread(t, app, func() {
 		for _, message := range mainPage.messages.History() {

@@ -159,8 +159,7 @@ func TestColumnSelectionDialog_Keys(t *testing.T) {
 	screen.SetSize(100, 30)
 	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	all := []*table.Column{{Id: 1, Title: "Col 1"}, {Id: 2, Title: "Col 2"}, {Id: 3, Title: "Col 3"}}
 	var d *ColumnSelectionDialog

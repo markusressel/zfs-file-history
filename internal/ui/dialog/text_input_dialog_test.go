@@ -32,8 +32,7 @@ func newTextInputDialogTest(t *testing.T, initialText string) *textInputDialogTe
 	dt.app.SetScreen(dt.screen)
 	dt.pages = tview.NewPages().AddPage("main", tview.NewBox(), true, true)
 	dt.app.SetRoot(dt.pages, true)
-	go func() { _ = dt.app.Run() }()
-	t.Cleanup(dt.app.Stop)
+	testutil.RunApp(t, dt.app)
 
 	dt.dialog = NewTextInputDialog(dt.app, "TextInputTest", " Title ", "Name of the thing:", initialText, func(text string) {
 		dt.mu.Lock()

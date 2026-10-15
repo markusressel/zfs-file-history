@@ -67,8 +67,7 @@ func setupTest(t *testing.T) (*tview.Application, *DatasetInfoComponent, *fakeLo
 	datasetInfo := NewDatasetInfo(app)
 	// set the root before the event loop starts, like CreateUi does
 	app.SetRoot(datasetInfo.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	return app, datasetInfo, fake
 }
 

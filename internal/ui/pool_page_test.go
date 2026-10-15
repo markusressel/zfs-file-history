@@ -25,8 +25,7 @@ func newPoolPageApp(t *testing.T, width int, height int) (*tview.Application, *P
 	screen.SetSize(width, height)
 	page := NewPoolPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), noDisks{}, noDisks{})
 	app.SetRoot(page.layout, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	return app, page
 }
 
@@ -136,22 +135,15 @@ func TestPoolPage_FocusComponent(t *testing.T) {
 	assert.Equal(t, []string{"Devices", "Pools", "Pool status"}, titles)
 }
 
-// Selecting a pool shows its status and its devices. With ZFS, this uses the pools of the system; without it,
-// loading the pools fails, which is shown as a message.
+// Selecting a pool shows its status and its devices.
 func TestPoolPage_ShowsTheSelectedPool(t *testing.T) {
+	testSystem.setPools(t, &zfs.PoolStatus{Name: "tank", State: zfs.PoolStateOnline, Devices: []*zfs.PoolDevice{
+		{Name: "tank", State: zfs.PoolStateOnline},
+		{Name: "sda", Depth: 1, State: zfs.PoolStateOnline},
+	}})
 	app, page := newPoolPageApp(t, 160, 50)
-	pools, poolsErr := zfs.ListPools()
 
 	testutil.OnUiThread(t, app, func() { page.Init() })
-
-	if poolsErr != nil || len(pools) == 0 {
-		require.Eventually(t, func() bool {
-			loading := true
-			testutil.OnUiThread(t, app, func() { loading = page.poolBrowser.IsLoading() })
-			return !loading
-		}, 5*time.Second, 20*time.Millisecond)
-		t.Skip("no pools on this system")
-	}
 
 	require.Eventually(t, func() bool {
 		var text string
@@ -170,7 +162,7 @@ func TestPoolPage_ShowsTheSelectedPool(t *testing.T) {
 // The pools are reloaded when the ZFS event watcher reports a change of their state, or of the datasets (e.g. F5).
 func TestPoolPage_ReloadsOnChanges(t *testing.T) {
 	app, page := newPoolPageApp(t, 120, 40)
-	// each load ends with a selection (with ZFS) or an error message (without)
+	// each load ends with a selection (with pools) or an error message (without, see testSystem)
 	var loads atomic.Int32
 	page.poolBrowser.Events.Subscribe(func(event pool_browser.Event) {
 		switch event.(type) {

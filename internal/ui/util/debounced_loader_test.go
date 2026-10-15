@@ -4,6 +4,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -13,8 +14,7 @@ func TestDebouncedLoader_StartCancel(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	var showSpinnerCalled bool
 	var mu sync.Mutex
@@ -55,8 +55,7 @@ func TestDebouncedLoader_ShowSpinner(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	var showSpinnerCalled bool
 	var mu sync.Mutex
@@ -97,8 +96,7 @@ func TestDebouncedLoader_SequenceMismatchAndEdgeCases(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	loader := NewDebouncedLoader(app, func() {})
 
@@ -129,8 +127,7 @@ func BenchmarkDebouncedLoader_StartCancel(b *testing.B) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(b, app)
 
 	loader := NewDebouncedLoader(app, func() {})
 	b.ResetTimer()

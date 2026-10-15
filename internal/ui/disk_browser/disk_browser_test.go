@@ -72,8 +72,7 @@ func newDiskBrowserTest(t *testing.T) *diskBrowserTest {
 	dt.app.SetScreen(dt.screen)
 	dt.app.EnableMouse(true)
 	dt.screen.SetSize(140, 40)
-	go func() { _ = dt.app.Run() }()
-	t.Cleanup(dt.app.Stop)
+	testutil.RunApp(t, dt.app)
 
 	testutil.OnUiThread(t, dt.app, func() {
 		dt.browser = NewDiskBrowser(dt.app, dt.sampler, dt.smart)
@@ -212,8 +211,7 @@ func TestDiskBrowser_SelectDevice(t *testing.T) {
 func TestDiskBrowser_SelectDeviceBeforeLoaded(t *testing.T) {
 	app := tview.NewApplication()
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	var browser *DiskBrowserComponent
 	selected := ""
 	testutil.OnUiThread(t, app, func() {
@@ -508,7 +506,7 @@ func TestDiskDetails_ClickDoesNotFocus(t *testing.T) {
 	dt.screen.InjectMouse(x+1, y, tcell.Button1, tcell.ModNone)
 	dt.screen.InjectMouse(x+1, y, tcell.ButtonNone, tcell.ModNone)
 	// the table of the disks keeps the focus; nothing changes when the events were handled, so wait for them
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForEvents(t, dt.app, dt.screen)
 	focused := false
 	testutil.OnUiThread(t, dt.app, func() { focused = dt.browser.HasFocus() && !dt.details.details.HasFocus() })
 	assert.True(t, focused)

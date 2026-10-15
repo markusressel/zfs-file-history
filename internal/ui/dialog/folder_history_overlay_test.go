@@ -65,8 +65,7 @@ func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overl
 	ft.screen.SetSize(140, 40)
 	ft.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	ft.app.SetRoot(ft.pages, true)
-	go func() { _ = ft.app.Run() }()
-	t.Cleanup(ft.app.Stop)
+	testutil.RunApp(t, ft.app)
 
 	testutil.OnUiThread(t, ft.app, func() {
 		ft.overlay = NewFolderHistoryOverlay(ft.app, filepath.Join(ds.root, "docs"), nil)

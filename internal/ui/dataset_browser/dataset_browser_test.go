@@ -125,8 +125,7 @@ func newBrowserApp(t *testing.T) (*tview.Application, *DatasetBrowserComponent, 
 	app.SetScreen(screen)
 	browser := NewDatasetBrowser(app)
 	app.SetRoot(browser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	return app, browser, screen
 }
 
@@ -323,9 +322,7 @@ func TestDatasetBrowser_HeaderRowKeysChangeSortOrder(t *testing.T) {
 
 	pressKey := func(key tcell.Key) {
 		screen.InjectKey(key, 0, tcell.ModNone)
-		// wait until the event loop processed the key
-		testutil.OnUiThread(t, app, func() {})
-		time.Sleep(20 * time.Millisecond)
+		testutil.WaitForEvents(t, app, screen)
 	}
 
 	// on a data row, right and enter are consumed by the browser and don't change the sort order: enter opens the
@@ -413,9 +410,7 @@ func TestDatasetBrowser_ToggleHideUnmounted(t *testing.T) {
 	app, browser, screen := newBrowserApp(t)
 	pressKey := func(r rune) {
 		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
-		// wait until the event loop processed the key
-		testutil.OnUiThread(t, app, func() {})
-		time.Sleep(20 * time.Millisecond)
+		testutil.WaitForEvents(t, app, screen)
 	}
 	state := func() (visible []string, selected string, status string, hiding bool, shortcut string) {
 		testutil.OnUiThread(t, app, func() {
@@ -605,8 +600,7 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 
 	pressKey := func(key tcell.Key) {
 		screen.InjectKey(key, 0, tcell.ModNone)
-		testutil.OnUiThread(t, app, func() {})
-		time.Sleep(20 * time.Millisecond)
+		testutil.WaitForEvents(t, app, screen)
 	}
 	dialogOpen := func() bool {
 		var open bool
@@ -654,8 +648,7 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { browser.Focus() })
 	pressKey := func(key tcell.Key, r rune) {
 		screen.InjectKey(key, r, tcell.ModNone)
-		testutil.OnUiThread(t, app, func() {})
-		time.Sleep(20 * time.Millisecond)
+		testutil.WaitForEvents(t, app, screen)
 	}
 
 	// remove the first column (name)
@@ -905,8 +898,7 @@ func TestDatasetBrowser_ClickOnHiddenUnmountedShowsThem(t *testing.T) {
 	// next to it, on the border: nothing
 	screen.InjectMouse(x-4, y, tcell.Button1, tcell.ModNone)
 	screen.InjectMouse(x-4, y, tcell.ButtonNone, tcell.ModNone)
-	testutil.OnUiThread(t, app, func() {})
-	time.Sleep(50 * time.Millisecond)
+	testutil.WaitForEvents(t, app, screen)
 	assert.True(t, browser.IsHidingUnmounted())
 
 	screen.InjectMouse(x+2, y, tcell.Button1, tcell.ModNone)

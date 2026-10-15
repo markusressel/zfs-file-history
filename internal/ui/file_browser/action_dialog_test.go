@@ -32,8 +32,7 @@ func newActionDialogTest(t *testing.T) *actionDialogTest {
 	app.SetScreen(screen)
 	fileBrowser := NewFileBrowser(app)
 	app.SetRoot(fileBrowser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	ft := &actionDialogTest{t: t, app: app, screen: screen, fileBrowser: fileBrowser, dir: dir}
 	testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })

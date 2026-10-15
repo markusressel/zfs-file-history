@@ -143,8 +143,7 @@ func newBrowserApp(t *testing.T) (*tview.Application, *PoolBrowserComponent) {
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	browser := NewPoolBrowser(app)
 	app.SetRoot(browser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 	return app, browser
 }
 

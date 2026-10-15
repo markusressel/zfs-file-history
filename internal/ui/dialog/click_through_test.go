@@ -27,8 +27,7 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 	}
 	pages := tview.NewPages().AddPage("background", background, true, true)
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	chosen := make(chan DialogActionId, 1)
 	var dialog *SelectionDialog
@@ -52,7 +51,7 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 		screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
 		time.Sleep(30 * time.Millisecond)
 		screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
-		time.Sleep(100 * time.Millisecond)
+		testutil.WaitForEvents(t, app, screen)
 	}
 	state()
 
@@ -67,7 +66,7 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 		// like a terminal, which reports no buttons after the wheel
 		screen.InjectMouse(2, 2, tcell.ButtonNone, tcell.ModNone)
 	}
-	time.Sleep(100 * time.Millisecond)
+	testutil.WaitForEvents(t, app, screen)
 	_, offset := state()
 	assert.Equal(t, 0, offset)
 
@@ -83,6 +82,7 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 	// clicks on the dialog still work: they select its options
 	var closeX, closeY int
 	testutil.OnUiThread(t, app, func() {
+		app.ForceDraw()
 		cells, width, height := screen.GetContents()
 		for y := 0; y < height && closeY == 0; y++ {
 			var line strings.Builder

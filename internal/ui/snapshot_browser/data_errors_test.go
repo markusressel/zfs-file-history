@@ -57,8 +57,7 @@ func TestSelectSnapshot(t *testing.T) {
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	browser := NewSnapshotBrowser(app)
 	app.SetRoot(browser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	daily := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "daily", FullName: "tank@daily"}}
 	weekly := &data.SnapshotBrowserEntry{Snapshot: &zfs.Snapshot{Name: "weekly", FullName: "tank@weekly"}}

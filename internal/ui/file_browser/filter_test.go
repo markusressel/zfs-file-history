@@ -69,8 +69,7 @@ func newFileBrowserTest(t *testing.T, filterOnDirectoryChange configuration.File
 	fileBrowser := NewFileBrowser(app)
 	// set the root before the event loop starts, like CreateUi does
 	app.SetRoot(fileBrowser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	return &fileBrowserTest{t: t, app: app, screen: screen, fileBrowser: fileBrowser, dir: dir, sub: sub}
 }

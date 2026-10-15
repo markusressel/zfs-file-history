@@ -32,8 +32,7 @@ func TestFileBrowser_RemembersSelectionWhenEnteringADirectoryAgain(t *testing.T)
 	app.SetScreen(screen)
 	fileBrowser := NewFileBrowser(app)
 	app.SetRoot(fileBrowser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	type state struct {
 		path     string
@@ -109,8 +108,7 @@ func TestFileBrowser_RemembersSelectionBetweenRuns(t *testing.T) {
 		app.SetScreen(screen)
 		fileBrowser := NewFileBrowser(app)
 		app.SetRoot(fileBrowser.GetLayout(), true)
-		go func() { _ = app.Run() }()
-		t.Cleanup(app.Stop)
+		testutil.RunApp(t, app)
 		testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(dir, true) })
 		require.Eventually(t, func() bool {
 			var count int

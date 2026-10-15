@@ -41,8 +41,7 @@ func TestSnapshotBrowser_PathVersionsLoaded(t *testing.T) {
 	app.SetScreen(tcell.NewSimulationScreen("UTF-8"))
 	browser := NewSnapshotBrowser(app)
 	app.SetRoot(browser.GetLayout(), true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	loaded := make(chan PathVersionsLoaded, 10)
 	entry := &data.FileBrowserEntry{Name: "notes.txt", Type: data.File, RealFile: &data.RealFile{Name: "notes.txt", Path: filePath}}

@@ -148,19 +148,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 		}, 2*time.Second, 10*time.Millisecond, message)
 	}
 	screenText := func() string {
-		var text strings.Builder
-		testutil.OnUiThread(t, app, func() {
-			cells, width, height := screen.GetContents()
-			for y := 0; y < height; y++ {
-				for x := 0; x < width; x++ {
-					if runes := cells[y*width+x].Runes; len(runes) > 0 {
-						text.WriteRune(runes[0])
-					}
-				}
-				text.WriteRune('\n')
-			}
-		})
-		return text.String()
+		return testutil.ScreenText(t, app, screen)
 	}
 
 	testutil.OnUiThread(t, app, func() {
@@ -266,6 +254,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	screenContains := func(text string) bool {
 		var screenText strings.Builder
 		testutil.OnUiThread(t, app, func() {
+			app.ForceDraw()
 			cells, width, height := screen.GetContents()
 			for y := 0; y < height; y++ {
 				for x := 0; x < width; x++ {
@@ -304,6 +293,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	require.Eventually(t, func() bool {
 		var foreground tcell.Color
 		testutil.OnUiThread(t, app, func() {
+			app.ForceDraw()
 			cells, width, height := screen.GetContents()
 			for i := 0; i < width*height; i++ {
 				if runes := cells[i].Runes; len(runes) > 0 && runes[0] == '▸' {

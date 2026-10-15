@@ -20,8 +20,7 @@ func TestModal_HidesThePageBehind(t *testing.T) {
 	behind := tview.NewTextView().SetText(strings.Repeat(strings.Repeat("X", 100)+"\n", 30))
 	pages := tview.NewPages().AddPage("behind", behind, true, true)
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	var dialogX, dialogY, dialogWidth, dialogHeight int
 	var lines []string

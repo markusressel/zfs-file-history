@@ -18,20 +18,19 @@ func TestMessageHistoryKey(t *testing.T) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	app.SetScreen(screen)
 	screen.SetSize(200, 30)
-	go func() { _ = app.Run() }()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	messages := mainPage.messages
-	// once the datasets are loaded: without ZFS (e.g. in CI), loading them fails with an error message, which would
-	// replace the one of this test and be counted as well
+	// once the datasets are loaded: tests have no ZFS (see testSystem), so loading them fails with an error message,
+	// which would replace the one of this test and be counted as well
 	assert.Eventually(t, func() bool {
 		loading := true
 		testutil.OnUiThread(t, app, func() { loading = datasetPage.datasetBrowser.IsLoading() })
 		return !loading
 	}, 10*time.Second, 20*time.Millisecond, "datasets loaded")
-	// Other loads that started with the UI can fail later than the datasets (the pools, the file browser, ...), which
-	// depends on the system (e.g. with or without ZFS in CI). Their messages would replace the one of this test, so
-	// it waits until no new one came for a while.
+	// Other loads that started with the UI can fail later than the datasets (the pools, the file browser, ...), how
+	// much later depends on the load of the machine. Their messages would replace the one of this test, so it waits
+	// until no new one came for a while.
 	newest := func() (count int, message *status_message.StatusMessage) {
 		testutil.OnUiThread(t, app, func() {
 			history := messages.History()
@@ -54,11 +53,7 @@ func TestMessageHistoryKey(t *testing.T) {
 		messages.MarkRead()
 		messages.Dismiss()
 	})
-	// Drawn here: a queued update does not draw, and nothing else may redraw the screen once the loads are done.
-	testutil.OnUiThread(t, app, func() {
-		messages.Show(status_message.NewErrorStatusMessage("something failed"))
-		app.ForceDraw()
-	})
+	testutil.OnUiThread(t, app, func() { messages.Show(status_message.NewErrorStatusMessage("something failed")) })
 	if !assert.Eventually(t, func() bool {
 		text := screenText(t, app, screen)
 		return strings.Contains(text, "something failed") && strings.Contains(text, "⚠ 1")

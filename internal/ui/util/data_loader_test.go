@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -16,8 +17,7 @@ func TestDataLoader_LoadSuccess(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)
 
@@ -56,8 +56,7 @@ func TestDataLoader_LoadQuietly(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)
 
@@ -92,8 +91,7 @@ func TestDataLoader_LoadError(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)
 
@@ -125,8 +123,7 @@ func TestDataLoader_CancellationAndSequenceTracking(t *testing.T) {
 	app := tview.NewApplication()
 	simScreen := tcell.NewSimulationScreen("")
 	app.SetScreen(simScreen)
-	go app.Run()
-	defer app.Stop()
+	testutil.RunApp(t, app)
 
 	loader := NewDataLoader[string](app)
 

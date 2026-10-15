@@ -110,19 +110,7 @@ func (at *actionTest) typeText(text string) {
 
 // screenText returns the text on the screen, a line per row.
 func (at *actionTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(at.t, at.app, func() {
-		cells, width, height := at.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(at.t, at.app, at.screen)
 }
 
 func (at *actionTest) hasDialog(name string) bool {

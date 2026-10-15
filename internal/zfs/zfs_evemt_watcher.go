@@ -205,7 +205,7 @@ func parseEventTime(line string) (time.Time, bool) {
 // AddZpoolEventWatcherActor runs WatchZpoolEvents until the application shuts down. If the user may not watch the
 // events (see SudoersRuleEvents), it is started again once that was allowed (see SudoersChanged).
 func AddZpoolEventWatcherActor(g *run.Group, ctx context.Context) {
-	// subscribed here, before the UI runs, as emitters are not safe to subscribe to while they emit
+	// subscribed here, before the UI runs, so a change while the UI starts is not missed
 	sudoersChanged := make(chan struct{}, 1)
 	SudoersChanged.Subscribe(func(struct{}) {
 		select {

@@ -91,8 +91,7 @@ func newRootDialogTest(t *testing.T, withRetry bool, sudoErr error) *rootDialogT
 	dt.app.SetScreen(dt.screen)
 	dt.pages = tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	dt.app.SetRoot(dt.pages, true)
-	go func() { _ = dt.app.Run() }()
-	t.Cleanup(dt.app.Stop)
+	testutil.RunApp(t, dt.app)
 
 	var retry func()
 	if withRetry {

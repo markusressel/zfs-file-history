@@ -191,8 +191,7 @@ func TestNewRestoreFileDialog(t *testing.T) {
 }
 
 func TestSelectionDialog_StopLoadingRestoresOptionText(t *testing.T) {
-	app, stop := setupTestApp()
-	defer stop()
+	app := setupTestApp(t)
 
 	option := &DialogOption{Id: 1, Name: "Run"}
 	d := NewSelectionDialog(app, "TestDialog", "Title", "Description",
@@ -236,8 +235,7 @@ func TestSelectionDialog_RetryFunc(t *testing.T) {
 	app.SetScreen(screen)
 	pages := tview.NewPages()
 	app.SetRoot(pages, true)
-	go func() { _ = app.Run() }()
-	t.Cleanup(app.Stop)
+	testutil.RunApp(t, app)
 
 	var mu sync.Mutex
 	var runs []DialogActionId
