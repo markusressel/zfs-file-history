@@ -331,3 +331,8 @@ func enableFeaturesNeedsRoot(pool string, features []string, cause error) *PoolA
 	}
 	return &PoolActionNeedsRootError{Action: action, Then: then, Pool: pool, Cause: cause}
 }
+
+// TableRowId identifies the feature in tables: its name (the GUID of an unsupported one).
+func (feature PoolFeature) TableRowId() string {
+	return feature.Name
+}

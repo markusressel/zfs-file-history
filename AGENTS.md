@@ -96,7 +96,8 @@ of the code.
   (`PoolStatus.CanUpgrade`), red, and confirmed by typing the name of the pool (`dialog.NewPoolUpgradeDialog`, not
   run by the action dialog itself: `dialog.PoolActionOf`). The sudoers rule of former versions without upgrade is
   its `fallback`. `pool_features.go`: single features (`zfs.ListPoolFeatures`: `zpool upgrade -v` and `zpool get`,
-  no root) can be chosen in `dialog.PoolFeaturesDialog` and enabled once confirmed by name
+  no root) can be chosen in `dialog.PoolFeaturesDialog` (a `RowSelectionTable`, grouped by whether they can be
+  enabled and why not) and enabled once confirmed by name
   (`zfs.EnablePoolFeatures`, one `zpool set feature@…=enabled` per feature). Features the property `compatibility`
   of the pool does not allow (its files in `compatibility.d`, e.g. `grub2`; `zpool set` ignores it, `upgrade` does
   not), the loaded kernel module does not support (`/sys/module/zfs/features.pool`, if it lists them; the tools may
@@ -263,7 +264,8 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   `RowSelectionTable` also clicks to the right of the columns.
 - Lists of switches in dialogs (the checklist of a `SelectionDialog`, the features of a pool, the permissions): a
   click checks or unchecks only the highlighted row, like Space; a click on another row selects it
-  (`uiutil.OnClickOnSelectedRow`), so a stray click never changes one by accident.
+  (`uiutil.OnClickOnSelectedRow`, `RowSelectionTable.SetClickOnSelectedFunc`), so a stray click never changes one
+  by accident.
 - The header row: `←`/`→` change the sort column, `Enter` the direction. With the mouse, the first click selects the
   header, the next ones sort by the clicked column or toggle the direction.
 

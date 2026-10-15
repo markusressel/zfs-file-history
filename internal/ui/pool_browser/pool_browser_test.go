@@ -602,7 +602,7 @@ func TestPoolBrowser_EnableFeatures(t *testing.T) {
 	command := commandNamed(t, app, browser, "Enable features")
 	testutil.OnUiThread(t, app, command.Run)
 	testutil.WaitForPage(t, app, browser.layout, string(dialog.PoolFeaturesDialogPage), 2*time.Second)
-	testutil.WaitForText(t, app, screen, "already enabled", 2*time.Second)
+	testutil.WaitForText(t, app, screen, "Already enabled", 2*time.Second)
 
 	testutil.Press(t, app, screen, tcell.KeyRune, ' ')
 	testutil.Press(t, app, screen, tcell.KeyEnter, 0)

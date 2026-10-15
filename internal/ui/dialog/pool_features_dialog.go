@@ -1,9 +1,13 @@
 package dialog
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
+	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/shortcut_helper"
+	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/ui/util"
@@ -16,35 +20,63 @@ import (
 const (
 	PoolFeaturesDialogPage       util.Page = "PoolFeaturesDialog"
 	EnablePoolFeaturesDialogPage util.Page = "EnablePoolFeaturesDialog"
+
+	// poolFeaturesDetailLines is the height of the details of the selected feature
+	poolFeaturesDetailLines = 3
+	// poolFeaturesShortcutLines is the height of the shortcut map (see TestPoolFeaturesDialog_ShortcutsFit)
+	poolFeaturesShortcutLines = 2
+	// poolFeaturesContentWidth is the width of the content, as wide as dialogs get, for the descriptions
+	poolFeaturesContentWidth = 76
+
+	// groupingFeatureAvailability groups the features by whether they can be enabled, and why not
+	groupingFeatureAvailability = "availability"
 )
 
-// PoolFeaturesDialog lists the features of a pool, to choose the ones to enable: the ones that cannot be enabled
-// (enabled already, not allowed by the property compatibility of the pool) are grayed out with the reason, and
-// cannot be checked. They can be selected, so the keys reach all of them (the table scrolls with the selection), and
-// the line below shows the description of the selected one. It enables nothing itself, see NewPoolFeaturesDialog.
+var (
+	featureColumnEnable      = &table.Column{Id: 0, Key: "enable", Title: "Enable", Alignment: tview.AlignCenter}
+	featureColumnName        = &table.Column{Id: 1, Key: "name", Title: "Feature", Alignment: tview.AlignLeft}
+	featureColumnState       = &table.Column{Id: 2, Key: "state", Title: "State", Alignment: tview.AlignLeft}
+	featureColumnReadOnly    = &table.Column{Id: 3, Key: "readonly", Title: "Read-only compatible", Alignment: tview.AlignLeft}
+	featureColumnReason      = &table.Column{Id: 4, Key: "reason", Title: "Why not", Alignment: tview.AlignLeft}
+	featureColumnDescription = &table.Column{Id: 5, Key: "description", Title: "Description", Alignment: tview.AlignLeft}
+	featureColumns           = []*table.Column{featureColumnEnable, featureColumnName, featureColumnState, featureColumnReadOnly,
+		featureColumnReason, featureColumnDescription}
+	// featureDefaultColumns are shown at first: the reason is the title of the group (see featureGroup)
+	featureDefaultColumns = []*table.Column{featureColumnEnable, featureColumnName, featureColumnDescription}
+)
+
+// PoolFeaturesDialog lists the features of a pool, to choose the ones to enable, in a table like the other lists
+// (sorted by any column, columns chosen with F2, a filter, grouped with b). The ones that cannot be enabled (enabled
+// already, not allowed by the property compatibility of the pool, ...) are grayed out, grouped by the reason, and
+// cannot be checked. They can be selected, so the line below shows the description of each. It enables nothing
+// itself, see NewPoolFeaturesDialog.
 type PoolFeaturesDialog struct {
 	application   *tview.Application
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
-	features      []zfs.PoolFeature
-	// checked are the features chosen, by their row. Only accessed on the UI thread.
-	checked map[int]bool
-	table   *tview.Table
+	// pages the dialog is shown on, set by ShowDialogOnPages. Used for the column dialog.
+	pages    *tview.Pages
+	features []*zfs.PoolFeature
+	// checked are the names of the features chosen. Only accessed on the UI thread.
+	checked map[string]bool
+	table   *table.RowSelectionTable[zfs.PoolFeature]
 	// detailView shows the selected feature, or why Enter did nothing
 	detailView *tview.TextView
 	onEnable   func(features []string)
 }
 
 // NewPoolFeaturesDialog shows the features of the pool (see zfs.ListPoolFeatures). Space or a click on the
-// highlighted one checks a feature, Enter closes the dialog and calls onEnable on the UI thread with the names of the checked ones, which
-// confirms them (see NewEnablePoolFeaturesDialog): enabling cannot be undone.
+// highlighted one checks a feature, Enter closes the dialog and calls onEnable on the UI thread with the names of the
+// checked ones, which confirms them (see NewEnablePoolFeaturesDialog): enabling cannot be undone.
 func NewPoolFeaturesDialog(application *tview.Application, features *zfs.PoolFeatures, onEnable func(features []string)) *PoolFeaturesDialog {
 	d := &PoolFeaturesDialog{
 		application:   application,
 		actionChannel: make(chan DialogActionId),
-		features:      features.Features,
-		checked:       map[int]bool{},
+		checked:       map[string]bool{},
 		onEnable:      onEnable,
+	}
+	for i := range features.Features {
+		d.features = append(d.features, &features.Features[i])
 	}
 	d.createLayout(features)
 	return d
@@ -55,52 +87,36 @@ func (d *PoolFeaturesDialog) createLayout(features *zfs.PoolFeatures) {
 	description := formatPoolFeatures(features)
 	plainDescription := withoutTags(description)
 
-	d.table = util.SetSelectionStyle(tview.NewTable())
-	d.table.SetSelectable(true, false)
-	util.IgnoreClicksBelowRows(d.table)
+	d.table = table.NewTableContainer[zfs.PoolFeature](d.application, d.toCells, d.sortFeatures)
+	d.table.SetColumnSpec(featureColumns, featureColumnName, false)
+	d.table.SetActiveColumns(featureDefaultColumns)
+	d.table.SetGroupings([]table.Grouping[zfs.PoolFeature]{
+		{Key: groupingFeatureAvailability, Name: "availability", GroupOf: featureGroup},
+	})
+	d.table.SetGrouping(groupingFeatureAvailability)
+	d.table.BindColumnLayout(state.Current, stateKeyPoolFeaturesTable, featureColumns)
+	d.table.SetFilterFunc(func(feature *zfs.PoolFeature, filterText string) bool {
+		return table.MatchesGlob(feature.Name, filterText) || table.MatchesGlob(feature.Description, filterText)
+	})
+	d.table.SetFilterChangedCallback(d.updateFooter)
+	d.table.SetSelectionChangedCallback(d.showDetail)
+	d.table.SetInputCapture(d.captureTableInput)
 	// a click checks only the highlighted feature, another one is selected first
-	util.OnClickOnSelectedRow(d.table, d.toggle)
-	nameWidth := 0
-	for _, feature := range d.features {
-		nameWidth = max(nameWidth, len(feature.Name))
-	}
-	for row, feature := range d.features {
-		available := feature.Unavailable == ""
-		info := feature.Description
-		color := theme.Colors.Info.Value
-		if !available {
-			info = feature.Unavailable
-			color = theme.Colors.Dialog.Unavailable
-		}
-		cells := []*tview.TableCell{
-			tview.NewTableCell(d.mark(row)),
-			tview.NewTableCell(tview.Escape(feature.Name)).SetTextColor(color),
-			tview.NewTableCell(tview.Escape(info)).SetTextColor(color).SetExpansion(1),
-		}
-		for column, cell := range cells {
-			util.KeepColorWhenSelected(cell)
-			d.table.SetCell(row, column, cell)
-		}
-	}
-	d.table.Select(0, 0)
-	d.table.SetSelectionChangedFunc(func(row, column int) { d.showDetail(row) })
+	d.table.SetClickOnSelectedFunc(d.toggle)
+	d.table.SetPlaceholder("The pool has no features.", theme.Colors.Dialog.Unavailable)
 
 	descriptionView := tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetWordWrap(true).SetText(description)
 	d.detailView = tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetWordWrap(true)
-	helpView := tview.NewTextView().SetDynamicColors(true).SetText(formatHelp(
-		shortcut_helper.KeySpace, "check",
-		shortcut_helper.KeyEnter, "enable the checked ones",
-		shortcut_helper.KeyEsc, "close",
-	))
-	d.showDetail(0)
+	shortcuts := shortcut_helper.NewShortcutMap(d.application)
+	shortcuts.SetEntries(poolFeaturesShortcuts())
 
 	constraints := DialogSizeConstraints{
-		Title:       title,
-		Description: plainDescription,
-		// as wide as dialogs get, for the descriptions of the features
-		ExtraContentWidth: 2 + nameWidth + 1 + 60,
-		// spacer, the features, spacer, detail, help
-		StaticHeight: 1 + len(d.features) + 1 + 3 + 1,
+		Title:             title,
+		Description:       plainDescription,
+		ExtraContentWidth: poolFeaturesContentWidth,
+		// spacer, the header, the features and the titles of their groups, detail, shortcuts; clamped to the
+		// terminal height
+		StaticHeight: 1 + 1 + len(d.features) + featureGroupCount(d.features) + poolFeaturesDetailLines + poolFeaturesShortcutLines,
 	}
 	dialogWidth, _ := CalculateDialogSize(constraints)
 	textLineWidth := max(dialogWidth-6, 5)
@@ -109,10 +125,9 @@ func (d *PoolFeaturesDialog) createLayout(features *zfs.PoolFeatures) {
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(unfocusableTextView{descriptionView}, calculateWrappedHeight(plainDescription, textLineWidth), 0, false).
 		AddItem(unfocusableTextView{tview.NewTextView()}, 1, 0, false).
-		AddItem(d.table, 0, 1, true).
-		AddItem(unfocusableTextView{tview.NewTextView()}, 1, 0, false).
-		AddItem(unfocusableTextView{d.detailView}, 3, 0, false).
-		AddItem(unfocusableTextView{helpView}, 1, 0, false)
+		AddItem(d.table.GetLayout(), 0, 1, true).
+		AddItem(unfocusableTextView{d.detailView}, poolFeaturesDetailLines, 0, false).
+		AddItem(shortcuts.GetLayout(), poolFeaturesShortcutLines, 0, false)
 	// like the other dialogs; CalculateDialogSize leaves room for it
 	content.SetBorderPadding(0, 0, 1, 1)
 
@@ -120,20 +135,193 @@ func (d *PoolFeaturesDialog) createLayout(features *zfs.PoolFeatures) {
 	d.layout, frame = createModalWithFrame(title, content, constraints)
 	// what is enabled cannot be disabled again
 	frame.SetBorderColor(theme.Colors.Dialog.DangerBorder)
+	// one border around everything, with the counts and the filter of the table in it
+	d.table.EmbedInFrame(frame.Box)
 	d.layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch {
-		case event.Key() == tcell.KeyEscape:
+		// while typing a filter, Esc ends that (in the table)
+		if event.Key() == tcell.KeyEscape && !d.table.IsEditingFilter() {
 			d.Close()
-		case event.Key() == tcell.KeyRune && event.Rune() == ' ':
-			row, _ := d.table.GetSelection()
-			d.toggle(row)
-		case event.Key() == tcell.KeyEnter:
-			d.submit()
-		default:
-			return event
+			return nil
 		}
-		return nil
+		return event
 	})
+
+	d.table.SetData(d.features)
+	d.table.SelectFirstIfExists()
+	d.updateFooter()
+	d.showDetail(d.table.GetSelectedEntry())
+}
+
+func poolFeaturesShortcuts() []shortcut_helper.ShortcutEntry {
+	return []shortcut_helper.ShortcutEntry{
+		{KeyCombo: []string{shortcut_helper.KeySpace}, Name: "Check"},
+		{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Enable the checked"},
+		util.TableComponentShortcutFilter,
+		util.TableComponentShortcutColumns,
+		util.TableComponentShortcutGroup,
+		{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close", Group: shortcut_helper.GroupGlobal},
+	}
+}
+
+// captureTableInput handles the keys on the table, after the filter input (see table.RowSelectionTable): on the
+// header row, Enter changes the sort direction.
+func (d *PoolFeaturesDialog) captureTableInput(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyF2 {
+		openColumnDialog(d.application, d.pages, "Configure Feature Columns", featureColumns, d.table)
+		return nil
+	}
+	feature := d.table.GetSelectedEntry()
+	if feature == nil {
+		return event
+	}
+	switch {
+	case event.Key() == tcell.KeyRune && event.Rune() == ' ':
+		d.toggle(feature)
+		return nil
+	case event.Key() == tcell.KeyEnter:
+		d.submit()
+		return nil
+	}
+	return event
+}
+
+// featureGroup returns the group of the feature: whether it can be enabled, or why not.
+func featureGroup(feature *zfs.PoolFeature) table.Group {
+	if feature.Unavailable == "" {
+		return table.Group{Title: "Can be enabled"}
+	}
+	order := 1
+	switch {
+	case feature.Unsupported:
+		order = 4
+	case feature.State == zfs.PoolFeatureActive:
+		order = 3
+	case feature.State == zfs.PoolFeatureEnabled:
+		order = 2
+	}
+	return table.Group{Title: upperFirst(feature.Unavailable), Order: order}
+}
+
+// featureGroupCount returns the number of groups of the features, for the height of the dialog.
+func featureGroupCount(features []*zfs.PoolFeature) int {
+	groups := map[table.Group]bool{}
+	for _, feature := range features {
+		groups[featureGroup(feature)] = true
+	}
+	return len(groups)
+}
+
+// upperFirst returns the text with its first letter in upper case, e.g. a reason as the title of a group.
+func upperFirst(text string) string {
+	if text == "" {
+		return text
+	}
+	return strings.ToUpper(text[:1]) + text[1:]
+}
+
+// toCells shows a feature: the ones that cannot be enabled grayed out. Runs on the UI thread.
+func (d *PoolFeaturesDialog) toCells(row int, columns []*table.Column, feature *zfs.PoolFeature) []*tview.TableCell {
+	color := theme.Colors.Info.Value
+	if feature.Unavailable != "" {
+		color = theme.Colors.Dialog.Unavailable
+	}
+	var cells []*tview.TableCell
+	for _, column := range columns {
+		var text string
+		switch column {
+		case featureColumnEnable:
+			// the mark has its own color, see mark
+			cells = append(cells, tview.NewTableCell(d.mark(feature)).SetAlign(tview.AlignCenter))
+			continue
+		case featureColumnName:
+			text = feature.Name
+		case featureColumnState:
+			text = string(feature.State)
+		case featureColumnReadOnly:
+			text = formatReadOnlyCompatible(feature)
+		case featureColumnReason:
+			text = feature.Unavailable
+		case featureColumnDescription:
+			text = featureDescription(feature)
+		}
+		cells = append(cells, tview.NewTableCell(tview.Escape(text)).SetTextColor(color))
+	}
+	return cells
+}
+
+// featureDescription returns the description of the feature, or what is known about one the installed ZFS does not
+// know.
+func featureDescription(feature *zfs.PoolFeature) string {
+	if feature.Unsupported {
+		return "unknown to the installed ZFS"
+	}
+	return feature.Description
+}
+
+// formatReadOnlyCompatible returns whether software without the feature can still import the pool read-only: empty
+// if not known (a feature the installed ZFS does not know, which is not in use).
+func formatReadOnlyCompatible(feature *zfs.PoolFeature) string {
+	switch {
+	case feature.ReadOnlyCompatible:
+		return "yes"
+	case feature.Unsupported:
+		return ""
+	}
+	return "no"
+}
+
+// sortFeatures sorts the features by the column, then by their name. Enable sorts the checked ones first, then the
+// ones that can be enabled.
+func (d *PoolFeaturesDialog) sortFeatures(features []*zfs.PoolFeature, column *table.Column, inverted bool) []*zfs.PoolFeature {
+	slices.SortStableFunc(features, func(a, b *zfs.PoolFeature) int {
+		result := 0
+		switch column {
+		case featureColumnEnable:
+			result = cmp.Compare(d.checkRank(a), d.checkRank(b))
+		case featureColumnState:
+			result = strings.Compare(string(a.State), string(b.State))
+		case featureColumnReadOnly:
+			result = strings.Compare(formatReadOnlyCompatible(a), formatReadOnlyCompatible(b))
+		case featureColumnReason:
+			result = strings.Compare(a.Unavailable, b.Unavailable)
+		case featureColumnDescription:
+			result = strings.Compare(featureDescription(a), featureDescription(b))
+		}
+		if result == 0 {
+			result = strings.Compare(a.Name, b.Name)
+		}
+		if inverted {
+			result = -result
+		}
+		return result
+	})
+	return features
+}
+
+// checkRank orders the features by the column Enable: checked, can be enabled, enabled, cannot be enabled.
+func (d *PoolFeaturesDialog) checkRank(feature *zfs.PoolFeature) int {
+	switch {
+	case d.checked[feature.Name]:
+		return 0
+	case feature.Unavailable == "":
+		return 1
+	case feature.State != zfs.PoolFeatureDisabled:
+		return 2
+	}
+	return 3
+}
+
+// updateFooter shows the number of features in the border, and how many are checked.
+func (d *PoolFeaturesDialog) updateFooter() {
+	all := len(d.table.GetAllEntries())
+	footer := fmt.Sprintf("%d features", all)
+	if d.table.IsFilterActive() {
+		footer = fmt.Sprintf("%d of %d features", len(d.table.GetEntries()), all)
+	}
+	if checked := len(d.Checked()); checked > 0 {
+		footer += fmt.Sprintf(", %d checked", checked)
+	}
+	d.table.SetFooter(footer)
 }
 
 // formatPoolFeatures tells what enabling a feature means, and what limits the features of the pool.
@@ -174,25 +362,11 @@ func formatModuleLacksFeatures(features *zfs.PoolFeatures) string {
 		Highlight(features.ModuleVersion), Highlight(features.ToolsVersion))
 }
 
-// formatHelp returns the keys and what they do, like the help of TextInputDialog: key, text, key, text, ...
-func formatHelp(keysAndTexts ...string) string {
-	var help strings.Builder
-	for i := 0; i+1 < len(keysAndTexts); i += 2 {
-		if i > 0 {
-			help.WriteString("  ")
-		}
-		help.WriteString(txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%s", keysAndTexts[i]))
-		help.WriteString(txwidgets.Span(theme.Colors.ShortcutMap.Name, ": %s", keysAndTexts[i+1]))
-	}
-	return help.String()
-}
-
-// mark returns the mark of the feature of the row: checked or not, or in the color of unavailable features whether
-// it is enabled. Runs on the UI thread.
-func (d *PoolFeaturesDialog) mark(row int) string {
-	feature := d.features[row]
+// mark returns the mark of the feature: checked or not, or in the color of unavailable features whether it is
+// enabled. Runs on the UI thread.
+func (d *PoolFeaturesDialog) mark(feature *zfs.PoolFeature) string {
 	if feature.Unavailable == "" {
-		return switchMark(d.checked[row])
+		return switchMark(d.checked[feature.Name])
 	}
 	mark := switchOff
 	if feature.State != zfs.PoolFeatureDisabled {
@@ -201,24 +375,24 @@ func (d *PoolFeaturesDialog) mark(row int) string {
 	return txwidgets.Span(theme.Colors.Dialog.Unavailable, "%s", mark)
 }
 
-// toggle checks or unchecks the feature of the row, unless it cannot be enabled. Runs on the UI thread.
-func (d *PoolFeaturesDialog) toggle(row int) {
-	if row < 0 || row >= len(d.features) || d.features[row].Unavailable != "" {
+// toggle checks or unchecks the feature, unless it cannot be enabled. Runs on the UI thread.
+func (d *PoolFeaturesDialog) toggle(feature *zfs.PoolFeature) {
+	if feature == nil || feature.Unavailable != "" {
 		return
 	}
-	d.checked[row] = !d.checked[row]
-	d.table.GetCell(row, 0).SetText(d.mark(row))
-	d.showDetail(row)
+	d.checked[feature.Name] = !d.checked[feature.Name]
+	d.table.UpdateEntry(feature)
+	d.updateFooter()
+	d.showDetail(feature)
 }
 
-// showDetail shows the full description of the feature of the row, which the table may cut off, and why it cannot
-// be enabled. Runs on the UI thread.
-func (d *PoolFeaturesDialog) showDetail(row int) {
-	if row < 0 || row >= len(d.features) {
-		d.detailView.SetText("The pool has no features.")
+// showDetail shows the full description of the feature, which the table may cut off, and why it cannot be enabled.
+// Runs on the UI thread.
+func (d *PoolFeaturesDialog) showDetail(feature *zfs.PoolFeature) {
+	if feature == nil {
+		d.detailView.SetText("")
 		return
 	}
-	feature := d.features[row]
 	compatible := "not read-only compatible"
 	if feature.ReadOnlyCompatible {
 		compatible = "read-only compatible"
@@ -236,11 +410,11 @@ func (d *PoolFeaturesDialog) showDetail(row int) {
 	d.detailView.SetText(detail)
 }
 
-// Checked returns the names of the checked features, in the order listed. Must be called on the UI thread.
+// Checked returns the names of the checked features, in the order zpool lists them. Must be called on the UI thread.
 func (d *PoolFeaturesDialog) Checked() []string {
 	var names []string
-	for row, feature := range d.features {
-		if d.checked[row] {
+	for _, feature := range d.features {
+		if d.checked[feature.Name] {
 			names = append(names, feature.Name)
 		}
 	}
@@ -272,10 +446,12 @@ func (d *PoolFeaturesDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
+func (d *PoolFeaturesDialog) setPages(pages *tview.Pages) {
+	d.pages = pages
+}
+
 func (d *PoolFeaturesDialog) Close() {
-	go func() {
-		d.actionChannel <- DialogCloseActionId
-	}()
+	emitDialogActions(d.actionChannel, DialogCloseActionId)
 }
 
 // NewEnablePoolFeaturesDialog lists the features to enable (see NewPoolFeaturesDialog), and calls onConfirm on the UI

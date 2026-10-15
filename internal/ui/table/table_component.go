@@ -1248,3 +1248,14 @@ func (c *RowSelectionTable[T]) handleFilterInput(event *tcell.EventKey) (result 
 	// all other keys are consumed while typing
 	return nil, true
 }
+
+// SetClickOnSelectedFunc calls onClick with the selected entry when its highlighted row is clicked, e.g. to check or
+// uncheck it; a click on another row only selects it (see uiutil.OnClickOnSelectedRow). Not for the header row, which
+// sorts, or the rows of groups. Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetClickOnSelectedFunc(onClick func(entry *T)) {
+	uiutil.OnClickOnSelectedRow(c.table, func(int) {
+		if entry := c.GetSelectedEntry(); entry != nil {
+			onClick(entry)
+		}
+	})
+}

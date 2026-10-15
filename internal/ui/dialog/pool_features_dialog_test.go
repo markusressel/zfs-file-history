@@ -2,10 +2,12 @@ package dialog
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
@@ -77,8 +79,9 @@ func TestPoolFeaturesDialog_ChooseAndEnable(t *testing.T) {
 
 	text := testutil.ScreenText(t, dt.app, dt.screen)
 	assert.Contains(t, text, "Support for blocks larger than 128KB.")
-	assert.Contains(t, text, "not allowed by compatibility=grub2", "the reason instead of the description")
-	assert.Contains(t, text, "already enabled")
+	assert.Contains(t, text, "Can be enabled  2", "grouped by whether they can be enabled")
+	assert.Contains(t, text, "Not allowed by compatibility=grub2  1", "and why not")
+	assert.Contains(t, text, "Already enabled  1")
 	assert.Contains(t, text, "bookmarks: \"zfs bookmark\" command (read-only compatible)", "the details of the selected one")
 
 	dt.press(tcell.KeyRune, ' ')
@@ -108,11 +111,11 @@ func TestPoolFeaturesDialog_UnavailableCannotBeChecked(t *testing.T) {
 	assert.Equal(t, []string{"large_blocks"}, dt.checked())
 	testutil.WaitForText(t, dt.app, dt.screen, "Cannot be enabled: not allowed by compatibility=grub2.", 2*time.Second)
 
-	for _, name := range []string{"zstd_compress", "async_destroy"} {
-		testutil.ClickText(t, dt.app, dt.screen, name)
-		testutil.ClickText(t, dt.app, dt.screen, name)
-	}
-	assert.Equal(t, []string{"large_blocks"}, dt.checked())
+	testutil.ClickText(t, dt.app, dt.screen, "zstd_compress")
+	testutil.ClickText(t, dt.app, dt.screen, "zstd_compress")
+	dt.press(tcell.KeyDown, 0)
+	dt.press(tcell.KeyRune, ' ')
+	assert.Equal(t, []string{"large_blocks"}, dt.checked(), "neither one not allowed nor an enabled one")
 }
 
 // Regression: a click on a feature checked it, also if another one was highlighted. Only a click on the highlighted
@@ -153,6 +156,22 @@ func TestPoolFeaturesDialog_LinksToTheDocumentation(t *testing.T) {
 	testutil.OnUiThread(t, dt.app, func() {
 		assert.NotContains(t, dt.dialog.detailView.GetText(false), "[::u:")
 	})
+}
+
+// Regression: the list had no scrollbar, so it did not show that more features were below.
+func TestPoolFeaturesDialog_Scrollbar(t *testing.T) {
+	features := testPoolFeatures()
+	for i := range 30 {
+		features.Features = append(features.Features, zfs.PoolFeature{Name: fmt.Sprintf("feature_%d", i), Description: "A feature.",
+			State: zfs.PoolFeatureActive, Unavailable: "already enabled and in use"})
+	}
+	dt := newPoolFeaturesDialogTest(t, features)
+	testutil.ScreenText(t, dt.app, dt.screen)
+
+	// the top of the bar on the line of the header, at the right of the table
+	_, y, found := testutil.FindInScreen(dt.screen, "Description")
+	require.True(t, found)
+	assert.Regexp(t, `[•▴]\s*║\s*$`, testutil.ScreenLines(dt.screen)[y])
 }
 
 func TestPoolFeaturesDialog_UnavailableAreGrayedOut(t *testing.T) {
@@ -246,10 +265,10 @@ func TestPoolFeaturesDialog_Unsupported(t *testing.T) {
 	dt.press(tcell.KeyRune, ' ')
 
 	testutil.WaitForText(t, dt.app, dt.screen, "org.example:new: a feature the installed ZFS does not know", 2*time.Second)
-	assert.Contains(t, testutil.ScreenText(t, dt.app, dt.screen), "not supported by the installed ZFS, in use")
+	assert.Contains(t, testutil.ScreenText(t, dt.app, dt.screen), "Not supported by the installed ZFS, in use")
 	assert.Empty(t, dt.checked())
 	testutil.OnUiThread(t, dt.app, func() {
-		assert.Contains(t, dt.dialog.table.GetCell(len(features.Features)-1, 0).Text, switchOn, "enabled")
+		assert.Contains(t, dt.dialog.mark(dt.dialog.table.GetSelectedEntry()), switchOn, "enabled")
 	})
 }
 
@@ -257,4 +276,61 @@ func TestFormatEnablePoolFeatures(t *testing.T) {
 	text := testutil.StripTags(formatEnablePoolFeatures("tank", []string{"bookmarks", "large_blocks"}))
 	assert.Contains(t, text, "Enable the features bookmarks, large_blocks of the pool tank")
 	assert.Contains(t, text, "This cannot be undone")
+}
+
+// The features are a table like the other lists: grouped (b switches it off), filtered, columns chosen with F2.
+func TestPoolFeaturesDialog_Table(t *testing.T) {
+	dt := newPoolFeaturesDialogTest(t, testPoolFeatures())
+
+	dt.press(tcell.KeyRune, 'b')
+	testutil.WaitForNoText(t, dt.app, dt.screen, "Can be enabled", 2*time.Second)
+	dt.press(tcell.KeyRune, 'b')
+	testutil.WaitForText(t, dt.app, dt.screen, "Can be enabled", 2*time.Second)
+
+	dt.press(tcell.KeyRune, '/')
+	testutil.Type(t, dt.app, dt.screen, "large")
+	testutil.WaitForText(t, dt.app, dt.screen, "1 of 4 features", 2*time.Second)
+	assert.NotContains(t, testutil.ScreenText(t, dt.app, dt.screen), "bookmarks")
+	// ends typing, the filter stays
+	dt.press(tcell.KeyEnter, 0)
+	dt.press(tcell.KeyRune, ' ')
+	assert.Equal(t, []string{"large_blocks"}, dt.checked(), "Space checks while the filter is not edited")
+	testutil.WaitForText(t, dt.app, dt.screen, "1 of 4 features, 1 checked", 2*time.Second)
+
+	dt.press(tcell.KeyF2, 0)
+	testutil.WaitForPage(t, dt.app, dt.pages, string(ColumnSelectionDialogPage), 2*time.Second)
+}
+
+// Typing a filter never checks a feature or closes the dialog: the keys go into the filter.
+func TestPoolFeaturesDialog_SpaceInTheFilter(t *testing.T) {
+	dt := newPoolFeaturesDialogTest(t, testPoolFeatures())
+
+	dt.press(tcell.KeyRune, '/')
+	testutil.Type(t, dt.app, dt.screen, "a b")
+
+	assert.Empty(t, dt.checked())
+	assert.True(t, testutil.HasPage(t, dt.app, dt.pages, string(PoolFeaturesDialogPage)))
+}
+
+func TestSortFeatures_ByEnable(t *testing.T) {
+	features := testPoolFeatures()
+	d := NewPoolFeaturesDialog(testutil.App(), features, nil)
+	d.checked["large_blocks"] = true
+	var entries []*zfs.PoolFeature
+	for i := range features.Features {
+		entries = append(entries, &features.Features[i])
+	}
+
+	var names []string
+	for _, feature := range d.sortFeatures(entries, featureColumnEnable, false) {
+		names = append(names, feature.Name)
+	}
+	assert.Equal(t, []string{"large_blocks", "bookmarks", "async_destroy", "zstd_compress"}, names,
+		"checked, can be enabled, enabled, cannot be enabled")
+}
+
+func TestPoolFeaturesDialog_ShortcutsFit(t *testing.T) {
+	shortcuts := shortcut_helper.NewShortcutMap(testutil.App())
+	shortcuts.SetEntries(poolFeaturesShortcuts())
+	assert.LessOrEqual(t, shortcuts.CalculateHeightForWidth(poolFeaturesContentWidth+6-2), poolFeaturesShortcutLines)
 }
