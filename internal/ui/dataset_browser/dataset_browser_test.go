@@ -618,7 +618,7 @@ func TestDatasetBrowser_F2ConfiguresColumns(t *testing.T) {
 	require.True(t, dialogOpen())
 
 	// the first active column (name) is selected; removing it applies immediately
-	pressKey(tcell.KeyDelete)
+	pressKey(tcell.KeyEnter)
 	var columns []*table.Column
 	testutil.OnUiThread(t, app, func() { columns = browser.tableContainer.GetColumnSpec() })
 	assert.Equal(t, tableColumns[1:], columns)
@@ -660,7 +660,7 @@ func TestDatasetBrowser_ColumnLayoutIsSavedAndRestored(t *testing.T) {
 
 	// remove the first column (name)
 	pressKey(tcell.KeyF2, 0)
-	pressKey(tcell.KeyDelete, 0)
+	pressKey(tcell.KeyEnter, 0)
 	pressKey(tcell.KeyEscape, 0)
 	require.NoError(t, store.Flush())
 

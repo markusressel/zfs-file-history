@@ -84,7 +84,7 @@ func TestFolderHistoryOverlay_ColumnsAreEditableAndSaved(t *testing.T) {
 	ft.press(tcell.KeyF2, 0)
 	ft.waitFor("column dialog", func() bool { return ft.hasPage(string(ColumnSelectionDialogPage)) })
 	// remove the first column ("±")
-	ft.press(tcell.KeyDelete, 0)
+	ft.press(tcell.KeyEnter, 0)
 	ft.waitFor("saved", func() bool {
 		layout, ok := store.TableLayout(stateKeyFolderHistoryChanges)
 		return ok && assert.ObjectsAreEqual([]string{"name", "size", "modified"}, layout.Columns)
@@ -106,7 +106,7 @@ func TestDatasetPropertiesDialog_ColumnsAreEditable(t *testing.T) {
 
 	pt.press(tcell.KeyF2, 0)
 	pt.waitFor("column dialog", func() bool { return pt.hasPage(string(ColumnSelectionDialogPage)) })
-	pt.press(tcell.KeyDelete, 0)
+	pt.press(tcell.KeyEnter, 0)
 	require.Eventually(t, func() bool {
 		_, ok := store.TableLayout(stateKeyPropertiesTable)
 		return ok
