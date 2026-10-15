@@ -221,6 +221,10 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 
 - Panes there is nothing to do in (the path overview, the details of a disk) are not in `focusableComponents`, and a
   click does not focus them either (`uiutil.WithoutFocus` in their `MouseHandler`).
+- A pane without content (yet) says why in its middle, with `uiutil.DrawEmptyState` (lines wrapped and centered):
+  the empty state of a `RowSelectionTable` (`SetPlaceholder`, no matches for the filter) and `uiutil.LoadingView`
+  (a spinner of two cells above the message, centered, how far it got below it, `SetDetail`; colors
+  `theme.Colors.Layout.Loading`).
 - Panes are split with `uiutil.ResizableSplit` (via `basePage.newSplit`, registered with `captureSplitDrags`). The
   boundary can be dragged; a right click on it goes back to the automatic size.
 - `SetAutoSize` sizes the first pane by its content on every draw (e.g. the dataset info and the pool status fit
