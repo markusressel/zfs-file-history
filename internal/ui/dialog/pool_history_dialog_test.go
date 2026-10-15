@@ -594,7 +594,12 @@ func TestPoolHistoryDialog_Progress(t *testing.T) {
 	dt := newHistoryDialogTestWithCache(t, "tank", "", cache)
 	t.Cleanup(func() { close(release) })
 
-	dt.waitForText("Reading the history (zpool history)… 12,345 records · 3.0 MiB")
+	dt.waitForText("Reading the history (zpool history)…")
+	// below, so the line is not too long
+	dt.waitForText("12,345 records · 3.0 MiB")
+	text := dt.screenText()
+	assert.Less(t, strings.Index(text, "Reading the history"), strings.Index(text, "12,345 records"))
+	assert.NotContains(t, text, "Reading the history (zpool history)… 12,345")
 }
 
 // A dialog shown while the history is read does not read it a second time.

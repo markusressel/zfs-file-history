@@ -96,6 +96,11 @@ var (
 			// unlike the selected row of a table (Accent), so both can be told apart
 			SelectionForeground: tcell.ColorWhite,
 			SelectionBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x264F78,
+			Loading: LoadingColors{
+				Spinner: Accent,
+				Message: tcell.ColorWhite,
+				Detail:  tcell.ColorGray,
+			},
 			Table: LayoutTableColors{
 				Accent: Accent,
 

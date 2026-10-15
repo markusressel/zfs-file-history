@@ -174,7 +174,7 @@ func (d *PoolHistoryDialog) setState(historyState PoolHistoryState, view *PoolHi
 		d.spinner++
 	}
 	d.state, d.err = historyState, historyState.Err
-	d.loadingView.SetMessage("Reading the history (zpool history)… " + poolHistoryProgressText(historyState))
+	d.loadingView.SetDetail(poolHistoryProgressText(historyState))
 	if view != nil && view != d.shown {
 		d.setHistory(view)
 	} else if view == nil && !historyState.Reading {

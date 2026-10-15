@@ -5,8 +5,9 @@ on:
     branches: [ main ]
     tags:
       - '*.*.*' # Push events to matching v*, i.e. v1.0, v20.15.10
+  # Every pull request, also one stacked on another: GitHub retargets it to main when the one below is merged, which
+  # starts no workflow. The checks of its commit from before still count then.
   pull_request:
-    branches: [ main ]
 
 jobs:
   test:

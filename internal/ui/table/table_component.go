@@ -409,28 +409,20 @@ func (c *RowSelectionTable[T]) drawEmptyState(screen tcell.Screen) {
 		return
 	}
 	x, y, width, height := c.table.GetInnerRect()
-	var lines []string
+	var text string
 	color := c.placeholderColor
 	switch {
 	case c.placeholder != "":
-		lines = tview.WordWrap(tview.Escape(c.placeholder), width)
+		text = tview.Escape(c.placeholder)
 	case c.filterText != "" && len(c.allEntries) > 0:
 		colors := theme.Colors.Layout.Table
-		// cut off by Print if too long
-		lines = []string{fmt.Sprintf("No matches for %s%s[-]", txwidgets.ColorTag(colors.Accent), tview.Escape(c.filterText))}
+		text = fmt.Sprintf("No matches for %s%s[-]", txwidgets.ColorTag(colors.Accent), tview.Escape(c.filterText))
 		color = colors.EmptyText
 	default:
 		return
 	}
 	// the rows start below the header row
-	rowsTop, rowsHeight := y+1, height-1
-	top := rowsTop + max((rowsHeight-len(lines))/2, 0)
-	for i, line := range lines {
-		if top+i >= y+height {
-			break
-		}
-		tview.Print(screen, line, x, top+i, width, tview.AlignCenter, color)
-	}
+	uiutil.DrawEmptyState(screen, x, y+1, width, height-1, text, color)
 }
 
 // redrawScrollbar updates the scrollbar from the table as just drawn, and draws it again. Runs while drawing.

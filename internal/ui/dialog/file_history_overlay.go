@@ -3,6 +3,7 @@ package dialog
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -83,6 +84,9 @@ type FileHistoryOverlay struct {
 	// dataErrors are the damaged files, to mark the damaged versions (nil: none), see SetDataErrors. Only accessed on
 	// the UI thread.
 	dataErrors *zfs.DataErrorIndex
+	// externalViewer shows the changes of the selected version in the terminal (nil: none configured or installed),
+	// see openInExternalViewer
+	externalViewer *ExternalDiffViewerConfig
 }
 
 // damagedVersionMarker marks the versions of the file that are damaged, behind the name of their snapshot.
@@ -131,6 +135,7 @@ func NewFileHistoryOverlay(
 		actionChannel:   make(chan DialogActionId, 1),
 		currentDiffMode: loadDiffMode(toggleFileHistoryComparePrevious, diffModeWorkingCopy, diffModePredecessor),
 		historyEntries:  []*data.SnapshotBrowserEntry{},
+		externalViewer:  externalDiffViewer(),
 	}
 
 	overlay.tableContainer = overlay.createHistoryTable()
@@ -415,6 +420,11 @@ func (o *FileHistoryOverlay) setupInputCaptures() {
 			return nil
 		}
 
+		if runeChar == 'e' && o.externalViewer != nil {
+			o.openInExternalViewer()
+			return nil
+		}
+
 		if key == tcell.KeyEnter {
 			o.restoreSelectedVersion()
 			return nil
@@ -448,6 +458,11 @@ func (o *FileHistoryOverlay) setupInputCaptures() {
 			return nil
 		}
 
+		if runeChar == 'e' && o.externalViewer != nil {
+			o.openInExternalViewer()
+			return nil
+		}
+
 		return event
 	})
 }
@@ -464,6 +479,7 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 			{KeyCombo: []string{shortcut_helper.KeyTab}, Name: "Focus Diff", Group: shortcut_helper.GroupNavigation},
 			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode", Group: shortcut_helper.GroupView},
 			{KeyCombo: []string{"c"}, Name: copyLabel},
+			o.externalViewerShortcut(),
 			{KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Restore version"},
 			uiutil.TableComponentShortcutColumns,
 			shortcut_helper.ShortcutTimeFormat,
@@ -475,11 +491,14 @@ func (o *FileHistoryOverlay) updateShortcuts() {
 			{KeyCombo: []string{shortcut_helper.KeyTab, shortcut_helper.Shift(shortcut_helper.KeyTab)}, Name: "Focus List", Group: shortcut_helper.GroupNavigation},
 			{KeyCombo: []string{"d"}, Name: "Toggle Diff Mode", Group: shortcut_helper.GroupView},
 			{KeyCombo: []string{"c"}, Name: copyLabel},
+			o.externalViewerShortcut(),
 			shortcut_helper.ShortcutTimeFormat,
 			shortcut_helper.ShortcutHide,
 			{KeyCombo: []string{shortcut_helper.KeyEsc}, Name: "Close history", Group: shortcut_helper.GroupGlobal},
 		}
 	}
+	// without the entries that are not offered (e.g. no external diff viewer)
+	entries = slices.DeleteFunc(entries, func(entry shortcut_helper.ShortcutEntry) bool { return len(entry.KeyCombo) == 0 })
 	o.shortcutHelp.SetEntries(entries)
 }
 
@@ -717,14 +736,7 @@ func (o *FileHistoryOverlay) updateDiff() {
 
 	filePath := o.file.GetRealPath()
 	diffMode := o.currentDiffMode
-
-	var prevSnapshot *zfs.Snapshot = nil
-	if diffMode == diffModePredecessor {
-		index := slices.Index(o.historyEntries, entry)
-		if index >= 0 && index < len(o.historyEntries)-1 {
-			prevSnapshot = o.historyEntries[index+1].Snapshot
-		}
-	}
+	prevSnapshot := o.predecessorOf(entry)
 
 	go func() {
 		defer o.diffLoader.Stop(seq)
@@ -733,21 +745,11 @@ func (o *FileHistoryOverlay) updateDiff() {
 			return
 		}
 
-		var oldPath string
-		var newPath string
+		oldPath, newPath := diffPaths(filePath, entry, diffMode, prevSnapshot)
 		var title string
-
 		if diffMode == diffModeWorkingCopy {
-			oldPath = filePath
-			newPath = entry.Snapshot.GetSnapshotPath(filePath)
 			title = fmt.Sprintf(" Changes (Working Copy -> Selected: %s) ", entry.Snapshot.Name)
 		} else {
-			newPath = entry.Snapshot.GetSnapshotPath(filePath)
-			if prevSnapshot != nil {
-				oldPath = prevSnapshot.GetSnapshotPath(filePath)
-			} else {
-				oldPath = DevNull
-			}
 			prevName := DevNull
 			if prevSnapshot != nil {
 				prevName = prevSnapshot.Name
@@ -926,6 +928,56 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 
 	restoreDialog := NewRestoreFileDialog(o.application, restoreEntry, nil, onComplete)
 	ShowDialogOnPages(o.application, o.pages, restoreDialog, nil)
+}
+
+// predecessorOf returns the snapshot of the version before entry in the diff mode diffModePredecessor (nil: none, or
+// another mode). Must be called on the UI thread.
+func (o *FileHistoryOverlay) predecessorOf(entry *data.SnapshotBrowserEntry) *zfs.Snapshot {
+	if o.currentDiffMode != diffModePredecessor {
+		return nil
+	}
+	index := slices.Index(o.historyEntries, entry)
+	if index >= 0 && index < len(o.historyEntries)-1 {
+		return o.historyEntries[index+1].Snapshot
+	}
+	return nil
+}
+
+// diffPaths returns the files whose changes are shown for the version of the file at filePath in entry: from the
+// working copy, or from the version of prevSnapshot (DevNull if nil: the file was added).
+func diffPaths(filePath string, entry *data.SnapshotBrowserEntry, mode diffMode, prevSnapshot *zfs.Snapshot) (oldPath string, newPath string) {
+	newPath = entry.Snapshot.GetSnapshotPath(filePath)
+	switch {
+	case mode == diffModeWorkingCopy:
+		oldPath = filePath
+	case prevSnapshot != nil:
+		oldPath = prevSnapshot.GetSnapshotPath(filePath)
+	default:
+		oldPath = DevNull
+	}
+	return oldPath, newPath
+}
+
+// externalViewerShortcut is the shortcut entry of openInExternalViewer, without keys if there is no viewer (left out,
+// see updateShortcuts).
+func (o *FileHistoryOverlay) externalViewerShortcut() shortcut_helper.ShortcutEntry {
+	if o.externalViewer == nil {
+		return shortcut_helper.ShortcutEntry{}
+	}
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"e"}, Name: "Open in " + filepath.Base(o.externalViewer.Path)}
+}
+
+// openInExternalViewer shows the changes of the selected version, as the diff shows them, in the external diff
+// viewer, e.g. to scroll through them with its search. Must be called on the UI thread.
+func (o *FileHistoryOverlay) openInExternalViewer() {
+	entry := o.currentSelection
+	if entry == nil || o.externalViewer == nil {
+		return
+	}
+	oldPath, newPath := diffPaths(o.file.GetRealPath(), entry, o.currentDiffMode, o.predecessorOf(entry))
+	viewer := *o.externalViewer
+	// it waits for the UI thread, which suspends the application while the viewer runs
+	go runExternalDiffEditor(o.application, viewer, oldPath, newPath)
 }
 
 func (o *FileHistoryOverlay) copyDiffToClipboard() {

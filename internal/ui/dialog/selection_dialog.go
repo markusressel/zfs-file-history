@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/util"
 
 	"github.com/rivo/tview"
 )
@@ -351,7 +352,7 @@ func (d *SelectionDialog) ShowLoading(option *DialogOption) {
 		return
 	}
 
-	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	frames := util.SpinnerFrames
 
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)

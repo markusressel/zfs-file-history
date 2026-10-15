@@ -5,8 +5,9 @@ name: Codespell
 on:
   push:
     branches: [ main ]
+  # Every pull request, also one stacked on another: GitHub retargets it to main when the one below is merged, which
+  # starts no workflow. The checks of its commit from before still count then.
   pull_request:
-    branches: [ main ]
 
 permissions:
   contents: read

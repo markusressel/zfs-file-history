@@ -253,6 +253,16 @@ type LayoutColors struct {
 	SelectionForeground tcell.Color
 	SelectionBackground tcell.Color
 	Table               LayoutTableColors
+	Loading             LoadingColors
+}
+
+// LoadingColors are the colors of a pane that shows what is loading in place of its content (see util.LoadingView).
+type LoadingColors struct {
+	Spinner tcell.Color
+	// Message is what is loading, bright: unlike the empty state of a list, it is what the pane is about for now
+	Message tcell.Color
+	// Detail is how far the loading got, below the message
+	Detail tcell.Color
 }
 
 type LayoutTableColors struct {

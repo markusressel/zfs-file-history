@@ -161,7 +161,9 @@ of the code.
     number; `zfs.FindObjects`, `f` in the dialog): it reads the inodes from `getdents64`, no `lstat` per file
     (millions of files per snapshot), newest snapshot first. The dialog also says how to enable `head_errlog`, but
     the application never runs it (one-way pool upgrade).
-  - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). Shown with
+  - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). The file history shows the
+    changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
+    `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with
     `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
     ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),
@@ -221,6 +223,10 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 
 - Panes there is nothing to do in (the path overview, the details of a disk) are not in `focusableComponents`, and a
   click does not focus them either (`uiutil.WithoutFocus` in their `MouseHandler`).
+- A pane without content (yet) says why in its middle, with `uiutil.DrawEmptyState` (lines wrapped and centered):
+  the empty state of a `RowSelectionTable` (`SetPlaceholder`, no matches for the filter) and `uiutil.LoadingView`
+  (a spinner of two cells above the message, centered, how far it got below it, `SetDetail`; colors
+  `theme.Colors.Layout.Loading`).
 - Panes are split with `uiutil.ResizableSplit` (via `basePage.newSplit`, registered with `captureSplitDrags`). The
   boundary can be dragged; a right click on it goes back to the automatic size.
 - `SetAutoSize` sizes the first pane by its content on every draw (e.g. the dataset info and the pool status fit

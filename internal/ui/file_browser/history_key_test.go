@@ -5,6 +5,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
@@ -60,4 +61,32 @@ func TestFileBrowser_HistoryKey(t *testing.T) {
 	assert.Contains(t, shortcuts, "h Folder history")
 
 	assert.Nil(t, historyOf('H'), "H is not a shortcut anymore")
+}
+
+// The history opens at the snapshot the file browser compares with, so it shows the changes the file browser marks
+// (like "Show diff" did, which the history replaced).
+func TestFileBrowser_HistoryStartsAtComparedSnapshot(t *testing.T) {
+	ft := newFileBrowserTest(t, "")
+	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
+	ft.waitFor("directory loaded", func(s fileBrowserState) bool { return s.footer == "4 entries" })
+
+	requested := make(chan RequestFileHistoryEvent, 10)
+	ft.fileBrowser.Events.Subscribe(func(event Event) {
+		if e, ok := event.(RequestFileHistoryEvent); ok {
+			requested <- e
+		}
+	})
+	snapshot := &zfs.Snapshot{Name: "s1"}
+	testutil.OnUiThread(t, ft.app, func() {
+		ft.fileBrowser.tableContainer.SelectFirstIfExists()
+		ft.fileBrowser.currentSnapshot = &data.SnapshotBrowserEntry{Snapshot: snapshot}
+	})
+
+	ft.pressKey(tcell.KeyRune, 'h')
+	select {
+	case e := <-requested:
+		assert.Same(t, snapshot, e.Snapshot)
+	case <-time.After(time.Second):
+		require.Fail(t, "no history requested")
+	}
 }

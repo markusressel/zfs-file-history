@@ -84,7 +84,7 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 				mainPage.updateShortcutMap(fileBrowser)
 			}
 		case file_browser.RequestFileHistoryEvent:
-			mainPage.showHistory(e.FileEntry, nil)
+			mainPage.showHistory(e.FileEntry, e.Snapshot)
 		case file_browser.RequestFocusEvent:
 			application.SetFocus(e.Layout)
 		case file_browser.SnapshotCreatedEvent:
