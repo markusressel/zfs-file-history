@@ -15,6 +15,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeLoader struct {
@@ -390,4 +391,60 @@ func TestFormatInfo_Unknown(t *testing.T) {
 	assert.Contains(t, text, uiutil.InfoMuted("off"))
 	assert.Contains(t, text, uiutil.InfoMuted("0 B"))
 	assert.Contains(t, text, uiutil.InfoMuted("unknown"))
+}
+
+// The link to the pool is where its name is in the text: after the label, on the line of the field.
+func TestFormatInfo_PoolLink(t *testing.T) {
+	text, link := formatInfoWithPoolLink(homeFacts())
+
+	lines := strings.Split(testutil.StripTags(text), "\n")
+	require.Less(t, link.line, len(lines))
+	line := []rune(lines[link.line])
+	require.LessOrEqual(t, link.column+link.width, len(line))
+	assert.Equal(t, "rpool", string(line[link.column:link.column+link.width]))
+	assert.Equal(t, "rpool", link.pool)
+}
+
+// A click on the name of the pool shows the pool (on the pools page, see CreateUi), the rest of the text does not.
+func TestDatasetInfo_ClickOnPoolShowsIt(t *testing.T) {
+	// two clicks in a row would be a double click, which tview reports instead of the second click
+	originalInterval := tview.DoubleClickInterval
+	tview.DoubleClickInterval = 0
+	t.Cleanup(func() { tview.DoubleClickInterval = originalInterval })
+	app := tview.NewApplication()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	app.SetScreen(screen)
+	app.EnableMouse(true)
+	datasetInfo := NewDatasetInfo(app)
+	app.SetRoot(datasetInfo.GetLayout(), true)
+	testutil.RunApp(t, app)
+	shown := make(chan string, 10)
+	testutil.OnUiThread(t, app, func() {
+		datasetInfo.SetOnShowPool(func(pool string) { shown <- pool })
+		datasetInfo.updateUi(&datasetInfoResult{dataset: &zfs.Dataset{Path: "/home"}, title: "Dataset: rpool/home", facts: homeFacts()})
+	})
+
+	// where the name of the pool is drawn, behind its label
+	poolX, poolY := -1, -1
+	for y, line := range strings.Split(testutil.ScreenText(t, app, screen), "\n") {
+		if strings.Contains(line, "Pool  ") {
+			poolX, poolY = len([]rune(line[:strings.Index(line, "rpool")])), y
+		}
+	}
+	require.GreaterOrEqual(t, poolY, 0, "the pool is shown")
+	click := func(x, y int) {
+		screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
+		screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
+		testutil.WaitForEvents(t, app, screen)
+	}
+
+	click(poolX-3, poolY)
+	assert.Empty(t, shown, "the label is not the link")
+	click(poolX+2, poolY)
+	select {
+	case pool := <-shown:
+		assert.Equal(t, "rpool", pool)
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "the pool was not shown")
+	}
 }

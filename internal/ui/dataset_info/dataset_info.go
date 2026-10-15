@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -33,6 +34,77 @@ type DatasetInfoComponent struct {
 
 	// dataset is the currently displayed dataset. It is only used on the UI thread after it was loaded.
 	dataset *zfs.Dataset
+	// poolLink is where the name of the pool is shown, which can be clicked (see infoView)
+	poolLink poolLink
+	// regions are the parts of the text that can be clicked: the name of the pool
+	regions clickable.Regions
+	// onShowPool shows a pool on the pools page (nil: the name of the pool cannot be clicked), see SetOnShowPool
+	onShowPool func(pool string)
+	// enabled returns whether the name of the pool can be clicked, e.g. not while a dialog is in front
+	enabled func() bool
+}
+
+// infoView is the text view of the dataset info, which also draws the parts that can be clicked.
+type infoView struct {
+	*scrollbar.TextView
+	datasetInfo *DatasetInfoComponent
+}
+
+// SetOnShowPool sets the function that shows a pool on the pools page, called when the name of the pool is clicked.
+// Must be called on the UI thread.
+func (datasetInfo *DatasetInfoComponent) SetOnShowPool(onShowPool func(pool string)) {
+	datasetInfo.onShowPool = onShowPool
+}
+
+// SetEnabledFunc sets a function that returns whether the name of the pool can be clicked, e.g. not while a dialog is
+// in front. Must be called on the UI thread.
+func (datasetInfo *DatasetInfoComponent) SetEnabledFunc(enabled func() bool) {
+	datasetInfo.enabled = enabled
+}
+
+// Draw draws the text, and adds the name of the pool, which can be clicked, where it is shown.
+func (view *infoView) Draw(screen tcell.Screen) {
+	view.TextView.Draw(screen)
+
+	datasetInfo := view.datasetInfo
+	datasetInfo.regions.Reset()
+	defer datasetInfo.regions.DrawHover(screen)
+	link := datasetInfo.poolLink
+	if link.width == 0 || datasetInfo.onShowPool == nil {
+		return
+	}
+	x, y, width, height := view.GetInnerRect()
+	row, column := view.GetScrollOffset()
+	linkY := y + link.line - row
+	if linkY < y || linkY >= y+height {
+		return
+	}
+	start := max(x+link.column-column, x)
+	end := min(x+link.column-column+link.width, x+width)
+	onShowPool := datasetInfo.onShowPool
+	datasetInfo.regions.Add(clickable.Region{
+		X: start, Y: linkY, Width: end - start, Key: link.pool,
+		HoverBackground: theme.Colors.Pool.HoverBackground,
+		OnClick:         func() { onShowPool(link.pool) },
+	})
+}
+
+// MouseHandler shows the pool when its name is clicked (see clickable.Regions), and otherwise scrolls and focuses like
+// a text view.
+func (view *infoView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	textViewHandler := view.TextView.MouseHandler()
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		datasetInfo := view.datasetInfo
+		consumed, captures := datasetInfo.regions.HandleMouse(action, event, datasetInfo.enabled() && view.InRect(event.Position()))
+		if !consumed {
+			consumed, capture = textViewHandler(action, event, setFocus)
+		}
+		if capture == nil && captures {
+			// to learn when the mouse leaves
+			capture = view
+		}
+		return consumed, capture
+	}
 }
 
 // datasetInfoResult is the result of a background load.
@@ -46,6 +118,7 @@ type datasetInfoResult struct {
 func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 	datasetInfo := &DatasetInfoComponent{
 		application: application,
+		enabled:     func() bool { return true },
 	}
 
 	// capped by the page on small terminals, see ContentSize
@@ -57,7 +130,8 @@ func NewDatasetInfo(application *tview.Application) *DatasetInfoComponent {
 	datasetInfo.textView.SetBorderPadding(0, 0, 1, 1)
 	uiutil.SetupWindow(datasetInfo.textView, "Dataset")
 
-	datasetInfo.container = uiutil.NewLoadingContainer(application, datasetInfo.textView, "Dataset", "Loading dataset info...")
+	datasetInfo.container = uiutil.NewLoadingContainer(application, &infoView{TextView: datasetInfo.textView, datasetInfo: datasetInfo},
+		"Dataset", "Loading dataset info...")
 
 	datasetInfo.loader = uiutil.NewDataLoader[*datasetInfoResult](application).
 		OnStart(func() {
@@ -412,7 +486,22 @@ func poolState(state string) uiutil.InfoState {
 // formatInfo returns the text of the dataset info: whether all is well (see verdict), how full it is, what uses the
 // space, then what else is known about it. Defaults that say nothing (e.g. not read-only) are left out.
 func formatInfo(facts *datasetFacts) string {
+	text, _ := formatInfoWithPoolLink(facts)
+	return text
+}
+
+// poolLink is where the name of the pool is in the text of the dataset info (line and column, without scrolling), which
+// shows the pool on the pools page when clicked. Its width is 0 if there is none.
+type poolLink struct {
+	pool         string
+	line, column int
+	width        int
+}
+
+// formatInfoWithPoolLink returns the text of formatInfo, and where the name of the pool is in it.
+func formatInfoWithPoolLink(facts *datasetFacts) (string, poolLink) {
 	var info uiutil.InfoText
+	var link poolLink
 	info.Verdict(verdict(facts)...)
 	if bar := formatPoolBar(facts); bar != "" {
 		info.Line(bar)
@@ -447,6 +536,7 @@ func formatInfo(facts *datasetFacts) string {
 			pool = uiutil.InfoValue(facts.poolName) + " " + txwidgets.Span(poolState(facts.pool.State).Color(), "%s", facts.pool.State) +
 				uiutil.InfoMuted(" · "+formatPoolScan(facts.pool))
 		}
+		link = poolLink{pool: facts.poolName, line: info.LineCount(), width: tview.TaggedStringWidth(tview.Escape(facts.poolName))}
 		info.Field("Pool", pool)
 	}
 	if !facts.created.IsZero() {
@@ -471,7 +561,9 @@ func formatInfo(facts *datasetFacts) string {
 		permissions = uiutil.InfoMuted(facts.permissions)
 	}
 	info.Field("Permissions", permissions)
-	return info.String()
+	// the labels are padded to the longest one, known once all fields are added
+	link.column = info.ValueColumn()
+	return info.String(), link
 }
 
 // verdict returns the parts of the verdict line: the problems (the pool, a key that is not loaded, how full it is),
@@ -545,11 +637,14 @@ func (datasetInfo *DatasetInfoComponent) updateUi(result *datasetInfoResult) {
 	if result == nil {
 		datasetInfo.textView.Clear()
 		uiutil.SetupWindow(datasetInfo.textView, "Dataset")
+		datasetInfo.poolLink = poolLink{}
 		return
 	}
 
 	uiutil.SetupWindow(datasetInfo.textView, result.title)
-	datasetInfo.textView.SetText(formatInfo(result.facts))
+	text, link := formatInfoWithPoolLink(result.facts)
+	datasetInfo.textView.SetText(text)
+	datasetInfo.poolLink = link
 }
 
 func (datasetInfo *DatasetInfoComponent) HasFocus() bool {
