@@ -19,12 +19,13 @@ const (
 	PoolDialogCancelTrimActionId
 	PoolDialogClearActionId
 	PoolDialogUpgradeActionId
+	PoolDialogFeaturesActionId
 )
 
 // NewPoolActionDialog creates the dialog with the actions for a pool. status is the status of the pool (nil if
 // not known), it decides which actions make sense, e.g. pausing a scrub only while one runs. Destroying or exporting
-// the pool is deliberately not offered, see zfs.PoolAction. Upgrading it is not run by the dialog (see
-// PoolActionOf), but confirmed with NewPoolUpgradeDialog first.
+// the pool is deliberately not offered, see zfs.PoolAction. Upgrading it and enabling features are not run by the
+// dialog (see PoolActionOf), but confirmed with NewPoolUpgradeDialog or chosen with NewPoolFeaturesDialog first.
 func NewPoolActionDialog(
 	application *tview.Application,
 	pool string,
@@ -114,6 +115,12 @@ func buildPoolDialogOptions(status *zfs.PoolStatus) []*DialogOption {
 		})
 	}
 	dialogOptions = append(dialogOptions, &DialogOption{
+		Id:          PoolDialogFeaturesActionId,
+		Name:        "🧩 Enable features",
+		Description: "Choose features of the pool to enable, cannot be undone (zpool set feature@…=enabled)",
+		Severity:    DialogSeverityDanger,
+	})
+	dialogOptions = append(dialogOptions, &DialogOption{
 		Id:   DialogCloseActionId,
 		Name: localization.LocalizationCommonClose,
 	})
@@ -122,7 +129,7 @@ func buildPoolDialogOptions(status *zfs.PoolStatus) []*DialogOption {
 }
 
 // PoolActionOf returns the zfs action of an option of the pool action dialog that runs right away, false for others
-// (e.g. close, or upgrade, which is confirmed first).
+// (e.g. close, or upgrade, which is confirmed first, or the features, which are listed first).
 func PoolActionOf(id DialogActionId) (zfs.PoolAction, bool) {
 	actions := map[DialogActionId]zfs.PoolAction{
 		PoolDialogScrubActionId:       zfs.PoolActionScrub,

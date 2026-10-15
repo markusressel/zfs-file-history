@@ -76,7 +76,7 @@ func TestRunPoolAction_SudoNotAllowed(t *testing.T) {
 	require.ErrorAs(t, err, &needsRoot)
 	assert.Equal(t, PoolActionScrub, needsRoot.Action)
 	assert.Equal(t, "tank", needsRoot.Pool)
-	assert.Equal(t, []string{ZpoolPath(), "scrub", "tank"}, needsRoot.Command())
+	assert.Equal(t, [][]string{{ZpoolPath(), "scrub", "tank"}}, needsRoot.Commands())
 	assert.Contains(t, err.Error(), "cannot start a scrub on tank, it needs root: cannot scrub tank: permission denied")
 	assert.Contains(t, err.Error(), SetupPoolActionsHint)
 	assert.EqualError(t, errors.Unwrap(err), "cannot scrub tank: permission denied")

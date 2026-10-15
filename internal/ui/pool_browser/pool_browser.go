@@ -88,10 +88,12 @@ var (
 // stateKeyTable is the key of the column layout remembered in state.Current
 const stateKeyTable = "poolBrowser"
 
-// listPools and runPoolAction are replaceable in tests.
+// listPools, runPoolAction, listPoolFeatures and enablePoolFeatures are replaceable in tests.
 var (
-	listPools     = zfs.ListPools
-	runPoolAction = zfs.RunPoolAction
+	listPools          = zfs.ListPools
+	runPoolAction      = zfs.RunPoolAction
+	listPoolFeatures   = zfs.ListPoolFeatures
+	enablePoolFeatures = zfs.EnablePoolFeatures
 )
 
 type Event interface{}
@@ -304,16 +306,32 @@ func (poolBrowser *PoolBrowserComponent) openActionDialog(pool *zfs.PoolListEntr
 // newActionDialog creates the dialog with the actions for the pool, see openActionDialog.
 func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry) *dialog.SelectionDialog {
 	name := pool.Name
+	// features are the ones listed by the last choice of the features, read on the UI thread once listed
+	var features *zfs.PoolFeatures
 	asyncWork := func(d *dialog.SelectionDialog, id dialog.DialogActionId) error {
 		if action, ok := dialog.PoolActionOf(id); ok {
 			return runPoolAction(action, name)
+		}
+		if id == dialog.PoolDialogFeaturesActionId {
+			var err error
+			features, err = listPoolFeatures(name)
+			return err
 		}
 		return nil
 	}
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
-		if option.Id == dialog.PoolDialogUpgradeActionId {
+		switch option.Id {
+		case dialog.PoolDialogUpgradeActionId:
 			poolBrowser.confirmUpgrade(name)
+			return
+		case dialog.PoolDialogFeaturesActionId:
+			if err != nil {
+				logging.Error("Could not list the features of %s: %s", name, err.Error())
+				poolBrowser.showDialog(dialog.NewErrorDialog(poolBrowser.application, "Listing Features Failed", err))
+				return
+			}
+			poolBrowser.chooseFeatures(features)
 			return
 		}
 		action, ok := dialog.PoolActionOf(option.Id)
@@ -336,25 +354,48 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 
 // confirmUpgrade upgrades the pool once its name was typed: it cannot be undone. Must be called on the UI thread.
 func (poolBrowser *PoolBrowserComponent) confirmUpgrade(pool string) {
-	poolBrowser.showDialog(dialog.NewPoolUpgradeDialog(poolBrowser.application, pool, func() { poolBrowser.upgradeInBackground(pool) }))
+	poolBrowser.showDialog(dialog.NewPoolUpgradeDialog(poolBrowser.application, pool, func() {
+		action := zfs.PoolActionUpgrade
+		poolBrowser.runConfirmedInBackground(pool, "Upgrade Failed", action.Name, action.Done,
+			func() error { return runPoolAction(action, pool) },
+			func() { poolBrowser.confirmUpgrade(pool) })
+	}))
 }
 
-// upgradeInBackground upgrades the pool as confirmed in the background and shows the result. Must be called on the UI
+// chooseFeatures shows the features of the pool, to enable the chosen ones once confirmed. Must be called on the UI
 // thread.
-func (poolBrowser *PoolBrowserComponent) upgradeInBackground(pool string) {
-	action := zfs.PoolActionUpgrade
+func (poolBrowser *PoolBrowserComponent) chooseFeatures(features *zfs.PoolFeatures) {
+	poolBrowser.showDialog(dialog.NewPoolFeaturesDialog(poolBrowser.application, features, func(chosen []string) {
+		poolBrowser.confirmFeatures(features.Pool, chosen)
+	}))
+}
+
+// confirmFeatures enables the features of the pool once its name was typed: it cannot be undone. Must be called on
+// the UI thread.
+func (poolBrowser *PoolBrowserComponent) confirmFeatures(pool string, features []string) {
+	poolBrowser.showDialog(dialog.NewEnablePoolFeaturesDialog(poolBrowser.application, pool, features, func() {
+		names := strings.Join(features, ", ")
+		poolBrowser.runConfirmedInBackground(pool, "Enabling Features Failed", "enable the features "+names,
+			"Enabled the features "+names,
+			func() error { return enablePoolFeatures(pool, features) },
+			func() { poolBrowser.confirmFeatures(pool, features) })
+	}))
+}
+
+// runConfirmedInBackground runs what was confirmed for the pool in the background and shows the result: done (e.g.
+// "Enabled all features") in the status bar, or the error with retry, which asks for confirmation again. Must be
+// called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) runConfirmedInBackground(pool string, failedTitle string, name string, done string, run func() error, retry func()) {
 	go func() {
-		err := runPoolAction(action, pool)
+		err := run()
 		poolBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
-				logging.Error("Could not %s on %s: %s", action.Name, pool, err.Error())
-				// a retry asks for confirmation again
-				retry := func() { poolBrowser.confirmUpgrade(pool) }
-				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Upgrade Failed", err, retry))
+				logging.Error("Could not %s on %s: %s", name, pool, err.Error())
+				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, failedTitle, err, retry))
 				return
 			}
 			poolBrowser.Events.Emit(PoolBrowserStatusEvent{
-				Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("%s of %s", action.Done, pool)),
+				Message: status_message.NewSuccessStatusMessage(fmt.Sprintf("%s of %s", done, pool)),
 			})
 			// the event watcher may not run (see "setup"), so the pools are reloaded here
 			zfs.PoolsChanged.Emit(struct{}{})

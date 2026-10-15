@@ -86,6 +86,9 @@ type Backend interface {
 	PoolHistory(ctx context.Context, pool string, progress func(PoolHistoryProgress)) ([]PoolHistoryEntry, error)
 	// PoolsWithoutHeadErrlog returns the pools of the given ones whose feature head_errlog is disabled.
 	PoolsWithoutHeadErrlog(pools []string) []string
+	// PoolFeatures returns the features the installed ZFS supports with their states on the pool, its property
+	// compatibility and the features its files allow (Unavailable is not set, see ListPoolFeatures).
+	PoolFeatures(pool string) (*PoolFeatures, error)
 	// RunPoolAction runs the action on the pool. Returns a PoolActionNeedsRootError if the user may not.
 	RunPoolAction(action PoolAction, pool string) error
 	// WatchEvents calls onDatasetsChanged when datasets or snapshots were created, destroyed, or pools imported or

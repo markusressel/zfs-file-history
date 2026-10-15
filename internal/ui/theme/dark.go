@@ -60,6 +60,7 @@ var (
 			Highlight:    Accent,
 			// a lighter Secondary, readable on the background
 			SectionTitle: tcell.ColorIsRGB | tcell.ColorValid | 0x8C99A6,
+			Unavailable:  tcell.ColorGray,
 		},
 		FileBrowser: FileBrowserColors{
 			Table: FileBrowserTableColors{

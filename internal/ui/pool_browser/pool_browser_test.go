@@ -560,6 +560,80 @@ func TestPoolBrowser_UpgradeIsConfirmedByName(t *testing.T) {
 	testutil.WaitForNoPage(t, app, browser.layout, string(dialog.PoolUpgradeDialogPage), 2*time.Second)
 }
 
+// Enabling features cannot be undone: they are listed and chosen first, and only enabled once the name of the pool
+// was typed.
+func TestPoolBrowser_EnableFeatures(t *testing.T) {
+	setListPools(t, func() ([]*zfs.PoolListEntry, error) { return []*zfs.PoolListEntry{{Name: "tank"}}, nil })
+	testutil.Replace(t, &listPoolFeatures, func(pool string) (*zfs.PoolFeatures, error) {
+		return &zfs.PoolFeatures{Pool: pool, Compatibility: "off", Features: []zfs.PoolFeature{
+			{Name: "bookmarks", Description: "\"zfs bookmark\" command", State: zfs.PoolFeatureDisabled},
+			{Name: "async_destroy", Description: "Destroy filesystems asynchronously.", State: zfs.PoolFeatureEnabled, Unavailable: "already enabled"},
+		}}, nil
+	})
+	var mu sync.Mutex
+	var enabled [][]string
+	testutil.Replace(t, &enablePoolFeatures, func(pool string, features []string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		enabled = append(enabled, append([]string{pool}, features...))
+		return nil
+	})
+	getEnabled := func() [][]string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([][]string{}, enabled...)
+	}
+	var done atomic.Int32
+	app, screen := testutil.NewApp()
+	browser := NewPoolBrowser(app)
+	browser.Events.Subscribe(func(event Event) {
+		if e, ok := event.(PoolBrowserStatusEvent); ok && e.Message.Message == "Enabled the features bookmarks of tank" {
+			done.Add(1)
+		}
+	})
+	testutil.StartApp(t, app, browser.GetLayout())
+	testutil.OnUiThread(t, app, browser.Refresh)
+	require.Eventually(t, func() bool {
+		var selected *zfs.PoolListEntry
+		testutil.OnUiThread(t, app, func() { selected = browser.GetSelectedPool() })
+		return selected != nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	command := commandNamed(t, app, browser, "Enable features")
+	testutil.OnUiThread(t, app, command.Run)
+	testutil.WaitForPage(t, app, browser.layout, string(dialog.PoolFeaturesDialogPage), 2*time.Second)
+	testutil.WaitForText(t, app, screen, "already enabled", 2*time.Second)
+
+	testutil.Press(t, app, screen, tcell.KeyRune, ' ')
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
+	testutil.WaitForPage(t, app, browser.layout, string(dialog.EnablePoolFeaturesDialogPage), 2*time.Second)
+	assert.Empty(t, getEnabled(), "not before the name was typed")
+
+	testutil.Type(t, app, screen, "tan")
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
+	testutil.WaitForUpdates(t, app)
+	assert.Empty(t, getEnabled(), "not with another name")
+
+	testutil.Type(t, app, screen, "k")
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
+	require.Eventually(t, func() bool { return done.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, [][]string{{"tank", "bookmarks"}}, getEnabled())
+	testutil.WaitForNoPage(t, app, browser.layout, string(dialog.EnablePoolFeaturesDialogPage), 2*time.Second)
+}
+
+func TestPoolBrowser_EnableFeatures_ListingFails(t *testing.T) {
+	testutil.Replace(t, &listPoolFeatures, func(pool string) (*zfs.PoolFeatures, error) {
+		return nil, errors.New("cannot list the features of tank: no pool")
+	})
+	app, browser, pages := loadedBrowserApp(t, "tank")
+
+	command := commandNamed(t, app, browser, "Enable features")
+	testutil.OnUiThread(t, app, command.Run)
+
+	testutil.WaitForPage(t, app, pages, "ErrorDialog", 2*time.Second)
+	assert.False(t, testutil.HasPage(t, app, pages, string(dialog.PoolFeaturesDialogPage)))
+}
+
 // Not offered unless zpool status suggests it.
 func TestPoolBrowser_UpgradeOnlyIfSuggested(t *testing.T) {
 	app, browser, _ := loadedBrowserApp(t, "tank")

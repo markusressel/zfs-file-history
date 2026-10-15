@@ -470,6 +470,90 @@ func (System) PoolsWithoutHeadErrlog(pools []string) []string {
 	return disabled
 }
 
+// compatibilityDirs are the folders zpool reads the files of the property compatibility from, the first one that
+// has a file wins (zpoolprops(7)). Replaceable in tests.
+var compatibilityDirs = []string{"/etc/zfs/compatibility.d", "/usr/share/zfs/compatibility.d", "/usr/local/share/zfs/compatibility.d"}
+
+// moduleFeaturesDir lists the features the loaded kernel module supports, a folder per feature with its short name
+// in the file "uname" (Linux, OpenZFS 2.1+). Replaceable in tests.
+var moduleFeaturesDir = "/sys/module/zfs/features.pool"
+
+// PoolFeatures needs no root: "zpool upgrade -v" lists the features the installed ZFS supports, "zpool get" their
+// states on the pool, sysfs the features of the loaded kernel module.
+func (System) PoolFeatures(pool string) (*PoolFeatures, error) {
+	descriptions, err := runPoolCommand("zpool", "upgrade", "-v")
+	if err != nil {
+		return nil, err
+	}
+	properties, err := runPoolCommand("zpool", "get", "-H", "-o", "property,value", "all", pool)
+	if err != nil {
+		return nil, err
+	}
+	states, unsupported, compatibility := parseFeatureStates(properties)
+	features := &PoolFeatures{Pool: pool, Compatibility: compatibility}
+	for _, feature := range parseFeatureDescriptions(descriptions) {
+		// zpool lists the states of the features it knows itself, as "zpool upgrade -v" does
+		if state, ok := states[feature.Name]; ok {
+			feature.State = state
+			features.Features = append(features.Features, feature)
+		}
+	}
+	features.Features = append(features.Features, unsupported...)
+	features.Compatible, features.CompatibilityErr = readCompatibilityFiles(compatibilityFileNames(compatibility))
+	features.ModuleFeatures = readModuleFeatures()
+	// only to tell the versions, older versions of ZFS have no "zfs version"
+	if output, err := runPoolCommand("zfs", "version"); err == nil {
+		features.ToolsVersion, features.ModuleVersion = parseZfsVersion(output)
+	}
+	return features, nil
+}
+
+// readModuleFeatures returns the short names of the features the loaded kernel module supports, nil if it does not
+// list them (see moduleFeaturesDir).
+func readModuleFeatures() map[string]bool {
+	entries, err := os.ReadDir(moduleFeaturesDir)
+	if err != nil || len(entries) == 0 {
+		return nil
+	}
+	features := map[string]bool{}
+	for _, entry := range entries {
+		name, err := os.ReadFile(moduleFeaturesDir + "/" + entry.Name() + "/uname")
+		if err != nil {
+			// a list that cannot be read completely would mark supported features as unsupported
+			return nil
+		}
+		features[strings.TrimSpace(string(name))] = true
+	}
+	return features
+}
+
+// readCompatibilityFiles returns the features all the compatibility files with the given names allow, nil without
+// names.
+func readCompatibilityFiles(names []string) (map[string]bool, error) {
+	var sets []map[string]bool
+	for _, name := range names {
+		if strings.Contains(name, "/") || strings.HasPrefix(name, ".") {
+			return nil, fmt.Errorf("invalid compatibility file name %q", name)
+		}
+		found := false
+		for _, dir := range compatibilityDirs {
+			content, err := os.ReadFile(dir + "/" + name)
+			if err == nil {
+				sets = append(sets, parseCompatibilityFile(string(content)))
+				found = true
+				break
+			}
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("the compatibility file %s is not in %s", name, strings.Join(compatibilityDirs, ", "))
+		}
+	}
+	return intersectFeatures(sets), nil
+}
+
 // RunPoolAction runs the action as the current user. Pool operations cannot be delegated to users like dataset ones
 // (zfs allow), so if zpool is denied, it is run again with "sudo -n", which works with the sudoers rule of
 // "setup --pool-actions" (or as root).

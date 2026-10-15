@@ -95,7 +95,15 @@ of the code.
   deliberately not offered. Upgrade cannot be undone: only offered while `zpool status` suggests it
   (`PoolStatus.CanUpgrade`), red, and confirmed by typing the name of the pool (`dialog.NewPoolUpgradeDialog`, not
   run by the action dialog itself: `dialog.PoolActionOf`). The sudoers rule of former versions without upgrade is
-  its `fallback`.
+  its `fallback`. `pool_features.go`: single features (`zfs.ListPoolFeatures`: `zpool upgrade -v` and `zpool get`,
+  no root) can be chosen in `dialog.PoolFeaturesDialog` and enabled once confirmed by name
+  (`zfs.EnablePoolFeatures`, one `zpool set feature@…=enabled` per feature). Features the property `compatibility`
+  of the pool does not allow (its files in `compatibility.d`, e.g. `grub2`; `zpool set` ignores it, `upgrade` does
+  not), the loaded kernel module does not support (`/sys/module/zfs/features.pool`, if it lists them; the tools may
+  be newer, the dialog says so with the versions of `zfs version`) and enabled ones are grayed out with the reason
+  and cannot be checked. Features of the pool the installed ZFS does not know (`unsupported@<guid>`) are listed last. Not part of the sudoers rule (a
+  wildcard for the name would also match spaces, so any property could be set): `PoolActionNeedsRootError`
+  `AllowedBySetup` is false, and the root dialog only offers to run them once with sudo or to copy the commands.
 - `internal/zfs/dataset_actions.go`: the actions on datasets that lose data (destroying a clone, rolling back) work
   in two steps: a preview lists what would be lost without changing anything (dry run, newer snapshots, holds,
   clones, permissions), the action takes the confirmed preview, checks everything again and refuses with
@@ -164,7 +172,7 @@ of the code.
     Objects ZFS has no path for (`ds:<0x…>`) can be searched in the snapshots by their inode number (= object
     number; `zfs.FindObjects`, `f` in the dialog): it reads the inodes from `getdents64`, no `lstat` per file
     (millions of files per snapshot), newest snapshot first. The dialog also says how to enable `head_errlog`, but
-    the application never runs it (one-way pool upgrade).
+    does not run it (one-way; the features of the pool action dialog can).
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). The file history shows the
     changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
     `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with

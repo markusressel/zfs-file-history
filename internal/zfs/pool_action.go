@@ -2,6 +2,7 @@ package zfs
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -46,13 +47,20 @@ const SetupPoolActionsHint = "To allow it without a password, run: sudo zfs-file
 // it either (e.g. a password is required). The pool actions need root, ZFS cannot delegate them to users like it
 // does for datasets (zfs allow).
 type PoolActionNeedsRootError struct {
+	// Action is the denied action. If Then has more, its Name and Done describe all of them.
 	Action PoolAction
-	Pool   string
+	// Then are the actions that were to run after Action, which need root as well, e.g. the other features to
+	// enable (see EnablePoolFeatures)
+	Then []PoolAction
+	Pool string
 	// Cause is the error of the denied zpool command
 	Cause error
 }
 
 func (e *PoolActionNeedsRootError) Error() string {
+	if !e.AllowedBySetup() {
+		return fmt.Sprintf("cannot %s on %s, it needs root: %s", e.Action.Name, e.Pool, e.Cause)
+	}
 	return fmt.Sprintf("cannot %s on %s, it needs root: %s\n\n%s", e.Action.Name, e.Pool, e.Cause, SetupPoolActionsHint)
 }
 
@@ -60,10 +68,26 @@ func (e *PoolActionNeedsRootError) Unwrap() error {
 	return e.Cause
 }
 
-// Command returns the zpool command of the action (with the full path, as needed by sudo), e.g.
-// ["/usr/sbin/zpool", "scrub", "tank"].
-func (e *PoolActionNeedsRootError) Command() []string {
-	return append(append([]string{ZpoolPath()}, e.Action.Args...), e.Pool)
+// Commands returns the zpool commands of the actions (with the full path, as needed by sudo), e.g.
+// [["/usr/sbin/zpool", "scrub", "tank"]].
+func (e *PoolActionNeedsRootError) Commands() [][]string {
+	var commands [][]string
+	for _, action := range append([]PoolAction{e.Action}, e.Then...) {
+		commands = append(commands, append(append([]string{ZpoolPath()}, action.Args...), e.Pool))
+	}
+	return commands
+}
+
+// AllowedBySetup returns whether the sudoers rule of "setup --pool-actions" allows all the actions. It does not
+// allow enabling single features (PoolActionEnableFeature): the rule would need a wildcard for the name of the
+// feature, and sudo wildcards also match spaces, so it would allow setting any property.
+func (e *PoolActionNeedsRootError) AllowedBySetup() bool {
+	for _, action := range append([]PoolAction{e.Action}, e.Then...) {
+		if !slices.ContainsFunc(PoolActions, func(allowed PoolAction) bool { return slices.Equal(allowed.Args, action.Args) }) {
+			return false
+		}
+	}
+	return true
 }
 
 // RunPoolAction runs the action on the pool with the given name. Pool operations cannot be delegated to users like
