@@ -264,9 +264,9 @@ func createOptionTable(application *tview.Application, options []*DialogOption, 
 		case DialogSeverityNeutral, DialogSeveritySafe:
 			textColor = tcell.ColorWhite
 		case DialogSeverityWarning:
-			textColor = tcell.ColorYellow
+			textColor = theme.Colors.Info.Warning
 		case DialogSeverityDanger:
-			textColor = tcell.ColorRed
+			textColor = theme.Colors.Dialog.Danger
 		}
 
 		if option.Id == DialogCloseActionId && hasMultipleOptions {

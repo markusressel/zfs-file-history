@@ -294,5 +294,5 @@ func TestOptionTable_SelectedOptionKeepsSeverityColor(t *testing.T) {
 
 	optionTable := createOptionTable(tview.NewApplication(), options, func(*DialogOption) {})
 
-	assert.Equal(t, theme.SelectedStyle(tcell.ColorRed), optionTable.GetCell(0, 1).SelectedStyle)
+	assert.Equal(t, theme.SelectedStyle(theme.Colors.Dialog.Danger), optionTable.GetCell(0, 1).SelectedStyle)
 }

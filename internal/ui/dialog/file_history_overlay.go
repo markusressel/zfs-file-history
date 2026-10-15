@@ -623,13 +623,13 @@ func formatCompareField(oldVal, newVal string, changed bool, isPresence bool) st
 	if isPresence {
 		formatEx := func(val string) string {
 			if val == "Exists" {
-				return "[green]Exists[white]"
+				return txwidgets.ColorTag(theme.Colors.Info.Ok) + "Exists[white]"
 			}
-			return "[red]Missing[white]"
+			return txwidgets.ColorTag(theme.Colors.Info.Error) + "Missing[white]"
 		}
 		return fmt.Sprintf("%s  ->  %s", oldVal, formatEx(newVal))
 	}
-	return fmt.Sprintf("%s  ->  [yellow]%s[white]", oldVal, newVal)
+	return fmt.Sprintf("%s  ->  %s%s[white]", oldVal, txwidgets.ColorTag(theme.Colors.Info.Warning), newVal)
 }
 
 func (o *FileHistoryOverlay) getMetadataComparisonText(oldPath, newPath string) string {

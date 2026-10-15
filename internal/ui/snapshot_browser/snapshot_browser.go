@@ -16,6 +16,7 @@ import (
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -319,7 +320,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) onLoadError(err error) {
 	snapshotBrowser.container.SetIsLoading(false)
 	logging.Error("Could not load snapshots: %s", err.Error())
 	// shown until snapshots are loaded again
-	snapshotBrowser.tableContainer.SetPlaceholder(fmt.Sprintf("Cannot load snapshots: %s", err.Error()), tcell.ColorRed)
+	snapshotBrowser.tableContainer.SetPlaceholder(fmt.Sprintf("Cannot load snapshots: %s", err.Error()), theme.Colors.Info.Error)
 	// the dataset is unknown: the next path is loaded completely, instead of reusing the (now missing) snapshots
 	// of the dataset shown before
 	snapshotBrowser.hostDataset = nil

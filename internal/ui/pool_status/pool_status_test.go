@@ -8,6 +8,7 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -65,7 +66,7 @@ func TestFormatStatus_Healthy(t *testing.T) {
 		" Errors:  No known data errors",
 		"",
 	}, "\n"), testutil.StripTags(text))
-	assert.Contains(t, text, "["+tcell.ColorGreen.CSS()+"]ONLINE", "colored by the state")
+	assert.Contains(t, text, txwidgets.ColorTag(theme.Colors.Pool.Online)+"ONLINE", "colored by the state")
 }
 
 func TestErrorsColor(t *testing.T) {

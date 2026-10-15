@@ -43,7 +43,7 @@ func TestDetermineTypeCellTextAndColor(t *testing.T) {
 
 	entryLink := &data.FileBrowserEntry{Type: data.Link}
 	assert.Equal(t, "L", determineTypeCellText(entryLink))
-	assert.Equal(t, tcell.ColorYellow, determineTypeCellColor(entryLink))
+	assert.Equal(t, theme.Colors.Info.Warning, determineTypeCellColor(entryLink))
 
 	entryOther := &data.FileBrowserEntry{Type: data.FileBrowserEntryType(99)}
 	assert.Equal(t, "?", determineTypeCellText(entryOther))

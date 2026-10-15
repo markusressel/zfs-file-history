@@ -19,6 +19,7 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -737,7 +738,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 			if err != nil {
 				// e.g. no permission: shown in place of the entries, until the entries of a path can be listed
 				logging.Error("Cannot list %s: %s", path, err.Error())
-				fileBrowser.tableContainer.SetPlaceholder(err.Error(), tcell.ColorRed)
+				fileBrowser.tableContainer.SetPlaceholder(err.Error(), theme.Colors.Info.Error)
 				fileBrowser.tableContainer.SetData([]*data.FileBrowserEntry{})
 				fileBrowser.entriesPath = path
 				fileBrowser.updateFooter()

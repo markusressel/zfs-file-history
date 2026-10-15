@@ -47,7 +47,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) createSnapshotBrowserTableCells
 			cellAlign = tview.AlignCenter
 			if entry.IsLoading && snapshotBrowser.diffLoader != nil && snapshotBrowser.diffLoader.ShowLoadingSpinner() {
 				cellText = "⟳"
-				cellColor = tcell.ColorYellow
+				cellColor = theme.Colors.Info.Warning
 			} else if entry.IsLoading && entry.DiffState == diff_state.Unknown {
 				// empty until it is known (or the spinner shows up), so it does not flash "?"
 				cellText = ""

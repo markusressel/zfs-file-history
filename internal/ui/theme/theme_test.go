@@ -36,3 +36,16 @@ func TestSelectedStyle_TextIsReadable(t *testing.T) {
 	wr, wg, wb := tcell.ColorWhite.RGB()
 	assert.Equal(t, []int32{wr, wg, wb}, []int32{r, g, b})
 }
+
+// Regression: the colors of states are RGB values. The green of the terminal palette was drawn in its own shade in
+// tables, but as its RGB value (#008000, darker) in texts with style tags, so "ONLINE" had two greens.
+func TestStateColorsAreRGB(t *testing.T) {
+	for name, color := range map[string]tcell.Color{
+		"ok": Colors.Info.Ok, "warning": Colors.Info.Warning, "error": Colors.Info.Error,
+		"online": Colors.Pool.Online, "degraded": Colors.Pool.Degraded, "faulted": Colors.Pool.Faulted,
+		"added": Colors.FileBrowser.Table.State.Added, "deleted": Colors.FileBrowser.Table.State.Deleted,
+		"modified": Colors.FileBrowser.Table.State.Modified, "danger": Colors.Dialog.Danger,
+	} {
+		assert.True(t, color.IsRGB(), name)
+	}
+}

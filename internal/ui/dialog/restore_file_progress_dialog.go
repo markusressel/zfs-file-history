@@ -229,11 +229,11 @@ func (d *RestoreFileProgressDialog) handleError(err error) {
 		logging.Error("Error during restore: %s", err.Error())
 		d.application.QueueUpdateDraw(func() {
 			d.isRunning = false
-			d.descriptionTextView.SetText(err.Error()).SetTextColor(tcell.ColorRed)
+			d.descriptionTextView.SetText(err.Error()).SetTextColor(theme.Colors.Info.Error)
 			// the error is usually longer than the description, e.g. with the path of a file
 			d.sizeConstraints.Description = err.Error()
 			d.progress.SetTitle(theme.CreateTitleText("Failed!"))
-			d.progress.SetTitleColor(tcell.ColorRed)
+			d.progress.SetTitleColor(theme.Colors.Info.Error)
 			d.actionPages.ShowPage("finished")
 			d.application.SetFocus(d.closeTable)
 		})
@@ -247,7 +247,7 @@ func (d *RestoreFileProgressDialog) handleDone() {
 		finishedValue := d.progress.GetMaxValue()
 		d.progress.SetValue(finishedValue)
 		d.progress.SetTitle(theme.CreateTitleText("Done!"))
-		d.progress.SetTitleColor(tcell.ColorGreen)
+		d.progress.SetTitleColor(theme.Colors.Info.Ok)
 		d.actionPages.ShowPage("finished")
 		d.application.SetFocus(d.closeTable)
 	})

@@ -61,7 +61,7 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 			switch {
 			case entry.IsLoading && fileBrowser.diffLoader != nil && fileBrowser.diffLoader.ShowLoadingSpinner():
 				cellText = "⟳"
-				cellColor = tcell.ColorYellow
+				cellColor = theme.Colors.Info.Warning
 			case entry.IsLoading && entry.DiffState == diff_state.Unknown:
 				// empty until it is known (or the spinner shows up), so it does not flash "N/A"
 				cellText = ""
@@ -136,7 +136,7 @@ func determineTypeCellColor(entry *data.FileBrowserEntry) tcell.Color {
 	case data.Directory:
 		return theme.Colors.Layout.Table.Accent
 	case data.Link:
-		return tcell.ColorYellow
+		return theme.Colors.Info.Warning
 	case data.File:
 		fallthrough
 	default:
