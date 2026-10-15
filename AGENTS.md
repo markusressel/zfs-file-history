@@ -161,7 +161,9 @@ of the code.
     number; `zfs.FindObjects`, `f` in the dialog): it reads the inodes from `getdents64`, no `lstat` per file
     (millions of files per snapshot), newest snapshot first. The dialog also says how to enable `head_errlog`, but
     the application never runs it (one-way pool upgrade).
-  - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). Shown with
+  - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). The file history shows the
+    changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
+    `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with
     `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
     ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),

@@ -216,7 +216,7 @@ func (fileBrowser *FileBrowserComponent) setupTable() {
 		}
 		if key == tcell.KeyRune && event.Rune() == 'h' {
 			if entry := fileBrowser.HistoryEntry(); entry != nil {
-				fileBrowser.emit(RequestFileHistoryEvent{FileEntry: entry})
+				fileBrowser.requestHistory(entry)
 				return nil
 			}
 		}
@@ -486,14 +486,11 @@ func (fileBrowser *FileBrowserComponent) newActionDialog(selection *data.FileBro
 
 	// captured on the UI thread, asyncWork runs in the background
 	path := fileBrowser.path
-	currentSnapshot := fileBrowser.currentSnapshot
 	var createdSnapshotName string
 
 	// 1. Define the blocking work (runs in the background: no UI access)
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		switch action {
-		case dialog.FileDialogShowDiffActionId:
-			return fileBrowser.showDiff(selection, currentSnapshot)
 		case dialog.FileDialogCreateSnapshotDialogActionId:
 			name, err := createSnapshot(path)
 			createdSnapshotName = name
@@ -517,7 +514,7 @@ func (fileBrowser *FileBrowserComponent) newActionDialog(selection *data.FileBro
 
 		switch option.Id {
 		case dialog.FileDialogShowHistoryActionId:
-			fileBrowser.emit(RequestFileHistoryEvent{FileEntry: selection})
+			fileBrowser.requestHistory(selection)
 		case dialog.FileDialogCreateSnapshotDialogActionId:
 			fileBrowser.emit(SnapshotCreatedEvent{SnapshotName: createdSnapshotName})
 		// restores mount the progress dialog, so they must be started on the UI thread, not in asyncWork
@@ -959,45 +956,6 @@ func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBr
 
 	return nil
 }
-func (fileBrowser *FileBrowserComponent) showDiff(selection *data.FileBrowserEntry, snapshot *data.SnapshotBrowserEntry) error {
-	if selection == nil || snapshot == nil {
-		return fmt.Errorf("cannot show diff: selection or snapshot is nil")
-	}
-
-	realFilePath := selection.RealFile.Path
-	snapshotFilePath := snapshot.Snapshot.GetSnapshotPath(selection.RealFile.Path)
-
-	if configuration.CurrentConfig.Diff.Mode == configuration.DiffModeExternal {
-		externalConf := configuration.CurrentConfig.Diff.External
-		var editorConf *ExternalDiffViewerConfig
-		if externalConf == nil {
-			editorConf = determineExternalDiffViewer("")
-		} else {
-			editorConf = &ExternalDiffViewerConfig{
-				Path:        externalConf.Path,
-				Args:        externalConf.Args,
-				WrapInPager: externalConf.WrapInPager,
-			}
-		}
-
-		if editorConf != nil {
-			runExternalDiffEditor(fileBrowser.application, *editorConf, realFilePath, snapshotFilePath)
-			return nil
-		}
-	}
-
-	// INTERNAL DIFF FALLBACK
-	// Because showDiff was called from asyncWork, we must push this UI creation
-	// back onto the main event loop to avoid breaking tview.
-	fileBrowser.application.QueueUpdateDraw(func() {
-		d := dialog.NewFileDiffDialog(fileBrowser.application, selection, snapshot)
-		fileBrowser.showDialog(d, func() {
-			fileBrowser.Refresh(false)
-		})
-	})
-
-	return nil
-}
 
 // delete removes the real file of the given entry. It runs in the background (asyncWork of the dialogs),
 // so errors are returned to the dialog, which shows them on the UI thread.
@@ -1121,6 +1079,16 @@ func (fileBrowser *FileBrowserComponent) HistoryEntry() *data.FileBrowserEntry {
 	}
 }
 
+// requestHistory asks for the history of the entry, at the version of the snapshot the file browser compares with, so
+// it shows the changes the file browser marks. Must be called on the UI thread.
+func (fileBrowser *FileBrowserComponent) requestHistory(entry *data.FileBrowserEntry) {
+	event := RequestFileHistoryEvent{FileEntry: entry}
+	if fileBrowser.currentSnapshot != nil {
+		event.Snapshot = fileBrowser.currentSnapshot.Snapshot
+	}
+	fileBrowser.emit(event)
+}
+
 func (fileBrowser *FileBrowserComponent) currentFolderEntry() *data.FileBrowserEntry {
 	path := fileBrowser.path
 	entry := &data.FileBrowserEntry{Name: filepath.Base(path), Type: data.Directory}
@@ -1148,7 +1116,7 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 
 	history := shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History", Description: "Browse all versions of the selection in the snapshots"}
 	if entry := fileBrowser.HistoryEntry(); entry != nil {
-		history.Run = func() { fileBrowser.emit(RequestFileHistoryEvent{FileEntry: entry}) }
+		history.Run = func() { fileBrowser.requestHistory(entry) }
 	}
 
 	if selection := fileBrowser.GetSelection(); selection != nil {

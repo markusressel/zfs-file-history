@@ -3,6 +3,7 @@ package file_browser
 import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/zfs"
 
 	"github.com/rivo/tview"
 )
@@ -44,6 +45,8 @@ func (SelectedTableEntryChangedEvent) isFileBrowserEvent() {}
 
 type RequestFileHistoryEvent struct {
 	FileEntry *data.FileBrowserEntry
+	// Snapshot is the version selected first (nil: the newest)
+	Snapshot *zfs.Snapshot
 }
 
 func (RequestFileHistoryEvent) isFileBrowserEvent() {}

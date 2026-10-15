@@ -1,10 +1,11 @@
-package file_browser
+package dialog
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
+	"zfs-file-history/internal/configuration"
 	"zfs-file-history/internal/logging"
 
 	"github.com/rivo/tview"
@@ -91,7 +92,7 @@ func determineExternalDiffViewer(binaryPath string) (editorConfig *ExternalDiffV
 	if editorEnvValue == "" {
 		logging.Error("EDITOR environment variable not set and no external editor path configured. Falling back to internal diff.")
 	} else {
-		editorConfig = findEditorOption(binaryPath, EditorOptions)
+		editorConfig = findEditorOption(editorEnvValue, EditorOptions)
 		if editorConfig == nil {
 			logging.Error("EDITOR environment variable is set to '%s' but it is not a recognized editor. Falling back to internal diff.", editorEnvValue)
 		} else {
@@ -111,53 +112,54 @@ func findEditorOption(path string, options []ExternalDiffViewerConfig) *External
 	return nil
 }
 
+// externalDiffViewer returns the diff viewer configured (or the first one installed), or nil if the diff is shown
+// inside the application (configured, or no viewer found).
+func externalDiffViewer() *ExternalDiffViewerConfig {
+	if configuration.CurrentConfig.Diff.Mode != configuration.DiffModeExternal {
+		return nil
+	}
+	if conf := configuration.CurrentConfig.Diff.External; conf != nil {
+		return &ExternalDiffViewerConfig{Path: conf.Path, Args: conf.Args, WrapInPager: conf.WrapInPager}
+	}
+	return determineExternalDiffViewer("")
+}
+
+// externalDiffCommand returns the command that shows the changes from oldPath to newPath in the viewer.
+func externalDiffCommand(editorConf ExternalDiffViewerConfig, oldPath string, newPath string) *exec.Cmd {
+	args := append(slices.Clone(editorConf.Args), oldPath, newPath)
+	if editorConf.WrapInPager {
+		// Piped into "less -R", which waits for the user. The viewer and the paths are arguments of the shell, not
+		// part of its script: a quote in a file name would end the quoting and run the rest as a command.
+		return exec.Command("sh", append([]string{"-c", `"$@" | less -R`, "sh", editorConf.Path}, args...)...)
+	}
+	return exec.Command(editorConf.Path, args...)
+}
+
+// runExternalDiffEditor shows the changes from oldPath to newPath in the viewer, in the terminal of the application,
+// which is suspended until the viewer exits. It returns then. Must not be called on the UI thread: it waits for it.
 func runExternalDiffEditor(
 	application *tview.Application,
 	editorConf ExternalDiffViewerConfig,
-	snapshotFilePath string,
-	realFilePath string,
+	oldPath string,
+	newPath string,
 ) {
-	var args []string
-	args = append(args, editorConf.Args...)
-	args = append(args, snapshotFilePath)
-	args = append(args, realFilePath)
-
-	var cmd *exec.Cmd
-	if editorConf.WrapInPager {
-		// pipe the output into "less -R" to make it blocking
-		editorCommandArgsString := strings.Join(editorConf.Args, " ")
-		editorCommand := fmt.Sprintf("%s %s '%s' '%s' | less -R", editorConf.Path, editorCommandArgsString, snapshotFilePath, realFilePath)
-		cmd = exec.Command("sh", "-c", editorCommand)
-	} else {
-		cmd = exec.Command(editorConf.Path, args...)
-	}
-
+	cmd := externalDiffCommand(editorConf, oldPath, newPath)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// Create a channel to pause the background asyncWork goroutine
 	done := make(chan struct{})
-
-	// Queue the suspension directly on the main tview event thread
-	// This ensures the tview event loop is paused and not fighting for stdin
+	// suspended on the UI thread, so tview does not read stdin while the viewer runs
 	application.QueueUpdate(func() {
+		defer close(done)
 		suspended := application.Suspend(func() {
-			runErr := cmd.Run()
-			if runErr != nil {
-				logging.Error("Error running external diff editor: %v", runErr)
+			if err := cmd.Run(); err != nil {
+				logging.Error("Error running external diff editor: %v", err)
 			}
 		})
-
 		if !suspended {
 			logging.Error("Failed to suspend tview application for external diff editor")
 		}
-
-		// Signal the background thread that the editor has closed
-		close(done)
 	})
-
-	// Wait here until the user quits the external editor.
-	// Once unblocked, asyncWork finishes and naturally triggers onComplete!
 	<-done
 }

@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// The history comes first: it is what the menu is opened for most of the time, and it shows the changes too (there
+// is no "Show diff" anymore).
 func TestBuildFileDialogOptions_FileWithSnapshotAndDiff(t *testing.T) {
 	entry := &data.FileBrowserEntry{
 		Name:      "example.txt",
@@ -19,39 +21,13 @@ func TestBuildFileDialogOptions_FileWithSnapshotAndDiff(t *testing.T) {
 		},
 	}
 
-	options := buildFileDialogOptions(entry, true)
+	options := buildFileDialogOptions(entry)
 
 	assert.Equal(t,
 		[]DialogActionId{
-			FileDialogCreateSnapshotDialogActionId,
 			FileDialogShowHistoryActionId,
 			FileDialogRestoreFileActionId,
-			FileDialogShowDiffActionId,
-			FileDialogDeleteDialogActionId,
-			DialogCloseActionId,
-		},
-		optionIds(options),
-	)
-}
-
-func TestBuildFileDialogOptions_FileWithoutDiffBinary(t *testing.T) {
-	entry := &data.FileBrowserEntry{
-		Name:      "example.txt",
-		RealFile:  &data.RealFile{Name: "example.txt"},
-		Type:      data.File,
-		DiffState: diff_state.Modified,
-		SnapshotFiles: []*data.SnapshotFile{
-			{},
-		},
-	}
-
-	options := buildFileDialogOptions(entry, false)
-
-	assert.Equal(t,
-		[]DialogActionId{
 			FileDialogCreateSnapshotDialogActionId,
-			FileDialogShowHistoryActionId,
-			FileDialogRestoreFileActionId,
 			FileDialogDeleteDialogActionId,
 			DialogCloseActionId,
 		},
@@ -69,14 +45,14 @@ func TestBuildFileDialogOptions_DirectoryWithSnapshot(t *testing.T) {
 		},
 	}
 
-	options := buildFileDialogOptions(entry, true)
+	options := buildFileDialogOptions(entry)
 
 	assert.Equal(t,
 		[]DialogActionId{
-			FileDialogCreateSnapshotDialogActionId,
 			FileDialogShowHistoryActionId,
 			FileDialogRestoreRecursiveDialogActionId,
 			FileDialogRestoreFileActionId,
+			FileDialogCreateSnapshotDialogActionId,
 			FileDialogDeleteDialogActionId,
 			DialogCloseActionId,
 		},
@@ -92,18 +68,18 @@ func TestBuildFileDialogOptions_UnchangedDirectoryHasHistory(t *testing.T) {
 		DiffState: diff_state.Equal,
 	}
 
-	options := buildFileDialogOptions(entry, true)
+	options := buildFileDialogOptions(entry)
 
 	assert.Equal(t,
 		[]DialogActionId{
-			FileDialogCreateSnapshotDialogActionId,
 			FileDialogShowHistoryActionId,
+			FileDialogCreateSnapshotDialogActionId,
 			FileDialogDeleteDialogActionId,
 			DialogCloseActionId,
 		},
 		optionIds(options),
 	)
-	assert.Equal(t, "📂 Browse folder history", options[1].Name)
+	assert.Equal(t, "📂 Browse folder history", options[0].Name)
 }
 
 func TestBuildFileDialogOptions_OnlyRealFile(t *testing.T) {
@@ -114,7 +90,7 @@ func TestBuildFileDialogOptions_OnlyRealFile(t *testing.T) {
 		DiffState: diff_state.Unknown,
 	}
 
-	options := buildFileDialogOptions(entry, true)
+	options := buildFileDialogOptions(entry)
 
 	assert.Equal(t,
 		[]DialogActionId{
@@ -136,13 +112,13 @@ func TestBuildFileDialogOptions_DeletedFile_AlwaysHasCloseLast(t *testing.T) {
 		DiffState: diff_state.Deleted,
 	}
 
-	options := buildFileDialogOptions(entry, false)
+	options := buildFileDialogOptions(entry)
 
 	assert.Equal(t,
 		[]DialogActionId{
-			FileDialogCreateSnapshotDialogActionId,
 			FileDialogShowHistoryActionId,
 			FileDialogRestoreFileActionId,
+			FileDialogCreateSnapshotDialogActionId,
 			DialogCloseActionId,
 		},
 		optionIds(options),
