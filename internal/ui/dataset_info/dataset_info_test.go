@@ -422,15 +422,9 @@ func TestDatasetInfo_ClickOnPoolShowsIt(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, poolY, 0, "the pool is shown")
-	click := func(x, y int) {
-		screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-		screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
-		testutil.WaitForEvents(t, app, screen)
-	}
-
-	click(poolX-3, poolY)
+	testutil.Click(t, app, screen, poolX-3, poolY)
 	assert.Empty(t, shown, "the label is not the link")
-	click(poolX+2, poolY)
+	testutil.Click(t, app, screen, poolX+2, poolY)
 	select {
 	case pool := <-shown:
 		assert.Equal(t, "rpool", pool)

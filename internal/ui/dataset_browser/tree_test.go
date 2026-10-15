@@ -124,7 +124,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 
 	app, browser, screen := newBrowserApp(t)
 	pressKey := func(key tcell.Key, r rune) {
-		screen.InjectKey(key, r, tcell.ModNone)
+		testutil.Press(t, app, screen, key, r)
 	}
 	state := func() (visible []string, selected string, tree bool, shortcut string) {
 		testutil.OnUiThread(t, app, func() {
@@ -227,10 +227,10 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 
 	app, browser, screen := newBrowserApp(t)
 	pressKey := func(key tcell.Key) {
-		screen.InjectKey(key, 0, tcell.ModNone)
+		testutil.Press(t, app, screen, key, 0)
 	}
 	typeRune := func(r rune) {
-		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+		testutil.Press(t, app, screen, tcell.KeyRune, r)
 	}
 	state := func() (visible []string, selected string, footer string) {
 		testutil.OnUiThread(t, app, func() {
@@ -251,22 +251,6 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	selectedIs := func(name string) func([]string, string) bool {
 		return func(_ []string, selected string) bool { return selected == name }
 	}
-	screenContains := func(text string) bool {
-		var screenText strings.Builder
-		testutil.OnUiThread(t, app, func() {
-			app.ForceDraw()
-			cells, width, height := screen.GetContents()
-			for y := 0; y < height; y++ {
-				for x := 0; x < width; x++ {
-					if runes := cells[y*width+x].Runes; len(runes) > 0 {
-						screenText.WriteRune(runes[0])
-					}
-				}
-				screenText.WriteRune('\n')
-			}
-		})
-		return strings.Contains(screenText.String(), text)
-	}
 
 	testutil.OnUiThread(t, app, func() {
 		browser.SetPath("/rpool/var", false)
@@ -280,7 +264,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	waitFor("collapsed", func(visible []string, selected string) bool {
 		return assert.ObjectsAreEqual([]string{"rpool", "rpool/home", "rpool/var"}, visible) && selected == "rpool/var"
 	})
-	require.Eventually(t, func() bool { return screenContains("var ▸ +2") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, app, screen, "var ▸ +2", 2*time.Second)
 	_, _, collapsedFooter := state()
 	assert.Equal(t, footer, collapsedFooter)
 
@@ -294,11 +278,9 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 		var foreground tcell.Color
 		testutil.OnUiThread(t, app, func() {
 			app.ForceDraw()
-			cells, width, height := screen.GetContents()
-			for i := 0; i < width*height; i++ {
-				if runes := cells[i].Runes; len(runes) > 0 && runes[0] == '▸' {
-					foreground, _, _ = cells[i].Style.Decompose()
-				}
+			if x, y, found := testutil.FindInScreen(screen, "▸"); found {
+				_, style, _ := screen.Get(x, y)
+				foreground, _, _ = style.Decompose()
 			}
 		})
 		return foreground == theme.Colors.Layout.Table.TreeCollapsedIndicator
@@ -315,9 +297,9 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	assert.Equal(t, "rpool/home", selected)
 
 	// the collapsed state is kept when switching to the flat list and back, and on reload
-	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 't')
 	waitFor("flat list shows everything", func(visible []string, _ string) bool { return len(visible) == 5 })
-	screen.InjectKey(tcell.KeyRune, 't', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 't')
 	waitFor("tree is collapsed again", func(visible []string, _ string) bool { return len(visible) == 3 })
 	testutil.OnUiThread(t, app, func() { browser.Refresh(false) })
 	time.Sleep(100 * time.Millisecond)
@@ -332,7 +314,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	waitFor("first child selected", selectedIs("rpool/var/lib"))
 	typeRune('-')
 	waitFor("parent selected", selectedIs("rpool/var"))
-	assert.False(t, screenContains("▸"))
+	assert.NotContains(t, testutil.ScreenText(t, app, screen), "▸")
 
 	// ← and → on data rows are left to the table (horizontal scrolling), they don't change the tree
 	pressKey(tcell.KeyLeft)
@@ -355,5 +337,5 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	// on the header row, ← and → still change the sort column
 	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 	pressKey(tcell.KeyRight)
-	require.Eventually(t, func() bool { return screenContains("Used ↑") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, app, screen, "Used ↑", 2*time.Second)
 }

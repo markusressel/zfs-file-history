@@ -131,13 +131,11 @@ func newDestroyTest(t *testing.T) *destroyTest {
 }
 
 func (dt *destroyTest) press(key tcell.Key, r rune) {
-	dt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, key, r)
 }
 
 func (dt *destroyTest) hasDialog(name string) bool {
-	has := false
-	testutil.OnUiThread(dt.t, dt.app, func() { has = dt.browser.container.Pages.HasPage(name) })
-	return has
+	return testutil.HasPage(dt.t, dt.app, dt.browser.container.Pages, name)
 }
 
 func (dt *destroyTest) waitForDialog(name string) {
@@ -241,7 +239,7 @@ func TestSnapshotBrowser_RecursiveDestroyFromTheMenu(t *testing.T) {
 	assert.Equal(t, destroyCall{snapshots: []string{"pool/data@daily-1"}, recursive: true, dependantClones: true}, previews[0])
 	assert.Empty(t, destroys)
 	// everything that would be destroyed is listed, e.g. snapshots of child datasets
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "pool/data/child@daily-1") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "pool/data/child@daily-1", 2*time.Second)
 
 	dt.confirm()
 	dt.waitForDialog("SuccessDialog")
@@ -261,7 +259,7 @@ func TestSnapshotBrowser_FailedDryRunDestroysNothing(t *testing.T) {
 
 	dt.waitForDialog("ErrorDialog")
 	assert.False(t, dt.hasDialog("DestroySnapshotsDialog"))
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "dependent clones") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "dependent clones", 2*time.Second)
 	_, destroys := dt.calls()
 	assert.Empty(t, destroys)
 }
@@ -282,7 +280,7 @@ func TestSnapshotBrowser_DestroyMultiSelection(t *testing.T) {
 	require.Len(t, previews, 1)
 	assert.ElementsMatch(t, []string{"pool/data@daily-1", "pool/data@daily-2"}, previews[0].snapshots, "one dry run for all")
 	assert.Empty(t, destroys)
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "Will be destroyed (2)") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "Will be destroyed (2)", 2*time.Second)
 
 	dt.confirm()
 	dt.waitForDialog("SuccessDialog")

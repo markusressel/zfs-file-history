@@ -154,7 +154,7 @@ func TestSnapshotBrowser_ReleaseFromTheMenu(t *testing.T) {
 	// menu: 1 create, 2 clone, 3 hold, 4 release
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SnapshotActionDialog")
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "Release hold") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "Release hold", 2*time.Second)
 	dt.press(tcell.KeyRune, '4')
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SuccessDialog")

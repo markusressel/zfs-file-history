@@ -252,14 +252,10 @@ func TestSelectionDialog_RetryFunc(t *testing.T) {
 		defer mu.Unlock()
 		return len(runs)
 	}
-	isShown := func() bool {
-		shown := false
-		testutil.OnUiThread(t, app, func() { shown = pages.HasPage("Actions") })
-		return shown
-	}
+	isShown := func() bool { return testutil.HasPage(t, app, pages, "Actions") }
 
 	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
-	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
 	require.Eventually(t, func() bool { return runCount() == 1 && !isShown() }, 2*time.Second, 10*time.Millisecond)
 
 	// the dialog is shown again and runs the option again, then closes like the first time

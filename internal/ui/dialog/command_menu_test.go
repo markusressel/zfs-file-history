@@ -16,23 +16,12 @@ import (
 
 // startCommandMenuApp runs an app with a focused list on its pages, to show the command menu on.
 func startCommandMenuApp(t *testing.T) (*tview.Application, tcell.SimulationScreen, *tview.Pages, *tview.List) {
-	app, screen := testutil.NewApp()
-	screen.SetSize(80, 24)
+	app, screen := testutil.NewApp(testutil.WithSize(80, 24))
 	list := tview.NewList().AddItem("entry", "", 0, nil)
 	pages := tview.NewPages().AddPage("main", list, true, true)
 	app.SetRoot(pages, true).SetFocus(list)
 	testutil.RunApp(t, app)
 	return app, screen, pages, list
-}
-
-func menuScreenText(t *testing.T, app *tview.Application, screen tcell.SimulationScreen) string {
-	return testutil.ScreenText(t, app, screen)
-}
-
-func typeText(screen tcell.SimulationScreen, text string) {
-	for _, r := range text {
-		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
-	}
 }
 
 func TestCommandMenu_RunsTheChosenCommandOnceClosed(t *testing.T) {
@@ -52,14 +41,14 @@ func TestCommandMenu_RunsTheChosenCommandOnceClosed(t *testing.T) {
 	app.QueueUpdateDraw(func() {})
 
 	assert.Eventually(t, func() bool {
-		text := menuScreenText(t, app, screen)
+		text := testutil.ScreenText(t, app, screen)
 		return strings.Contains(text, "Restore file") && strings.Contains(text, "ctrl+r") && !strings.Contains(text, "Move")
 	}, 3*time.Second, 20*time.Millisecond, "the commands and their keys are listed")
 
-	typeText(screen, "diff")
-	assert.Eventually(t, func() bool { return !strings.Contains(menuScreenText(t, app, screen), "Restore file") },
+	testutil.Type(t, app, screen, "diff")
+	assert.Eventually(t, func() bool { return !strings.Contains(testutil.ScreenText(t, app, screen), "Restore file") },
 		3*time.Second, 20*time.Millisecond, "only matching commands are listed")
-	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
 
 	select {
 	case focused := <-ran:
@@ -79,10 +68,9 @@ func TestCommandMenu_EscClosesWithoutRunning(t *testing.T) {
 		ShowCommandMenu(app, pages, []CommandSection{{Title: "Section", Commands: commands}}, &CommandMenuMemory{})
 	})
 	app.QueueUpdateDraw(func() {})
-	assert.Eventually(t, func() bool { return strings.Contains(menuScreenText(t, app, screen), "Refresh") },
-		3*time.Second, 20*time.Millisecond)
+	testutil.WaitForText(t, app, screen, "Refresh", 3*time.Second)
 
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 	assert.Eventually(t, func() bool {
 		closed := false
 		testutil.OnUiThread(t, app, func() { closed = !pages.HasPage(string(CommandMenuPage)) && list.HasFocus() })
@@ -102,16 +90,8 @@ func TestCommandMenu_ClickKeepsTheFocusOnTheQuery(t *testing.T) {
 	}}})
 	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, menu, func() {}) })
 	app.QueueUpdateDraw(func() {})
-	var lines []string
-	require.Eventually(t, func() bool {
-		lines = strings.Split(menuScreenText(t, app, screen), "\n")
-		return slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "Show diff") })
-	}, 3*time.Second, 20*time.Millisecond)
-	clickY := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "Show diff") })
-	clickX := len([]rune(lines[clickY][:strings.Index(lines[clickY], "Show")]))
-
-	screen.InjectMouse(clickX, clickY, tcell.Button1, tcell.ModNone)
-	screen.InjectMouse(clickX, clickY, tcell.ButtonNone, tcell.ModNone)
+	testutil.WaitForText(t, app, screen, "Show diff", 3*time.Second)
+	testutil.ClickText(t, app, screen, "Show diff")
 	require.Eventually(t, func() bool {
 		selected := ""
 		testutil.OnUiThread(t, app, func() { selected = menu.list.GetCell(menu.list.GetSelection()).Text })
@@ -120,12 +100,11 @@ func TestCommandMenu_ClickKeepsTheFocusOnTheQuery(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { assert.True(t, menu.input.HasFocus(), "the query keeps the focus") })
 
 	// typing still filters
-	typeText(screen, "ref")
-	assert.Eventually(t, func() bool { return !strings.Contains(menuScreenText(t, app, screen), "Show diff") },
-		3*time.Second, 20*time.Millisecond)
+	testutil.Type(t, app, screen, "ref")
+	testutil.WaitForNoText(t, app, screen, "Show diff", 3*time.Second)
 
 	// Esc still closes
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 	assert.Eventually(t, func() bool {
 		closed := false
 		testutil.OnUiThread(t, app, func() { closed = !pages.HasPage(string(CommandMenuPage)) && list.HasFocus() })
@@ -178,7 +157,7 @@ func TestCommandMenu_ShowsSectionsAndDescriptions(t *testing.T) {
 	app.QueueUpdateDraw(func() {})
 
 	assert.Eventually(t, func() bool {
-		lines := strings.Split(menuScreenText(t, app, screen), "\n")
+		lines := strings.Split(testutil.ScreenText(t, app, screen), "\n")
 		has := func(parts ...string) bool {
 			for _, line := range lines {
 				found := true
@@ -351,8 +330,8 @@ func TestCommandMenu_RemembersTheSelection(t *testing.T) {
 
 	testutil.OnUiThread(t, app, func() { ShowCommandMenu(app, pages, sections(), memory) })
 	waitFor(string(CommandMenuPage))
-	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
-	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyDown, 0)
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
 	waitFor("main")
 	require.Eventually(t, func() bool {
 		var on bool

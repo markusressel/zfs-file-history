@@ -97,8 +97,8 @@ func TestSessionIsRestoredOnTheNextStart(t *testing.T) {
 	stop := testutil.RunApp(t, app)
 
 	testutil.OnUiThread(t, app, func() { mainPage.fileBrowser.SetPath(folder, false) })
-	screen.InjectKey(tcell.KeyRune, '2', tcell.ModNone)
-	screen.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, '2')
+	testutil.Press(t, app, screen, tcell.KeyTab, 0)
 	assert.Eventually(t, func() bool {
 		var focused bool
 		testutil.OnUiThread(t, app, func() { focused = datasetPage.datasetInfo.HasFocus() })

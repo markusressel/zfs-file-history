@@ -2,11 +2,11 @@ package ui
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestPageTabs_Click(t *testing.T) {
@@ -14,9 +14,7 @@ func TestPageTabs_Click(t *testing.T) {
 	tabs := newPageTabs([]string{"Files", "Datasets", "Pools"}, 1, func(index int) { selected = append(selected, index) })
 	enabled := true
 	tabs.enabled = func() bool { return enabled }
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 1)
+	screen := testutil.NewScreen(t, 40, 1)
 	tabs.SetRect(0, 0, tabs.width(), 1)
 	tabs.Draw(screen)
 	// " 1  2 DATASETS  3 "

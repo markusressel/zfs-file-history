@@ -3,13 +3,13 @@ package dataset_info
 import (
 	"strings"
 	"testing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // testPool is a pool of 100 GiB used: the root's own 10, "a" (own 5, children 20: "a/x" 15 and "a/y" 5) and "b" 65.
@@ -78,9 +78,7 @@ func barCells(t *testing.T, bar string) []string {
 		colors.SpaceData.Hex(): "data", colors.SpaceSnapshots.Hex(): "snapshots", colors.SpaceChildren.Hex(): "children",
 		colors.SpaceOthers.Hex(): "others", colors.BarEmpty.Hex(): "free",
 	}
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(spaceBarWidth, 1)
+	screen := testutil.NewScreen(t, spaceBarWidth, 1)
 	bar, _, _ = strings.Cut(bar, " ")
 	tview.Print(screen, bar, 0, 0, spaceBarWidth, tview.AlignLeft, tcell.ColorWhite)
 	var cells []string

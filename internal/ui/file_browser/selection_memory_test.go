@@ -63,7 +63,7 @@ func TestFileBrowser_RemembersSelectionWhenEnteringADirectoryAgain(t *testing.T)
 		return last
 	}
 	pressKey := func(key tcell.Key) {
-		screen.InjectKey(key, 0, tcell.ModNone)
+		testutil.Press(t, app, screen, key, 0)
 	}
 
 	testutil.OnUiThread(t, app, func() { fileBrowser.SetPath(child, true) })
@@ -123,8 +123,8 @@ func TestFileBrowser_RemembersSelectionBetweenRuns(t *testing.T) {
 
 	app, fileBrowser, screen := open()
 	require.Eventually(t, func() bool { return selected(app, fileBrowser) == "a" }, 5*time.Second, 20*time.Millisecond)
-	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
-	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyDown, 0)
+	testutil.Press(t, app, screen, tcell.KeyDown, 0)
 	require.Eventually(t, func() bool { return selected(app, fileBrowser) == "c" }, 5*time.Second, 20*time.Millisecond)
 	app.Stop()
 	require.NoError(t, state.Current.Flush())

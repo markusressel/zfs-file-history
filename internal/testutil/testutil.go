@@ -3,7 +3,6 @@ package testutil
 
 import (
 	"io/fs"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -149,27 +148,6 @@ func WaitForEvents(t testing.TB, app *tview.Application, screen tcell.Simulation
 	case <-time.After(uiTimeout):
 		t.Fatal("timed out waiting for the app to handle the events (deadlock?)")
 	}
-}
-
-// ScreenText draws the running app and returns the text on its screen, a line per row (a rune per cell, wide
-// characters once). It draws first: a change made on the UI thread (e.g. with OnUiThread) is only shown once
-// something draws, and a test must not depend on something else doing so in time (see TestScreenIsDrawnBeforeRead).
-func ScreenText(t testing.TB, app *tview.Application, screen tcell.SimulationScreen) string {
-	t.Helper()
-	var text strings.Builder
-	OnUiThread(t, app, func() {
-		app.ForceDraw()
-		cells, width, height := screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
 }
 
 // IsOnUiThread returns whether it is called on the UI thread of the running app: an update queued from here does

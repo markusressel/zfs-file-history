@@ -84,8 +84,7 @@ func setupAlertTestWith(t *testing.T, statuses []*zfs.PoolStatus, listDataErrors
 		loadPoolStatuses, activeRefreshInterval, idleRefreshInterval, loadDataErrors = originalLoad, originalActive, originalIdle, originalDataErrors
 	})
 
-	app, screen := testutil.NewApp()
-	screen.SetSize(80, 10)
+	app, _ := testutil.NewApp(testutil.WithSize(80, 10))
 
 	var mu sync.Mutex
 	var heights []int

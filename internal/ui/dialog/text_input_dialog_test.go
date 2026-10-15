@@ -41,13 +41,11 @@ func newTextInputDialogTest(t *testing.T, initialText string) *textInputDialogTe
 }
 
 func (dt *textInputDialogTest) press(key tcell.Key, r rune) {
-	dt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, key, r)
 }
 
 func (dt *textInputDialogTest) typeText(text string) {
-	for _, r := range text {
-		dt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(dt.t, dt.app, dt.screen, text)
 }
 
 func (dt *textInputDialogTest) text() (text string) {
@@ -55,9 +53,8 @@ func (dt *textInputDialogTest) text() (text string) {
 	return text
 }
 
-func (dt *textInputDialogTest) isShown() (shown bool) {
-	testutil.OnUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage("TextInputTest") })
-	return shown
+func (dt *textInputDialogTest) isShown() bool {
+	return testutil.HasPage(dt.t, dt.app, dt.pages, "TextInputTest")
 }
 
 func (dt *textInputDialogTest) getSubmitted() []string {

@@ -6,7 +6,6 @@ import (
 	"time"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
@@ -28,12 +27,7 @@ func TestCreateModal_Clamping(t *testing.T) {
 		StaticHeight:      10,
 	})
 
-	screen := tcell.NewSimulationScreen("UTF-8")
-	err := screen.Init()
-	assert.NoError(t, err)
-	defer screen.Fini()
-
-	screen.SetSize(80, 24)
+	screen := testutil.NewScreen(t, 80, 24)
 
 	// Set rect simulating it's mounted on an offset sub-view at x=60, width=20
 	dialog.SetRect(60, 5, 20, 10)
@@ -76,11 +70,7 @@ func TestShowDialogOnPages(t *testing.T) {
 	d.Close()
 
 	// closing removes the dialog on the UI thread and calls onClosed
-	assert.Eventually(t, func() bool {
-		removed := false
-		testutil.OnUiThread(t, app, func() { removed = !pages.HasPage("test-dialog") })
-		return removed
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoPage(t, app, pages, "test-dialog", 2*time.Second)
 	assert.Equal(t, callsAfterOpen+1, onClosedCalls.Load())
 	testutil.OnUiThread(t, app, func() {
 		assert.False(t, d.GetLayout().HasFocus())
@@ -110,18 +100,10 @@ func TestShowDialogOnPages_DialogShownFromDialog_RestoresOriginalFocus(t *testin
 	})
 
 	action.Close()
-	assert.Eventually(t, func() bool {
-		removed := false
-		testutil.OnUiThread(t, app, func() { removed = !pages.HasPage("action-dialog") })
-		return removed
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoPage(t, app, pages, "action-dialog", 2*time.Second)
 
 	result.Close()
-	assert.Eventually(t, func() bool {
-		removed := false
-		testutil.OnUiThread(t, app, func() { removed = !pages.HasPage("result-dialog") })
-		return removed
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoPage(t, app, pages, "result-dialog", 2*time.Second)
 
 	testutil.OnUiThread(t, app, func() {
 		assert.Same(t, second, app.GetFocus())
@@ -151,11 +133,7 @@ func TestShowDialogOnPages_DialogShownFromDialog_ReturnsFocusToTheOther(t *testi
 	})
 
 	second.Close()
-	assert.Eventually(t, func() bool {
-		removed := false
-		testutil.OnUiThread(t, app, func() { removed = !pages.HasPage("second-dialog") })
-		return removed
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoPage(t, app, pages, "second-dialog", 2*time.Second)
 
 	testutil.OnUiThread(t, app, func() {
 		assert.Same(t, inFirst, app.GetFocus())

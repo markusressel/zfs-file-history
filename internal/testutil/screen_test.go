@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Tests that read the screen of a running app on the UI thread draw it first (or use ScreenText): a change made on
-// the UI thread is only shown once something draws. Such a test passed only while a background load happened to
-// redraw the screen in time, and failed on a slower machine (e.g. in CI).
+// Tests that read the screen of a running app on the UI thread draw it first (or use ScreenText or FindText): a change
+// made on the UI thread is only shown once something draws. Such a test passed only while a background load happened
+// to redraw the screen in time, and failed on a slower machine (e.g. in CI).
 func TestScreenIsDrawnBeforeRead(t *testing.T) {
 	checked := 0
 	inspectTests(t, func(files *token.FileSet, file *ast.File) {
@@ -33,7 +33,7 @@ func TestScreenIsDrawnBeforeRead(t *testing.T) {
 			ast.Inspect(body, func(node ast.Node) bool {
 				if inner, ok := node.(*ast.CallExpr); ok {
 					switch calledName(inner) {
-					case "GetContents":
+					case "ScreenLines", "FindInScreen", "GetContents":
 						reads = true
 					case "ForceDraw", "Draw":
 						draws = true
@@ -50,6 +50,55 @@ func TestScreenIsDrawnBeforeRead(t *testing.T) {
 		})
 	})
 	assert.Positive(t, checked, "the check found the screen readers")
+}
+
+// Tests read the text of the screen with the helpers of testutil (ScreenText, ScreenLines, FindText, ...) and create
+// screens with NewApp or NewScreen: tests that did it themselves skipped the cells nothing was drawn in (so the
+// columns did not line up), read it without showing it first, or set the size before initializing the screen, which
+// resets it. A cell is read with screen.Get.
+func TestScreenIsReadWithTestutil(t *testing.T) {
+	inspectTests(t, func(files *token.FileSet, file *ast.File) {
+		if strings.Contains(files.Position(file.Pos()).Filename, "/internal/testutil/") {
+			return
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch calledName(call) {
+			case "GetContents":
+				assert.Fail(t, "reads the screen itself", "%s: use testutil.ScreenLines (or screen.Get for a cell)",
+					files.Position(call.Pos()))
+			case "NewSimulationScreen":
+				assert.Fail(t, "creates a screen itself", "%s: use testutil.NewApp or testutil.NewScreen",
+					files.Position(call.Pos()))
+			}
+			return true
+		})
+	})
+}
+
+// Tests click and drag with testutil.Click and Drag, which wait until the app handled the events: a test that checked
+// the result right after injecting them read it before they were handled on a slow machine. Moving the mouse (hover)
+// and the wheel are injected directly.
+func TestClicksUseTestutil(t *testing.T) {
+	inspectTests(t, func(files *token.FileSet, file *ast.File) {
+		if strings.Contains(files.Position(file.Pos()).Filename, "/internal/testutil/") {
+			return
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || calledName(call) != "InjectMouse" || len(call.Args) < 3 {
+				return true
+			}
+			if button, ok := call.Args[2].(*ast.SelectorExpr); ok && button.Sel.Name == "Button1" {
+				assert.Fail(t, "clicks without testutil", "%s: use testutil.Click (or ClickText, Drag)",
+					files.Position(call.Pos()))
+			}
+			return true
+		})
+	})
 }
 
 // Tests run their apps with RunApp, which waits until the event loop returned when the test ends: an app stopped with

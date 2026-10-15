@@ -5,9 +5,7 @@ import (
 	"testing"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // drawTextView draws a bordered text view of 20x7 (5 lines inside) with the lines, scrolled to row, and returns the
@@ -22,9 +20,7 @@ func drawTextView(t *testing.T, lines int, row int) string {
 	view.SetText(strings.Join(text, "\n"))
 	view.ScrollTo(row, 0)
 
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(20, 7)
+	screen := testutil.NewScreen(t, 20, 7)
 	view.SetRect(0, 0, 20, 7)
 	view.Draw(screen)
 
@@ -49,9 +45,7 @@ func TestTextView_BarTakesAColumn(t *testing.T) {
 	view := NewTextView(nil)
 	view.SetBorder(true)
 	view.SetBorderPadding(0, 0, 1, 1)
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(12, 4)
+	screen := testutil.NewScreen(t, 12, 4)
 	view.SetRect(0, 0, 12, 4)
 	draw := func(text string) (innerWidth int) {
 		view.SetText(text)

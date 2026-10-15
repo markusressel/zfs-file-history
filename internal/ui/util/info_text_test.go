@@ -10,7 +10,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestInfoText(t *testing.T) {
@@ -61,9 +60,7 @@ func TestInfoStackedBar(t *testing.T) {
 		background int32
 	}
 	cells := func(bar string) []cell {
-		screen := tcell.NewSimulationScreen("UTF-8")
-		require.NoError(t, screen.Init())
-		screen.SetSize(20, 1)
+		screen := testutil.NewScreen(t, 20, 1)
 		tview.Print(screen, bar, 0, 0, 20, tview.AlignLeft, tcell.ColorWhite)
 		var result []cell
 		for x := range tview.TaggedStringWidth(bar) {

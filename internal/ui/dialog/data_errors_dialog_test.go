@@ -145,8 +145,7 @@ func TestDataErrorsDialog_Setup(t *testing.T) {
 }
 
 func TestDataErrorsDialog_ShowsFile(t *testing.T) {
-	app, screen := testutil.NewApp()
-	screen.SetSize(140, 40)
+	app, _ := testutil.NewApp(testutil.WithSize(140, 40))
 	pages := tview.NewPages().AddPage("background", tview.NewBox(), true, true)
 	testutil.StartApp(t, app, pages)
 
@@ -177,11 +176,7 @@ func TestDataErrorsDialog_ShowsFile(t *testing.T) {
 		return len(shown) == 1
 	}, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"/home/b"}, shown)
-	require.Eventually(t, func() bool {
-		closed := false
-		testutil.OnUiThread(t, app, func() { closed = !pages.HasPage(string(DataErrorsDialogPage)) })
-		return closed
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForNoPage(t, app, pages, string(DataErrorsDialogPage), 2*time.Second)
 }
 
 func TestFileHistoryOverlay_MarksDamagedVersions(t *testing.T) {

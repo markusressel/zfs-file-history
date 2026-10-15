@@ -2,11 +2,11 @@ package clickable
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -86,9 +86,7 @@ func TestRegions_Hover(t *testing.T) {
 }
 
 func TestRegions_DrawHover(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(20, 2)
+	screen := testutil.NewScreen(t, 20, 2)
 	draw := func(regions *Regions) {
 		for x := 0; x < 20; x++ {
 			screen.SetContent(x, 1, 'a'+rune(x), nil, tcell.StyleDefault.Background(background))

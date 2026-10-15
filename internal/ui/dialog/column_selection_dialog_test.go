@@ -153,8 +153,7 @@ func TestColumnSelectionDialog_ShortcutsFit(t *testing.T) {
 
 // Enter moves the selected column to the other side, on both sides; ←/→, ⭾ and shift+⭾ switch the side
 func TestColumnSelectionDialog_Keys(t *testing.T) {
-	app, screen := testutil.NewApp()
-	screen.SetSize(100, 30)
+	app, screen := testutil.NewApp(testutil.WithSize(100, 30))
 	pages := tview.NewPages().AddPage("main", tview.NewBox(), true, true)
 	testutil.StartApp(t, app, pages)
 
@@ -168,10 +167,7 @@ func TestColumnSelectionDialog_Keys(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { active, focusActive = slices.Clone(d.activeColumns), d.focusActive })
 		return active, focusActive
 	}
-	press := func(key tcell.Key) {
-		screen.InjectKey(key, 0, tcell.ModNone)
-		testutil.OnUiThread(t, app, func() {})
-	}
+	press := func(key tcell.Key) { testutil.Press(t, app, screen, key, 0) }
 
 	// the first active column moves to the available ones
 	press(tcell.KeyEnter)

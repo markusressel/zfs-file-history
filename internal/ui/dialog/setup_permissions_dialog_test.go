@@ -107,7 +107,7 @@ func (dt *setupDialogTest) waitForClosed(name string) {
 
 // key sends a key to the dialog.
 func (dt *setupDialogTest) key(key tcell.Key, r rune) {
-	dt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, key, r)
 }
 
 func TestSetupPermissionsDialog_AllowChecked(t *testing.T) {

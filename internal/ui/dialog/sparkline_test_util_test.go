@@ -1,7 +1,6 @@
 package dialog
 
 import (
-	"strings"
 	"testing"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
@@ -16,27 +15,17 @@ func sparklineRow(t *testing.T, app *tview.Application, screen tcell.SimulationS
 	row = -1
 	testutil.OnUiThread(t, app, func() {
 		app.ForceDraw()
-		cells, width, height := screen.GetContents()
-		for y := 0; y < height && row < 0; y++ {
-			var line strings.Builder
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					line.WriteRune(runes[0])
-				}
-			}
-			if !strings.Contains(line.String(), label+" ") {
-				continue
-			}
-			for x := 0; x < width; x++ {
-				cell := cells[y*width+x]
-				_, background, _ := cell.Style.Decompose()
-				if len(cell.Runes) > 0 && cell.Runes[0] >= 0x2800 && cell.Runes[0] <= 0x28ff &&
-					background == theme.Colors.Sparkline.SelectedBackground {
-					row, highlighted = y, true
-				}
-			}
-			if !highlighted {
-				row = y
+		_, y, found := testutil.FindInScreen(screen, label+" ")
+		if !found {
+			return
+		}
+		row = y
+		width, _ := screen.Size()
+		for x := range width {
+			text, style, _ := screen.Get(x, y)
+			_, background, _ := style.Decompose()
+			if r := []rune(text + " ")[0]; r >= 0x2800 && r <= 0x28ff && background == theme.Colors.Sparkline.SelectedBackground {
+				highlighted = true
 			}
 		}
 	})

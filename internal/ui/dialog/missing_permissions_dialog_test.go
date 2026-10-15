@@ -3,7 +3,6 @@ package dialog
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -144,14 +143,12 @@ func (dt *permissionsDialogTest) recordUiThread() {
 }
 
 func (dt *permissionsDialogTest) choose(option rune) {
-	dt.screen.InjectKey(tcell.KeyRune, option, tcell.ModNone)
-	dt.screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(dt.t, dt.app, dt.screen, tcell.KeyRune, option)
+	testutil.Press(dt.t, dt.app, dt.screen, tcell.KeyEnter, 0)
 }
 
 func (dt *permissionsDialogTest) hasPage(name string) bool {
-	shown := false
-	testutil.OnUiThread(dt.t, dt.app, func() { shown = dt.pages.HasPage(name) })
-	return shown
+	return testutil.HasPage(dt.t, dt.app, dt.pages, name)
 }
 
 // waitForDialog waits until the dialog with the given name replaced the permissions dialog.
@@ -162,7 +159,7 @@ func (dt *permissionsDialogTest) waitForDialog(name string) {
 }
 
 func (dt *permissionsDialogTest) waitForText(text string) {
-	require.Eventually(dt.t, func() bool { return strings.Contains(dt.screenText(), text) }, 3*time.Second, 10*time.Millisecond, "text %q", text)
+	testutil.WaitForText(dt.t, dt.app, dt.screen, text, 3*time.Second)
 }
 
 func (dt *permissionsDialogTest) counts() (verified int, retried int) {

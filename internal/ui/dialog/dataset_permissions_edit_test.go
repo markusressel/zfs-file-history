@@ -167,13 +167,11 @@ func newPermissionsEditTest(t *testing.T, permissions *zfs.DatasetPermissions) *
 }
 
 func (et *permissionsEditTest) press(key tcell.Key, r rune) {
-	et.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(et.t, et.app, et.screen, key, r)
 }
 
 func (et *permissionsEditTest) hasPage(name string) bool {
-	shown := false
-	testutil.OnUiThread(et.t, et.app, func() { shown = et.pages.HasPage(name) })
-	return shown
+	return testutil.HasPage(et.t, et.app, et.pages, name)
 }
 
 func (et *permissionsEditTest) waitFor(message string, condition func() bool) {
@@ -181,20 +179,7 @@ func (et *permissionsEditTest) waitFor(message string, condition func() bool) {
 }
 
 func (et *permissionsEditTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(et.t, et.app, func() {
-		et.app.ForceDraw()
-		cells, width, height := et.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(et.t, et.app, et.screen)
 }
 
 func (et *permissionsEditTest) summaryText() string {

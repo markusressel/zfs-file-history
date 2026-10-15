@@ -36,9 +36,7 @@ func TestLayoutEntries(t *testing.T) {
 
 // newTestBar draws a bar of 40 columns with the entries, recording the pressed keys.
 func newTestBar(t *testing.T, entries []ShortcutEntry) (*shortcutBar, tcell.SimulationScreen, *[]*tcell.EventKey) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(40, 2)
+	screen := testutil.NewScreen(t, 40, 2)
 	bar := newShortcutBar(testutil.App())
 	var pressed []*tcell.EventKey
 	bar.pressKey = func(event *tcell.EventKey) { pressed = append(pressed, event) }

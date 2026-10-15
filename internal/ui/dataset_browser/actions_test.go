@@ -99,13 +99,11 @@ func (at *actionTest) selectDataset(name string) {
 }
 
 func (at *actionTest) press(key tcell.Key, r rune) {
-	at.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(at.t, at.app, at.screen, key, r)
 }
 
 func (at *actionTest) typeText(text string) {
-	for _, r := range text {
-		at.press(tcell.KeyRune, r)
-	}
+	testutil.Type(at.t, at.app, at.screen, text)
 }
 
 // screenText returns the text on the screen, a line per row.
@@ -114,9 +112,7 @@ func (at *actionTest) screenText() string {
 }
 
 func (at *actionTest) hasDialog(name string) bool {
-	shown := false
-	testutil.OnUiThread(at.t, at.app, func() { shown = at.browser.layout.HasPage(name) })
-	return shown
+	return testutil.HasPage(at.t, at.app, at.browser.layout, name)
 }
 
 func (at *actionTest) waitForDialog(name string) {

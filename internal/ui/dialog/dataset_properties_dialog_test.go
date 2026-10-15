@@ -118,13 +118,11 @@ func (pt *propertiesTest) apply(name string, value string, source string) {
 }
 
 func (pt *propertiesTest) press(key tcell.Key, r rune) {
-	pt.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(pt.t, pt.app, pt.screen, key, r)
 }
 
 func (pt *propertiesTest) hasPage(name string) bool {
-	shown := false
-	testutil.OnUiThread(pt.t, pt.app, func() { shown = pt.pages.HasPage(name) })
-	return shown
+	return testutil.HasPage(pt.t, pt.app, pt.pages, name)
 }
 
 func (pt *propertiesTest) waitFor(message string, condition func() bool) {
@@ -216,9 +214,7 @@ func TestDatasetPropertiesDialog_Edit(t *testing.T) {
 	pt.press(tcell.KeyEnter, 0)
 	pt.waitFor("edit dialog", func() bool { return pt.hasPage("EditPropertyDialog") })
 	pt.press(tcell.KeyCtrlU, 0)
-	for _, r := range "noauto" {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, "noauto")
 	pt.press(tcell.KeyEnter, 0)
 
 	pt.waitFor("set and reloaded", func() bool { return pt.value("canmount") == "noauto (local)" })
@@ -263,9 +259,7 @@ func TestDatasetPropertiesDialog_EditWithSudo(t *testing.T) {
 	pt.press(tcell.KeyEnter, 0)
 	pt.waitFor("edit dialog", func() bool { return pt.hasPage("EditPropertyDialog") })
 	pt.press(tcell.KeyCtrlU, 0)
-	for _, r := range "lz4" {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, "lz4")
 	pt.press(tcell.KeyEnter, 0)
 
 	pt.waitFor("set with sudo", func() bool { return pt.value("compression") == "lz4 (local)" })
@@ -282,9 +276,7 @@ func TestDatasetPropertiesDialog_EditFails(t *testing.T) {
 	pt.press(tcell.KeyEnter, 0)
 	pt.waitFor("edit dialog", func() bool { return pt.hasPage("EditPropertyDialog") })
 	pt.press(tcell.KeyCtrlU, 0)
-	for _, r := range "fast" {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, "fast")
 	pt.press(tcell.KeyEnter, 0)
 
 	pt.waitFor("error", func() bool { return pt.hasPage("ErrorDialog") })
@@ -337,26 +329,11 @@ func TestDatasetPropertiesDialog_EscClosesUnlessFiltering(t *testing.T) {
 }
 
 func (pt *propertiesTest) typeText(text string) {
-	for _, r := range text {
-		pt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(pt.t, pt.app, pt.screen, text)
 }
 
 func (pt *propertiesTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(pt.t, pt.app, func() {
-		pt.app.ForceDraw()
-		cells, width, height := pt.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(pt.t, pt.app, pt.screen)
 }
 
 func (pt *propertiesTest) selectedName() string {

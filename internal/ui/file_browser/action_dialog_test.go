@@ -47,10 +47,10 @@ func newActionDialogTest(t *testing.T) *actionDialogTest {
 
 // selectMenuOption opens the action menu of the selected file and selects the option with the given number.
 func (ft *actionDialogTest) selectMenuOption(number rune) {
-	ft.screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(ft.t, ft.app, ft.screen, tcell.KeyEnter, 0)
 	require.Eventually(ft.t, func() bool { return ft.hasDialog("ActionDialog") }, 2*time.Second, 20*time.Millisecond)
-	ft.screen.InjectKey(tcell.KeyRune, number, tcell.ModNone)
-	ft.screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(ft.t, ft.app, ft.screen, tcell.KeyRune, number)
+	testutil.Press(ft.t, ft.app, ft.screen, tcell.KeyEnter, 0)
 }
 
 func (ft *actionDialogTest) hasDialog(name string) bool {

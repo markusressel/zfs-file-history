@@ -2,6 +2,7 @@ package util
 
 import (
 	"testing"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/theme"
 
 	"github.com/gdamore/tcell/v2"
@@ -39,9 +40,7 @@ func TestSparkline(t *testing.T) {
 }
 
 func TestDrawSparkline(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(20, 1)
+	screen := testutil.NewScreen(t, 20, 1)
 
 	// five values: three cells, the third value (index 2) is in the second cell
 	drawn := DrawSparkline(screen, 2, 0, 10, []int64{1, 2, 3, 4, -1}, 2)
@@ -81,9 +80,7 @@ func TestGradientColor(t *testing.T) {
 
 // The cells are colored by the higher of their values: the lowest with the first stop, the highest with the last.
 func TestDrawSparkline_Gradient(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(10, 1)
+	screen := testutil.NewScreen(t, 10, 1)
 	stops := theme.Colors.Magnitude
 	require.GreaterOrEqual(t, len(stops), 2)
 

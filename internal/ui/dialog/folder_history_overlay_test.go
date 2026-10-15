@@ -84,24 +84,11 @@ func (ft *folderHistoryTest) waitFor(message string, condition func() bool) {
 }
 
 func (ft *folderHistoryTest) press(key tcell.Key, r rune) {
-	ft.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(ft.t, ft.app, ft.screen, key, r)
 }
 
 func (ft *folderHistoryTest) screenText() string {
-	var text strings.Builder
-	testutil.OnUiThread(ft.t, ft.app, func() {
-		ft.app.ForceDraw()
-		cells, width, height := ft.screen.GetContents()
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				if runes := cells[y*width+x].Runes; len(runes) > 0 {
-					text.WriteRune(runes[0])
-				}
-			}
-			text.WriteRune('\n')
-		}
-	})
-	return text.String()
+	return testutil.ScreenText(ft.t, ft.app, ft.screen)
 }
 
 // changes returns the displayed changes as "<kind> <name>".
@@ -127,9 +114,7 @@ func (ft *folderHistoryTest) timeline() []string {
 }
 
 func (ft *folderHistoryTest) hasPage(name string) bool {
-	shown := false
-	testutil.OnUiThread(ft.t, ft.app, func() { shown = ft.overlay.pages.HasPage(name) })
-	return shown
+	return testutil.HasPage(ft.t, ft.app, ft.overlay.pages, name)
 }
 
 func (ft *folderHistoryTest) selectChange(name string) {
@@ -252,11 +237,7 @@ func TestFolderHistoryOverlay_RestoreFolderAndEsc(t *testing.T) {
 	testutil.OnUiThread(t, ft.app, func() { assert.True(t, ft.pages.HasPage(string(FolderHistoryOverlayPage))) })
 
 	ft.press(tcell.KeyEscape, 0)
-	ft.waitFor("overlay closed", func() bool {
-		shown := true
-		testutil.OnUiThread(t, ft.app, func() { shown = ft.pages.HasPage(string(FolderHistoryOverlayPage)) })
-		return !shown
-	})
+	ft.waitFor("overlay closed", func() bool { return !testutil.HasPage(t, ft.app, ft.pages, string(FolderHistoryOverlayPage)) })
 }
 
 func TestFolderHistoryOverlay_HistoryOfEntry(t *testing.T) {
@@ -342,11 +323,7 @@ func TestFolderHistoryOverlay_DragBoundary(t *testing.T) {
 	})
 	ft.waitFor("drawn", func() bool { return boundary > 0 })
 
-	ft.screen.InjectMouse(boundary, 20, tcell.Button1, tcell.ModNone)
-	time.Sleep(50 * time.Millisecond)
-	ft.screen.InjectMouse(boundary+15, 20, tcell.Button1, tcell.ModNone)
-	time.Sleep(50 * time.Millisecond)
-	ft.screen.InjectMouse(boundary+15, 20, tcell.ButtonNone, tcell.ModNone)
+	testutil.Drag(t, ft.app, ft.screen, boundary, 20, boundary+15, 20)
 
 	ft.waitFor("timeline wider", func() bool {
 		width := 0

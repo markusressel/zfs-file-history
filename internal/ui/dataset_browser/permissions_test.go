@@ -186,20 +186,12 @@ func TestDatasetBrowser_PermissionsDialog(t *testing.T) {
 	})
 	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") != "" }, 2*time.Second, 10*time.Millisecond)
 
-	screen.InjectKey(tcell.KeyRune, 'p', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'p')
 
-	require.Eventually(t, func() bool {
-		shown := false
-		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage("DatasetPermissionsDialog") })
-		return shown
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForPage(t, app, browser.layout, "DatasetPermissionsDialog", 2*time.Second)
 
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
-	require.Eventually(t, func() bool {
-		shown := true
-		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage("DatasetPermissionsDialog") })
-		return !shown
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
+	testutil.WaitForNoPage(t, app, browser.layout, "DatasetPermissionsDialog", 2*time.Second)
 }
 
 func TestDatasetBrowser_PermissionsDialogError(t *testing.T) {
@@ -214,13 +206,9 @@ func TestDatasetBrowser_PermissionsDialogError(t *testing.T) {
 	})
 	require.Eventually(t, func() bool { return permissionCell(t, browser, "rpool/a") == "?" }, 2*time.Second, 10*time.Millisecond)
 
-	screen.InjectKey(tcell.KeyRune, 'p', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'p')
 
-	require.Eventually(t, func() bool {
-		shown := false
-		testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage("ErrorDialog") })
-		return shown
-	}, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForPage(t, app, browser.layout, "ErrorDialog", 2*time.Second)
 }
 
 func TestDatasetBrowser_PropertiesDialog(t *testing.T) {
@@ -251,21 +239,17 @@ func TestDatasetBrowser_PropertiesDialog(t *testing.T) {
 		return count == 2
 	}, 2*time.Second, 10*time.Millisecond)
 	hasPage := func(name string) func() bool {
-		return func() bool {
-			shown := false
-			testutil.OnUiThread(t, app, func() { shown = browser.layout.HasPage(name) })
-			return shown
-		}
+		return func() bool { return testutil.HasPage(t, app, browser.layout, name) }
 	}
 
 	testutil.OnUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/a")) })
-	screen.InjectKey(tcell.KeyRune, 'e', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'e')
 	require.Eventually(t, hasPage("DatasetPropertiesDialog"), 2*time.Second, 10*time.Millisecond)
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 	require.Eventually(t, func() bool { return !hasPage("DatasetPropertiesDialog")() }, 2*time.Second, 10*time.Millisecond)
 
 	testutil.OnUiThread(t, app, func() { browser.tableContainer.Select(findByName(browser.tableContainer.GetEntries(), "rpool/broken")) })
-	screen.InjectKey(tcell.KeyRune, 'e', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'e')
 	require.Eventually(t, hasPage("ErrorDialog"), 2*time.Second, 10*time.Millisecond)
 
 	mu.Lock()

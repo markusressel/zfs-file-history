@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
@@ -24,23 +23,18 @@ func TestCommandMenuKey(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { name, _ = mainPage.pages.GetFrontPage() })
 		return name
 	}
-	waitForText := func(text string) {
-		require.Eventually(t, func() bool { return strings.Contains(screenText(t, app, screen), text) },
-			3*time.Second, 20*time.Millisecond, "expected %q on the screen", text)
-	}
+	waitForText := func(text string) { testutil.WaitForText(t, app, screen, text, 3*time.Second) }
 
-	screen.InjectKey(tcell.KeyRune, ':', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, ':')
 	require.Eventually(t, func() bool { return frontPage() == string(dialog.CommandMenuPage) }, 3*time.Second, 20*time.Millisecond)
 	typeText := func(text string) {
-		for _, r := range text {
-			screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
-		}
+		testutil.Type(t, app, screen, text)
 	}
 	// of the file browser (in the empty folder: the folder), of the page and global (filtered, as they are listed
 	// last)
 	clear := func(runes int) {
 		for range runes {
-			screen.InjectKey(tcell.KeyBackspace2, 0, tcell.ModNone)
+			testutil.Press(t, app, screen, tcell.KeyBackspace2, 0)
 		}
 	}
 	waitForText("Files")
@@ -63,7 +57,7 @@ func TestCommandMenuKey(t *testing.T) {
 	})
 	typeText("relative t")
 	waitForText("Relative times")
-	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEnter, 0)
 
 	assert.Eventually(t, func() bool { return frontPage() == string(Main) }, 3*time.Second, 20*time.Millisecond)
 	assert.Eventually(t, func() bool {
@@ -79,12 +73,10 @@ func TestCommandMenuKeyIsTypedIntoAFilter(t *testing.T) {
 	screen := testutil.UseSimulationScreen(app, testutil.WithSize(200, 30))
 	testutil.RunApp(t, app)
 
-	screen.InjectKey(tcell.KeyCtrlF, 0, tcell.ModNone)
-	require.Eventually(t, func() bool { return strings.Contains(screenText(t, app, screen), "Filter:") },
-		3*time.Second, 20*time.Millisecond)
-	screen.InjectKey(tcell.KeyRune, ':', tcell.ModNone)
-	require.Eventually(t, func() bool { return strings.Contains(screenText(t, app, screen), "Filter: :") },
-		3*time.Second, 20*time.Millisecond)
+	testutil.Press(t, app, screen, tcell.KeyCtrlF, 0)
+	testutil.WaitForText(t, app, screen, "Filter:", 3*time.Second)
+	testutil.Press(t, app, screen, tcell.KeyRune, ':')
+	testutil.WaitForText(t, app, screen, "Filter: :", 3*time.Second)
 	testutil.OnUiThread(t, app, func() {
 		name, _ := mainPage.pages.GetFrontPage()
 		assert.Equal(t, string(Main), name)

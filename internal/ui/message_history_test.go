@@ -69,18 +69,17 @@ func TestMessageHistoryKey(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { name, _ = mainPage.pages.GetFrontPage() })
 		return name
 	}
-	screen.InjectKey(tcell.KeyRune, 'm', tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyRune, 'm')
 	assert.Eventually(t, func() bool { return frontPage() == string(dialog.MessageHistoryDialogPage) },
 		3*time.Second, 20*time.Millisecond)
 	assert.Eventually(t, func() bool { return !strings.Contains(screenText(t, app, screen), "⚠ 1") },
 		3*time.Second, 20*time.Millisecond, "the badge is gone once the messages were seen")
 
-	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
 	assert.Eventually(t, func() bool { return frontPage() == string(Main) }, 3*time.Second, 20*time.Millisecond)
 
 	// the key presses came too early to dismiss the error, the next one after a while does
 	time.Sleep(status_message.MinKeyPressDisplayTime)
-	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
-	assert.Eventually(t, func() bool { return !strings.Contains(screenText(t, app, screen), "something failed") },
-		3*time.Second, 20*time.Millisecond)
+	testutil.Press(t, app, screen, tcell.KeyDown, 0)
+	testutil.WaitForNoText(t, app, screen, "something failed", 3*time.Second)
 }

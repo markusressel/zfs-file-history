@@ -94,7 +94,7 @@ func (ft *fileBrowserTest) waitFor(message string, condition func(s fileBrowserS
 }
 
 func (ft *fileBrowserTest) pressKey(key tcell.Key, r rune) {
-	ft.screen.InjectKey(key, r, tcell.ModNone)
+	testutil.Press(ft.t, ft.app, ft.screen, key, r)
 }
 
 // openWithTxtFilter opens the temporary directory and filters it with "*.txt".
@@ -104,9 +104,7 @@ func (ft *fileBrowserTest) openWithTxtFilter() {
 	assert.Equal(ft.t, []string{"a.txt", "b.txt", "c.log", "sub"}, s.visible)
 
 	ft.pressKey(tcell.KeyCtrlF, 0)
-	for _, r := range "*.txt" {
-		ft.pressKey(tcell.KeyRune, r)
-	}
+	testutil.Type(ft.t, ft.app, ft.screen, "*.txt")
 	s = ft.waitFor("filtered", func(s fileBrowserState) bool { return s.footer == "2 of 4 entries" })
 	assert.Equal(ft.t, []string{"a.txt", "b.txt"}, s.visible)
 }
@@ -171,10 +169,8 @@ func TestFileBrowser_FilterDeleteWords(t *testing.T) {
 	ft.screen.InjectKey(tcell.KeyBackspace2, 0, tcell.ModCtrl)
 	ft.waitFor("word before the cursor deleted", func(s fileBrowserState) bool { return s.filter == "*." })
 
-	ft.screen.InjectKey(tcell.KeyHome, 0, tcell.ModNone)
-	for _, r := range "sub" {
-		ft.pressKey(tcell.KeyRune, r)
-	}
+	ft.pressKey(tcell.KeyHome, 0)
+	testutil.Type(ft.t, ft.app, ft.screen, "sub")
 	ft.waitFor("typed at the start", func(s fileBrowserState) bool { return s.filter == "sub*." })
 	ft.pressKey(tcell.KeyHome, 0)
 	ft.screen.InjectKey(tcell.KeyDelete, 0, tcell.ModCtrl)

@@ -15,8 +15,7 @@ import (
 func TestDatasetPage_CyclingFocusKeepsTheLayout(t *testing.T) {
 	for _, width := range []int{80, 100, 120, 160, 200} {
 		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
-			app, screen := testutil.NewApp()
-			screen.SetSize(width, 50)
+			app, _ := testutil.NewApp(testutil.WithSize(width, 50))
 			page := NewDatasetPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), "/")
 			testutil.StartApp(t, app, page.layout)
 

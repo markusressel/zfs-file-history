@@ -18,8 +18,7 @@ import (
 )
 
 func newPoolPageApp(t *testing.T, width int, height int) (*tview.Application, *PoolPage) {
-	app, screen := testutil.NewApp()
-	screen.SetSize(width, height)
+	app, _ := testutil.NewApp(testutil.WithSize(width, height))
 	page := NewPoolPage(app, status_message.NewCenter(app), pool_activity.NewMonitor(app), noDisks{}, noDisks{})
 	testutil.StartApp(t, app, page.layout)
 	return app, page

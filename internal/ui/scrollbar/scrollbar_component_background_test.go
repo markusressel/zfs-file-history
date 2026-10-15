@@ -4,18 +4,14 @@ import (
 	"testing"
 	"zfs-file-history/internal/testutil"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // The thin bar runes only cover part of a cell. With the terminal's default background, the scrollbar looked
 // see-through on terminals whose background differs from the widgets'.
 func TestScrollbar_HasWidgetBackground(t *testing.T) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(10, 10)
+	screen := testutil.NewScreen(t, 10, 10)
 
 	tests := []struct {
 		orientation   ScrollBarOrientation

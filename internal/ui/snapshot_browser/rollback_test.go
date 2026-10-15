@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -57,19 +58,15 @@ func TestSnapshotBrowser_RollbackAsksForTheName(t *testing.T) {
 	dt.waitForDialog("RollbackDialog")
 	assert.Equal(t, []string{"preview pool/data@daily-1"}, calls())
 	// the newer snapshots are listed
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "pool/data@daily-2") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "pool/data@daily-2", 2*time.Second)
 
 	// the name of the dataset is not enough
-	for _, r := range "pool/data" {
-		dt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(dt.t, dt.app, dt.screen, "pool/data")
 	dt.press(tcell.KeyEnter, 0)
-	require.Eventually(t, func() bool { return strings.Contains(dt.screenText(), "the name does not match") }, 2*time.Second, 10*time.Millisecond)
+	testutil.WaitForText(t, dt.app, dt.screen, "the name does not match", 2*time.Second)
 	assert.Len(t, calls(), 1)
 
-	for _, r := range "@daily-1" {
-		dt.press(tcell.KeyRune, r)
-	}
+	testutil.Type(dt.t, dt.app, dt.screen, "@daily-1")
 	dt.press(tcell.KeyEnter, 0)
 	dt.waitForDialog("SuccessDialog")
 	assert.Equal(t, []string{"preview pool/data@daily-1", "rollback pool/data@daily-1 pool/data@daily-2"}, calls())

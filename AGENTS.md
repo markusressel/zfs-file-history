@@ -301,9 +301,14 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   via `testutil.OnUiThread` (which does not draw). Read the screen with `testutil.ScreenText`, which draws first: a
   change is only shown once something draws, and a test that relied on a background load to redraw in time failed on
   slower machines (`TestScreenIsDrawnBeforeRead` checks that readers of the screen draw). Wait for background loads
-  with `require.Eventually`, for a state rather than for a time. Injected keys and clicks are handled in another
-  queue than `OnUiThread`: before checking that one changed nothing, wait with `testutil.WaitForEvents` (not a
-  sleep, too short on a busy machine). `testutil.StripTags` removes style tags from text.
+  with `require.Eventually`, for a state rather than for a time (`testutil.WaitForText`, `WaitForPage`, ...).
+  Injected keys and clicks are handled in another queue than `OnUiThread`: `testutil.Press`, `Type`, `Click`,
+  `ClickText` and `Drag` wait until they were handled (`testutil.WaitForEvents`; not a sleep, too short on a busy
+  machine; `TestClicksUseTestutil`). Updates the handlers queue (e.g. closing a dialog) can still run after that: wait
+  for their result. Tests that draw a primitive themselves get their screen from `testutil.NewScreen` or
+  `DrawToScreen`; the text is read with `testutil.ScreenLines` and `FindInScreen` (a rune per cell, so it lines up with
+  the columns), a cell with `screen.Get` (`TestScreenIsReadWithTestutil`). `testutil.StripTags` removes style tags
+  from text.
 - Regression tests start their comment with `// Regression:` and fail without the fix.
 - Fixtures from real systems go into `testdata/`, with serial numbers and other identifying data replaced.
 

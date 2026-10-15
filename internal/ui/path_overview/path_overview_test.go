@@ -152,22 +152,10 @@ func TestFitParts(t *testing.T) {
 
 // render draws the overview on a simulation screen and returns its lines and the screen.
 func render(t *testing.T, overview *PathOverviewComponent, width int) ([]string, tcell.SimulationScreen) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	require.NoError(t, screen.Init())
-	screen.SetSize(width, Height)
-	overview.GetLayout().SetRect(0, 0, width, Height)
-	overview.GetLayout().Draw(screen)
-	screen.Show()
-	cells, _, _ := screen.GetContents()
-	var lines []string
-	for y := 0; y < Height; y++ {
-		var line strings.Builder
-		for x := 0; x < width; x++ {
-			if runes := cells[y*width+x].Runes; len(runes) > 0 {
-				line.WriteRune(runes[0])
-			}
-		}
-		lines = append(lines, strings.TrimRight(line.String(), " "))
+	screen := testutil.DrawToScreen(t, overview.GetLayout(), width, Height)
+	lines := testutil.ScreenLines(screen)
+	for y, line := range lines {
+		lines[y] = strings.TrimRight(line, " ")
 	}
 	return lines, screen
 }

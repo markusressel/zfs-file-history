@@ -45,12 +45,8 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 		browser.tableContainer.Select(entry)
 	})
 
-	hasDialog := func(name string) bool {
-		has := false
-		testutil.OnUiThread(t, app, func() { has = browser.container.Pages.HasPage(name) })
-		return has
-	}
-	press := func(key tcell.Key, r rune) { screen.InjectKey(key, r, tcell.ModNone) }
+	hasDialog := func(name string) bool { return testutil.HasPage(t, app, browser.container.Pages, name) }
+	press := func(key tcell.Key, r rune) { testutil.Press(t, app, screen, key, r) }
 
 	// Enter: snapshot menu, option 2: Clone
 	press(tcell.KeyEnter, 0)
@@ -61,9 +57,7 @@ func runCloneFlow(t *testing.T, cloneErr error) (tview.Primitive, *tview.Applica
 
 	// the suggested name is prefilled, replace it
 	press(tcell.KeyCtrlU, 0)
-	for _, r := range "pool/clone" {
-		press(tcell.KeyRune, r)
-	}
+	testutil.Type(t, app, screen, "pool/clone")
 	press(tcell.KeyEnter, 0)
 
 	require.Eventually(t, func() bool {

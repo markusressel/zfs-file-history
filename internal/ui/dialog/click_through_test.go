@@ -2,9 +2,7 @@ package dialog
 
 import (
 	"fmt"
-	"strings"
 	"testing"
-	"time"
 	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
@@ -16,8 +14,7 @@ import (
 // Regression: tview hands mouse events to all pages until one consumes them (https://github.com/rivo/tview/issues/926),
 // and the empty space around a dialog did not: a click next to it selected an entry of the page behind it.
 func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t *testing.T) {
-	app, screen := testutil.NewApp()
-	screen.SetSize(100, 40)
+	app, screen := testutil.NewApp(testutil.WithSize(100, 40))
 	background := tview.NewTable().SetSelectable(true, false)
 	for i := 0; i < 100; i++ {
 		background.SetCell(i, 0, tview.NewTableCell(fmt.Sprintf("row %d", i)))
@@ -43,12 +40,7 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 		})
 		return row, offset
 	}
-	click := func(x, y int) {
-		screen.InjectMouse(x, y, tcell.Button1, tcell.ModNone)
-		time.Sleep(30 * time.Millisecond)
-		screen.InjectMouse(x, y, tcell.ButtonNone, tcell.ModNone)
-		testutil.WaitForEvents(t, app, screen)
-	}
+	click := func(x, y int) { testutil.Click(t, app, screen, x, y) }
 	state()
 
 	// row 2 of the table behind, at the top left, outside the centered dialog
@@ -75,23 +67,8 @@ func TestShowDialogOnPages_MouseEventsOutsideTheDialogDoNotReachThePageBehind(t 
 	assert.Equal(t, 0, row, "the selection of the page behind is unchanged")
 
 	// clicks on the dialog still work: they select its options
-	var closeX, closeY int
-	testutil.OnUiThread(t, app, func() {
-		app.ForceDraw()
-		cells, width, height := screen.GetContents()
-		for y := 0; y < height && closeY == 0; y++ {
-			var line strings.Builder
-			for x := 0; x < width; x++ {
-				line.WriteString(string(cells[y*width+x].Runes))
-			}
-			// the option, not the title of the dialog
-			if index := strings.Index(line.String(), "Close"); index >= 0 {
-				closeX, closeY = len([]rune(line.String()[:index])), y
-			}
-		}
-	})
-	require.NotZero(t, closeY, "the close option is shown")
-	click(closeX, closeY)
+	// the option, not the title of the dialog
+	testutil.ClickText(t, app, screen, "Close")
 	var selected string
 	testutil.OnUiThread(t, app, func() {
 		row, _ := dialog.optionTable.GetSelection()
