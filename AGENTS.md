@@ -240,6 +240,10 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 ## Tables
 
 - Lists use `table.RowSelectionTable[T]` (entries implement `TableRowId()`); dialogs use plain `tview.Table`s.
+- The selected row is a dark bar on which each cell keeps its own text color (`theme.SelectedStyle`, lightened where
+  it would be hard to read), so colors that mean something (states, a destructive action) stay visible.
+  `RowSelectionTable` does this for all cells; plain tables use `uiutil.SetSelectionStyle` and
+  `uiutil.KeepColorWhenSelected` for their colored cells.
 - Clicks into the empty space below the rows do nothing (`uiutil.IgnoreClicksBelowRows`, for every table); in
   `RowSelectionTable` also clicks to the right of the columns.
 - The header row: `←`/`→` change the sort column, `Enter` the direction. With the mouse, the first click selects the

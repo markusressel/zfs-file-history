@@ -21,3 +21,18 @@ func TestCreateTitleText(t *testing.T) {
 	title := CreateTitleText("Hello")
 	assert.Equal(t, " Hello ", title)
 }
+
+// Every text color of a table stays readable in the selected row, also the dim ones (e.g. unchanged files).
+func TestSelectedStyle_TextIsReadable(t *testing.T) {
+	background := Colors.Layout.Table.SelectedBackground
+	for _, color := range []tcell.Color{tcell.ColorGray, tcell.ColorDarkGray, tcell.ColorRed, tcell.ColorGreen, tcell.ColorYellow, tcell.ColorWhite, Accent, tcell.ColorDefault} {
+		fg, bg, _ := SelectedStyle(color).Decompose()
+		assert.Equal(t, background, bg)
+		assert.GreaterOrEqual(t, contrast(luminance(fg.RGB()), luminance(background.RGB())), minSelectedContrast, "color %v", color)
+	}
+	// colors that are readable keep their color
+	fg, _, _ := SelectedStyle(tcell.ColorWhite).Decompose()
+	r, g, b := fg.RGB()
+	wr, wg, wb := tcell.ColorWhite.RGB()
+	assert.Equal(t, []int32{wr, wg, wb}, []int32{r, g, b})
+}

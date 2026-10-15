@@ -313,41 +313,10 @@ func (o *FileHistoryOverlay) createTableCells(row int, columns []*table.Column, 
 			SetTextColor(color).
 			SetAlign(align)
 
-		statusColor := o.determineStatusColor(entry)
-		cell.SetSelectedStyle(
-			tcell.StyleDefault.
-				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(statusColor),
-		)
+		cell.SetSelectedStyle(theme.SelectedStyle(color))
 		result = append(result, cell)
 	}
 	return result
-}
-
-func (o *FileHistoryOverlay) determineStatusColor(entry *data.SnapshotBrowserEntry) tcell.Color {
-	if o.currentDiffMode == diffModeWorkingCopy {
-		switch entry.WorkingCopyDiffState {
-		case diff_state.Deleted:
-			return theme.Colors.FileBrowser.Table.State.Added
-		case diff_state.Added:
-			return theme.Colors.FileBrowser.Table.State.Deleted
-		case diff_state.Modified:
-			return theme.Colors.FileBrowser.Table.State.Modified
-		default:
-			return theme.Colors.FileBrowser.Table.State.Equal
-		}
-	} else {
-		switch entry.DiffState {
-		case diff_state.Added:
-			return theme.Colors.FileBrowser.Table.State.Added
-		case diff_state.Deleted:
-			return theme.Colors.FileBrowser.Table.State.Deleted
-		case diff_state.Modified:
-			return theme.Colors.FileBrowser.Table.State.Modified
-		default:
-			return theme.Colors.FileBrowser.Table.State.Equal
-		}
-	}
 }
 
 func (o *FileHistoryOverlay) createLayout() *tview.Flex {

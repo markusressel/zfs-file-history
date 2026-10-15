@@ -99,9 +99,7 @@ func (d *DatasetPermissionsDialog) createLayout() {
 
 	d.table = tview.NewTable().SetSelectable(true, false)
 	util.IgnoreClicksBelowRows(d.table)
-	d.table.SetSelectedStyle(tcell.StyleDefault.
-		Foreground(theme.Colors.Layout.Table.SelectedForeground).
-		Background(theme.Colors.Layout.Table.SelectedBackground))
+	util.SetSelectionStyle(d.table)
 	d.table.SetSelectionChangedFunc(func(row, column int) { d.updateDetails(row) })
 	d.details = tview.NewTextView().SetWrap(true).SetWordWrap(true)
 	// shrinks (and scrolls) on small terminals, see below
@@ -230,8 +228,8 @@ func (d *DatasetPermissionsDialog) fillTable() {
 			}
 		}
 		d.table.SetCell(row, 0, tview.NewTableCell(string(info.Permission)).SetReference(info))
-		d.table.SetCell(row, 1, tview.NewTableCell(string(info.Abbreviation)).SetTextColor(color))
-		d.table.SetCell(row, 2, tview.NewTableCell(mark).SetTextColor(color).SetAlign(tview.AlignCenter))
+		d.table.SetCell(row, 1, util.KeepColorWhenSelected(tview.NewTableCell(string(info.Abbreviation)).SetTextColor(color)))
+		d.table.SetCell(row, 2, util.KeepColorWhenSelected(tview.NewTableCell(mark).SetTextColor(color).SetAlign(tview.AlignCenter)))
 		d.table.SetCell(row, 3, tview.NewTableCell(tview.Escape(d.grantedBy(info.Permission))).SetExpansion(1))
 		row++
 	}

@@ -123,14 +123,8 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
 
-		// Keep row statusCellText visible while selected by using statusCellColor as selected background. Unknown
-		// states (e.g. while they are determined) have the color of equal ones, so the selection only changes its
-		// color for entries that differ, instead of flashing for all of them when a folder is entered.
-		cell.SetSelectedStyle(
-			tcell.StyleDefault.
-				Foreground(theme.Colors.Layout.Table.SelectedForeground).
-				Background(statusCellColor),
-		)
+		// the state stays visible in the colors of the text while the row is selected
+		cell.SetSelectedStyle(theme.SelectedStyle(cellColor))
 		cells = append(cells, cell)
 	}
 

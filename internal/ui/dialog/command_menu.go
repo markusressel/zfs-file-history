@@ -132,11 +132,8 @@ func NewCommandMenu(sections []CommandSection) *CommandMenu {
 }
 
 func (menu *CommandMenu) createLayout() {
-	menu.list = tview.NewTable().
-		SetSelectable(true, false).
-		SetSelectedStyle(tcell.StyleDefault.
-			Foreground(theme.Colors.Layout.Table.SelectedForeground).
-			Background(theme.Colors.Layout.Table.SelectedBackground))
+	menu.list = util.SetSelectionStyle(tview.NewTable()).
+		SetSelectable(true, false)
 	menu.list.SetSelectedFunc(func(row, column int) { menu.choose(row) })
 	menu.list.SetSelectionChangedFunc(func(row, column int) { menu.updateHint() })
 	util.IgnoreClicksBelowRows(menu.list)
@@ -386,11 +383,11 @@ func (menu *CommandMenu) setCommandRow(row int, match commandMatch) {
 	if match.unfocused {
 		keyColor = tcell.ColorGray
 	}
-	menu.list.SetCell(row, 1, tview.NewTableCell(tview.Escape(strings.Join(command.KeyCombo, " "))+"  ").
-		SetTextColor(keyColor))
-	menu.list.SetCell(row, 2, tview.NewTableCell(tview.Escape(command.Description)).
+	menu.list.SetCell(row, 1, util.KeepColorWhenSelected(tview.NewTableCell(tview.Escape(strings.Join(command.KeyCombo, " "))+"  ").
+		SetTextColor(keyColor)))
+	menu.list.SetCell(row, 2, util.KeepColorWhenSelected(tview.NewTableCell(tview.Escape(command.Description)).
 		SetTextColor(tcell.ColorGray).
-		SetExpansion(1))
+		SetExpansion(1)))
 }
 
 // switchOn and switchOff show the state of a switch in front of its name, also the items of a checklist: easier

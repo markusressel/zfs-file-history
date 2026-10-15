@@ -37,9 +37,9 @@ func TestFileBrowser_NoFlashingWhileStatesAreDetermined(t *testing.T) {
 
 	loading := entry(diff_state.Unknown, true)
 	assert.Equal(t, "", diffCell(loading).Text, "empty while it is determined")
-	assert.Equal(t, selectedBackground(entry(diff_state.Equal, false)), selectedBackground(loading),
-		"the selection keeps the color of equal entries, the most common result")
-	assert.NotEqual(t, theme.Colors.Layout.Table.SelectedBackground, selectedBackground(loading))
+	// the selection has one color for all states (the state is the color of the text)
+	assert.Equal(t, selectedBackground(entry(diff_state.Equal, false)), selectedBackground(loading))
+	assert.Equal(t, theme.Colors.Layout.Table.SelectedBackground, selectedBackground(loading))
 
 	assert.Equal(t, "N/A", diffCell(entry(diff_state.Unknown, false)).Text, "cannot be determined, e.g. without a snapshot")
 	assert.Equal(t, "=", diffCell(entry(diff_state.Equal, false)).Text)

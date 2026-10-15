@@ -230,7 +230,7 @@ func (d *PoolHistoryDialog) createLayout() {
 	})
 
 	list := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0).SetContent(d.content)
-	list.SetSelectedStyle(tcell.StyleDefault.Foreground(theme.Colors.Layout.Table.SelectedForeground).Background(theme.Colors.Layout.Table.SelectedBackground))
+	util.SetSelectionStyle(list)
 	list.SetSelectionChangedFunc(func(row int, column int) {
 		if row == 0 {
 			// tview keeps the offset when the (fixed) header row is selected, e.g. with PgUp: the first rows would
@@ -970,7 +970,17 @@ func (c *poolHistoryContent) GetColumnCount() int {
 	return len(c.columns)
 }
 
+// GetCell returns the cell, with its own text color while its row is selected (the header keeps the style of the
+// sort column).
 func (c *poolHistoryContent) GetCell(row int, index int) *tview.TableCell {
+	cell := c.cell(row, index)
+	if cell != nil && row > 0 {
+		util.KeepColorWhenSelected(cell)
+	}
+	return cell
+}
+
+func (c *poolHistoryContent) cell(row int, index int) *tview.TableCell {
 	if index < 0 || index >= len(c.columns) {
 		return nil
 	}

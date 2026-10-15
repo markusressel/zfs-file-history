@@ -110,8 +110,12 @@ var (
 				// and from the multi-selection background (Secondary).
 				HeaderBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x2B3137,
 
-				SelectedForeground: tcell.ColorBlack,
-				SelectedBackground: tcell.ColorWhite,
+				// A dark blue bar with light text, not a light bar with dark text: a light row glared on the dark
+				// background, and its text was harder to read than that of the other rows. Cells keep their own text
+				// color on it (see SelectedStyle); bluer than the multi-selection (Secondary) and the header, less
+				// saturated than the text selection (Layout.SelectionBackground).
+				SelectedForeground: tcell.ColorWhite,
+				SelectedBackground: tcell.ColorIsRGB | tcell.ColorValid | 0x2D4560,
 
 				SortColumnSelectedForeground: OnPrimary,
 				SortColumnSelectedBackground: Primary,
