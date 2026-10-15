@@ -477,7 +477,7 @@ func TestPoolHistoryDialog_Columns(t *testing.T) {
 	dt.key(tcell.KeyF2, 0)
 	dt.waitForText("Configure History Columns")
 	// removes the first column, the time: the rows are sorted by the next one
-	dt.key(tcell.KeyDelete, 0)
+	dt.key(tcell.KeyEnter, 0)
 	dt.key(tcell.KeyEscape, 0)
 	require.Eventually(t, func() bool { return !strings.Contains(dt.screenText(), "Configure History Columns") }, 3*time.Second, 10*time.Millisecond)
 	assert.NotContains(t, dt.screenText(), "Time")
