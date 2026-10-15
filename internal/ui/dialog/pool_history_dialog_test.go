@@ -3,6 +3,7 @@ package dialog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -626,4 +627,105 @@ func TestPoolHistoryCache_OneReadAtATime(t *testing.T) {
 	defer stopThird()
 	assert.Same(t, state.History, third.History)
 	assert.True(t, third.Reading)
+}
+
+// position returns the selected row and its line on the screen (below the header row).
+func (dt *historyDialogTest) position() (row int, line int) {
+	testutil.OnUiThread(dt.t, dt.app, func() {
+		dt.app.ForceDraw()
+		var offset int
+		row, _ = dt.table().GetSelection()
+		offset, _ = dt.table().GetOffset()
+		line = row - offset
+	})
+	return row, line
+}
+
+func (dt *historyDialogTest) table() *poolHistoryTable {
+	return dt.dialog.table
+}
+
+// spacedHistory returns n commands of the pool, two minutes apart (each a group of its own), oldest first.
+func spacedHistory(pool string, n int) []zfs.PoolHistoryEntry {
+	entries := make([]zfs.PoolHistoryEntry, n)
+	for i := range entries {
+		entries[i] = zfs.PoolHistoryEntry{Pool: pool, Time: historyAt(1).Add(time.Duration(2*i) * time.Minute),
+			Event: "zfs set", Text: fmt.Sprintf("zfs set user:n=%d %s", i, pool), User: "root", Host: "host"}
+	}
+	return entries
+}
+
+// The events ZFS reports while the dialog is shown come in above. Scrolled down, the selected row stays where it is on
+// the screen, so the list does not move under the reader; at the top, the new ones are shown.
+func TestPoolHistoryDialog_RecordsComeIn(t *testing.T) {
+	history := spacedHistory("tank", 100)
+	cache := historyCacheOf(func() ([]zfs.PoolHistoryEntry, error) { return history, nil })
+	cache.recordDelay = time.Millisecond
+	dt := newHistoryDialogTestWithCache(t, "tank", "", cache)
+	dt.waitForText("100 of 100 groups")
+	newest := history[len(history)-1].Time
+	record := func(minutes int) {
+		cache.Record(zfs.PoolHistoryEntry{Pool: "tank", Time: newest.Add(time.Duration(minutes) * time.Minute), Internal: true,
+			Event: "snapshot", Datasets: []string{fmt.Sprintf("tank@%d", minutes)}, Txg: uint64(minutes), Host: "host"})
+	}
+
+	// at the top
+	row, _ := dt.position()
+	require.Equal(t, 1, row)
+	record(2)
+	dt.waitForText("101 of 101 groups")
+	assert.Equal(t, "snapshot", dt.shownEvents()[0])
+	assert.Equal(t, "zfs set", dt.selected())
+	row, line := dt.position()
+	assert.Equal(t, 2, row, "the same record selected")
+	assert.Equal(t, 2, line, "the new one shown above it")
+
+	// scrolled down
+	for range 50 {
+		dt.key(tcell.KeyDown, 0)
+	}
+	testutil.WaitForEvents(t, dt.app, dt.screen)
+	row, line = dt.position()
+	require.Equal(t, 52, row)
+	require.Less(t, line, 52, "scrolled")
+	record(4)
+	record(6)
+	dt.waitForText("103 of 103 groups")
+	newRow, newLine := dt.position()
+	assert.Equal(t, 54, newRow, "the same record selected")
+	assert.Equal(t, line, newLine, "on the same line")
+}
+
+// The events ZFS reports while the history is read may be in its output or not: they are added once.
+func TestPoolHistoryCache_RecordsDuringARead(t *testing.T) {
+	release := make(chan struct{})
+	logged := zfs.PoolHistoryEntry{Pool: "tank", Time: historyAt(2), Internal: true, Event: "snapshot", Datasets: []string{"tank@a"}, Txg: 3}
+	cache := NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
+		<-release
+		return []zfs.PoolHistoryEntry{{Pool: pool, Time: historyAt(1), Event: "zpool create"}, logged}, nil
+	})
+	cache.recordDelay = time.Millisecond
+	// of a pool not read: the next read has it
+	cache.Record(zfs.PoolHistoryEntry{Pool: "other", Time: historyAt(1), Event: "snapshot"})
+	assert.Empty(t, cache.pools)
+
+	states := make(chan PoolHistoryState, 10)
+	_, stop := cache.Watch("tank", func(state PoolHistoryState) { states <- state })
+	defer stop()
+	later := zfs.PoolHistoryEntry{Pool: "tank", Time: historyAt(2), Internal: true, Event: "snapshot", Datasets: []string{"tank@b"}, Txg: 4}
+	// the time of a reported record has no fraction of a second, like the ones read
+	cache.Record(logged)
+	cache.Record(later)
+	close(release)
+	state := <-states
+	require.NotNil(t, state.History)
+	assert.Equal(t, []zfs.PoolHistoryEntry{{Pool: "tank", Time: historyAt(1), Event: "zpool create"}, logged, later}, state.History.Entries)
+
+	// once read, added after a moment
+	last := zfs.PoolHistoryEntry{Pool: "tank", Time: historyAt(3), Internal: true, Event: "destroy", Datasets: []string{"tank@a"}, Txg: 5}
+	cache.Record(last)
+	state = <-states
+	assert.Equal(t, last, state.History.Entries[3])
+	assert.Len(t, state.History.Entries, 4)
+	assert.Same(t, &state.History.Entries[3], state.History.Groups[len(state.History.Groups)-1].Entries[0], "grouped again")
 }

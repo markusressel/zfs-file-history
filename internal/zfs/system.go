@@ -494,7 +494,7 @@ func (System) RunPoolAction(action PoolAction, pool string) error {
 
 // WatchEvents follows "zpool events -v -f" with "sudo -n" (allowed by SudoersRuleEvents). Events from before the
 // start are skipped.
-func (System) WatchEvents(ctx context.Context, onDatasetsChanged func(), onPoolsChanged func()) error {
+func (System) WatchEvents(ctx context.Context, onDatasetsChanged func(), onPoolsChanged func(), onHistory func(PoolHistoryEntry)) error {
 	cmd := exec.CommandContext(ctx, "sudo", "-n", ZpoolPath(), "events", "-v", "-f")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -503,6 +503,6 @@ func (System) WatchEvents(ctx context.Context, onDatasetsChanged func(), onPools
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	parseZpoolEvents(stdout, time.Now(), onDatasetsChanged, onPoolsChanged)
+	parseZpoolEvents(stdout, time.Now(), onDatasetsChanged, onPoolsChanged, onHistory)
 	return cmd.Wait()
 }

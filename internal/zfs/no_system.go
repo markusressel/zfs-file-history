@@ -66,4 +66,6 @@ func (NoSystem) DataErrorStatuses() ([]*PoolStatus, []string, error) { return ni
 func (NoSystem) PoolHistory(context.Context, string, func(PoolHistoryProgress)) ([]PoolHistoryEntry, error) {
 	return nil, ErrNoSystem
 }
-func (NoSystem) WatchEvents(context.Context, func(), func()) error { return ErrNoSystem }
+func (NoSystem) WatchEvents(context.Context, func(), func(), func(PoolHistoryEntry)) error {
+	return ErrNoSystem
+}

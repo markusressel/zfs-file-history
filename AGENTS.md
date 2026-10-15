@@ -61,7 +61,9 @@ of the code.
 - `internal/zfs/zfs_evemt_watcher.go`: follows `zpool events` and emits the emitters of `common.go`:
   `DatasetsLoaded` (snapshots created/destroyed, pools imported/exported, also after F5 via `RefreshZfsData`) and
   `PoolsChanged` (state changes, scrub/resilver/trim, vdev changes, `ereport.*`/`resource.*`; throttled to once a
-  second). Emitters are safe for concurrent use (the UI subscribes while the watcher emits).
+  second), and `PoolHistoryRecorded` with each record ZFS logged in the history of a pool (`history_event`, parsed
+  into a `PoolHistoryEntry` like `zpool history -il` lists it; only the events ZFS logs itself, not the commands).
+  Emitters are safe for concurrent use (the UI subscribes while the watcher emits).
 - `internal/zfs/pool_history.go`: the history of a pool (`zpool history -il <pool>`, `PoolHistory`), which only root
   may read: it runs with `sudo -n` (rule `--history`) unless the application runs as root; with the rule of older
   versions all pools, read up to the end of the pool. It can be millions of records (hundreds of MB, zpool takes tens
@@ -79,7 +81,10 @@ of the code.
   `table.SaveColumnLayout`); a filter in both. `dialog.PoolHistoryCache` (one for the application) keeps the history
   read, grouped: shown again, the dialog shows it at once while it is read again (with the progress in the hint), and
   replaces it if it changed, keeping the selection and the expanded groups (by `poolHistoryEntryKey`). A read goes on
-  when the dialog is closed. `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
+  when the dialog is closed. The events ZFS logs meanwhile are added as they come (`PoolHistoryCache.Record`, from
+  `zfs.PoolHistoryRecorded`; batched, grouped again in the background; once if they also are in a read), the
+  commands only with the next read. New rows come in above: the selected row stays on its line, unless the list was
+  at its top, where the new ones are shown. `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
   while the rule is allowed (`SetOnShowHistory`, updated on `zfs.SudoersChanged`).
 - `internal/zfs/pool_action.go`: the actions on pools (`zfs.PoolActions`: scrub start/pause/cancel, TRIM
   start/cancel, clear). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
