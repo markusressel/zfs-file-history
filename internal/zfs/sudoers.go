@@ -93,6 +93,19 @@ var (
 		ReadOnly: true,
 		allowed:  func(zpool string) []string { return []string{zpool + " " + strings.Join(dataErrorsArgs, " ")} },
 	}
+	// SudoersRuleHistory allows to read the history of the pools, see PoolHistory. The arguments are given exactly:
+	// all pools, so no others are allowed.
+	SudoersRuleHistory = &SudoersRule{
+		Id:       "history",
+		Name:     "Pool history",
+		Summary:  "what was done to the pools and datasets, when and by whom",
+		Commands: "zpool " + strings.Join(historyArgs, " "),
+		Description: "Show the history of the pools and datasets (only root may read it): the commands that " +
+			"changed them, e.g. created or destroyed snapshots, with their time and user, and what ZFS did itself, " +
+			"e.g. scrubs. Allows: zpool " + strings.Join(historyArgs, " "),
+		ReadOnly: true,
+		allowed:  func(zpool string) []string { return []string{zpool + " " + strings.Join(historyArgs, " ")} },
+	}
 	// SudoersRulePoolActions allows to run the pool actions, see PoolActions. The pool name has to start with a
 	// letter, so no options can be given in its place. Further arguments are harmless for scrub and trim, but would
 	// allow "clear -F" (which discards transactions), so clear is denied with more than one argument (in sudoers, *
@@ -138,7 +151,7 @@ var (
 	}
 
 	// SudoersRules are all rules, in the order they are offered and written.
-	SudoersRules = []*SudoersRule{SudoersRuleEvents, SudoersRuleDataErrors, SudoersRuleSmart, SudoersRulePoolActions}
+	SudoersRules = []*SudoersRule{SudoersRuleEvents, SudoersRuleDataErrors, SudoersRuleHistory, SudoersRuleSmart, SudoersRulePoolActions}
 )
 
 // SudoersRuleById returns the rule with the given id, nil if there is none.

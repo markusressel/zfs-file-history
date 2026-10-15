@@ -231,6 +231,31 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			})
 		}()
 	}
+	// the history of a pool, or of a dataset with its children and snapshots (h on the pools and datasets pages),
+	// only offered while it can be read: as root, or with the sudoers rule of "setup --history"
+	showHistory := func(pool string, dataset string) {
+		dialog.ShowDialogOnPages(application, pagesLayout, dialog.NewPoolHistoryDialog(application, pool, dataset, loadPoolHistory), nil)
+	}
+	updateHistoryAvailable := func() {
+		go func() {
+			available := allowedSudoersRules()[zfs.SudoersRuleHistory.Id]
+			application.QueueUpdateDraw(func() {
+				var onShowPool, onShowDataset func(name string)
+				if available {
+					onShowPool = func(pool string) { showHistory(pool, "") }
+					onShowDataset = func(dataset string) {
+						pool, _, _ := strings.Cut(dataset, "/")
+						showHistory(pool, dataset)
+					}
+				}
+				poolPage.poolBrowser.SetOnShowHistory(onShowPool)
+				datasetPage.datasetBrowser.SetOnShowHistory(onShowDataset)
+				poolPage.refreshShortcutMap()
+				datasetPage.refreshShortcutMap()
+			})
+		}()
+	}
+	updateHistoryAvailable()
 	// the damaged files, from the alert of the data errors or the command menu; a file is shown in the file browser
 	var dataErrorsDialog *dialog.DataErrorsDialog
 	// shownDataErrorsDialog returns the dialog of the damaged files while it is shown, nil otherwise
@@ -295,6 +320,8 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	// e.g. the damaged files may be listed now
 	util.SubscribeUI(zfs.SudoersChanged, application, func(_ struct{}) {
 		activities.ReloadDataErrors()
+		// e.g. the history may be read now
+		updateHistoryAvailable()
 		// e.g. smartctl may run with sudo now
 		activities.RefreshSmart()
 		poolPage.poolDevices.ReadSmart()
@@ -433,6 +460,9 @@ const setupPermissionsNeverAskToggle = "setupPermissionsNeverAsk"
 
 // allowedSudoersRules is replaceable in tests, so they never run sudo.
 var allowedSudoersRules = zfs.AllowedSudoersRules
+
+// loadPoolHistory is replaceable in tests, so they never run zpool.
+var loadPoolHistory = zfs.PoolHistory
 
 // existingFolderOf returns the nearest folder above the path that exists, and the name of the entry in it that
 // leads to the path, e.g. for a file that only exists in snapshots, in a folder that was deleted as well. This reads

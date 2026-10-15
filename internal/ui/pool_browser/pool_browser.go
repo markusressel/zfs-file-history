@@ -123,6 +123,9 @@ type PoolBrowserComponent struct {
 	// status is the status of the selected pool (nil if not known), which decides the actions offered, see
 	// SetStatus. Only accessed on the UI thread.
 	status *zfs.PoolStatus
+	// onShowHistory shows the history of a pool (h), nil: not offered, see SetOnShowHistory. Only accessed on the UI
+	// thread.
+	onShowHistory func(pool string)
 }
 
 func NewPoolBrowser(application *tview.Application) *PoolBrowserComponent {
@@ -174,6 +177,11 @@ func (poolBrowser *PoolBrowserComponent) setupTable() {
 		}
 		if selection := poolBrowser.tableContainer.GetSelectedEntry(); selection != nil && event.Key() == tcell.KeyEnter {
 			poolBrowser.openActionDialog(selection)
+			return nil
+		}
+		if selection := poolBrowser.tableContainer.GetSelectedEntry(); selection != nil && event.Key() == tcell.KeyRune &&
+			event.Rune() == 'h' && poolBrowser.onShowHistory != nil {
+			poolBrowser.onShowHistory(selection.Name)
 			return nil
 		}
 		return event
@@ -326,6 +334,12 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 // whole screen, not only the area of this component. Without them, they are shown on its own layout.
 func (poolBrowser *PoolBrowserComponent) SetDialogPages(pages *tview.Pages) {
 	poolBrowser.dialogPages = pages
+}
+
+// SetOnShowHistory sets the function that shows the history of a pool (h, see zfs.PoolHistory), nil while it cannot
+// be read (it needs root). Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) SetOnShowHistory(onShowHistory func(pool string)) {
+	poolBrowser.onShowHistory = onShowHistory
 }
 
 // SelectOnLoad selects the pool with the given name once the pools are loaded (if there is one), e.g. to restore
@@ -482,6 +496,11 @@ func (poolBrowser *PoolBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 	if selection := poolBrowser.GetSelectedPool(); selection != nil {
 		shortcutMap = append(shortcutMap, uiutil.TableComponentShortcutActions.WithRun(func() { poolBrowser.openActionDialog(selection) }).
 			WithDescription("Scrub, TRIM or clear the errors of the pool"))
+		if poolBrowser.onShowHistory != nil {
+			shortcutMap = append(shortcutMap, shortcut_helper.ShortcutEntry{KeyCombo: []string{"h"}, Name: "History",
+				Description: "What was done to the pool and its datasets, when and by whom (zpool history)",
+				Run:         func() { poolBrowser.onShowHistory(selection.Name) }})
+		}
 	}
 	return shortcutMap
 }

@@ -3,6 +3,7 @@ package dataset_browser
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -917,4 +918,42 @@ func TestDatasetBrowser_ClickOnHiddenUnmountedShowsThem(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 	_, _, found := findText("unmounted hidden")
 	assert.False(t, found)
+}
+
+// h shows the history of the selected dataset, only offered while it can be read (see SetOnShowHistory)
+func TestDatasetBrowser_History(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return []*zfs.DatasetListEntry{{Name: "rpool/home", Mountpoint: "/home", MountPath: "/home"}}, nil
+	})
+	app, browser, _ := newBrowserApp(t)
+	testutil.OnUiThread(t, app, func() {
+		browser.SetPath("/home", false)
+		browser.Refresh(false)
+	})
+	require.Eventually(t, func() bool {
+		var selected *zfs.DatasetListEntry
+		testutil.OnUiThread(t, app, func() { selected = browser.tableContainer.GetSelectedEntry() })
+		return selected != nil
+	}, 2*time.Second, 10*time.Millisecond)
+	hasHistory := func() (found bool) {
+		testutil.OnUiThread(t, app, func() {
+			found = slices.ContainsFunc(browser.GetShortcutMap(), func(entry shortcut_helper.ShortcutEntry) bool { return entry.Name == "History" })
+		})
+		return found
+	}
+	assert.False(t, hasHistory())
+
+	shown := make(chan string, 1)
+	testutil.OnUiThread(t, app, func() {
+		browser.SetOnShowHistory(func(dataset string) { shown <- dataset })
+		browser.Focus()
+	})
+	assert.True(t, hasHistory())
+	app.QueueEvent(tcell.NewEventKey(tcell.KeyRune, 'h', tcell.ModNone))
+	select {
+	case dataset := <-shown:
+		assert.Equal(t, "rpool/home", dataset)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the history was not shown")
+	}
 }

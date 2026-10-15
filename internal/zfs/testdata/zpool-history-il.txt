@@ -1,0 +1,40 @@
+History for 'bpool':
+2021-08-11.22:14:31 [txg:4] create pool version 5000; software version zfs-2.1.0-0-g4f92fe0f5-dist; uts archiso 5.13.6-arch1-1 #1 SMP PREEMPT Thu, 29 Jul 2021 00:21:06 +0000 x86_64 [on archiso]
+2021-08-11.22:14:31 [txg:4] set compatibility=grub2 [on archiso]
+2021-08-11.22:14:31 [txg:5] set bpool (54) acltype=1 [on archiso]
+2021-08-11.22:14:31 zpool create -o compatibility=grub2 -o ashift=12 -o autotrim=on -O acltype=posixacl -O canmount=off -O compression=lz4 -O devices=off -O normalization=formD -O relatime=on -O xattr=sa -O mountpoint=/boot -R /mnt bpool mirror /dev/disk/by-id/nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R000001A-part2 /dev/disk/by-id/nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R000002B-part2 [user 0 (root) on archiso:linux]
+2025-03-27.02:59:11 zfs clone -o canmount=noauto -o mountpoint=legacy bpool/arch/BOOT/default@pac-ujk76f bpool/arch/BOOT/pac-ujk76f [user 0 (root) on host:linux]
+2025-03-27.02:59:11 [txg:2861371] set bpool/arch/BOOT/pac-ujk76f (1830) org.bieaz:be=1 [on host]
+2025-03-30.15:48:50 [txg:2861396] snapshot bpool/arch/BOOT/default@pac-qlkf2n (359)   [on host]
+2025-03-30.15:48:50 (5ms) ioctl snapshot
+    input:
+        snaps:
+            bpool/arch/BOOT/default@pac-qlkf2n
+        props:
+ [user 0 (root) on host:linux]
+2025-03-30.15:48:50 zfs snapshot bpool/arch/BOOT/default@pac-qlkf2n [user 0 (root) on host:linux]
+2025-03-30.15:48:50 [txg:2861399] clone bpool/arch/BOOT/pac-qlkf2n (442) origin=bpool/arch/BOOT/default@pac-qlkf2n (359) [on host]
+2025-05-04.15:42:17 [txg:2872466] destroy bpool/arch/BOOT/pac-saq4z3 (1942) (bptree, mintxg=2872115) [on host]
+2026-10-14.04:07:09 (771ms) ioctl scrub
+    input:
+        scan_type: 1
+        scan_command: 0
+        scan_date_start: 0
+        scan_date_end: 0
+ [user 0 (root) on host:linux]
+2026-10-14.04:07:09 zpool scrub bpool [user 0 (root) on host:linux]
+2026-10-14.04:07:10 [txg:8653538] scan done errors=0 [on host]
+History for 'rpool':
+2021-09-22.23:00:14 [txg:440838] permission update rpool/arch/DATA/default/home (1411) ul$1000 destroy [on host]
+2021-08-11.22:41:31 (7ms) ioctl load-key
+    input:
+þÿ [user 0 (root) on host:linux]
+2021-08-11.22:41:31 zfs load-key rpool/arch [user 0 (root) on host:linux]
+2024-09-21.21:17:08 [txg:13044425] scan cancelled errors=1 [on host]
+2026-10-14.01:49:08 [txg:22851354] clone swap rpool/arch/DATA/default/var/log/%rollback (134290) parent=log [on host]
+2026-10-15.10:20:21 zpool offline -t rpool /dev/disk/by-id/nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R000002B-part3 [user 0 (root) on host:linux]
+2026-10-15.10:21:45 [txg:22874795] scan aborted, restarting errors=0 [on host]
+2026-10-15.10:21:45 [txg:22874795] starting deferred resilver errors=0 [on host]
+2026-10-15.10:21:45 [txg:22874795] scan setup func=2 mintxg=22874773 maxtxg=22874795 [on host]
+2026-10-15.10:21:46 [txg:22874797] scan done errors=0 [on host]
+2026-10-15.10:21:46 zpool online rpool /dev/disk/by-id/nvme-Samsung_SSD_970_EVO_Plus_1TB_S4EWNX0R000002B-part3 [user 0 (root) on host:linux]

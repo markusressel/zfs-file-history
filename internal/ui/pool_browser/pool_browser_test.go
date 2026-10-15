@@ -2,6 +2,7 @@ package pool_browser
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -533,4 +534,32 @@ func TestPoolBrowser_ActionShortcut(t *testing.T) {
 		assert.Equal(t, shortcut_helper.KeyEnter, last.KeyCombo[0])
 		assert.NotNil(t, last.Run)
 	})
+}
+
+// h shows the history of the selected pool, only offered while it can be read (see SetOnShowHistory)
+func TestPoolBrowser_History(t *testing.T) {
+	app, browser, _ := loadedBrowserApp(t, "tank")
+	shown := make(chan string, 1)
+	hasHistory := func() (found bool) {
+		testutil.OnUiThread(t, app, func() {
+			found = slices.ContainsFunc(browser.GetShortcutMap(), func(entry shortcut_helper.ShortcutEntry) bool { return entry.Name == "History" })
+		})
+		return found
+	}
+
+	assert.False(t, hasHistory())
+	app.QueueEvent(tcell.NewEventKey(tcell.KeyRune, 'h', tcell.ModNone))
+
+	testutil.OnUiThread(t, app, func() {
+		browser.SetOnShowHistory(func(pool string) { shown <- pool })
+		browser.Focus()
+	})
+	assert.True(t, hasHistory())
+	app.QueueEvent(tcell.NewEventKey(tcell.KeyRune, 'h', tcell.ModNone))
+	select {
+	case pool := <-shown:
+		assert.Equal(t, "tank", pool)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the history was not shown")
+	}
 }
