@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/ui/util"
@@ -45,7 +46,7 @@ type PoolHistoryDialog struct {
 	layout        *tview.Flex
 	actionChannel chan DialogActionId
 	filterInput   *tview.InputField
-	table         *tview.Table
+	table         *poolHistoryTable
 	// tableArea shows the table, or loadingView while the history is read
 	tableArea   *tview.Pages
 	loadingView *util.LoadingView
@@ -128,10 +129,11 @@ func (d *PoolHistoryDialog) createLayout() {
 		d.application.SetFocus(d.table)
 	})
 
-	d.table = tview.NewTable().SetSelectable(true, false).SetFixed(1, 0).SetContent(d.content)
-	d.table.SetSelectedStyle(tcell.StyleDefault.Foreground(theme.Colors.Layout.Table.SelectedForeground).Background(theme.Colors.Layout.Table.SelectedBackground))
-	d.table.SetSelectionChangedFunc(func(row int, column int) { d.updateDetails() })
-	util.IgnoreClicksBelowRows(d.table)
+	table := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0).SetContent(d.content)
+	table.SetSelectedStyle(tcell.StyleDefault.Foreground(theme.Colors.Layout.Table.SelectedForeground).Background(theme.Colors.Layout.Table.SelectedBackground))
+	table.SetSelectionChangedFunc(func(row int, column int) { d.updateDetails() })
+	util.IgnoreClicksBelowRows(table)
+	d.table = &poolHistoryTable{Table: table, scrollbar: scrollbar.NewScrollbarComponent(d.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)}
 
 	d.loadingView = util.NewLoadingView(d.application, "", "Reading the history (zpool history)…")
 	d.loadingView.SetBorder(false)
@@ -482,6 +484,33 @@ func (d *PoolHistoryDialog) Close() {
 	go func() {
 		d.actionChannel <- DialogCloseActionId
 	}()
+}
+
+// poolHistoryTable is the list, with a scrollbar on its right while not all rows fit (like table.RowSelectionTable).
+// The bar is drawn after the table: tview sets the row offset while drawing it (e.g. to keep the selection visible).
+type poolHistoryTable struct {
+	*tview.Table
+	scrollbar *scrollbar.ScrollbarComponent
+}
+
+func (t *poolHistoryTable) Draw(screen tcell.Screen) {
+	x, y, width, height := t.GetRect()
+	// without the (fixed) header row
+	rows := t.GetRowCount() - 1
+	if rows <= height-1 || width < 2 {
+		t.Table.Draw(screen)
+		return
+	}
+	t.SetRect(x, y, width-1, height)
+	t.Table.Draw(screen)
+	t.SetRect(x, y, width, height)
+	offset, _ := t.GetOffset()
+	t.scrollbar.SetMax(rows)
+	t.scrollbar.SetPosition(offset)
+	t.scrollbar.SetWidth(max(height-1, 1))
+	layout := t.scrollbar.GetLayout()
+	layout.SetRect(x+width-1, y, 1, height)
+	layout.Draw(screen)
 }
 
 // poolHistoryContent are the rows of the list, created when drawn (see tview.TableContent): a table with cells for

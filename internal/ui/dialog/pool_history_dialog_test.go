@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
@@ -302,9 +303,25 @@ func TestPoolHistoryDialog_StartsAtTheNewest(t *testing.T) {
 	// the same with a filter that matches nothing, then cleared
 	dt.key(tcell.KeyRune, '/')
 	dt.key(tcell.KeyRune, 'x')
-	dt.waitForText("0 of 200 groups")
+	dt.waitForRows()
 	dt.key(tcell.KeyEscape, 0)
 	dt.waitForText("200 of 200 groups")
 	dt.waitForText("2024-01-02 06:38:00")
 	assert.Equal(t, 0, offset())
+}
+
+// a scrollbar right of the list while not all rows fit
+func TestPoolHistoryDialog_Scrollbar(t *testing.T) {
+	var many []zfs.PoolHistoryEntry
+	for i := range 200 {
+		many = append(many, zfs.PoolHistoryEntry{Pool: "tank", Time: historyAt(0).Add(time.Duration(i) * 2 * time.Minute), Event: "zfs snapshot"})
+	}
+	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return many, nil })
+	dt.waitForText("200 of 200 groups")
+	dt.waitForText(scrollbar.ScrollIndicatorBottom)
+
+	dt.key(tcell.KeyRune, '/')
+	dt.keys("x")
+	dt.waitForRows()
+	assert.NotContains(t, dt.screenText(), scrollbar.ScrollIndicatorBottom)
 }
