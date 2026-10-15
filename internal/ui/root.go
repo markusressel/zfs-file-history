@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -233,8 +234,12 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	}
 	// the history of a pool, or of a dataset with its children and snapshots (h on the pools and datasets pages),
 	// only offered while it can be read: as root, or with the sudoers rule of "setup --history"
+	// one for the application: the history of a large pool takes many seconds to read, shown again it is there at once
+	historyCache := dialog.NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
+		return loadPoolHistory(ctx, pool, progress)
+	})
 	showHistory := func(pool string, dataset string) {
-		dialog.ShowDialogOnPages(application, pagesLayout, dialog.NewPoolHistoryDialog(application, pool, dataset, loadPoolHistory), nil)
+		dialog.ShowDialogOnPages(application, pagesLayout, dialog.NewPoolHistoryDialog(application, pool, dataset, historyCache), nil)
 	}
 	updateHistoryAvailable := func() {
 		go func() {

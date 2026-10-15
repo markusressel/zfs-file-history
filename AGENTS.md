@@ -37,7 +37,8 @@ of the code.
 
 - `cmd/`: the cobra commands. `root.go` starts the UI, `setup.go` installs the sudoers rules of `zfs.SudoersRules`
   (`/etc/sudoers.d/zfs-file-history`, checked with `visudo` before installing): `--events` (`zpool events -v -f`,
-  the event watcher), `--data-errors` (`zpool status -p -v`), `--history` (`zpool history -il`, all pools),
+  the event watcher), `--data-errors` (`zpool status -p -v`), `--history` (`zpool history -il <pool>`; the rule of
+  older versions, all pools, still works: `SudoersRule.fallback`, rewritten by the next setup),
   `--smart` (`smartctl -j -i -H -A -n standby -- /dev/*`; `--` keeps other options out, smartctl takes one device;
   only offered if smartctl is installed, `SudoersRule.IsAvailable`), `--pool-actions`. Without flags it asks for each rule.
   It adds to the file (`zfs.SudoersFile`, which also reads the files of older versions), so it can run again.
@@ -61,9 +62,11 @@ of the code.
   `DatasetsLoaded` (snapshots created/destroyed, pools imported/exported, also after F5 via `RefreshZfsData`) and
   `PoolsChanged` (state changes, scrub/resilver/trim, vdev changes, `ereport.*`/`resource.*`; throttled to once a
   second). Emitters are safe for concurrent use (the UI subscribes while the watcher emits).
-- `internal/zfs/pool_history.go`: the history of the pools (`zpool history -il`, `PoolHistory`), which only root may
-  read: it runs with `sudo -n` (rule `--history`) unless the application runs as root. It can be hundreds of thousands
-  of records (tens of MB), so it is parsed without regular expressions and only read on demand. Records of ioctls are
+- `internal/zfs/pool_history.go`: the history of a pool (`zpool history -il <pool>`, `PoolHistory`), which only root
+  may read: it runs with `sudo -n` (rule `--history`) unless the application runs as root; with the rule of older
+  versions all pools, read up to the end of the pool. It can be millions of records (hundreds of MB, zpool takes tens
+  of seconds), so it is parsed while zpool prints it (`streamCommand`, reporting its progress), without regular
+  expressions, and only read on demand. Records of ioctls are
   skipped: they repeat the command logged next to them, and dump their arguments as they are (binary data, e.g. the
   key of `zfs load-key`). `pool_history_groups.go` groups the records (`GroupPoolHistory`, each record in exactly one
   group): scrubs, resilvers and TRIMs from their start to their end (by the events ZFS logs for them; the commands that
@@ -73,8 +76,10 @@ of the code.
   newest first in a virtual table (`tview.TableContent`), expanded like the dataset tree (Enter, `+`, `-`, `*`), or
   with `b` each record in the order they were logged, with the events ZFS logged itself (`i`); sorted on the header
   row and its columns chosen with F2 like a `RowSelectionTable` (sorted once, not on each change of the filter;
-  `table.SaveColumnLayout`); a filter in both:
-  `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
+  `table.SaveColumnLayout`); a filter in both. `dialog.PoolHistoryCache` (one for the application) keeps the history
+  read, grouped: shown again, the dialog shows it at once while it is read again (with the progress in the hint), and
+  replaces it if it changed, keeping the selection and the expanded groups (by `poolHistoryEntryKey`). A read goes on
+  when the dialog is closed. `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
   while the rule is allowed (`SetOnShowHistory`, updated on `zfs.SudoersChanged`).
 - `internal/zfs/pool_action.go`: the actions on pools (`zfs.PoolActions`: scrub start/pause/cancel, TRIM
   start/cancel, clear). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is

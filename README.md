@@ -83,7 +83,7 @@ permissions:
 
 - **Live updates** (`zpool events`): new snapshots and changes of the pools show up right away.
 - **Damaged files** (`zpool status -v`): which files are damaged by data errors.
-- **Pool history** (`zpool history -il`): what was done to the pools and datasets, when and by whom.
+- **Pool history** (`zpool history -il <pool>`): what was done to the pools and datasets, when and by whom.
 - **Disk health** (`smartctl`, if smartmontools is installed): the SMART values of the disks of the pools.
 - **Pool actions** (`zpool scrub`, `trim`, `clear`): scrubs, TRIMs and clearing the errors of a pool. Destroying,
   exporting or upgrading pools is not offered by zfs-file-history at all.

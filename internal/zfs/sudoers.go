@@ -37,6 +37,10 @@ type SudoersRule struct {
 	// former returns the commands former versions of the rule allowed for one path of its program, nil if none: their
 	// lines are dropped from the sudoers file, so the setup command can grant the rule again (see ParseSudoersFile)
 	former func(path string) []string
+	// fallback returns the commands of a former version of the rule the application still works with (e.g. slower),
+	// for one path of its program, nil if none: the rule counts as allowed with them (see AllowedSudoersRules), and
+	// the setup command replaces their lines by the ones of the rule (see ParseSudoersFile)
+	fallback func(path string) []string
 }
 
 // sudoersProgram is a program the commands of a SudoersRule run.
@@ -93,18 +97,23 @@ var (
 		ReadOnly: true,
 		allowed:  func(zpool string) []string { return []string{zpool + " " + strings.Join(dataErrorsArgs, " ")} },
 	}
-	// SudoersRuleHistory allows to read the history of the pools, see PoolHistory. The arguments are given exactly:
-	// all pools, so no others are allowed.
+	// SudoersRuleHistory allows to read the history of a pool, see PoolHistory. The pool name has to start with a
+	// letter, so no options can be given in its place (in sudoers, * also matches spaces, so more pool names may
+	// follow, which only read more). Former versions allowed only the history of all pools, which takes much longer
+	// to read with several pools; it still works.
 	SudoersRuleHistory = &SudoersRule{
 		Id:       "history",
 		Name:     "Pool history",
 		Summary:  "what was done to the pools and datasets, when and by whom",
-		Commands: "zpool " + strings.Join(historyArgs, " "),
+		Commands: "zpool " + strings.Join(historyArgs, " ") + " <pool>",
 		Description: "Show the history of the pools and datasets (only root may read it): the commands that " +
 			"changed them, e.g. created or destroyed snapshots, with their time and user, and what ZFS did itself, " +
-			"e.g. scrubs. Allows: zpool " + strings.Join(historyArgs, " "),
+			"e.g. scrubs. Allows: zpool " + strings.Join(historyArgs, " ") + " <pool>",
 		ReadOnly: true,
-		allowed:  func(zpool string) []string { return []string{zpool + " " + strings.Join(historyArgs, " ")} },
+		allowed: func(zpool string) []string {
+			return []string{zpool + " " + strings.Join(historyArgs, " ") + " [a-zA-Z]*"}
+		},
+		fallback: func(zpool string) []string { return []string{zpool + " " + strings.Join(historyArgs, " ")} },
 	}
 	// SudoersRulePoolActions allows to run the pool actions, see PoolActions. The pool name has to start with a
 	// letter, so no options can be given in its place. Further arguments are harmless for scrub and trim, but would
@@ -215,6 +224,22 @@ func (rule *SudoersRule) matchesFormer(line string) bool {
 	return false
 }
 
+// matchesFallback returns whether the sudoers line was written for the fallback of the rule, see
+// SudoersRule.fallback.
+func (rule *SudoersRule) matchesFallback(line string) bool {
+	if rule.fallback == nil {
+		return false
+	}
+	for _, path := range rule.programOf().paths {
+		for _, command := range rule.fallback(path) {
+			if containsCommand(line, command) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // containsCommand returns whether the command is one of the commands of the sudoers line, which are separated by
 // commas and may be negated.
 func containsCommand(line string, command string) bool {
@@ -273,7 +298,8 @@ func ParseSudoersFile(content string) *SudoersFile {
 		user, _, _ := strings.Cut(trimmed, " ")
 		matched := false
 		for _, rule := range SudoersRules {
-			if rule.matches(trimmed) {
+			if rule.matches(trimmed) || rule.matchesFallback(trimmed) {
+				// the lines of a fallback are written as the ones of the rule
 				file.Grant(user, rule)
 				matched = true
 			} else if rule.matchesFormer(trimmed) {
@@ -322,6 +348,16 @@ func (file *SudoersFile) String() string {
 // AllowedCommands returns the commands the rule allows, with the path its program has here.
 func (rule *SudoersRule) AllowedCommands() []string {
 	return rule.allowed(rule.programOf().path())
+}
+
+// isAllowedBy returns whether the commands (see parseNoPasswordCommands) allow the rule: all of its commands, or all
+// of the ones of its fallback.
+func (rule *SudoersRule) isAllowedBy(commands map[string]bool) bool {
+	all := func(required []string) bool {
+		return !slices.ContainsFunc(required, func(command string) bool { return !commands[command] })
+	}
+	path := rule.programOf().path()
+	return all(rule.allowed(path)) || (rule.fallback != nil && all(rule.fallback(path)))
 }
 
 // AllowedSudoersRules returns the ids of the rules the user may use (all as root). It runs sudo, so it must not be

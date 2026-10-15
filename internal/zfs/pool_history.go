@@ -1,6 +1,8 @@
 package zfs
 
 import (
+	"bytes"
+	"context"
 	"slices"
 	"strconv"
 	"strings"
@@ -10,9 +12,26 @@ import (
 )
 
 // historyArgs are the arguments of "zpool history" that list the history of all pools, with the events ZFS logs
-// itself (-i) and who did what on which host (-l). Exactly these are allowed by the sudoers rule of the setup
-// command, see SudoersRuleHistory.
+// itself (-i) and who did what on which host (-l). The name of a pool behind them lists only its history (see
+// poolHistoryArgs), as allowed by the sudoers rule of the setup command (see SudoersRuleHistory); former versions of
+// the rule allowed only all pools.
 var historyArgs = []string{"history", "-il"}
+
+// poolHistoryArgs are the arguments of "zpool history" that list the history of the pool.
+func poolHistoryArgs(pool string) []string {
+	return append(slices.Clone(historyArgs), pool)
+}
+
+// PoolHistoryProgress is how far the history of a pool was read, see PoolHistory.
+type PoolHistoryProgress struct {
+	// Bytes is how much of the output of zpool was read
+	Bytes int64
+	// Records is the number of records of the pool parsed
+	Records int
+}
+
+// poolHistoryProgressInterval is how often PoolHistory reports its progress: each report redraws the screen.
+const poolHistoryProgressInterval = 100 * time.Millisecond
 
 // SetupHistoryHint tells how to allow reading the history of the pools without starting the application as root.
 const SetupHistoryHint = "To see the history of the pools, run: sudo zfs-file-history setup --history"
@@ -65,62 +84,121 @@ func (entry *PoolHistoryEntry) IsAbout(dataset string) bool {
 	})
 }
 
-// PoolHistory returns the history of all pools ("zpool history -il"), oldest first per pool. ZFS keeps it in a ring
-// buffer on the pool: the oldest records are dropped once it is full, except the creation of the pool. Only root
-// may read it, so it runs with "sudo -n" (see SudoersRuleHistory) unless the application runs as root. Runs
-// zpool, so it must not be called on the UI thread.
-func PoolHistory() ([]PoolHistoryEntry, error) {
-	return backend.PoolHistory()
+// PoolHistory returns the history of the pool ("zpool history -il <pool>"), oldest first. ZFS keeps it in a ring
+// buffer on the pool: the oldest records are dropped once it is full, except the creation of the pool. It can be
+// hundreds of MB, which zpool takes many seconds to print, so it is parsed while zpool prints it, and progress (if
+// not nil) is called with how far it got, from the goroutine of the caller. Only root may read it, so it runs with
+// "sudo -n" (see SudoersRuleHistory) unless the application runs as root. Cancelling ctx stops zpool. Runs zpool, so
+// it must not be called on the UI thread.
+func PoolHistory(ctx context.Context, pool string, progress func(PoolHistoryProgress)) ([]PoolHistoryEntry, error) {
+	return backend.PoolHistory(ctx, pool, progress)
+}
+
+// readPoolHistory parses the history of the pool from the lines of the output of zpool (of the pool, or of all pools,
+// see poolHistoryParser.only), passed to it by read, which stops reading once it returns false. progress is called
+// with how far it got, at most every poolHistoryProgressInterval.
+func readPoolHistory(pool string, progress func(PoolHistoryProgress), read func(onLine func(line []byte) bool) error) ([]PoolHistoryEntry, error) {
+	parser := &poolHistoryParser{only: pool}
+	var size int64
+	lastReport := time.Now()
+	lines := 0
+	err := read(func(line []byte) bool {
+		size += int64(len(line)) + 1
+		parser.parseLine(line)
+		lines++
+		// the clock is read only every few lines: there are millions of them
+		if progress != nil && lines%1024 == 0 && time.Since(lastReport) >= poolHistoryProgressInterval {
+			lastReport = time.Now()
+			progress(PoolHistoryProgress{Bytes: size, Records: len(parser.entries)})
+		}
+		return !parser.done
+	})
+	if err != nil {
+		return nil, err
+	}
+	if progress != nil {
+		progress(PoolHistoryProgress{Bytes: size, Records: len(parser.entries)})
+	}
+	return parser.entries, nil
 }
 
 // historyMultiWordEvents are the internal events whose kind is more than one word. The others are the first word.
 var historyMultiWordEvents = []string{"scan aborted, restarting", "starting deferred resilver", "scan setup", "scan done",
 	"scan cancelled", "clone swap", "permission update"}
 
-// parsePoolHistory parses the output of "zpool history -il". Records of ioctls are left out: they repeat the
-// command logged next to them, and their arguments are dumped as they are, including binary data (e.g. the key of
-// "zfs load-key"). Lines that are not the start of a record belong to the record before. A pool may have hundreds of
-// thousands of records, so the lines are parsed without regular expressions.
+// parsePoolHistory parses the output of "zpool history -il", of all pools, see poolHistoryParser.
 func parsePoolHistory(output string) []PoolHistoryEntry {
-	var entries []PoolHistoryEntry
-	pool := ""
+	parser := &poolHistoryParser{}
 	for line := range strings.SplitSeq(output, "\n") {
-		if name, found := strings.CutPrefix(line, "History for '"); found {
-			pool = strings.TrimSuffix(name, "':")
-			continue
-		}
-		// e.g. "2026-10-15.10:14:22 zpool scrub rpool", ioctls with their duration: "... (771ms) ioctl scrub"
-		if pool == "" || len(line) <= len(historyTimeLayout) || line[len(historyTimeLayout)] != ' ' || line[0] < '0' || line[0] > '9' {
-			continue
-		}
-		recorded, err := time.ParseInLocation(historyTimeLayout, line[:len(historyTimeLayout)], time.Local)
-		if err != nil {
-			continue
-		}
-		rest := line[len(historyTimeLayout)+1:]
-		if strings.HasPrefix(rest, "(") {
-			if _, after, found := strings.Cut(rest, "ms) "); found {
-				rest = after
-			}
-		}
-		if strings.HasPrefix(rest, "ioctl ") || strings.HasPrefix(rest, "unrecognized record") {
-			continue
-		}
-		entry := PoolHistoryEntry{Pool: pool, Time: recorded}
-		rest = cutWho(&entry, rest)
-		rest = printable(rest)
-		if txg, found := strings.CutPrefix(rest, "[txg:"); found {
-			number, text, _ := strings.Cut(txg, "] ")
-			entry.Internal = true
-			entry.Txg, _ = strconv.ParseUint(number, 10, 64)
-			parseInternalEvent(&entry, strings.TrimSpace(text))
-		} else {
-			entry.Text = strings.TrimSpace(rest)
-			parseCommand(&entry)
-		}
-		entries = append(entries, entry)
+		parser.parseLine([]byte(line))
 	}
-	return entries
+	return parser.entries
+}
+
+// poolHistoryParser parses the output of "zpool history -il" line by line. Records of ioctls are left out: they
+// repeat the command logged next to them, and their arguments are dumped as they are, including binary data (e.g.
+// the key of "zfs load-key"). Lines that are not the start of a record belong to the record before. A pool may have
+// millions of records, so the lines are parsed without regular expressions, and only the ones that start a record
+// are copied into a string: most lines are the dumped arguments of ioctls.
+type poolHistoryParser struct {
+	// only is the pool whose records are kept, "" all
+	only string
+	// entries are the records parsed so far
+	entries []PoolHistoryEntry
+	// done is set once the records of only were parsed, and another pool follows
+	done bool
+	// pool is the pool of the lines, "" before the first
+	pool string
+	// lastTime and lastRecorded are the time of the last record, as written and parsed: records of the same second
+	// follow each other, and parsing the time takes longer than the rest of a record
+	lastTime     string
+	lastRecorded time.Time
+}
+
+// parseLine parses the next line of the output (without its line break).
+func (parser *poolHistoryParser) parseLine(line []byte) {
+	if name, found := bytes.CutPrefix(line, []byte("History for '")); found {
+		if parser.only != "" && parser.pool == parser.only {
+			parser.done = true
+		}
+		parser.pool = string(bytes.TrimSuffix(name, []byte("':")))
+		return
+	}
+	// e.g. "2026-10-15.10:14:22 zpool scrub rpool", ioctls with their duration: "... (771ms) ioctl scrub"
+	if parser.pool == "" || (parser.only != "" && parser.pool != parser.only) || len(line) <= len(historyTimeLayout) ||
+		line[len(historyTimeLayout)] != ' ' || line[0] < '0' || line[0] > '9' {
+		return
+	}
+	rest := line[len(historyTimeLayout)+1:]
+	if len(rest) > 0 && rest[0] == '(' {
+		if _, after, found := bytes.Cut(rest, []byte("ms) ")); found {
+			rest = after
+		}
+	}
+	if bytes.HasPrefix(rest, []byte("ioctl ")) || bytes.HasPrefix(rest, []byte("unrecognized record")) {
+		return
+	}
+	recorded := parser.lastRecorded
+	if timeText := line[:len(historyTimeLayout)]; string(timeText) != parser.lastTime {
+		parsed, err := time.ParseInLocation(historyTimeLayout, string(timeText), time.Local)
+		if err != nil {
+			return
+		}
+		parser.lastTime, parser.lastRecorded, recorded = string(timeText), parsed, parsed
+	}
+	entry := PoolHistoryEntry{Pool: parser.pool, Time: recorded}
+	text := cutWho(&entry, string(rest))
+	text = printable(text)
+	if txg, found := strings.CutPrefix(text, "[txg:"); found {
+		number, event, _ := strings.Cut(txg, "] ")
+		entry.Internal = true
+		entry.Txg, _ = strconv.ParseUint(number, 10, 64)
+		parseInternalEvent(&entry, strings.TrimSpace(event))
+	} else {
+		entry.Text = strings.TrimSpace(text)
+		parseCommand(&entry)
+	}
+	parser.entries = append(parser.entries, entry)
 }
 
 // cutWho sets the user and host from what -l adds at the end of a record, e.g. " [user 0 (root) on host:linux]" of a
