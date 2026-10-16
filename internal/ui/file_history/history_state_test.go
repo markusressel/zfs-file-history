@@ -1,4 +1,4 @@
-package dialog
+package file_history
 
 import (
 	"path/filepath"
@@ -7,19 +7,18 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/zfs"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // The keys identify the columns in the saved table layouts, see table.RowSelectionTable.BindColumnLayout.
 func TestDialogColumnKeysAreUnique(t *testing.T) {
 	for name, columns := range map[string][]*table.Column{
-		"history": historyColumns, "timeline": timelineColumns, "changes": changeColumns, "properties": propertyColumns,
-		"pool history": poolHistoryColumns,
+		"history": historyColumns, "timeline": timelineColumns, "changes": changeColumns,
 	} {
 		keys := map[string]bool{}
 		for _, column := range columns {
@@ -68,7 +67,7 @@ func TestFolderHistoryOverlay_ColumnsAreEditableAndSaved(t *testing.T) {
 	ft.selectChange("b.txt")
 
 	ft.press(tcell.KeyF2, 0)
-	ft.waitFor("column dialog", func() bool { return ft.hasPage(string(ColumnSelectionDialogPage)) })
+	ft.waitFor("column dialog", func() bool { return ft.hasPage(string(dialog.ColumnSelectionDialogPage)) })
 	// remove the first column ("±")
 	ft.press(tcell.KeyEnter, 0)
 	ft.waitFor("saved", func() bool {
@@ -76,7 +75,7 @@ func TestFolderHistoryOverlay_ColumnsAreEditableAndSaved(t *testing.T) {
 		return ok && assert.ObjectsAreEqual([]string{"name", "size", "modified"}, layout.Columns)
 	})
 	ft.press(tcell.KeyEscape, 0)
-	ft.waitFor("column dialog closed", func() bool { return !ft.hasPage(string(ColumnSelectionDialogPage)) })
+	ft.waitFor("column dialog closed", func() bool { return !ft.hasPage(string(dialog.ColumnSelectionDialogPage)) })
 
 	// a new overlay uses the saved columns
 	var columns []*table.Column
@@ -84,19 +83,6 @@ func TestFolderHistoryOverlay_ColumnsAreEditableAndSaved(t *testing.T) {
 		columns = NewFolderHistoryOverlay(ft.app, filepath.Join(ft.ds.root, "docs"), nil).changes.GetColumnSpec()
 	})
 	assert.Equal(t, []*table.Column{changeColumnName, changeColumnSize, changeColumnModified}, columns)
-}
-
-func TestDatasetPropertiesDialog_ColumnsAreEditable(t *testing.T) {
-	store := statetest.Use(t)
-	pt := newPropertiesTest(t, false)
-
-	pt.press(tcell.KeyF2, 0)
-	pt.waitFor("column dialog", func() bool { return pt.hasPage(string(ColumnSelectionDialogPage)) })
-	pt.press(tcell.KeyEnter, 0)
-	require.Eventually(t, func() bool {
-		_, ok := store.TableLayout(stateKeyPropertiesTable)
-		return ok
-	}, 3*time.Second, 10*time.Millisecond)
 }
 
 func TestVersionAt(t *testing.T) {

@@ -17,6 +17,9 @@ import (
 	"github.com/rivo/tview"
 )
 
+// stateKeyPoolFeaturesTable is where the column layout of the features is saved in state.Current
+const stateKeyPoolFeaturesTable = "poolFeatures"
+
 const (
 	PoolFeaturesDialogPage       util.Page = "PoolFeaturesDialog"
 	EnablePoolFeaturesDialogPage util.Page = "EnablePoolFeaturesDialog"
@@ -167,7 +170,7 @@ func poolFeaturesShortcuts() []shortcut_helper.ShortcutEntry {
 // header row, Enter changes the sort direction.
 func (d *PoolFeaturesDialog) captureTableInput(event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() == tcell.KeyF2 {
-		openColumnDialog(d.application, d.pages, "Configure Feature Columns", featureColumns, d.table)
+		ShowColumnDialogOnPages(d.application, d.pages, "Configure Feature Columns", featureColumns, d.table)
 		return nil
 	}
 	feature := d.table.GetSelectedEntry()
@@ -446,7 +449,7 @@ func (d *PoolFeaturesDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
-func (d *PoolFeaturesDialog) setPages(pages *tview.Pages) {
+func (d *PoolFeaturesDialog) SetPages(pages *tview.Pages) {
 	d.pages = pages
 }
 

@@ -86,7 +86,7 @@ func (d *DatasetPermissionsDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
-func (d *DatasetPermissionsDialog) setPages(pages *tview.Pages) {
+func (d *DatasetPermissionsDialog) SetPages(pages *tview.Pages) {
 	d.pages = pages
 }
 

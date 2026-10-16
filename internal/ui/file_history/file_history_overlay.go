@@ -1,4 +1,4 @@
-package dialog
+package file_history
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
@@ -52,7 +53,7 @@ type FileHistoryOverlay struct {
 	cachedEntries  []*data.SnapshotBrowserEntry
 	historyEntries []*data.SnapshotBrowserEntry
 	layout         *tview.Flex
-	actionChannel  chan DialogActionId
+	actionChannel  chan dialog.DialogActionId
 
 	// UI widgets
 	pages          *tview.Pages
@@ -88,6 +89,9 @@ type FileHistoryOverlay struct {
 	// see openInExternalViewer
 	externalViewer *ExternalDiffViewerConfig
 }
+
+// ShowDialogOnPages finds this by a type assertion, which would fail silently if the method did not match.
+var _ dialog.MouseCapturer = (*FileHistoryOverlay)(nil)
 
 // damagedVersionMarker marks the versions of the file that are damaged, behind the name of their snapshot.
 const damagedVersionMarker = "⚠ damaged"
@@ -132,7 +136,7 @@ func NewFileHistoryOverlay(
 		application:     application,
 		file:            file,
 		cachedEntries:   cachedEntries,
-		actionChannel:   make(chan DialogActionId, 1),
+		actionChannel:   make(chan dialog.DialogActionId, 1),
 		currentDiffMode: loadDiffMode(toggleFileHistoryComparePrevious, diffModeWorkingCopy, diffModePredecessor),
 		historyEntries:  []*data.SnapshotBrowserEntry{},
 		externalViewer:  externalDiffViewer(),
@@ -188,8 +192,8 @@ func NewFileHistoryOverlay(
 	return overlay
 }
 
-// captureMouse lets the boundary between the versions and the changes be dragged (see ShowDialogOnPages).
-func (o *FileHistoryOverlay) captureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+// CaptureMouse lets the boundary between the versions and the changes be dragged (see dialog.ShowDialogOnPages).
+func (o *FileHistoryOverlay) CaptureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 	return o.split.MouseCapture(action, event)
 }
 
@@ -207,13 +211,13 @@ func (o *FileHistoryOverlay) GetLayout() *tview.Flex {
 	return o.layout
 }
 
-func (o *FileHistoryOverlay) GetActionChannel() <-chan DialogActionId {
+func (o *FileHistoryOverlay) GetActionChannel() <-chan dialog.DialogActionId {
 	return o.actionChannel
 }
 
 func (o *FileHistoryOverlay) Close() {
 	o.diffLoader.Cancel()
-	o.actionChannel <- DialogCloseActionId
+	o.actionChannel <- dialog.DialogCloseActionId
 }
 
 func (o *FileHistoryOverlay) createHistoryTable() *table.RowSelectionTable[data.SnapshotBrowserEntry] {
@@ -355,7 +359,7 @@ func (o *FileHistoryOverlay) createLayout() *tview.Flex {
 		AddPage(string(HistoryMainPage), overlayContent, true, false).
 		AddPage(string(HistoryLoadingPage), o.loadingView, true, true)
 
-	return createOverlayFrame(title, o.pages)
+	return dialog.NewOverlayFrame(title, o.pages)
 }
 
 func (o *FileHistoryOverlay) setupInputCaptures() {
@@ -369,7 +373,7 @@ func (o *FileHistoryOverlay) setupInputCaptures() {
 		}
 
 		if key == tcell.KeyF2 {
-			openColumnDialog(o.application, o.pages, "Configure History Columns", historyColumns, o.tableContainer)
+			dialog.ShowColumnDialogOnPages(o.application, o.pages, "Configure History Columns", historyColumns, o.tableContainer)
 			return nil
 		}
 
@@ -555,7 +559,7 @@ func (o *FileHistoryOverlay) scanHistoryAsync() {
 // drawSparkline draws the size of the file in its versions, oldest first, and marks the selected one.
 // Runs while drawing, on the UI thread.
 func (o *FileHistoryOverlay) drawSparkline(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-	fillBackground(screen, x, y, width, height)
+	dialog.FillBackground(screen, x, y, width, height)
 	if len(o.sizes) == 0 || height < 1 {
 		return x, y, width, height
 	}
@@ -858,8 +862,8 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 		stat, err = os.Lstat(snapshotPath)
 		if err != nil {
 			logging.Error("Could not stat snapshot file %s: %s", snapshotPath, err.Error())
-			errDialog := NewErrorDialog(o.application, "Restore Failed", err)
-			ShowDialogOnPages(o.application, o.pages, errDialog, nil)
+			errDialog := dialog.NewErrorDialog(o.application, "Restore Failed", err)
+			dialog.ShowDialogOnPages(o.application, o.pages, errDialog, nil)
 			return
 		}
 	}
@@ -879,14 +883,14 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 		DiffState:     entry.DiffState,
 	}
 
-	onComplete := func(d *SelectionDialog, option *DialogOption, err error) {
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		// Only trigger chain logic if we are doing a restore
-		if option.Id == RestoreFileDialogRestoreFileActionId || option.Id == RestoreFileDialogRestoreRecursiveActionId {
+		if option.Id == dialog.RestoreFileDialogRestoreFileActionId || option.Id == dialog.RestoreFileDialogRestoreRecursiveActionId {
 
 			// Use Chain() instead of Close() + QueueUpdateDraw()
 			d.Chain(func() {
-				progressDialog := NewRestoreFileProgressDialog(o.application, restoreEntry, false)
-				ShowDialogOnPages(o.application, o.pages, progressDialog, func() {
+				progressDialog := dialog.NewRestoreFileProgressDialog(o.application, restoreEntry, false)
+				dialog.ShowDialogOnPages(o.application, o.pages, progressDialog, func() {
 					o.updateDiff()
 				})
 			})
@@ -895,8 +899,8 @@ func (o *FileHistoryOverlay) restoreSelectedVersion() {
 		}
 	}
 
-	restoreDialog := NewRestoreFileDialog(o.application, restoreEntry, nil, onComplete)
-	ShowDialogOnPages(o.application, o.pages, restoreDialog, nil)
+	restoreDialog := dialog.NewRestoreFileDialog(o.application, restoreEntry, nil, onComplete)
+	dialog.ShowDialogOnPages(o.application, o.pages, restoreDialog, nil)
 }
 
 // predecessorOf returns the snapshot of the version before entry in the diff mode diffModePredecessor (nil: none, or
@@ -955,8 +959,8 @@ func (o *FileHistoryOverlay) copyDiffToClipboard() {
 	}
 	err := uiutil.CopyToClipboard(o.currentRawDiff)
 	if err != nil {
-		errDialog := NewErrorDialog(o.application, "Copy Failed", err)
-		ShowDialogOnPages(o.application, o.pages, errDialog, nil)
+		errDialog := dialog.NewErrorDialog(o.application, "Copy Failed", err)
+		dialog.ShowDialogOnPages(o.application, o.pages, errDialog, nil)
 	} else {
 		o.copyShortcutLabel = "Copied!"
 		o.updateShortcuts()

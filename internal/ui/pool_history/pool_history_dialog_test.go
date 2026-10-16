@@ -1,4 +1,4 @@
-package dialog
+package pool_history
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"time"
 	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/zfs"
@@ -73,7 +74,7 @@ func newHistoryDialogTestWithCache(t *testing.T, pool string, dataset string, ca
 	testutil.StartApp(t, dt.app, dt.pages)
 	testutil.OnUiThread(t, dt.app, func() {
 		dt.dialog = NewPoolHistoryDialog(dt.app, pool, dataset, cache)
-		ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
+		dialog.ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
 	})
 	return dt
 }
@@ -488,7 +489,7 @@ func (dt *historyDialogTest) reopen(pool string, dataset string) {
 	}, 3*time.Second, 10*time.Millisecond)
 	testutil.OnUiThread(dt.t, dt.app, func() {
 		dt.dialog = NewPoolHistoryDialog(dt.app, pool, dataset, dt.cache)
-		ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
+		dialog.ShowDialogOnPages(dt.app, dt.pages, dt.dialog, nil)
 	})
 }
 
@@ -695,4 +696,19 @@ func TestPoolHistoryCache_RecordsDuringARead(t *testing.T) {
 	assert.Equal(t, last, state.History.Entries[3])
 	assert.Len(t, state.History.Entries, 4)
 	assert.Same(t, &state.History.Entries[3], state.History.Groups[len(state.History.Groups)-1].Entries[0], "grouped again")
+}
+
+// The keys identify the columns in the saved table layouts, see table.RowSelectionTable.BindColumnLayout.
+func TestPoolHistoryColumnKeysAreUnique(t *testing.T) {
+	for name, columns := range map[string][]*table.Column{
+		"pool history": poolHistoryColumns,
+	} {
+		keys := map[string]bool{}
+		for _, column := range columns {
+			assert.NotEmpty(t, column.Key, "%s: %s", name, column.Title)
+			assert.NotEmpty(t, column.Title, "%s: shown in the column dialog", name)
+			assert.False(t, keys[column.Key], "%s: duplicate key %q", name, column.Key)
+			keys[column.Key] = true
+		}
+	}
 }

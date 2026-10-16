@@ -38,15 +38,15 @@ type Dialog interface {
 	GetActionChannel() <-chan DialogActionId
 }
 
-// pagesAware is implemented by dialogs that need to know the pages they are shown on, e.g. to show follow-up dialogs.
-type pagesAware interface {
-	setPages(pages *tview.Pages)
+// PagesAware is implemented by dialogs that need to know the pages they are shown on, e.g. to show follow-up dialogs.
+type PagesAware interface {
+	SetPages(pages *tview.Pages)
 }
 
-// mouseCapturer is implemented by dialogs that handle mouse events themselves, e.g. dragging the boundary of
+// MouseCapturer is implemented by dialogs that handle mouse events themselves, e.g. dragging the boundary of
 // resizable panes. ShowDialogOnPages owns the mouse capture of the dialog layout and calls this first.
-type mouseCapturer interface {
-	captureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse)
+type MouseCapturer interface {
+	CaptureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse)
 }
 
 type DialogOption struct {
@@ -166,14 +166,14 @@ func isOnDialog(primitive tview.Primitive, x int, y int) bool {
 // installed on the frame (e.g. uiutil.NewBorderFooter), which keep and call it.
 func clearInside(frame *tview.Box) {
 	frame.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		fillBackground(screen, x+1, y+1, width-2, height-2)
+		FillBackground(screen, x+1, y+1, width-2, height-2)
 		// -1: tview computes the inner rect (border and padding) itself
 		return -1, 0, 0, 0
 	})
 }
 
-// fillBackground fills the given area with the background of the widgets.
-func fillBackground(screen tcell.Screen, x, y, width, height int) {
+// FillBackground fills the given area with the background of the widgets.
+func FillBackground(screen tcell.Screen, x, y, width, height int) {
 	style := tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor)
 	for row := y; row < y+height; row++ {
 		for column := x; column < x+width; column++ {
@@ -390,8 +390,8 @@ func ShowDialogOnPages(
 	onClosed func(),
 ) {
 	layout := d.GetLayout()
-	if aware, ok := d.(pagesAware); ok {
-		aware.setPages(pages)
+	if aware, ok := d.(PagesAware); ok {
+		aware.SetPages(pages)
 	}
 	var previousFocus tview.Primitive
 	if !layout.HasFocus() {
@@ -456,11 +456,11 @@ func ShowDialogOnPages(
 	}
 
 	// Ensure that clicking outside the focusable elements doesn't lose focus
-	capturer, hasMouseCapture := d.(mouseCapturer)
+	capturer, hasMouseCapture := d.(MouseCapturer)
 	layout.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		// first, so drags (e.g. of a split) continue when the mouse leaves the dialog
 		if hasMouseCapture {
-			if action, event = capturer.captureMouse(action, event); event == nil {
+			if action, event = capturer.CaptureMouse(action, event); event == nil {
 				return action, event
 			}
 		}
