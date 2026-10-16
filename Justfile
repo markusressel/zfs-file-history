@@ -10,7 +10,7 @@ OUTPUT_BIN := "bin/" + NAME
 PACKAGE := "github.com/markusressel/" + NAME
 GIT_REV := `git rev-parse --short HEAD`
 DATE := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-VERSION := "2.5.0"
+VERSION := "2.6.0"
 # agg renders the demo as a GIF, see demo-gif: a release binary (https://github.com/asciinema/agg), downloaded into
 # bin/ and checked against its checksum
 AGG_VERSION := "1.9.0"
