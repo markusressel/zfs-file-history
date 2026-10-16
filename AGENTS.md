@@ -150,7 +150,10 @@ of the code.
   (`devDir`, `sysDir`), UI tests the fakes of `internal/disk/disktest` (`newTemperatureSampler`).
   `SmartReader` (`smart.go`) runs `sudo -n smartctl` (rule `--smart`), parses its JSON (ATA, NVMe, SCSI) into
   `SmartReport`s with `Problems` (failed health check, failing or important ATA attributes, NVMe critical warnings,
-  media errors and wear), and keeps them: sudo logs every call. `-n standby` skips sleeping disks (their last report
+  media errors and wear) and how close each attribute is to failing (`SmartAttribute.Risk`: ATA over the last
+  `ataRiskWindow` points of its normalized value above its threshold, not from the value of a new disk, which smartctl
+  does not tell and healthy values settle far below; NVMe spare and endurance; a bar in the `Risk` column of the
+  attributes), and keeps them: sudo logs every call. `-n standby` skips sleeping disks (their last report
   is kept). The `Monitor` reads all disks every hour (alert `zfs.PoolAlertSmart`), the devices pane and the disks page
   every 10 minutes while drawn, `s` now; one `SmartReader` for all (`newSmartSource` in `root.go`). The disks page
   (`disk_page.go`, `internal/ui/disk_browser`) lists the disks of all pools (from the statuses of the `Monitor`),

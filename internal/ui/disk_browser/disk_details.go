@@ -3,6 +3,7 @@ package disk_browser
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"zfs-file-history/internal/disk"
@@ -27,11 +28,13 @@ var (
 	attributeColumnThreshold = &table.Column{Id: 4, Key: "threshold", Title: "Thresh", Alignment: tview.AlignRight}
 	attributeColumnValue     = &table.Column{Id: 5, Key: "value", Title: "Value", Alignment: tview.AlignRight}
 	attributeColumnFailed    = &table.Column{Id: 6, Key: "failed", Title: "Failed", Alignment: tview.AlignLeft}
+	// attributeColumnRisk shows how close an attribute is to failing, see disk.SmartAttribute.Risk
+	attributeColumnRisk = &table.Column{Id: 7, Key: "risk", Title: "Risk", Alignment: tview.AlignLeft}
 
 	// attributeColumns are the columns of all kinds of disks: only ATA attributes have an id and normalized values,
 	// the cells are empty for the values of NVMe and SCSI disks
 	attributeColumns = []*table.Column{attributeColumnId, attributeColumnName, attributeColumnNorm, attributeColumnWorst,
-		attributeColumnThreshold, attributeColumnValue, attributeColumnFailed}
+		attributeColumnThreshold, attributeColumnRisk, attributeColumnValue, attributeColumnFailed}
 )
 
 // stateKeyAttributesTable is the key of the column layout of the attributes remembered in state.Current
@@ -376,6 +379,10 @@ func toAttributeCells(row int, columns []*table.Column, entry *AttributeEntry) [
 			text = entry.Value
 		case attributeColumnFailed:
 			text = entry.Failed
+		case attributeColumnRisk:
+			// with style tags of its own, not escaped
+			cells = append(cells, tview.NewTableCell(formatRisk(entry.SmartAttribute)).SetAlign(column.Alignment))
+			continue
 		}
 		cells = append(cells, tview.NewTableCell(tview.Escape(text)).SetTextColor(color).SetAttributes(attributes).
 			SetAlign(column.Alignment))
@@ -411,6 +418,8 @@ func sortAttributes(entries []*AttributeEntry, column *table.Column, inverted bo
 			default:
 				result = cmp.Compare(a.Value, b.Value)
 			}
+		case attributeColumnRisk:
+			result = cmp.Compare(riskRank(a.SmartAttribute), riskRank(b.SmartAttribute))
 		case attributeColumnFailed:
 			// failing ones first
 			result = cmp.Compare(failedRank(a.Failed), failedRank(b.Failed))
@@ -424,6 +433,27 @@ func sortAttributes(entries []*AttributeEntry, column *table.Column, inverted bo
 		return result
 	})
 	return entries
+}
+
+// riskBarWidth is the width of the bar of the risk column, see formatRisk.
+const riskBarWidth = 8
+
+// formatRisk returns how close the attribute is to failing: a bar (empty while it is far from it, full where it fails,
+// like the wear in the details) and the percentage, rounded down, so 100% is only shown when it fails. "" if it cannot
+// fail.
+func formatRisk(attribute disk.SmartAttribute) string {
+	if !attribute.RiskKnown {
+		return ""
+	}
+	return uiutil.InfoBar(attribute.Risk, riskBarWidth) + uiutil.InfoValue(fmt.Sprintf(" %3.0f%%", math.Floor(attribute.Risk*100)))
+}
+
+// riskRank orders the attributes by how close they are to failing, the ones that cannot fail first (the least).
+func riskRank(attribute disk.SmartAttribute) float64 {
+	if !attribute.RiskKnown {
+		return -1
+	}
+	return attribute.Risk
 }
 
 // failedRank orders the attributes by whether they fail: now, in the past, never.
