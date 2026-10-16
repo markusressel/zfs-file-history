@@ -475,3 +475,42 @@ func TestDiskDetails_ClickDoesNotFocus(t *testing.T) {
 	testutil.OnUiThread(t, dt.app, func() { focused = dt.browser.HasFocus() && !dt.details.details.HasFocus() })
 	assert.True(t, focused)
 }
+
+// Regression: the details showed what the disk is and its health side by side at any width, without wrapping, so on a
+// narrow pane the health was cut off. They are below each other there, and what is still too wide is wrapped.
+func TestDiskDetails_NarrowPane(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	dt.screen.SetSize(60, 40)
+	text := dt.screenText()
+	assert.Contains(t, text, "Temp      █████▏       40°C · critical at 60°C")
+	assert.Contains(t, text, "Check     PASSED")
+
+	dt.screen.SetSize(44, 40)
+	text = dt.screenText()
+	assert.Contains(t, text, "Temp      █████▏       40°C · critical")
+	// wrapped below the value, in its color: tview keeps the style across the line break
+	x, y, found := testutil.FindText(t, dt.app, dt.screen, "          at 60°C")
+	require.True(t, found, text)
+	criticalX, criticalY, found := testutil.FindText(t, dt.app, dt.screen, "critical")
+	require.True(t, found, text)
+	var wrapped, critical tcell.Style
+	testutil.OnUiThread(t, dt.app, func() {
+		_, wrapped, _ = dt.screen.Get(x+10, y)
+		_, critical, _ = dt.screen.Get(criticalX, criticalY)
+	})
+	assert.Equal(t, critical, wrapped)
+
+	// wide again: side by side
+	dt.screen.SetSize(140, 40)
+	assert.Contains(t, dt.screenText(), "Type      SATA HDD                    Temp      █████▏       40°C · critical at 60°C")
+}
+
+// Regression: the details took the height of their text, so on a low window they left no line for the attributes.
+// They take at most detailsMaxPercent of it and scroll.
+func TestDiskDetails_LowWindow(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	dt.screen.SetSize(140, 18)
+	text := dt.screenText()
+	assert.Contains(t, text, "Reallocated_Sector_Ct", "the first attribute")
+	assert.Contains(t, text, "● 8 reallocated sectors", "the verdict")
+}

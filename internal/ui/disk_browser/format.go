@@ -122,15 +122,34 @@ func detailsTitle(entry *DiskEntry) string {
 	return entry.Report.Disk + " · " + entry.Report.Model
 }
 
+// detailsColumnGap separates the columns of the details while they are side by side, see formatDetails.
+const detailsColumnGap = 6
+
 // formatDetails returns the lines of the details of a disk (see uiutil.InfoText): whether it is healthy, then what it
-// is next to its health. Its name and model are the title of the pane, the attributes are in a table of their own.
-func formatDetails(entry *DiskEntry) []string {
-	report := entry.Report
+// is next to its health, or above it if both do not fit side by side into width columns (e.g. a small terminal, where
+// the health was cut off). Lines still wider are wrapped; a width of 0 or less does neither. Its name and model are
+// the title of the pane, the attributes are in a table of their own.
+func formatDetails(entry *DiskEntry, width int) []string {
 	var info uiutil.InfoText
 	info.Verdict(detailsVerdict(entry)...)
-	info.Line("")
 
-	var what uiutil.InfoText
+	var what, health uiutil.InfoText
+	addDiskSection(&what, entry)
+	addHealthSection(&health, entry)
+	if width <= 0 || what.Width()+detailsColumnGap+health.Width() <= width {
+		info.Line("")
+		info.SideBySide(detailsColumnGap, &what, &health)
+	} else {
+		// one column, the labels of both sections aligned
+		addDiskSection(&info, entry)
+		addHealthSection(&info, entry)
+	}
+	return info.WrappedLines(width)
+}
+
+// addDiskSection adds what the disk is: its type, where it is used, serial number, firmware and size.
+func addDiskSection(what *uiutil.InfoText, entry *DiskEntry) {
+	report := entry.Report
 	what.Section("Disk")
 	what.Field("Type", uiutil.InfoValue(typeOf(report)))
 	var pools []string
@@ -149,8 +168,12 @@ func formatDetails(entry *DiskEntry) []string {
 	if report.Capacity > 0 {
 		what.Field("Size", uiutil.InfoValue(humanize.Bytes(uint64(report.Capacity))))
 	}
+}
 
-	var health uiutil.InfoText
+// addHealthSection adds the health of the disk: its temperature and what its SMART values say, or why they are not
+// known.
+func addHealthSection(health *uiutil.InfoText, entry *DiskEntry) {
+	report := entry.Report
 	health.Section("Health")
 	if temperature := formatDetailsTemperature(entry.Reading); temperature != "" {
 		health.Field("Temp", temperature)
@@ -165,11 +188,8 @@ func formatDetails(entry *DiskEntry) []string {
 	case !report.HasValues():
 		health.Field("SMART", uiutil.InfoMuted("asleep, not woken up to read it"))
 	default:
-		addHealthFields(&health, report)
+		addHealthFields(health, report)
 	}
-
-	info.SideBySide(6, &what, &health)
-	return info.Lines()
 }
 
 // addHealthFields adds the health of the disk, read from its SMART values: the result of its health check, its wear,

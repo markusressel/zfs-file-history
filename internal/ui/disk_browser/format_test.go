@@ -14,6 +14,7 @@ import (
 	uiutil "zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -49,7 +50,7 @@ func ataReport() disk.SmartReport {
 
 // detailsLines returns the lines of the details of the entry without style tags.
 func detailsLines(entry *DiskEntry) []string {
-	return strings.Split(testutil.StripTags(strings.Join(formatDetails(entry), "\n")), "\n")
+	return strings.Split(testutil.StripTags(strings.Join(formatDetails(entry, 0), "\n")), "\n")
 }
 
 func TestFormatDetails(t *testing.T) {
@@ -70,7 +71,7 @@ func TestFormatDetails(t *testing.T) {
 		"                                      Read      " + uiutil.FormatTime(readAt),
 	}, detailsLines(entry), "what it is next to its health, the attributes are in their own table")
 	// the verdict in the color of the problem
-	assert.True(t, strings.HasPrefix(formatDetails(entry)[0], txwidgets.ColorTag(uiutil.InfoWarning.Color())+"●"))
+	assert.True(t, strings.HasPrefix(formatDetails(entry, 0)[0], txwidgets.ColorTag(uiutil.InfoWarning.Color())+"●"))
 
 	tests := []struct {
 		name    string
@@ -100,6 +101,47 @@ func TestFormatDetails(t *testing.T) {
 	}
 }
 
+// Where both sections do not fit side by side, the health is below what the disk is, the labels of both aligned.
+func TestFormatDetails_Stacked(t *testing.T) {
+	report := ataReport()
+	report.Counters = disk.SmartCounters{WearPercent: -1, BytesWritten: 43_915_542_390_272}
+	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "tank", Device: "/dev/disk/by-id/ata-DISK_1-part1"}}, Report: report,
+		Reading: disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: 40, Critical: 60}}}
+
+	sideBySide := formatDetails(entry, 0)
+	assert.Equal(t, sideBySide, formatDetails(entry, 90), "both fit")
+
+	lines := formatDetails(entry, 50)
+	for _, line := range lines {
+		assert.LessOrEqual(t, tview.TaggedStringWidth(line), 50, testutil.StripTags(line))
+	}
+	assert.Equal(t, []string{
+		"● 8 reallocated sectors · SATA HDD in tank",
+		"",
+		"Disk",
+		"Type      SATA HDD",
+		"Pools     tank  ata-DISK_1-part1",
+		"Serial    WD-1",
+		"Firmware  82.00A82",
+		"Size      4.0 TB",
+		"",
+		"Health",
+		"Temp      █████▏       40°C · critical at 60°C",
+		"Check     PASSED",
+		"Age       1.0 years · 8,760 h",
+		"Written   44 TB",
+		"Problems  8 reallocated sectors",
+		"Read      " + uiutil.FormatTime(readAt),
+	}, strings.Split(testutil.StripTags(strings.Join(lines, "\n")), "\n"))
+
+	// narrower, the values are wrapped next to their labels
+	for _, line := range formatDetails(entry, 40) {
+		assert.LessOrEqual(t, tview.TaggedStringWidth(line), 40, testutil.StripTags(line))
+	}
+	assert.Contains(t, strings.Split(testutil.StripTags(strings.Join(formatDetails(entry, 40), "\n")), "\n"),
+		"          at 60°C")
+}
+
 func TestFormatDetailsTemperature(t *testing.T) {
 	reading := func(celsius float64, critical float64) disk.Reading {
 		return disk.Reading{IsDisk: true, Known: true, Temperature: disk.Temperature{Celsius: celsius, Critical: critical}}
@@ -122,7 +164,7 @@ func TestFormatDetails_Ssd(t *testing.T) {
 	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "bpool", Device: "nvme0n1p2"}, {Pool: "rpool", Device: "nvme0n1p3"}}, Report: report}
 	lines := detailsLines(entry)
 	assert.Equal(t, "● healthy · NVMe SSD in bpool, rpool", lines[0])
-	assert.True(t, strings.HasPrefix(formatDetails(entry)[0], txwidgets.ColorTag(uiutil.InfoOk.Color())+"●"))
+	assert.True(t, strings.HasPrefix(formatDetails(entry, 0)[0], txwidgets.ColorTag(uiutil.InfoOk.Color())+"●"))
 	text := strings.Join(lines, "\n")
 	assert.Contains(t, text, "Pools  bpool  nvme0n1p2")
 	assert.Contains(t, text, "       rpool  nvme0n1p3")

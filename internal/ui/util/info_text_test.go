@@ -39,6 +39,41 @@ func TestInfoText(t *testing.T) {
 	assert.True(t, strings.HasPrefix(lines[3], txwidgets.Span(theme.Colors.Info.Label, "Data")))
 }
 
+func TestInfoText_WrappedLines(t *testing.T) {
+	var info InfoText
+	info.Verdict(InfoPart{Text: "too hot", State: InfoError}, InfoPart{Text: "SATA HDD in tank"})
+	info.Section("Health")
+	info.Field("Error", txwidgets.Span(theme.Colors.Info.Error, "%s", "smartctl failed: no such device"))
+	info.Field("Temp", InfoValue("40°C"))
+
+	lines := info.WrappedLines(20)
+	plain := make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = testutil.StripTags(line)
+		assert.LessOrEqual(t, tview.TaggedStringWidth(line), 20, plain[i])
+	}
+	assert.Equal(t, []string{
+		"● too hot · SATA",
+		"  HDD in tank",
+		"",
+		"Health",
+		"Error  smartctl",
+		"       failed: no",
+		"       such device",
+		"Temp   40°C",
+	}, plain, "further lines of a value below its first one, of the verdict below its first part")
+	assert.Equal(t, info.Lines(), info.WrappedLines(0), "not wrapped")
+	assert.Equal(t, 38, info.Width(), "the error")
+
+	// too narrow to indent: the value below the label
+	lines = info.WrappedLines(12)
+	plain = make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = testutil.StripTags(line)
+	}
+	assert.Equal(t, []string{"Error", "smartctl", "failed: no", "such device", "Temp   40°C"}, plain[len(plain)-5:])
+}
+
 func TestInfoBar(t *testing.T) {
 	width := func(bar string) int { return tview.TaggedStringWidth(bar) }
 	assert.Equal(t, 10, width(InfoBar(0, 10)))
