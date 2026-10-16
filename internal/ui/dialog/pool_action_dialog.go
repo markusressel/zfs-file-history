@@ -20,12 +20,14 @@ const (
 	PoolDialogClearActionId
 	PoolDialogUpgradeActionId
 	PoolDialogFeaturesActionId
+	PoolDialogDestroyActionId
 )
 
 // NewPoolActionDialog creates the dialog with the actions for a pool. status is the status of the pool (nil if
-// not known), it decides which actions make sense, e.g. pausing a scrub only while one runs. Destroying or exporting
-// the pool is deliberately not offered, see zfs.PoolAction. Upgrading it and enabling features are not run by the
-// dialog (see PoolActionOf), but confirmed with NewPoolUpgradeDialog or chosen with NewPoolFeaturesDialog first.
+// not known), it decides which actions make sense, e.g. pausing a scrub only while one runs. Exporting the pool is
+// deliberately not offered, see zfs.PoolAction. Upgrading it, enabling features and destroying it are not run by the
+// dialog (see PoolActionOf), but confirmed with NewPoolUpgradeDialog, chosen with NewPoolFeaturesDialog, or confirmed
+// with NewDestroyPoolDialog and the name of the pool first.
 func NewPoolActionDialog(
 	application *tview.Application,
 	pool string,
@@ -121,6 +123,12 @@ func buildPoolDialogOptions(status *zfs.PoolStatus) []*DialogOption {
 		Severity:    DialogSeverityDanger,
 	})
 	dialogOptions = append(dialogOptions, &DialogOption{
+		Id:          PoolDialogDestroyActionId,
+		Name:        "💥 Destroy pool",
+		Description: "Destroy the pool with all its data, after asking and typing its name (zpool destroy)",
+		Severity:    DialogSeverityDanger,
+	})
+	dialogOptions = append(dialogOptions, &DialogOption{
 		Id:   DialogCloseActionId,
 		Name: localization.LocalizationCommonClose,
 	})
@@ -129,7 +137,7 @@ func buildPoolDialogOptions(status *zfs.PoolStatus) []*DialogOption {
 }
 
 // PoolActionOf returns the zfs action of an option of the pool action dialog that runs right away, false for others
-// (e.g. close, or upgrade, which is confirmed first, or the features, which are listed first).
+// (e.g. close, or upgrade and destroy, which are confirmed first, or the features, which are listed first).
 func PoolActionOf(id DialogActionId) (zfs.PoolAction, bool) {
 	actions := map[DialogActionId]zfs.PoolAction{
 		PoolDialogScrubActionId:       zfs.PoolActionScrub,
@@ -141,4 +149,33 @@ func PoolActionOf(id DialogActionId) (zfs.PoolAction, bool) {
 	}
 	action, ok := actions[id]
 	return action, ok
+}
+
+const (
+	DestroyPoolDialogPage util.Page = "DestroyPoolDialog"
+
+	DestroyPoolDialogContinueActionId DialogActionId = iota
+)
+
+// NewDestroyPoolDialog is the first confirmation of destroying a pool: it only continues if the checklist item
+// lost (e.g. "Destroy its 12 datasets with all their snapshots and files") is checked, see SelectionDialog.Checked.
+// The description should list what would be destroyed, it may contain style tags (see Highlight). asyncWork receives
+// DestroyPoolDialogContinueActionId on confirmation; the name of the pool is typed afterwards, to destroy it.
+func NewDestroyPoolDialog(
+	application *tview.Application,
+	description string,
+	lost string,
+	asyncWork func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
+	return newTaggedSelectionDialog(
+		application,
+		string(DestroyPoolDialogPage),
+		" 💥 Destroy Pool ",
+		description,
+		[]*ChecklistItem{{Name: lost}},
+		buildConfirmDialogOptions(DestroyPoolDialogContinueActionId, "Continue", true, DialogSeverityDanger),
+		asyncWork,
+		onComplete,
+	).SetDanger()
 }

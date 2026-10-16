@@ -18,21 +18,21 @@ func TestBuildPoolDialogOptions(t *testing.T) {
 		expected []DialogActionId
 	}{
 		"not known": {nil, []DialogActionId{
-			PoolDialogScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, DialogCloseActionId}},
+			PoolDialogScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, PoolDialogDestroyActionId, DialogCloseActionId}},
 		"idle": {&zfs.PoolStatus{Scan: "scrub repaired 0B in 00:06:46 with 0 errors on Thu Oct  1 12:50:53 2026", ScanProgress: -1}, []DialogActionId{
-			PoolDialogScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, DialogCloseActionId}},
+			PoolDialogScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, PoolDialogDestroyActionId, DialogCloseActionId}},
 		"scrubbing": {&zfs.PoolStatus{Scan: "scrub in progress since Tue Oct 13 10:00:01 2026", ScanProgress: 10}, []DialogActionId{
-			PoolDialogPauseScrubActionId, PoolDialogCancelScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, DialogCloseActionId}},
+			PoolDialogPauseScrubActionId, PoolDialogCancelScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, PoolDialogDestroyActionId, DialogCloseActionId}},
 		"paused": {&zfs.PoolStatus{Scan: "scrub paused since Tue Oct 13 10:00:01 2026", ScanProgress: -1}, []DialogActionId{
-			PoolDialogScrubActionId, PoolDialogCancelScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, DialogCloseActionId}},
+			PoolDialogScrubActionId, PoolDialogCancelScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, PoolDialogDestroyActionId, DialogCloseActionId}},
 		// zpool refuses to scrub while resilvering
 		"resilvering": {&zfs.PoolStatus{Scan: "resilver in progress since Tue Oct 13 09:12:44 2026", ScanProgress: 30}, []DialogActionId{
-			PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, DialogCloseActionId}},
+			PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, PoolDialogDestroyActionId, DialogCloseActionId}},
 		"trimming": {&zfs.PoolStatus{ScanProgress: -1, Devices: trimming}, []DialogActionId{
-			PoolDialogScrubActionId, PoolDialogCancelTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, DialogCloseActionId}},
+			PoolDialogScrubActionId, PoolDialogCancelTrimActionId, PoolDialogClearActionId, PoolDialogFeaturesActionId, PoolDialogDestroyActionId, DialogCloseActionId}},
 		// zpool status suggests it
 		"upgradable": {&zfs.PoolStatus{ScanProgress: -1, Action: "Enable all features using 'zpool upgrade'."}, []DialogActionId{
-			PoolDialogScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogUpgradeActionId, PoolDialogFeaturesActionId, DialogCloseActionId}},
+			PoolDialogScrubActionId, PoolDialogTrimActionId, PoolDialogClearActionId, PoolDialogUpgradeActionId, PoolDialogFeaturesActionId, PoolDialogDestroyActionId, DialogCloseActionId}},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -49,7 +49,7 @@ func TestBuildPoolDialogOptions_ResumeScrub(t *testing.T) {
 // Upgrading cannot be undone: it is shown in red, and not run by the dialog (see TestPoolActionOf).
 func TestBuildPoolDialogOptions_Upgrade(t *testing.T) {
 	options := buildPoolDialogOptions(&zfs.PoolStatus{ScanProgress: -1, Action: "Enable all features using 'zpool upgrade'."})
-	upgrade := options[len(options)-3]
+	upgrade := options[len(options)-4]
 	assert.Equal(t, PoolDialogUpgradeActionId, upgrade.Id)
 	assert.Equal(t, DialogSeverityDanger, upgrade.Severity)
 	assert.Contains(t, upgrade.Description, "cannot be undone")
@@ -58,10 +58,19 @@ func TestBuildPoolDialogOptions_Upgrade(t *testing.T) {
 // Enabling features cannot be undone: it is shown in red, and not run by the dialog (see TestPoolActionOf).
 func TestBuildPoolDialogOptions_Features(t *testing.T) {
 	options := buildPoolDialogOptions(nil)
-	features := options[len(options)-2]
+	features := options[len(options)-3]
 	assert.Equal(t, PoolDialogFeaturesActionId, features.Id)
 	assert.Equal(t, DialogSeverityDanger, features.Severity)
 	assert.Contains(t, features.Description, "cannot be undone")
+}
+
+// Destroying a pool loses all its data: it is shown in red, and not run by the dialog (see TestPoolActionOf).
+func TestBuildPoolDialogOptions_Destroy(t *testing.T) {
+	options := buildPoolDialogOptions(nil)
+	destroy := options[len(options)-2]
+	assert.Equal(t, PoolDialogDestroyActionId, destroy.Id)
+	assert.Equal(t, DialogSeverityDanger, destroy.Severity)
+	assert.Contains(t, destroy.Description, "typing its name")
 }
 
 func TestFormatPoolUpgrade(t *testing.T) {
@@ -105,4 +114,6 @@ func TestPoolActionOf(t *testing.T) {
 	assert.False(t, ok, "confirmed by name first")
 	_, ok = PoolActionOf(PoolDialogFeaturesActionId)
 	assert.False(t, ok, "chosen and confirmed by name first")
+	_, ok = PoolActionOf(PoolDialogDestroyActionId)
+	assert.False(t, ok, "previewed and confirmed by name first")
 }

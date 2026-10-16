@@ -3,6 +3,7 @@ package zfs
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"zfs-file-history/internal/testutil"
 
@@ -58,6 +59,36 @@ func (b *actionBackend) ListDatasets() ([]*DatasetListEntry, error) {
 		datasets = append(datasets, &DatasetListEntry{Name: name, MountPath: b.mounts[name]})
 	}
 	return datasets, nil
+}
+
+// ListChildDatasets returns the parents and their direct children of origins.
+func (b *actionBackend) ListChildDatasets(parents []string) ([]*DatasetListEntry, error) {
+	var datasets []*DatasetListEntry
+	for name := range b.origins {
+		parent := ""
+		if index := strings.LastIndex(name, "/"); index >= 0 {
+			parent = name[:index]
+		}
+		if slices.Contains(parents, name) || slices.Contains(parents, parent) {
+			datasets = append(datasets, &DatasetListEntry{Name: name})
+		}
+	}
+	return datasets, nil
+}
+
+// ListPools returns the pools of the datasets of origins.
+func (b *actionBackend) ListPools() ([]*PoolListEntry, error) {
+	var pools []*PoolListEntry
+	for name := range b.origins {
+		if !strings.Contains(name, "/") {
+			pools = append(pools, &PoolListEntry{Name: name, Allocated: 8192})
+		}
+	}
+	return pools, nil
+}
+
+func (b *actionBackend) RunPoolAction(action PoolAction, pool string) error {
+	return b.record(strings.Join(action.Args, " ") + " " + pool)
 }
 
 func (b *actionBackend) ListSnapshotNames(dataset string) ([]string, error) {

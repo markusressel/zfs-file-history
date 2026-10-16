@@ -88,8 +88,8 @@ permissions:
 - **Disk health** (`smartctl`, if smartmontools is installed): the SMART values of the disks of the pools.
 - **Pool actions** (`zpool scrub`, `trim`, `clear`, `upgrade`): scrubs, TRIMs, clearing the errors of a pool and
   upgrading it (confirmed by typing its name, it cannot be undone). Enabling single features (`zpool set
-  feature@…=enabled`) is not part of the rule: it asks for your password each time. Destroying or exporting pools is
-  not offered by zfs-file-history at all.
+  feature@…=enabled`) and destroying a pool (`zpool destroy`, confirmed by typing its name) are not part of the rule:
+  they ask for your password each time. Exporting pools is not offered by zfs-file-history at all.
 
 On the first start, zfs-file-history offers to allow them for your user (also later with "Set up permissions" in the
 command menu): it runs its setup command with sudo, which creates sudoers rules that let your user run exactly these
