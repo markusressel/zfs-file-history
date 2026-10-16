@@ -52,12 +52,13 @@ func (datasetBrowser *DatasetBrowserComponent) openActionDialog(entry *zfs.Datas
 
 // newActionDialog creates the dialog with the actions for the dataset, see openActionDialog. Promoting a clone,
 // destroying a dataset, unmounting it and unloading its key ask for confirmation first, with what changes. Mounting
-// and loading a key run right away, in the terminal if zfs asks for the passphrase.
+// and loading a key run right away, in the terminal if zfs asks for the passphrase. The dry run of destroying a
+// dataset runs in the dialog of its confirmation (see previewAndConfirmDestroy), not in this one: a spinner next to
+// "Destroy dataset" looked like it was destroyed without a confirmation.
 func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.DatasetListEntry) *dialog.SelectionDialog {
 	name := entry.Name
 	var createdName string
 	var promotePreview *zfs.PromotePreview
-	var destroyPreview *zfs.DestroyPreview
 	var mountPlan *zfs.MountPlan
 
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
@@ -68,8 +69,6 @@ func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.Datase
 			err = createSnapshot(name, createdName, action == dialog.DatasetDialogCreateSnapshotRecursivelyActionId)
 		case dialog.DatasetDialogPromoteActionId:
 			promotePreview, err = previewPromote(name)
-		case dialog.DatasetDialogDestroyActionId:
-			destroyPreview, err = previewDestroyDataset(name)
 		case dialog.DatasetDialogMountActionId, dialog.DatasetDialogLoadKeyActionId:
 			mountPlan, err = planMountAction(mountActions[action], name)
 			if err == nil && !mountPlan.Prompts {
@@ -108,8 +107,8 @@ func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.Datase
 			// nothing was promoted yet, the confirmation does that
 			datasetBrowser.showPromoteConfirmation(promotePreview)
 		case dialog.DatasetDialogDestroyActionId:
-			// nothing was destroyed yet, the confirmations do that
-			datasetBrowser.showDestroyConfirmation(entry, destroyPreview)
+			// nothing is destroyed yet, the confirmations do that
+			datasetBrowser.previewAndConfirmDestroy(entry)
 		case dialog.DatasetDialogMountActionId, dialog.DatasetDialogLoadKeyActionId:
 			if mountPlan.Prompts {
 				datasetBrowser.runInTerminal(entry, mountPlan)
@@ -228,11 +227,19 @@ func formatDestroyDescription(entry *zfs.DatasetListEntry, preview *zfs.DestroyP
 }
 
 // previewAndConfirmDestroy does the dry run of destroying the dataset in the background and then asks for
-// confirmation. Must be called on the UI thread.
+// confirmation. Meanwhile, a dialog says that it is checked, and that nothing is destroyed yet; it can be cancelled.
+// Must be called on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) previewAndConfirmDestroy(entry *zfs.DatasetListEntry) {
+	checking := dialog.NewPreviewDialog(datasetBrowser.application, " 💥 Destroy Dataset ", fmt.Sprintf(
+		"Checking what destroying %s would destroy: a dry run, and its permissions, holds and mounts. Nothing is "+
+			"destroyed yet.", entry.Name))
+	datasetBrowser.showDialog(checking)
 	go func() {
 		preview, err := previewDestroyDataset(entry.Name)
 		datasetBrowser.application.QueueUpdateDraw(func() {
+			if !checking.Done() {
+				return // cancelled
+			}
 			if err != nil {
 				logging.Error("Cannot destroy %s: %s", entry.Name, err.Error())
 				retry := func() { datasetBrowser.previewAndConfirmDestroy(entry) }

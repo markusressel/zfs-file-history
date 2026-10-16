@@ -548,3 +548,54 @@ func TestDatasetBrowser_UnloadKey(t *testing.T) {
 	at.press(tcell.KeyEnter, 0)
 	at.waitForRecorded("plan 3 pool/secret", "run unload the key of pool/secret")
 }
+
+// blockDestroyPreview makes the dry run of destroying a dataset wait until the returned function is called.
+func (at *actionTest) blockDestroyPreview() (release func()) {
+	released := make(chan struct{})
+	testutil.Replace(at.t, &previewDestroyDataset, func(name string) (*zfs.DestroyPreview, error) {
+		<-released
+		at.record("preview destroy %s", name)
+		return at.destroyPreview, nil
+	})
+	return sync.OnceFunc(func() { close(released) })
+}
+
+// Regression: choosing "Destroy dataset" ran the dry run in the action dialog, with a spinner next to the option,
+// which looked like the dataset was destroyed without a confirmation. The dialog of the confirmation opens right away
+// and says what is checked; the confirmation follows once the dry run is done.
+func TestDatasetBrowser_DestroyChecksInTheConfirmation(t *testing.T) {
+	at := newActionTest(t)
+	release := at.blockDestroyPreview()
+	t.Cleanup(release)
+	at.selectDataset("pool/clone")
+
+	at.chooseAction(optionDestroy)
+
+	at.waitForDialog(string(dialog.PreviewDialogPage))
+	at.waitForNoDialog(string(dialog.DatasetActionDialogPage))
+	assert.Contains(t, at.screenText(), "Checking what destroying pool/clone would destroy")
+	assert.Empty(t, at.recorded())
+
+	release()
+	at.waitForDialog("DestroyDatasetByNameDialog")
+	at.waitForNoDialog(string(dialog.PreviewDialogPage))
+	assert.Equal(t, []string{"preview destroy pool/clone"}, at.recorded())
+}
+
+// Cancelled while it is checked, the confirmation is not shown once the dry run is done.
+func TestDatasetBrowser_DestroyCheckCanBeCancelled(t *testing.T) {
+	at := newActionTest(t)
+	release := at.blockDestroyPreview()
+	t.Cleanup(release)
+	at.selectDataset("pool/clone")
+
+	at.chooseAction(optionDestroy)
+	at.waitForDialog(string(dialog.PreviewDialogPage))
+	at.press(tcell.KeyEscape, 0)
+	at.waitForNoDialog(string(dialog.PreviewDialogPage))
+	release()
+
+	require.Eventually(t, func() bool { return len(at.recorded()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool { return at.hasDialog("DestroyDatasetByNameDialog") || at.hasDialog("ErrorDialog") },
+		200*time.Millisecond, 10*time.Millisecond)
+}
