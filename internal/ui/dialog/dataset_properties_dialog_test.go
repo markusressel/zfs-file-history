@@ -7,8 +7,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/shortcut_helper"
+	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/zfs"
 
@@ -399,4 +401,32 @@ func TestDatasetPropertiesDialog_RemoveUserProperty(t *testing.T) {
 	pt.waitFor("remove wording", func() bool {
 		return strings.Contains(pt.screenText(), "Remove the user property org.example:note")
 	})
+}
+
+func TestDatasetPropertiesDialog_ColumnsAreEditable(t *testing.T) {
+	store := statetest.Use(t)
+	pt := newPropertiesTest(t, false)
+
+	pt.press(tcell.KeyF2, 0)
+	pt.waitFor("column dialog", func() bool { return pt.hasPage(string(ColumnSelectionDialogPage)) })
+	pt.press(tcell.KeyEnter, 0)
+	require.Eventually(t, func() bool {
+		_, ok := store.TableLayout(stateKeyPropertiesTable)
+		return ok
+	}, 3*time.Second, 10*time.Millisecond)
+}
+
+// The keys identify the columns in the saved table layouts, see table.RowSelectionTable.BindColumnLayout.
+func TestPropertyColumnKeysAreUnique(t *testing.T) {
+	for name, columns := range map[string][]*table.Column{
+		"properties": propertyColumns, "features": featureColumns,
+	} {
+		keys := map[string]bool{}
+		for _, column := range columns {
+			assert.NotEmpty(t, column.Key, "%s: %s", name, column.Title)
+			assert.NotEmpty(t, column.Title, "%s: shown in the column dialog", name)
+			assert.False(t, keys[column.Key], "%s: duplicate key %q", name, column.Key)
+			keys[column.Key] = true
+		}
+	}
 }

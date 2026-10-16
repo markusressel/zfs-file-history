@@ -34,17 +34,20 @@ func (host *Host) SetDialogPages(pages *tview.Pages) {
 // ShowDialog shows the dialog on the dialog pages (see SetDialogPages), and calls onClosed (if not nil) when it is
 // closed. Does nothing if there are no pages to show it on.
 func (host *Host) ShowDialog(d Dialog, onClosed func()) {
-	pages := host.own
+	if pages := host.pages(); pages != nil {
+		ShowDialogOnPages(host.application, pages, d, onClosed)
+	}
+}
+
+// pages returns the pages dialogs are shown on now, nil: none.
+func (host *Host) pages() *tview.Pages {
 	if host.dialogPages != nil {
-		pages = host.dialogPages
+		return host.dialogPages
 	}
-	if pages == nil {
-		return
-	}
-	ShowDialogOnPages(host.application, pages, d, onClosed)
+	return host.own
 }
 
 // ShowColumnSelection lets the user select and order the displayed columns of a table of the component (F2).
 func ShowColumnSelection[T table.RowSelectionTableEntry](host *Host, title string, allColumns []*table.Column, tableContainer *table.RowSelectionTable[T]) {
-	host.ShowDialog(NewTableColumnSelectionDialog(host.application, title, allColumns, tableContainer), nil)
+	ShowColumnDialogOnPages(host.application, host.pages(), title, allColumns, tableContainer)
 }

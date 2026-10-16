@@ -45,7 +45,7 @@ type SelectionDialog struct {
 	frame *tview.Flex
 }
 
-func (d *SelectionDialog) setPages(pages *tview.Pages) {
+func (d *SelectionDialog) SetPages(pages *tview.Pages) {
 	d.pages = pages
 }
 

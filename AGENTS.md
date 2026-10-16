@@ -77,11 +77,11 @@ of the code.
   group): scrubs, resilvers and TRIMs from their start to their end (by the events ZFS logs for them; the commands that
   cancel them are logged after the end), a command with the events ZFS logged for it (logged before it, while it ran,
   and between the records of other commands: matched by dataset, not by position), and the commands one user ran less
-  than a minute apart (e.g. a backup tool). Groups may overlap in time. `dialog.PoolHistoryDialog` lists the groups
+  than a minute apart (e.g. a backup tool). Groups may overlap in time. `pool_history.PoolHistoryDialog` (`internal/ui/pool_history`) lists the groups
   newest first in a virtual table (`tview.TableContent`), expanded like the dataset tree (Enter, `+`, `-`, `*`), or
   with `b` each record in the order they were logged, with the events ZFS logged itself (`i`); sorted on the header
   row and its columns chosen with F2 like a `RowSelectionTable` (sorted once, not on each change of the filter;
-  `table.SaveColumnLayout`); a filter in both. `dialog.PoolHistoryCache` (one for the application) keeps the history
+  `table.SaveColumnLayout`); a filter in both. `pool_history.PoolHistoryCache` (one for the application) keeps the history
   read, grouped: shown again, the dialog shows it at once while it is read again (with the progress in the hint), and
   replaces it if it changed, keeping the selection and the expanded groups (by `poolHistoryEntryKey`). A read goes on
   when the dialog is closed. The events ZFS logs meanwhile are added as they come (`PoolHistoryCache.Record`, from
@@ -202,9 +202,13 @@ of the code.
     number; `zfs.FindObjects`, `f` in the dialog): it reads the inodes from `getdents64`, no `lstat` per file
     (millions of files per snapshot), newest snapshot first. The dialog also says how to enable `head_errlog`, but
     does not run it (one-way; the features of the pool action dialog can).
-  - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). The file history shows the
-    changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
-    `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with
+  - `file_history/`: the overlays of the history of a file and of a folder. The file history shows the changes of
+    each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
+    `external_diff_viewer.go`; the paths are arguments, never part of a shell script).
+  - `dialog/`: the dialogs and the command menu (`:`), and what the overlays of other packages share
+    (`NewOverlayFrame`, `ShowColumnDialogOnPages`). `ShowDialogOnPages` finds what a dialog handles itself by type
+    assertions (`PagesAware`, `MouseCapturer`): dialogs of other packages assert that they implement them
+    (`var _ dialog.MouseCapturer = ...`), a method that does not match would be skipped silently. Shown with
     `ShowDialogOnPages`; components embed `dialog.Host` (`SetDialogPages`, `ShowDialog`,
     `dialog.ShowColumnSelection` for F2, `RunPreview`), which shows them on the pages of the application, set by the
     page, and on the own pages of the component until then. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,

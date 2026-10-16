@@ -6,6 +6,7 @@ import (
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/file_browser"
+	"zfs-file-history/internal/ui/file_history"
 	"zfs-file-history/internal/ui/path_overview"
 	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/shortcut_helper"
@@ -31,7 +32,7 @@ type MainPage struct {
 	leftLayout *tview.Flex
 	// fileHistory is the last file history shown, to mark its damaged versions while it is shown (see
 	// pool_activity.Monitor.DataErrors), nil if none was. Only accessed on the UI thread.
-	fileHistory *dialog.FileHistoryOverlay
+	fileHistory *file_history.FileHistoryOverlay
 
 	wasInitialized bool
 }
@@ -203,13 +204,13 @@ func (mainPage *MainPage) Init(path string) {
 func (mainPage *MainPage) showHistory(entry *data.FileBrowserEntry, snapshot *zfs.Snapshot) {
 	var overlay dialog.Dialog
 	if entry.Type == data.Directory {
-		folderHistory := dialog.NewFolderHistoryOverlay(mainPage.application, entry.GetRealPath(), mainPage.snapshotBrowser.GetAllEntries())
+		folderHistory := file_history.NewFolderHistoryOverlay(mainPage.application, entry.GetRealPath(), mainPage.snapshotBrowser.GetAllEntries())
 		if snapshot != nil {
 			folderHistory.SelectSnapshot(snapshot)
 		}
 		overlay = folderHistory
 	} else {
-		fileHistory := dialog.NewFileHistoryOverlay(mainPage.application, entry, mainPage.snapshotBrowser.GetAllEntries())
+		fileHistory := file_history.NewFileHistoryOverlay(mainPage.application, entry, mainPage.snapshotBrowser.GetAllEntries())
 		fileHistory.SetDataErrors(mainPage.activities.DataErrors())
 		mainPage.fileHistory = fileHistory
 		if snapshot != nil {

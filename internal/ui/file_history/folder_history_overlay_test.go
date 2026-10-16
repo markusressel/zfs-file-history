@@ -1,4 +1,4 @@
-package dialog
+package file_history
 
 import (
 	"os"
@@ -9,6 +9,7 @@ import (
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
@@ -67,7 +68,7 @@ func newFolderHistoryTest(t *testing.T, configure ...func(ds *fakeDataset, overl
 		for _, f := range configure {
 			f(ds, ft.overlay)
 		}
-		ShowDialogOnPages(ft.app, ft.pages, ft.overlay, nil)
+		dialog.ShowDialogOnPages(ft.app, ft.pages, ft.overlay, nil)
 	})
 	ft.waitFor("history loaded", func() bool {
 		loaded := false
@@ -186,7 +187,7 @@ func TestFolderHistoryOverlay_RestoreDeletedFile(t *testing.T) {
 	ft.selectChange("b.txt")
 
 	ft.press(tcell.KeyEnter, 0)
-	ft.waitFor("restore dialog", func() bool { return ft.hasPage(string(RestoreFileDialogPage)) })
+	ft.waitFor("restore dialog", func() bool { return ft.hasPage(string(dialog.RestoreFileDialogPage)) })
 	// 1: restore file
 	ft.press(tcell.KeyRune, '1')
 	ft.press(tcell.KeyEnter, 0)
@@ -197,7 +198,7 @@ func TestFolderHistoryOverlay_RestoreDeletedFile(t *testing.T) {
 		return err == nil && string(content) == "bbbb"
 	})
 	// close the progress dialog
-	ft.waitFor("progress dialog", func() bool { return ft.hasPage(string(RestoreFileProgress)) })
+	ft.waitFor("progress dialog", func() bool { return ft.hasPage(string(dialog.RestoreFileProgress)) })
 	ft.press(tcell.KeyEscape, 0)
 	// the working copy is read again: b.txt is not "deleted since" anymore
 	ft.waitFor("changes updated", func() bool {
@@ -218,7 +219,7 @@ func TestFolderHistoryOverlay_NoRestoreOfEntriesNotInTheSnapshot(t *testing.T) {
 
 	ft.press(tcell.KeyEnter, 0)
 	testutil.WaitForUpdates(t, ft.app)
-	assert.False(t, ft.hasPage(string(RestoreFileDialogPage)))
+	assert.False(t, ft.hasPage(string(dialog.RestoreFileDialogPage)))
 }
 
 func TestFolderHistoryOverlay_RestoreFolderAndEsc(t *testing.T) {
@@ -226,12 +227,12 @@ func TestFolderHistoryOverlay_RestoreFolderAndEsc(t *testing.T) {
 
 	// Enter on the timeline: restore the whole folder (directory only / recursively)
 	ft.press(tcell.KeyEnter, 0)
-	ft.waitFor("restore dialog", func() bool { return ft.hasPage(string(RestoreFileDialogPage)) })
+	ft.waitFor("restore dialog", func() bool { return ft.hasPage(string(dialog.RestoreFileDialogPage)) })
 	ft.waitFor("directory options", func() bool { return strings.Contains(ft.screenText(), "Restore directory recursively") })
 
 	// Esc closes the restore dialog only
 	ft.press(tcell.KeyEscape, 0)
-	ft.waitFor("restore dialog closed", func() bool { return !ft.hasPage(string(RestoreFileDialogPage)) })
+	ft.waitFor("restore dialog closed", func() bool { return !ft.hasPage(string(dialog.RestoreFileDialogPage)) })
 	testutil.OnUiThread(t, ft.app, func() { assert.True(t, ft.pages.HasPage(string(FolderHistoryOverlayPage))) })
 
 	ft.press(tcell.KeyEscape, 0)
@@ -333,7 +334,7 @@ func TestFolderHistoryOverlay_DragBoundary(t *testing.T) {
 func TestFolderHistoryOverlay_NoDragWhileADialogIsShown(t *testing.T) {
 	ft := newFolderHistoryTest(t)
 	ft.press(tcell.KeyF2, 0)
-	ft.waitFor("column dialog", func() bool { return ft.hasPage(string(ColumnSelectionDialogPage)) })
+	ft.waitFor("column dialog", func() bool { return ft.hasPage(string(dialog.ColumnSelectionDialogPage)) })
 	var enabled bool
 	testutil.OnUiThread(t, ft.app, func() { enabled = ft.overlay.isMainPageInFront() })
 	assert.False(t, enabled)

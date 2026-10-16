@@ -15,6 +15,7 @@ import (
 	"zfs-file-history/internal/ui/file_browser"
 	"zfs-file-history/internal/ui/pool_activity"
 	"zfs-file-history/internal/ui/pool_browser"
+	"zfs-file-history/internal/ui/pool_history"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/util"
@@ -237,13 +238,13 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 	// the history of a pool, or of a dataset with its children and snapshots (h on the pools and datasets pages),
 	// only offered while it can be read: as root, or with the sudoers rule of "setup --history"
 	// one for the application: the history of a large pool takes many seconds to read, shown again it is there at once
-	historyCache := dialog.NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
+	historyCache := pool_history.NewPoolHistoryCache(func(ctx context.Context, pool string, progress func(zfs.PoolHistoryProgress)) ([]zfs.PoolHistoryEntry, error) {
 		return loadPoolHistory(ctx, pool, progress)
 	})
 	// the events ZFS logs while the dialog is shown come in as they are logged
 	zfs.PoolHistoryRecorded.Subscribe(historyCache.Record)
 	showHistory := func(pool string, dataset string) {
-		dialog.ShowDialogOnPages(application, pagesLayout, dialog.NewPoolHistoryDialog(application, pool, dataset, historyCache), nil)
+		dialog.ShowDialogOnPages(application, pagesLayout, pool_history.NewPoolHistoryDialog(application, pool, dataset, historyCache), nil)
 	}
 	updateHistoryAvailable := func() {
 		go func() {

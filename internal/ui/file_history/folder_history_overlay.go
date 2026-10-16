@@ -1,4 +1,4 @@
-package dialog
+package file_history
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -60,7 +61,7 @@ type FolderHistoryOverlay struct {
 	folderPath    string
 	cachedEntries []*data.SnapshotBrowserEntry
 	layout        *tview.Flex
-	actionChannel chan DialogActionId
+	actionChannel chan dialog.DialogActionId
 	cancelScan    context.CancelFunc
 
 	// UI widgets, only accessed on the UI thread
@@ -84,6 +85,9 @@ type FolderHistoryOverlay struct {
 	initialSnapshot *zfs.Snapshot
 }
 
+// ShowDialogOnPages finds this by a type assertion, which would fail silently if the method did not match.
+var _ dialog.MouseCapturer = (*FolderHistoryOverlay)(nil)
+
 // NewFolderHistoryOverlay creates the overlay for the folder at folderPath and starts scanning its history in the
 // background. cachedEntries are the snapshots known already (e.g. of the snapshot browser), used if they belong to
 // the dataset of the folder. Must be called on the UI thread.
@@ -92,7 +96,7 @@ func NewFolderHistoryOverlay(application *tview.Application, folderPath string, 
 		application:   application,
 		folderPath:    folderPath,
 		cachedEntries: cachedEntries,
-		actionChannel: make(chan DialogActionId, 1),
+		actionChannel: make(chan dialog.DialogActionId, 1),
 		mode:          loadDiffMode(toggleFolderHistoryCompareNow, diffModePredecessor, diffModeWorkingCopy),
 	}
 	o.createLayout()
@@ -109,7 +113,7 @@ func (o *FolderHistoryOverlay) GetLayout() *tview.Flex {
 	return o.layout
 }
 
-func (o *FolderHistoryOverlay) GetActionChannel() <-chan DialogActionId {
+func (o *FolderHistoryOverlay) GetActionChannel() <-chan dialog.DialogActionId {
 	return o.actionChannel
 }
 
@@ -119,13 +123,13 @@ func (o *FolderHistoryOverlay) Close() {
 	}
 	o.loadingView.Stop()
 	select {
-	case o.actionChannel <- DialogCloseActionId:
+	case o.actionChannel <- dialog.DialogCloseActionId:
 	default:
 	}
 }
 
-// captureMouse lets the boundary between the timeline and the changes be dragged (see ShowDialogOnPages).
-func (o *FolderHistoryOverlay) captureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+// CaptureMouse lets the boundary between the timeline and the changes be dragged (see dialog.ShowDialogOnPages).
+func (o *FolderHistoryOverlay) CaptureMouse(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 	return o.split.MouseCapture(action, event)
 }
 
@@ -195,7 +199,7 @@ func (o *FolderHistoryOverlay) createLayout() {
 		AddPage(string(HistoryLoadingPage), o.loadingView, true, true)
 
 	// Esc is handled by the lists, not here: this layout also contains the dialogs opened from the overlay
-	o.layout = createOverlayFrame(fmt.Sprintf(" 📂 History of '%s/' ", o.folderName()), o.pages)
+	o.layout = dialog.NewOverlayFrame(fmt.Sprintf(" 📂 History of '%s/' ", o.folderName()), o.pages)
 	o.updateModeView()
 	o.updateShortcuts()
 }
@@ -311,7 +315,7 @@ func formatVersionChanges(version *folderVersion) string {
 // drawSparklines draws the number of items and the size of the folder across all snapshots, and marks the selected
 // snapshot. Runs while drawing, on the UI thread.
 func (o *FolderHistoryOverlay) drawSparklines(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-	fillBackground(screen, x, y, width, height)
+	dialog.FillBackground(screen, x, y, width, height)
 	if o.history == nil || len(o.history.All) == 0 || height < folderHistorySparklineLines {
 		return x, y, width, height
 	}
@@ -620,7 +624,7 @@ func (o *FolderHistoryOverlay) captureTimelineInput(event *tcell.EventKey) *tcel
 		o.Close()
 		return nil
 	case event.Key() == tcell.KeyF2:
-		openColumnDialog(o.application, o.pages, "Configure Timeline Columns", timelineColumns, o.timeline)
+		dialog.ShowColumnDialogOnPages(o.application, o.pages, "Configure Timeline Columns", timelineColumns, o.timeline)
 		return nil
 	case event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab:
 		o.application.SetFocus(o.changes.GetLayout())
@@ -644,7 +648,7 @@ func (o *FolderHistoryOverlay) captureChangesInput(event *tcell.EventKey) *tcell
 		o.Close()
 		return nil
 	case event.Key() == tcell.KeyF2:
-		openColumnDialog(o.application, o.pages, "Configure Change Columns", changeColumns, o.changes)
+		dialog.ShowColumnDialogOnPages(o.application, o.pages, "Configure Change Columns", changeColumns, o.changes)
 		return nil
 	case event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab:
 		o.application.SetFocus(o.timeline.GetLayout())
@@ -704,7 +708,7 @@ func (o *FolderHistoryOverlay) restore(name string, realPath string, entryType d
 	snapshotPath := snapshot.GetSnapshotPath(realPath)
 	snapshotStat, err := os.Lstat(snapshotPath)
 	if err != nil {
-		ShowDialogOnPages(o.application, o.pages, NewErrorDialog(o.application, "Restore Failed", err), nil)
+		dialog.ShowDialogOnPages(o.application, o.pages, dialog.NewErrorDialog(o.application, "Restore Failed", err), nil)
 		return
 	}
 	restoreEntry := &data.FileBrowserEntry{
@@ -721,18 +725,18 @@ func (o *FolderHistoryOverlay) restore(name string, realPath string, entryType d
 		restoreEntry.RealFile = &data.RealFile{Name: name, Path: realPath, Stat: realStat}
 	}
 
-	onComplete := func(d *SelectionDialog, option *DialogOption, err error) {
-		if option.Id != RestoreFileDialogRestoreFileActionId && option.Id != RestoreFileDialogRestoreRecursiveActionId {
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		if option.Id != dialog.RestoreFileDialogRestoreFileActionId && option.Id != dialog.RestoreFileDialogRestoreRecursiveActionId {
 			d.Close()
 			return
 		}
-		recursive := option.Id == RestoreFileDialogRestoreRecursiveActionId
+		recursive := option.Id == dialog.RestoreFileDialogRestoreRecursiveActionId
 		d.Chain(func() {
-			progress := NewRestoreFileProgressDialog(o.application, restoreEntry, recursive)
-			ShowDialogOnPages(o.application, o.pages, progress, o.reloadWorkingCopy)
+			progress := dialog.NewRestoreFileProgressDialog(o.application, restoreEntry, recursive)
+			dialog.ShowDialogOnPages(o.application, o.pages, progress, o.reloadWorkingCopy)
 		})
 	}
-	ShowDialogOnPages(o.application, o.pages, NewRestoreFileDialog(o.application, restoreEntry, nil, onComplete), nil)
+	dialog.ShowDialogOnPages(o.application, o.pages, dialog.NewRestoreFileDialog(o.application, restoreEntry, nil, onComplete), nil)
 }
 
 // reloadWorkingCopy reads the folder in the working copy again (e.g. after a restore) in the background, and
@@ -762,7 +766,7 @@ func (o *FolderHistoryOverlay) openEntryHistory() {
 	path := filepath.Join(o.folderPath, entry.Name)
 	switch entry.Type {
 	case folder_listing.Directory:
-		ShowDialogOnPages(o.application, o.pages, NewFolderHistoryOverlay(o.application, path, o.cachedEntries), nil)
+		dialog.ShowDialogOnPages(o.application, o.pages, NewFolderHistoryOverlay(o.application, path, o.cachedEntries), nil)
 	case folder_listing.File:
 		file := &data.FileBrowserEntry{Name: entry.Name, Type: data.File}
 		if stat, err := os.Lstat(path); err == nil {
@@ -771,6 +775,6 @@ func (o *FolderHistoryOverlay) openEntryHistory() {
 			// deleted by now: the file history only needs the original path
 			file.SnapshotFiles = []*data.SnapshotFile{{OriginalPath: path, Path: o.selected.Snapshot.GetSnapshotPath(path), Snapshot: o.selected.Snapshot}}
 		}
-		ShowDialogOnPages(o.application, o.pages, NewFileHistoryOverlay(o.application, file, o.cachedEntries), nil)
+		dialog.ShowDialogOnPages(o.application, o.pages, NewFileHistoryOverlay(o.application, file, o.cachedEntries), nil)
 	}
 }

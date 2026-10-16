@@ -1,4 +1,4 @@
-package dialog
+package file_history
 
 import (
 	"path/filepath"
@@ -7,6 +7,7 @@ import (
 	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/testutil"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
 	"zfs-file-history/internal/zfs"
@@ -48,7 +49,7 @@ func TestFileHistoryOverlay_Layout(t *testing.T) {
 	var overlay *FileHistoryOverlay
 	testutil.OnUiThread(t, app, func() {
 		overlay = NewFileHistoryOverlay(app, file, nil)
-		ShowDialogOnPages(app, pages, overlay, nil)
+		dialog.ShowDialogOnPages(app, pages, overlay, nil)
 	})
 
 	screenLines := func() []string { return strings.Split(testutil.ScreenText(t, app, screen), "\n") }
@@ -119,7 +120,7 @@ func TestFileHistoryOverlay_SelectSnapshot(t *testing.T) {
 			var overlay *FileHistoryOverlay
 			testutil.OnUiThread(t, app, func() {
 				overlay = NewFileHistoryOverlay(app, file, nil).SelectSnapshot(ds.snapshot(snapshot))
-				ShowDialogOnPages(app, pages, overlay, nil)
+				dialog.ShowDialogOnPages(app, pages, overlay, nil)
 			})
 
 			var versions []string

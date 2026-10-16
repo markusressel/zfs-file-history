@@ -1,4 +1,4 @@
-package dialog
+package pool_history
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"sync"
 	"unicode/utf8"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
@@ -18,6 +19,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// stateKeyPoolHistoryTable is where the column layout of the history is saved in state.Current
+const stateKeyPoolHistoryTable = "poolHistory"
 
 const (
 	PoolHistoryDialogPage util.Page = "PoolHistoryDialog"
@@ -59,10 +63,10 @@ var poolHistoryDefaultLayout = table.ColumnLayout{Columns: poolHistoryColumns, S
 // so the list is a virtual table (see poolHistoryContent), not a table.RowSelectionTable.
 type PoolHistoryDialog struct {
 	application *tview.Application
-	// pages are the pages the dialog is shown on, for the column dialog (see pagesAware)
+	// pages are the pages the dialog is shown on, for the column dialog (see PagesAware)
 	pages         *tview.Pages
 	layout        *tview.Flex
-	actionChannel chan DialogActionId
+	actionChannel chan dialog.DialogActionId
 	filterInput   *tview.InputField
 	table         *scrollbar.Table
 	// tableArea shows the table, or loadingView while the history is read
@@ -111,6 +115,9 @@ type PoolHistoryDialog struct {
 	headerWasSelected bool
 }
 
+// ShowDialogOnPages finds this by a type assertion, which would fail silently if the method did not match.
+var _ dialog.PagesAware = (*PoolHistoryDialog)(nil)
+
 // NewPoolHistoryDialog shows the history of the pool, or of the dataset (with its children and snapshots) if dataset
 // is not "", from the cache: the one read before right away, while it is read again (see PoolHistoryCache.Watch). The
 // events ZFS logged itself are shown for a dataset from the start: a recursive command names only the dataset it was
@@ -118,7 +125,7 @@ type PoolHistoryDialog struct {
 func NewPoolHistoryDialog(application *tview.Application, pool string, dataset string, cache *PoolHistoryCache) *PoolHistoryDialog {
 	d := &PoolHistoryDialog{
 		application:   application,
-		actionChannel: make(chan DialogActionId),
+		actionChannel: make(chan dialog.DialogActionId),
 		pool:          pool,
 		dataset:       dataset,
 		internal:      dataset != "",
@@ -270,7 +277,7 @@ func (d *PoolHistoryDialog) createLayout() {
 		return x + 1, y, width - 2, height
 	})
 
-	layout := createOverlayFrame(title, content)
+	layout := dialog.NewOverlayFrame(title, content)
 	layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if d.application.GetFocus() == d.filterInput {
 			return event
@@ -457,7 +464,7 @@ func (d *PoolHistoryDialog) openColumnDialog() {
 	if d.pages == nil {
 		return
 	}
-	columns := NewColumnSelectionDialog(d.application, "Configure History Columns", poolHistoryColumns, d.content.columns,
+	columns := dialog.NewColumnSelectionDialog(d.application, "Configure History Columns", poolHistoryColumns, d.content.columns,
 		func(columns []*table.Column) {
 			layout := d.columnLayout()
 			layout.Columns = columns
@@ -470,10 +477,10 @@ func (d *PoolHistoryDialog) openColumnDialog() {
 		d.showRows(d.selectedRow())
 		return slices.Clone(d.content.columns)
 	})
-	ShowDialogOnPages(d.application, d.pages, columns, nil)
+	dialog.ShowDialogOnPages(d.application, d.pages, columns, nil)
 }
 
-func (d *PoolHistoryDialog) setPages(pages *tview.Pages) {
+func (d *PoolHistoryDialog) SetPages(pages *tview.Pages) {
 	d.pages = pages
 }
 
@@ -898,7 +905,7 @@ func (d *PoolHistoryDialog) GetLayout() *tview.Flex {
 	return d.layout
 }
 
-func (d *PoolHistoryDialog) GetActionChannel() <-chan DialogActionId {
+func (d *PoolHistoryDialog) GetActionChannel() <-chan dialog.DialogActionId {
 	return d.actionChannel
 }
 
@@ -906,7 +913,7 @@ func (d *PoolHistoryDialog) Close() {
 	d.loadingView.Stop()
 	d.stopWatching()
 	go func() {
-		d.actionChannel <- DialogCloseActionId
+		d.actionChannel <- dialog.DialogCloseActionId
 	}()
 }
 

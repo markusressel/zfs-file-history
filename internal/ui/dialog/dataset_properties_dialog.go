@@ -18,6 +18,9 @@ import (
 	"github.com/rivo/tview"
 )
 
+// stateKeyPropertiesTable is where the column layout of the properties is saved in state.Current
+const stateKeyPropertiesTable = "properties"
+
 const (
 	DatasetPropertiesDialogPage util.Page = "DatasetPropertiesDialog"
 
@@ -90,7 +93,7 @@ func (d *DatasetPropertiesDialog) GetActionChannel() <-chan DialogActionId {
 	return d.actionChannel
 }
 
-func (d *DatasetPropertiesDialog) setPages(pages *tview.Pages) {
+func (d *DatasetPropertiesDialog) SetPages(pages *tview.Pages) {
 	d.pages = pages
 }
 
@@ -159,7 +162,7 @@ func datasetPropertiesShortcuts() []shortcut_helper.ShortcutEntry {
 // captureTableInput handles the keys on the table, after the filter input (see table.RowSelectionTable).
 func (d *DatasetPropertiesDialog) captureTableInput(event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() == tcell.KeyF2 {
-		openColumnDialog(d.application, d.pages, "Configure Property Columns", propertyColumns, d.table)
+		ShowColumnDialogOnPages(d.application, d.pages, "Configure Property Columns", propertyColumns, d.table)
 		return nil
 	}
 	if event.Key() == tcell.KeyRune && event.Rune() == 'a' {

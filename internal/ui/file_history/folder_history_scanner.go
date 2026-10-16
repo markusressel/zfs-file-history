@@ -1,4 +1,4 @@
-package dialog
+package file_history
 
 import (
 	"context"
