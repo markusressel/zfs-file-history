@@ -153,6 +153,9 @@ func (device PoolDevice) DisplayName() string {
 // Like the devices pane of the pools page, the temperatures and SMART values are only read while the disks are drawn
 // (the disks page is shown), see HealthReader: idle hard disks only with t, all SMART values again with s.
 type DiskBrowserComponent struct {
+	// Host shows its dialogs
+	dialog.Host
+
 	Events *util.Emitter[Event]
 
 	application    *tview.Application
@@ -166,8 +169,6 @@ type DiskBrowserComponent struct {
 	statuses []*zfs.PoolStatus
 	// toSelect is the disk to select once it is listed, see SelectDevice
 	toSelect *PoolDevice
-	// dialogPages are the pages dialogs are shown on, see SetDialogPages
-	dialogPages *tview.Pages
 	// onSetup offers to allow running smartctl with sudo, nil: not offered, see SetOnSetup
 	onSetup func()
 	// enabled returns whether the footer can be clicked, e.g. not while a dialog is in front
@@ -192,7 +193,9 @@ func (view *diskView) Draw(screen tcell.Screen) {
 // with smart. Must be called on the UI thread.
 func NewDiskBrowser(application *tview.Application, sampler disk.TemperatureSampler, smart disk.SmartSource) *DiskBrowserComponent {
 	browser := &DiskBrowserComponent{
-		Events:      util.NewEmitter[Event](),
+		Events: util.NewEmitter[Event](),
+		// no dialogs until the page sets its pages
+		Host:        dialog.NewHost(application, nil),
 		application: application,
 		enabled:     func() bool { return true },
 	}
@@ -249,12 +252,6 @@ func (browser *DiskBrowserComponent) setupTable() {
 		}
 		return event
 	})
-}
-
-// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
-// whole screen. Must be called on the UI thread.
-func (browser *DiskBrowserComponent) SetDialogPages(pages *tview.Pages) {
-	browser.dialogPages = pages
 }
 
 // SetOnSetup sets the function that offers to allow running smartctl with sudo, offered while the SMART values
@@ -415,11 +412,7 @@ func (browser *DiskBrowserComponent) ReadTemperatures() {
 
 // openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
 func (browser *DiskBrowserComponent) openColumnSelectionDialog() {
-	if browser.dialogPages == nil {
-		return
-	}
-	d := dialog.NewTableColumnSelectionDialog(browser.application, "Configure Disk Columns", tableColumns, browser.tableContainer)
-	dialog.ShowDialogOnPages(browser.application, browser.dialogPages, d, nil)
+	dialog.ShowColumnSelection(&browser.Host, "Configure Disk Columns", tableColumns, browser.tableContainer)
 }
 
 // GetShortcutMap returns the shortcuts of the list of the disks.

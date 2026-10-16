@@ -205,7 +205,9 @@ of the code.
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). The file history shows the
     changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
     `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with
-    `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
+    `ShowDialogOnPages`; components embed `dialog.Host` (`SetDialogPages`, `ShowDialog`,
+    `dialog.ShowColumnSelection` for F2, `RunPreview`), which shows them on the pages of the application, set by the
+    page, and on the own pages of the component until then. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
     ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started. The
     description of a selection or text input dialog scrolls when the dialog does not fit, so the checklist, the
     options and the input field are always shown.

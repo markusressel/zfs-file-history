@@ -54,6 +54,9 @@ func (entry AttributeEntry) TableRowId() string {
 // DiskDetailsComponent shows the details of the selected disk (what it is, its health and problems), above a table
 // of its SMART attributes (the ones that tell of failures highlighted).
 type DiskDetailsComponent struct {
+	// Host shows its dialogs
+	dialog.Host
+
 	application    *tview.Application
 	layout         *detailsLayout
 	details        *scrollbar.TextView
@@ -72,8 +75,6 @@ type DiskDetailsComponent struct {
 	// renderedHeight the one the details were rendered for, see renderDetails
 	layoutWidth, layoutHeight     int
 	renderedWidth, renderedHeight int
-	// dialogPages are the pages dialogs are shown on, see SetDialogPages
-	dialogPages *tview.Pages
 	// poolLinks are where the names of the pools are in the details, which can be clicked (see detailsView)
 	poolLinks []poolLink
 	// regions are the parts of the details that can be clicked: the names of the pools
@@ -145,7 +146,8 @@ const detailsMaxPercent = 60
 
 // NewDiskDetails returns the details of a disk. Must be called on the UI thread.
 func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
-	component := &DiskDetailsComponent{application: application, enabled: func() bool { return true }}
+	// no dialogs until the page sets its pages
+	component := &DiskDetailsComponent{Host: dialog.NewHost(application, nil), application: application, enabled: func() bool { return true }}
 
 	// the attributes below take the space they need, the details may not fit
 	component.details = scrollbar.NewTextView(application)
@@ -180,12 +182,6 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	component.layout.AddItem(component.detailsView, 0, 0, false).
 		AddItem(t.GetLayout(), 0, 1, true)
 	return component
-}
-
-// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
-// whole screen. Must be called on the UI thread.
-func (component *DiskDetailsComponent) SetDialogPages(pages *tview.Pages) {
-	component.dialogPages = pages
 }
 
 // SetOnShowPool sets the function that shows a pool on the pools page, called when the name of a pool the disk is used
@@ -288,11 +284,7 @@ func (component *DiskDetailsComponent) GetDetailsText(stripTags bool) string {
 
 // openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
 func (component *DiskDetailsComponent) openColumnSelectionDialog() {
-	if component.dialogPages == nil {
-		return
-	}
-	d := dialog.NewTableColumnSelectionDialog(component.application, "Configure Attribute Columns", attributeColumns, component.tableContainer)
-	dialog.ShowDialogOnPages(component.application, component.dialogPages, d, nil)
+	dialog.ShowColumnSelection(&component.Host, "Configure Attribute Columns", attributeColumns, component.tableContainer)
 }
 
 // GetShortcutMap returns the shortcuts of the attributes.

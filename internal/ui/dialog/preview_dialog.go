@@ -107,11 +107,12 @@ type Preview[P any] struct {
 	Retry func()
 }
 
-// RunPreview shows a PreviewDialog with show, runs the check in the background, and then shows the confirmation, or
+// RunPreview shows a PreviewDialog on the host, runs the check in the background, and then shows the confirmation, or
 // the error with a retry. Nothing follows if the dialog was cancelled meanwhile. Must be called on the UI thread.
-func RunPreview[P any](application *tview.Application, show func(Dialog), preview Preview[P]) {
+func RunPreview[P any](host *Host, preview Preview[P]) {
+	application := host.application
 	checking := NewPreviewDialog(application, preview.Title, preview.Message)
-	show(checking)
+	host.ShowDialog(checking, nil)
 	go func() {
 		result, err := preview.Check()
 		application.QueueUpdateDraw(func() {
@@ -120,7 +121,7 @@ func RunPreview[P any](application *tview.Application, show func(Dialog), previe
 			}
 			if err != nil {
 				logging.Error("%s %s: %s", preview.ErrorTitle, preview.Subject, err.Error())
-				show(NewErrorDialogWithRetry(application, preview.ErrorTitle, err, preview.Retry))
+				host.ShowDialog(NewErrorDialogWithRetry(application, preview.ErrorTitle, err, preview.Retry), nil)
 				return
 			}
 			preview.Confirm(result)
