@@ -47,6 +47,9 @@ type Backend interface {
 	DestroyDataset(name string, recursive bool) error
 	// PromoteDataset promotes the clone, so it no longer depends on its origin, as the current user.
 	PromoteDataset(name string) error
+	// RunDatasetCommand runs zfs with the arguments (a command of a MountPlan) as the current user. Returns a
+	// DatasetCommandNeedsRootError if the user may not.
+	RunDatasetCommand(args []string) error
 	// ListProperties returns all properties of the dataset, with human-readable values.
 	ListProperties(dataset string) ([]*Property, error)
 	// SetProperty sets the property of the dataset as the current user.

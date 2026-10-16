@@ -50,8 +50,9 @@ type rootDialogTest struct {
 	permissionsDialogTest
 	// ran are the commands run with sudo
 	ran [][]string
-	// poolsChanged counts zfs.PoolsChanged
-	poolsChanged atomic.Int32
+	// poolsChanged counts zfs.PoolsChanged, datasetsLoaded zfs.DatasetsLoaded
+	poolsChanged   atomic.Int32
+	datasetsLoaded atomic.Int32
 }
 
 // newRootDialogTest shows the dialog for newScrubNeedsRoot, with a retry function if withRetry is set. sudo and the
@@ -60,12 +61,14 @@ func newRootDialogTest(t *testing.T, withRetry bool, sudoErr error) *rootDialogT
 	return newRootDialogTestFor(t, newScrubNeedsRoot(), withRetry, sudoErr)
 }
 
-// newRootDialogTestFor is newRootDialogTest for the given error.
-func newRootDialogTestFor(t *testing.T, needsRoot *zfs.PoolActionNeedsRootError, withRetry bool, sudoErr error) *rootDialogTest {
+// newRootDialogTestFor is newRootDialogTest for the given error, e.g. a zfs.PoolActionNeedsRootError.
+func newRootDialogTestFor(t *testing.T, needsRoot error, withRetry bool, sudoErr error) *rootDialogTest {
 	dt := &rootDialogTest{permissionsDialogTest: permissionsDialogTest{t: t}}
-	// an emitter of this test, so its listener does not outlive it
+	// emitters of this test, so their listeners do not outlive it
 	testutil.Replace(t, &zfs.PoolsChanged, util.NewEmitter[struct{}]())
 	zfs.PoolsChanged.Subscribe(func(struct{}) { dt.poolsChanged.Add(1) })
+	testutil.Replace(t, &zfs.DatasetsLoaded, util.NewEmitter[struct{}]())
+	zfs.DatasetsLoaded.Subscribe(func(struct{}) { dt.datasetsLoaded.Add(1) })
 	testutil.Replace(t, &executablePath, func() (string, error) { return "/usr/bin/zfs-file-history", nil })
 	testutil.Replace(t, &grantPermissions, func(application *tview.Application, explanation string, commands [][]string) error {
 		dt.recordUiThread()

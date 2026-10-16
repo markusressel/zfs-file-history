@@ -59,6 +59,7 @@ func (NoSystem) PoolStatus(string) (*PoolStatus, error)       { return nil, ErrN
 func (NoSystem) PoolStatuses() ([]*PoolStatus, error)         { return nil, ErrNoSystem }
 func (NoSystem) PoolsWithoutHeadErrlog([]string) []string     { return nil }
 func (NoSystem) RunPoolAction(PoolAction, string) error       { return ErrNoSystem }
+func (NoSystem) RunDatasetCommand([]string) error             { return ErrNoSystem }
 func (NoSystem) PoolFeatures(string) (*PoolFeatures, error)   { return nil, ErrNoSystem }
 func (NoSystem) PreviewDestroySnapshots(string, []string, bool, bool) (*DestroyPreview, error) {
 	return nil, ErrNoSystem

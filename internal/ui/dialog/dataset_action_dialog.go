@@ -20,10 +20,15 @@ const (
 	DatasetDialogPropertiesActionId
 	DatasetDialogPromoteActionId
 	DatasetDialogDestroyActionId
+	DatasetDialogMountActionId
+	DatasetDialogUnmountActionId
+	DatasetDialogLoadKeyActionId
+	DatasetDialogUnloadKeyActionId
 )
 
 // NewDatasetActionDialog creates the dialog with the actions for a dataset. Promoting is only offered for clones,
-// destroying for all datasets but the root dataset of a pool (which is only destroyed with the pool).
+// destroying for all datasets but the root dataset of a pool (which is only destroyed with the pool), mounting and
+// unmounting, loading and unloading the key depending on the state of the dataset.
 func NewDatasetActionDialog(
 	application *tview.Application,
 	dataset *zfs.DatasetListEntry,
@@ -74,6 +79,7 @@ func buildDatasetDialogOptions(dataset *zfs.DatasetListEntry) []*DialogOption {
 			Description: "Show and change the ZFS properties (zfs get/set)",
 		},
 	)
+	options = append(options, buildMountDialogOptions(dataset)...)
 	if dataset.IsClone() {
 		options = append(options, &DialogOption{
 			Id:          DatasetDialogPromoteActionId,
@@ -91,6 +97,82 @@ func buildDatasetDialogOptions(dataset *zfs.DatasetListEntry) []*DialogOption {
 		})
 	}
 	return append(options, &DialogOption{Id: DialogCloseActionId, Name: localization.LocalizationCommonClose})
+}
+
+// buildMountDialogOptions returns the options of the dataset action dialog that mount or unmount the dataset, or load
+// or unload its key: only those that zfs would not refuse right away (see zfs.PlanMountAction).
+func buildMountDialogOptions(dataset *zfs.DatasetListEntry) []*DialogOption {
+	var options []*DialogOption
+	locked := dataset.KeyStatus == "unavailable"
+	switch {
+	case dataset.MountPath != "":
+		options = append(options, &DialogOption{
+			Id:          DatasetDialogUnmountActionId,
+			Name:        "⏏️ Unmount",
+			Description: fmt.Sprintf("Unmount the dataset from %s with everything mounted below it, after asking (zfs unmount)", dataset.MountPath),
+			Severity:    DialogSeverityWarning,
+		})
+	case dataset.CanMount != "off" && dataset.Mountpoint != "none" && dataset.Mountpoint != "legacy" && locked:
+		options = append(options, &DialogOption{
+			Id:          DatasetDialogMountActionId,
+			Name:        "🔓 Load key and mount",
+			Description: fmt.Sprintf("Load the key of %s and mount the dataset at %s (zfs mount -l)", dataset.EncryptionRoot, dataset.Mountpoint),
+		})
+	case dataset.CanMount != "off" && dataset.Mountpoint != "none" && dataset.Mountpoint != "legacy":
+		options = append(options, &DialogOption{
+			Id:          DatasetDialogMountActionId,
+			Name:        "📁 Mount",
+			Description: fmt.Sprintf("Mount the dataset at %s (zfs mount)", dataset.Mountpoint),
+		})
+	}
+	switch {
+	case dataset.EncryptionRoot == "":
+	case locked:
+		options = append(options, &DialogOption{
+			Id:          DatasetDialogLoadKeyActionId,
+			Name:        "🔑 Load key",
+			Description: fmt.Sprintf("Load the key of %s, without mounting (zfs load-key)", dataset.EncryptionRoot),
+		})
+	case dataset.KeyStatus == "available":
+		options = append(options, &DialogOption{
+			Id:   DatasetDialogUnloadKeyActionId,
+			Name: "🔒 Unload key",
+			Description: fmt.Sprintf("Unmount the datasets encrypted with the key of %s and unload it, after asking (zfs unload-key)",
+				dataset.EncryptionRoot),
+			Severity: DialogSeverityWarning,
+		})
+	}
+	return options
+}
+
+const (
+	UnmountDialogPage util.Page = "UnmountDialog"
+
+	UnmountDialogUnmountActionId DialogActionId = iota
+)
+
+// NewUnmountDialog asks for confirmation before unmounting datasets (also to unload a key). Nothing is lost, but
+// programs that use their files fail. The description should list what is unmounted, it may contain style tags (see
+// Highlight). confirmLabel names the action, e.g. "Unmount". asyncWork receives UnmountDialogUnmountActionId on
+// confirmation.
+func NewUnmountDialog(
+	application *tview.Application,
+	title string,
+	description string,
+	confirmLabel string,
+	asyncWork func(d *SelectionDialog, action DialogActionId) error,
+	onComplete func(d *SelectionDialog, option *DialogOption, err error),
+) *SelectionDialog {
+	return newTaggedSelectionDialog(
+		application,
+		string(UnmountDialogPage),
+		title,
+		description,
+		nil,
+		buildConfirmDialogOptions(UnmountDialogUnmountActionId, confirmLabel, true, DialogSeverityWarning),
+		asyncWork,
+		onComplete,
+	)
 }
 
 const (

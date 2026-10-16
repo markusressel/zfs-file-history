@@ -16,6 +16,7 @@ const (
 	PermissionDestroy  Permission = "destroy"
 	PermissionDiff     Permission = "diff"
 	PermissionHold     Permission = "hold"
+	PermissionLoadKey  Permission = "load-key"
 	PermissionMount    Permission = "mount"
 	PermissionPromote  Permission = "promote"
 	PermissionRelease  Permission = "release"

@@ -20,7 +20,19 @@ var (
 	promoteClone          = zfs.PromoteClone
 	previewDestroyDataset = zfs.PreviewDestroyDataset
 	destroyDataset        = zfs.DestroyDataset
+	planMountAction       = zfs.PlanMountAction
+	runMountPlan          = zfs.RunMountPlan
+	runInTerminal         = uiutil.RunInTerminal
+	runWithSudoInTerminal = uiutil.RunWithSudoInTerminal
 )
+
+// mountActions are the mount actions of the options of the dataset action dialog.
+var mountActions = map[dialog.DialogActionId]zfs.MountAction{
+	dialog.DatasetDialogMountActionId:     zfs.MountActionMount,
+	dialog.DatasetDialogUnmountActionId:   zfs.MountActionUnmount,
+	dialog.DatasetDialogLoadKeyActionId:   zfs.MountActionLoadKey,
+	dialog.DatasetDialogUnloadKeyActionId: zfs.MountActionUnloadKey,
+}
 
 // maxListedNames is the maximum number of snapshots or datasets listed in the confirmations.
 const maxListedNames = 10
@@ -38,13 +50,15 @@ func (datasetBrowser *DatasetBrowserComponent) openActionDialog(entry *zfs.Datas
 	datasetBrowser.showDialog(datasetBrowser.newActionDialog(entry))
 }
 
-// newActionDialog creates the dialog with the actions for the dataset, see openActionDialog. Promoting a clone and
-// destroying a dataset ask for confirmation first, with what changes.
+// newActionDialog creates the dialog with the actions for the dataset, see openActionDialog. Promoting a clone,
+// destroying a dataset, unmounting it and unloading its key ask for confirmation first, with what changes. Mounting
+// and loading a key run right away, in the terminal if zfs asks for the passphrase.
 func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.DatasetListEntry) *dialog.SelectionDialog {
 	name := entry.Name
 	var createdName string
 	var promotePreview *zfs.PromotePreview
 	var destroyPreview *zfs.DestroyPreview
+	var mountPlan *zfs.MountPlan
 
 	asyncWork := func(d *dialog.SelectionDialog, action dialog.DialogActionId) error {
 		var err error
@@ -56,6 +70,13 @@ func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.Datase
 			promotePreview, err = previewPromote(name)
 		case dialog.DatasetDialogDestroyActionId:
 			destroyPreview, err = previewDestroyDataset(name)
+		case dialog.DatasetDialogMountActionId, dialog.DatasetDialogLoadKeyActionId:
+			mountPlan, err = planMountAction(mountActions[action], name)
+			if err == nil && !mountPlan.Prompts {
+				err = runMountPlan(mountPlan)
+			}
+		case dialog.DatasetDialogUnmountActionId, dialog.DatasetDialogUnloadKeyActionId:
+			mountPlan, err = planMountAction(mountActions[action], name)
 		}
 		return err
 	}
@@ -89,6 +110,15 @@ func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.Datase
 		case dialog.DatasetDialogDestroyActionId:
 			// nothing was destroyed yet, the confirmations do that
 			datasetBrowser.showDestroyConfirmation(entry, destroyPreview)
+		case dialog.DatasetDialogMountActionId, dialog.DatasetDialogLoadKeyActionId:
+			if mountPlan.Prompts {
+				datasetBrowser.runInTerminal(entry, mountPlan)
+			} else {
+				datasetBrowser.mounted(mountPlan)
+			}
+		case dialog.DatasetDialogUnmountActionId, dialog.DatasetDialogUnloadKeyActionId:
+			// nothing was unmounted yet, the confirmation does that
+			datasetBrowser.showUnmountConfirmation(entry, mountPlan)
 		}
 	}
 
@@ -276,6 +306,123 @@ func (datasetBrowser *DatasetBrowserComponent) destroyInBackground(entry *zfs.Da
 				datasetBrowser.showDialog(dialog.NewSuccessDialog(datasetBrowser.application, "Dataset Destroyed", message))
 			}
 			// some of it may be destroyed, also after an error
+			zfs.RefreshZfsData()
+		})
+	}()
+}
+
+// mounted tells that the plan was done, and reloads the datasets: mounts are no zfs events. Must be called on the UI
+// thread.
+func (datasetBrowser *DatasetBrowserComponent) mounted(plan *zfs.MountPlan) {
+	datasetBrowser.Events.Emit(DatasetBrowserStatusEvent{
+		Message: status_message.NewSuccessStatusMessage(plan.Done()),
+	})
+	zfs.RefreshZfsData()
+}
+
+// runInTerminal runs the plan in the terminal, where zfs asks for the passphrase of the key: the application never
+// sees it. With sudo if it needs root, which asks for the password first. Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) runInTerminal(entry *zfs.DatasetListEntry, plan *zfs.MountPlan) {
+	explanation := fmt.Sprintf("loading the key of %s: zfs asks for its passphrase.", plan.EncryptionRoot)
+	if plan.Action == zfs.MountActionMount {
+		explanation = fmt.Sprintf("loading the key of %s and mounting %s: zfs asks for its passphrase.", plan.EncryptionRoot, plan.Dataset)
+	}
+	run := runInTerminal
+	if plan.NeedsRoot {
+		explanation += " It runs as root, sudo asks for your password first."
+		run = runWithSudoInTerminal
+	}
+	go func() {
+		// blocks until the UI is back
+		err := run(datasetBrowser.application, explanation, plan.CommandLines())
+		datasetBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Failed to %s: %s", plan.Name(), err.Error())
+				// zfs printed why in the terminal, e.g. a wrong passphrase
+				retry := func() { datasetBrowser.startMountAction(entry, plan.Action) }
+				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry))
+				return
+			}
+			datasetBrowser.mounted(plan)
+		})
+	}()
+}
+
+// startMountAction plans the action in the background, and then does it like the action dialog does: asking first
+// before unmounting, in the terminal if zfs asks for a passphrase. Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) startMountAction(entry *zfs.DatasetListEntry, action zfs.MountAction) {
+	go func() {
+		plan, err := planMountAction(action, entry.Name)
+		datasetBrowser.application.QueueUpdateDraw(func() {
+			switch {
+			case err != nil:
+				logging.Error("Cannot change the mounts of %s: %s", entry.Name, err.Error())
+				retry := func() { datasetBrowser.startMountAction(entry, action) }
+				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry))
+			case plan.Prompts:
+				datasetBrowser.runInTerminal(entry, plan)
+			case action == zfs.MountActionUnmount || action == zfs.MountActionUnloadKey:
+				datasetBrowser.showUnmountConfirmation(entry, plan)
+			default:
+				datasetBrowser.runMountPlanInBackground(entry, plan)
+			}
+		})
+	}()
+}
+
+// formatUnmountDescription describes what unmounting the dataset (or unloading its key) does, with style tags.
+func formatUnmountDescription(plan *zfs.MountPlan) string {
+	var description strings.Builder
+	if plan.Action == zfs.MountActionUnloadKey {
+		fmt.Fprintf(&description, "Unload the key of %s. The datasets encrypted with it are unmounted first, and their "+
+			"files cannot be read until the key is loaded again.", dialog.Highlight(plan.EncryptionRoot))
+	} else {
+		fmt.Fprintf(&description, "Unmount %s from %s.", dialog.Highlight(plan.Dataset), dialog.Highlight(plan.MountPath))
+	}
+	if len(plan.Unmounted) == 0 {
+		return description.String()
+	}
+	description.WriteString(" Nothing is lost, but programs that use their files fail. A dataset in use is not " +
+		"unmounted: it stops there, after unmounting what came before it.")
+	unmounted := make([]string, 0, len(plan.Unmounted))
+	for _, mount := range plan.Unmounted {
+		unmounted = append(unmounted, fmt.Sprintf("%s (%s)", mount.Name, mount.Mountpoint))
+	}
+	fmt.Fprintf(&description, "\n\nDatasets that will be unmounted, in this order (%d):%s", len(unmounted), formatNameList(unmounted))
+	return description.String()
+}
+
+// showUnmountConfirmation asks for confirmation to unmount the datasets of the plan (and unload the key), and does it
+// on confirmation. Must be called on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) showUnmountConfirmation(entry *zfs.DatasetListEntry, plan *zfs.MountPlan) {
+	title, confirm := " ⏏️ Unmount ", "Unmount"
+	if plan.Action == zfs.MountActionUnloadKey {
+		title, confirm = " 🔒 Unload Key ", "Unload key"
+	}
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		d.Close()
+		if option.Id == dialog.UnmountDialogUnmountActionId {
+			datasetBrowser.runMountPlanInBackground(entry, plan)
+		}
+	}
+	datasetBrowser.showDialog(dialog.NewUnmountDialog(datasetBrowser.application, title, formatUnmountDescription(plan), confirm, nil, onComplete))
+}
+
+// runMountPlanInBackground does what the plan says in the background and shows the result. Must be called on the UI
+// thread.
+func (datasetBrowser *DatasetBrowserComponent) runMountPlanInBackground(entry *zfs.DatasetListEntry, plan *zfs.MountPlan) {
+	go func() {
+		err := runMountPlan(plan)
+		datasetBrowser.application.QueueUpdateDraw(func() {
+			if err == nil {
+				datasetBrowser.mounted(plan)
+				return
+			}
+			logging.Error("Failed to %s: %s", plan.Name(), err.Error())
+			// a retry plans again, and asks again before unmounting
+			retry := func() { datasetBrowser.startMountAction(entry, plan.Action) }
+			datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry))
+			// some of it may be unmounted, also after an error
 			zfs.RefreshZfsData()
 		})
 	}()

@@ -360,6 +360,17 @@ type DatasetListEntry struct {
 	MountPath string
 	// Origin is the full name of the snapshot the dataset was cloned from, "" if it is not a clone.
 	Origin string
+	// CanMount is the value of the "canmount" property ("on", "off" or "noauto"), "" for volumes.
+	CanMount string
+	// KeyStatus is the value of the "keystatus" property ("available" or "unavailable"), "" if the dataset is not
+	// encrypted.
+	KeyStatus string
+	// EncryptionRoot is the name of the dataset whose key encrypts the dataset (the dataset itself or an ancestor),
+	// "" if it is not encrypted.
+	EncryptionRoot string
+	// KeyLocation is where the key of an encryption root is loaded from ("prompt", "file:///…", ...), "none" for the
+	// other datasets.
+	KeyLocation string
 }
 
 // IsClone returns whether the dataset is a clone of a snapshot.
@@ -418,9 +429,13 @@ func parseDatasetList(output string, mountPaths map[string]string) ([]*DatasetLi
 		}
 
 		entry := &DatasetListEntry{
-			Name:       fields[0],
-			Mountpoint: fields[8],
-			MountPath:  mountPaths[fields[0]],
+			Name:           fields[0],
+			CanMount:       notApplicableAsEmpty(fields[8]),
+			KeyStatus:      notApplicableAsEmpty(fields[9]),
+			EncryptionRoot: notApplicableAsEmpty(fields[10]),
+			KeyLocation:    notApplicableAsEmpty(fields[11]),
+			Mountpoint:     fields[12],
+			MountPath:      mountPaths[fields[0]],
 		}
 		if IsClone(fields[7]) {
 			entry.Origin = fields[7]
@@ -436,6 +451,15 @@ func parseDatasetList(output string, mountPaths map[string]string) ([]*DatasetLi
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// notApplicableAsEmpty returns value, or "" if it is "-" (not applicable, e.g. the key status of a dataset that is
+// not encrypted).
+func notApplicableAsEmpty(value string) string {
+	if value == "-" {
+		return ""
+	}
+	return value
 }
 
 // parseSizeProperty parses a size in bytes, as printed by "zfs list -p". "-" (not applicable) is 0.
