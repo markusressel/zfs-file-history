@@ -173,6 +173,11 @@ of the code.
   - One package per component (`file_browser`, `snapshot_browser`, `dataset_browser`, `dataset_info`,
     `pool_browser`, `pool_status`, `disk_browser`, ...). Components emit typed events (`Events *util.Emitter[Event]`), the page wires
     them together.
+  - `file_browser/`: the files of a folder compared with the selected snapshot. With `a` (or a click on the count in
+    the footer, saved in the state) it also lists the entries that exist neither now nor in the selected snapshot,
+    but in other snapshots (`FileBrowserEntry.OnlyInSnapshots`, their version in the newest one, which a restore
+    takes). They come from the comparison the snapshot browser makes of the folder in all its snapshots
+    (`folder_listing.CompareSnapshots`, `FolderChangesLoaded.OnlyInSnapshots`), so nothing is read twice.
   - `pool_activity/`: the operations running on the pools (scrub, resilver, TRIM, device removal, raidz expansion),
     shown below the header of every page. One `Monitor` for the application (loads `zpool status` of all pools,
     every 5 s while something runs, every minute otherwise, and on the zfs emitters; the pool status pane takes the

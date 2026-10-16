@@ -49,6 +49,9 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 				cellText = fmt.Sprintf("/%s", cellText)
 			}
 			cellColor = statusCellColor
+			if note := formatOnlyInSnapshots(entry); note != "" {
+				cellText += "  " + note
+			}
 			if note, color, damaged := formatDamage(fileBrowser.dataErrors, entry); damaged {
 				cellText += "  " + note
 				cellColor = color
@@ -129,6 +132,19 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 	}
 
 	return cells
+}
+
+// formatOnlyInSnapshots returns the note behind the name of an entry that only exists in other snapshots than the
+// selected one: in which snapshot, or in how many and the newest (whose version is shown and restored).
+func formatOnlyInSnapshots(entry *data.FileBrowserEntry) string {
+	switch len(entry.OnlyInSnapshots) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf("only in %s", entry.OnlyInSnapshots[0].Name)
+	default:
+		return fmt.Sprintf("in %d snapshots, newest %s", len(entry.OnlyInSnapshots), entry.OnlyInSnapshots[0].Name)
+	}
 }
 
 func determineTypeCellColor(entry *data.FileBrowserEntry) tcell.Color {

@@ -151,8 +151,9 @@ func TestCompareSnapshots(t *testing.T) {
 		"c": {Name: "c", Type: File, Size: 1, Mode: 0o644, ModTime: fileTime},
 	}}
 
-	changes, err := CompareSnapshots(context.Background(), filepath.Join(root, "docs"), snapshots, workingCopy)
+	comparison, err := CompareSnapshots(context.Background(), filepath.Join(root, "docs"), snapshots, workingCopy)
 	require.NoError(t, err)
+	changes := comparison.BySnapshot
 	assert.Equal(t, map[string]SnapshotChanges{
 		"s1": {Exists: false, Initial: true},
 		// created: all its entries are added
@@ -161,4 +162,14 @@ func TestCompareSnapshots(t *testing.T) {
 		"s4": {Exists: true, VsNow: Counts{Added: 1, Deleted: 1}, VsPrevious: Counts{Modified: 1}},
 	}, changes)
 	assert.Equal(t, 2, changes["s4"].VsNow.Total())
+
+	// a is gone now: it is in the snapshots s2 to s4, newest first; b and c exist now
+	require.Len(t, comparison.OnlyInSnapshots, 1)
+	onlyInSnapshots := comparison.OnlyInSnapshots["a"]
+	assert.Equal(t, "a", onlyInSnapshots.Entry.Name)
+	var names []string
+	for _, snapshot := range onlyInSnapshots.Snapshots {
+		names = append(names, snapshot.Name)
+	}
+	assert.Equal(t, []string{"s4", "s3", "s2"}, names)
 }

@@ -50,6 +50,8 @@ func (e PathVersionsLoaded) isSnapshotBrowserEvent() {}
 type FolderChangesLoaded struct {
 	FolderPath string
 	BySnapshot map[string]folder_listing.SnapshotChanges
+	// OnlyInSnapshots are the entries of the folder that exist in snapshots but not now, by name
+	OnlyInSnapshots map[string]folder_listing.SnapshotOnlyEntry
 }
 
 func (e FolderChangesLoaded) isSnapshotBrowserEvent() {}

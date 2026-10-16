@@ -24,6 +24,8 @@ var readWorkingCopy = folder_listing.Read
 type folderChanges struct {
 	folderPath string
 	bySnapshot map[string]folder_listing.SnapshotChanges
+	// onlyInSnapshots are the entries that exist in snapshots but not now
+	onlyInSnapshots map[string]folder_listing.SnapshotOnlyEntry
 }
 
 // folderChangesInput is what the folder changes are computed from, to compute them only when it changed.
@@ -114,7 +116,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateFolderChanges() {
 				}
 				snapshotBrowser.folderChanges = result
 				snapshotBrowser.changesUpdated()
-				snapshotBrowser.emit(FolderChangesLoaded{FolderPath: result.folderPath, BySnapshot: result.bySnapshot})
+				snapshotBrowser.emit(FolderChangesLoaded{FolderPath: result.folderPath, BySnapshot: result.bySnapshot,
+					OnlyInSnapshots: result.onlyInSnapshots})
 			})
 		}()
 	})
@@ -129,11 +132,12 @@ func computeFolderChanges(ctx context.Context, input folderChangesInput, snapsho
 	} else {
 		workingCopy = readWorkingCopy(input.folderPath)
 	}
-	bySnapshot, err := compareSnapshots(ctx, input.folderPath, snapshots, workingCopy)
+	comparison, err := compareSnapshots(ctx, input.folderPath, snapshots, workingCopy)
 	if err != nil {
 		return nil, err
 	}
-	return &folderChanges{folderPath: input.folderPath, bySnapshot: bySnapshot}, nil
+	return &folderChanges{folderPath: input.folderPath, bySnapshot: comparison.BySnapshot,
+		onlyInSnapshots: comparison.OnlyInSnapshots}, nil
 }
 
 // changesOf returns the changes of the folder in the snapshot, and false while they are computed.

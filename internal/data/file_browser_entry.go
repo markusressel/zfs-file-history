@@ -56,6 +56,9 @@ type FileBrowserEntry struct {
 	Type          FileBrowserEntryType
 	DiffState     diff_state.DiffState
 	IsLoading     bool
+	// OnlyInSnapshots are the snapshots that contain the entry, newest first, if it exists neither now nor in the
+	// selected snapshot (shown with the entries of all snapshots). SnapshotFiles has its version in the newest one.
+	OnlyInSnapshots []*zfs.Snapshot
 }
 
 func (entry FileBrowserEntry) TableRowId() string {

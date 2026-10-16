@@ -3,6 +3,7 @@ package file_browser
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	path2 "path"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"zfs-file-history/internal/ui/status_message"
 	"zfs-file-history/internal/ui/table"
 	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -33,6 +35,8 @@ const (
 	selectionStateKey = "fileBrowser.selection"
 	// maxRememberedSelections is the number of folders whose selection is remembered between runs
 	maxRememberedSelections = 500
+	// toggleShowAllSnapshots is the key of showAllSnapshots in state.Current
+	toggleShowAllSnapshots = "fileBrowser.showAllSnapshots"
 )
 
 var (
@@ -130,6 +134,14 @@ type FileBrowserComponent struct {
 	refreshLoader *uiutil.DebouncedLoader
 	// dataErrors are the damaged files, nil if there are none, see SetDataErrors. Only accessed on the UI thread.
 	dataErrors *zfs.DataErrorIndex
+	// showAllSnapshots also lists the entries that exist neither now nor in the selected snapshot, but in other
+	// snapshots, so a file deleted long ago is found without going through the snapshots. Only accessed on the UI
+	// thread.
+	showAllSnapshots bool
+	// onlyInSnapshots are the entries of the folder at onlyInSnapshotsPath that exist in snapshots but not now, see
+	// SetOnlyInSnapshots. Only accessed on the UI thread.
+	onlyInSnapshots     map[string]folder_listing.SnapshotOnlyEntry
+	onlyInSnapshotsPath string
 }
 
 func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
@@ -140,6 +152,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 
 		selectionMemory: uiutil.NewSelectionMemory(func(entry *data.FileBrowserEntry) string { return entry.Name }).
 			Persist(state.Current, selectionStateKey, maxRememberedSelections),
+		showAllSnapshots: state.Current.Toggle(toggleShowAllSnapshots, false),
 	}
 
 	fileBrowser.diffLoader = uiutil.NewDebouncedLoader(application, func() {
@@ -217,6 +230,10 @@ func (fileBrowser *FileBrowserComponent) setupTable() {
 				return nil
 			}
 		}
+		if key == tcell.KeyRune && event.Rune() == 'a' {
+			fileBrowser.ToggleShowAllSnapshots()
+			return nil
+		}
 		if key == tcell.KeyRune && event.Rune() == 'h' {
 			if entry := fileBrowser.HistoryEntry(); entry != nil {
 				fileBrowser.requestHistory(entry)
@@ -257,12 +274,14 @@ func (fileBrowser *FileBrowserComponent) Focus() {
 	fileBrowser.application.SetFocus(fileBrowser.layout)
 }
 
-// computeTableEntries lists the entries of the given path. It runs in the background, so path and snapshotEntry
-// must be captured on the UI thread.
+// computeTableEntries lists the entries of the given path. onlyInSnapshots are added unless they exist now or in the
+// selected snapshot (nil: none, see showAllSnapshots). It runs in the background, so its arguments must be captured
+// on the UI thread.
 func (fileBrowser *FileBrowserComponent) computeTableEntries(
 	ctx context.Context,
 	path string,
 	snapshotEntry *data.SnapshotBrowserEntry,
+	onlyInSnapshots map[string]folder_listing.SnapshotOnlyEntry,
 	previousDiffs map[string]diff_state.DiffState,
 ) ([]*data.FileBrowserEntry, error) {
 
@@ -354,6 +373,8 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries(
 		}
 	}
 
+	fileEntries = append(fileEntries, entriesOnlyInOtherSnapshots(ctx, path, fileEntries, onlyInSnapshots)...)
+
 	for _, entry := range fileEntries {
 		if oldState, exists := previousDiffs[entry.GetRealPath()]; exists {
 			entry.DiffState = oldState
@@ -364,6 +385,58 @@ func (fileBrowser *FileBrowserComponent) computeTableEntries(
 	}
 
 	return fileEntries, nil
+}
+
+// entriesOnlyInOtherSnapshots returns the entries of onlyInSnapshots that are not listed yet (they exist neither now
+// nor in the selected snapshot), each with its version in the newest snapshot that contains it. Accesses the file
+// system, so it must not run on the UI thread.
+func entriesOnlyInOtherSnapshots(
+	ctx context.Context,
+	path string,
+	listed []*data.FileBrowserEntry,
+	onlyInSnapshots map[string]folder_listing.SnapshotOnlyEntry,
+) []*data.FileBrowserEntry {
+	if len(onlyInSnapshots) == 0 {
+		return nil
+	}
+	listedNames := make(map[string]bool, len(listed))
+	for _, entry := range listed {
+		listedNames[entry.Name] = true
+	}
+	var entries []*data.FileBrowserEntry
+	for name, onlyInSnapshot := range onlyInSnapshots {
+		if ctx.Err() != nil || len(onlyInSnapshot.Snapshots) == 0 {
+			return nil
+		}
+		if listedNames[name] {
+			continue
+		}
+		newest := onlyInSnapshot.Snapshots[0]
+		realPath := filepath.Join(path, name)
+		snapshotPath := newest.GetSnapshotPath(realPath)
+		stat, err := os.Lstat(snapshotPath)
+		if err != nil {
+			// e.g. the snapshot was destroyed meanwhile
+			continue
+		}
+		snapshotFile := &data.SnapshotFile{Path: snapshotPath, OriginalPath: realPath, Stat: stat, Snapshot: newest}
+		entry := data.NewFileBrowserEntry(name, nil, []*data.SnapshotFile{snapshotFile}, entryTypeOf(onlyInSnapshot.Entry.Type))
+		entry.OnlyInSnapshots = onlyInSnapshot.Snapshots
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// entryTypeOf returns the type of an entry of the file browser for the type of a folder listing entry.
+func entryTypeOf(entryType folder_listing.EntryType) data.FileBrowserEntryType {
+	switch entryType {
+	case folder_listing.Directory:
+		return data.Directory
+	case folder_listing.Link:
+		return data.Link
+	default:
+		return data.File
+	}
 }
 
 func (fileBrowser *FileBrowserComponent) computeSnapshotEntryForRealPathIfExists(
@@ -408,7 +481,10 @@ func (fileBrowser *FileBrowserComponent) determineDiffState(
 ) diff_state.DiffState {
 	// figure out status_message
 	var status = diff_state.Equal
-	if snapshotEntry == nil {
+	if entry.OnlyInSnapshots != nil {
+		// found in other snapshots than the selected one, it does not exist now
+		status = diff_state.Deleted
+	} else if snapshotEntry == nil {
 		status = diff_state.Unknown
 	} else if entry.HasSnapshot() && !entry.HasReal() {
 		// file only exists in snapshot but not in real
@@ -718,6 +794,10 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	// captured on the UI thread for the background computation
 	path := fileBrowser.path
 	snapshotEntry := fileBrowser.currentSnapshot
+	var onlyInSnapshots map[string]folder_listing.SnapshotOnlyEntry
+	if fileBrowser.showAllSnapshots && fileBrowser.onlyInSnapshotsPath == path {
+		onlyInSnapshots = fileBrowser.onlyInSnapshots
+	}
 
 	ctx, seq := fileBrowser.refreshLoader.Start()
 
@@ -731,7 +811,7 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 			}
 		}
 
-		entries, err := fileBrowser.computeTableEntries(ctx, path, snapshotEntry, previousDiffs)
+		entries, err := fileBrowser.computeTableEntries(ctx, path, snapshotEntry, onlyInSnapshots, previousDiffs)
 
 		fileBrowser.application.QueueUpdateDraw(func() {
 			if !fileBrowser.refreshLoader.IsCurrentSequence(seq) {
@@ -991,25 +1071,113 @@ func (fileBrowser *FileBrowserComponent) SelectFirstEntryIfExists() {
 	fileBrowser.tableContainer.SelectFirstIfExists()
 }
 
-// updateFooter shows the number of (matching) entries in the bottom border. Runs on the UI thread.
+// updateFooter shows the number of (matching) entries in the bottom border, and how many entries exist only in other
+// snapshots, which a click shows or hides. Runs on the UI thread.
 func (fileBrowser *FileBrowserComponent) updateFooter() {
-	fileBrowser.tableContainer.SetFooter(formatFooter(
+	fileBrowser.tableContainer.SetFooterParts(formatFooter(
 		len(fileBrowser.tableContainer.GetEntries()),
 		len(fileBrowser.tableContainer.GetAllEntries()),
 		fileBrowser.tableContainer.IsFilterActive(),
-	))
+		fileBrowser.countOnlyInOtherSnapshots(),
+		fileBrowser.showAllSnapshots,
+		fileBrowser.ToggleShowAllSnapshots,
+	)...)
 }
 
-// formatFooter returns e.g. "42 entries", or "5 of 42 entries" while a filter is active.
-func formatFooter(matchingCount int, totalCount int, filterActive bool) string {
+// countOnlyInOtherSnapshots returns the number of entries of the folder that exist neither now nor in the selected
+// snapshot, but in other snapshots: those shown, or those that showAllSnapshots would show. Runs on the UI thread.
+func (fileBrowser *FileBrowserComponent) countOnlyInOtherSnapshots() int {
+	if fileBrowser.showAllSnapshots {
+		count := 0
+		for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+			if entry.OnlyInSnapshots != nil {
+				count++
+			}
+		}
+		return count
+	}
+	if fileBrowser.onlyInSnapshotsPath != fileBrowser.entriesPath || !fileBrowser.entriesAreCurrent() {
+		return 0
+	}
+	listed := make(map[string]bool)
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+		listed[entry.Name] = true
+	}
+	count := 0
+	for name := range fileBrowser.onlyInSnapshots {
+		if !listed[name] {
+			count++
+		}
+	}
+	return count
+}
+
+// formatFooter returns the parts of the footer, e.g. "42 entries", or "5 of 42 entries" while a filter is active,
+// followed by the number of entries that only exist in other snapshots than the selected one (if any), shown or
+// hidden, which a click on it toggles.
+func formatFooter(matchingCount int, totalCount int, filterActive bool, onlyInOtherSnapshots int, showAllSnapshots bool, toggle func()) []uiutil.FooterPart {
 	noun := uiutil.Plural(totalCount, "entry", "entries")
-	if filterActive {
-		return fmt.Sprintf("%d of %d %s", matchingCount, totalCount, noun)
+	var parts []uiutil.FooterPart
+	switch {
+	case filterActive:
+		parts = append(parts, uiutil.FooterPart{Text: fmt.Sprintf("%d of %d %s", matchingCount, totalCount, noun)})
+	case totalCount > 0:
+		parts = append(parts, uiutil.FooterPart{Text: fmt.Sprintf("%d %s", totalCount, noun)})
 	}
-	if totalCount == 0 {
-		return ""
+	if onlyInOtherSnapshots > 0 {
+		state := "hidden"
+		if showAllSnapshots {
+			state = "shown"
+		}
+		parts = append(parts, uiutil.FooterPart{
+			Text:    txwidgets.Span(theme.Colors.ShortcutMap.KeyCombo, "%d only in other snapshots %s", onlyInOtherSnapshots, state),
+			OnClick: toggle,
+		})
 	}
-	return fmt.Sprintf("%d %s", totalCount, noun)
+	return uiutil.JoinFooterParts(parts...)
+}
+
+// SetOnlyInSnapshots sets the entries of the folder at path that exist in snapshots but not now (see
+// snapshot_browser.FolderChangesLoaded), shown while showAllSnapshots is on, and counted in the footer otherwise.
+// Must be called on the UI thread.
+func (fileBrowser *FileBrowserComponent) SetOnlyInSnapshots(path string, onlyInSnapshots map[string]folder_listing.SnapshotOnlyEntry) {
+	if path == fileBrowser.onlyInSnapshotsPath && maps.EqualFunc(onlyInSnapshots, fileBrowser.onlyInSnapshots, sameSnapshotOnlyEntry) {
+		// e.g. compared again after a change of the folder that changed nothing here
+		return
+	}
+	fileBrowser.onlyInSnapshotsPath = path
+	fileBrowser.onlyInSnapshots = onlyInSnapshots
+	if fileBrowser.showAllSnapshots && path == fileBrowser.path {
+		fileBrowser.Refresh(false)
+	} else {
+		fileBrowser.updateFooter()
+	}
+}
+
+// sameSnapshotOnlyEntry returns whether both are the same entry in the same snapshots.
+func sameSnapshotOnlyEntry(a folder_listing.SnapshotOnlyEntry, b folder_listing.SnapshotOnlyEntry) bool {
+	return a.Entry == b.Entry && slices.Equal(a.Snapshots, b.Snapshots)
+}
+
+// ToggleShowAllSnapshots shows or hides the entries that only exist in other snapshots than the selected one, and
+// remembers the setting. Must be called on the UI thread.
+func (fileBrowser *FileBrowserComponent) ToggleShowAllSnapshots() {
+	fileBrowser.showAllSnapshots = !fileBrowser.showAllSnapshots
+	state.Current.SetToggle(toggleShowAllSnapshots, fileBrowser.showAllSnapshots)
+	// the shortcut map and the entries are updated once the entries are loaded
+	fileBrowser.Refresh(false)
+}
+
+// IsShowingAllSnapshots returns whether the entries that only exist in other snapshots than the selected one are
+// shown.
+func (fileBrowser *FileBrowserComponent) IsShowingAllSnapshots() bool {
+	return fileBrowser.showAllSnapshots
+}
+
+// SetFooterEnabledFunc sets a function that returns whether the parts of the footer can be clicked, e.g. not while a
+// dialog is in front.
+func (fileBrowser *FileBrowserComponent) SetFooterEnabledFunc(enabled func() bool) {
+	fileBrowser.tableContainer.SetFooterEnabledFunc(enabled)
 }
 
 // fileMatchesFilter matches the file name against the filter as a glob, see table.MatchesGlob.
@@ -1040,10 +1208,14 @@ func (fileBrowser *FileBrowserComponent) WorkingCopyListing() (string, folder_li
 }
 
 // DiffCounts counts the entries of the folder (including the ones hidden by the filter) by their state compared to
-// the selected snapshot. Entries whose state is still being determined count as unknown.
+// the selected snapshot. Entries whose state is still being determined count as unknown, those that only exist in
+// other snapshots not at all.
 func (fileBrowser *FileBrowserComponent) DiffCounts() diff_state.Counts {
 	var counts diff_state.Counts
 	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+		if entry.OnlyInSnapshots != nil {
+			continue
+		}
 		if entry.IsLoading {
 			counts.Add(diff_state.Unknown)
 		} else {
@@ -1148,5 +1320,18 @@ func (fileBrowser *FileBrowserComponent) GetShortcutMap() []shortcut_helper.Shor
 		)
 	}
 
-	return shortcutMap
+	return append(shortcutMap, fileBrowser.allSnapshotsShortcut())
+}
+
+// allSnapshotsShortcut is the shortcut that shows or hides the entries that only exist in other snapshots than the
+// selected one.
+func (fileBrowser *FileBrowserComponent) allSnapshotsShortcut() shortcut_helper.ShortcutEntry {
+	name := "Show all snapshots"
+	if fileBrowser.showAllSnapshots {
+		name = "Hide other snapshots"
+	}
+	description := "Also list what only exists in other snapshots than the selected one, e.g. a file deleted long ago"
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"a"}, Name: name, Description: description,
+		Group: shortcut_helper.GroupView, Run: fileBrowser.ToggleShowAllSnapshots, MenuOnly: true}.
+		AsSwitch("Show entries of all snapshots", description, fileBrowser.IsShowingAllSnapshots)
 }
