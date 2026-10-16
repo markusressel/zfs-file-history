@@ -412,10 +412,15 @@ func ShowDialogOnPages(
 			if action == DialogCloseActionId {
 				closeFunc := func() {
 					hadFocus := layout.HasFocus()
+					focus := application.GetFocus()
 
 					// before the focus is restored: removing a page focuses the front page, i.e. its first view
 					pages.RemovePage(d.GetName())
 
+					if !hadFocus && focus != nil && isDescendantOf(pages, focus) {
+						// another dialog shown meanwhile keeps its focus, e.g. on its checklist
+						application.SetFocus(focus)
+					}
 					if hadFocus {
 						switch {
 						case openerFocus != nil && isDescendantOf(pages, openerFocus):

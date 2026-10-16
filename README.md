@@ -26,6 +26,7 @@
   * [x] Edit properties
   * [x] Manage delegated permissions
   * [x] Destroy datasets, after a dry run and typing their name
+  * [x] Mount and unmount datasets, load and unload encryption keys (zfs asks for the passphrase in the terminal)
 * [x] Pool health and `zpool status`
 * [x] Progress of running scrubs, resilvers, TRIMs and other pool operations on every page
 * [x] Alerts on every page when a pool has problems (data errors, degraded, failing devices)
@@ -90,6 +91,9 @@ permissions:
   upgrading it (confirmed by typing its name, it cannot be undone). Enabling single features (`zpool set
   feature@…=enabled`) and destroying a pool (`zpool destroy`, confirmed by typing its name) are not part of the rule:
   they ask for your password each time. Exporting pools is not offered by zfs-file-history at all.
+
+Mounting and unmounting datasets needs root on Linux as well. There is no rule for it (it would let your user mount
+any dataset over the directories of the system): it asks for your password each time.
 
 On the first start, zfs-file-history offers to allow them for your user (also later with "Set up permissions" in the
 command menu): it runs its setup command with sudo, which creates sudoers rules that let your user run exactly these

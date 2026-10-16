@@ -122,6 +122,18 @@ of the code.
   by typing the full name (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action
   dialog and command menu only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
   UI tests replace the package variables.
+- `internal/zfs/mount.go`: mounting and unmounting datasets, loading and unloading their encryption keys
+  (`MountAction`; in the action dialog of the datasets page, offered by the state of the dataset: `CanMount`,
+  `KeyStatus`, `EncryptionRoot`, `KeyLocation` of `DatasetListEntry`). Nothing is lost, but they work in two steps like
+  the actions above: `PlanMountAction` says what is done (unmounting takes everything mounted below the dataset along,
+  deepest first, and is refused where the running system is mounted, `protectedMountPaths`; unloading a key unmounts
+  all datasets encrypted with it first), `RunMountPlan` refuses with `ErrMountsChangedSinceConfirmation` if that
+  changed. Unmounting and unloading a key ask first (`dialog.NewUnmountDialog`). Never `-f`. Linux only lets root
+  mount: `System.RunDatasetCommand` retries with `sudo -n`, then returns a `DatasetCommandNeedsRootError`
+  (`dialog.NewDatasetCommandRootDialog`: run once with sudo, or copy the commands; there is no sudoers rule, it would
+  let the user mount any dataset over the directories of the system). A key with `keylocation=prompt` is loaded in
+  the terminal (`uiutil.RunInTerminal`, with sudo unless the user is root or has `load-key` delegated), where zfs
+  asks for the passphrase: the application never sees it.
 - `internal/disk/`: the health of the disks of the pools, from sysfs (no root, no processes): `Resolve` maps a device
   of `zpool status` to its disks (partitions, device mapper, md), `ReadTemperature` reads hwmon (NVMe, SATA with the
   kernel module drivetemp). Reading the temperature may reset the spin down timer of hard disks, so `Sampler` only

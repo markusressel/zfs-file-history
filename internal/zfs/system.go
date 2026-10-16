@@ -26,6 +26,8 @@ var (
 	// runPoolCommand and runSudoCommand run a command and return its output.
 	runPoolCommand = runCommand
 	runSudoCommand = func(args ...string) (string, error) { return runCommand("sudo", args...) }
+	// runDatasetCommand runs a zfs command of a MountPlan and returns its output.
+	runDatasetCommand = runCommand
 	// readZfsMounts returns the mounted ZFS datasets and snapshots.
 	readZfsMounts = func() ([]Mount, error) {
 		file, err := os.Open("/proc/mounts")
@@ -173,6 +175,15 @@ func ZpoolPath() string {
 	return path
 }
 
+// ZfsPath returns the path of the zfs command. Sudo needs the full path.
+func ZfsPath() string {
+	path, err := exec.LookPath("zfs")
+	if err != nil {
+		return "/usr/bin/zfs"
+	}
+	return path
+}
+
 // isSudoDenied returns whether running a command with "sudo -n" failed because sudo did not allow it (e.g. no
 // sudoers rule, so a password is required) or there is no sudo, not because of the command itself.
 func isSudoDenied(err error) bool {
@@ -185,7 +196,8 @@ func (System) Mounts() ([]Mount, error) {
 
 // datasetListProperties are the properties requested by ListDatasets, in the order parseDatasetList expects them.
 // The mountpoint is last, so it may contain any character but a newline.
-var datasetListProperties = []string{"name", "used", "available", "usedbysnapshots", "usedbydataset", "usedbychildren", "usedbyrefreservation", "origin", "mountpoint"}
+var datasetListProperties = []string{"name", "used", "available", "usedbysnapshots", "usedbydataset", "usedbychildren", "usedbyrefreservation", "origin",
+	"canmount", "keystatus", "encryptionroot", "keylocation", "mountpoint"}
 
 func (system System) ListDatasets() ([]*DatasetListEntry, error) {
 	output, err := runZfs("list", "-H", "-p", "-t", "filesystem", "-o", strings.Join(datasetListProperties, ","))
@@ -573,6 +585,25 @@ func (System) RunPoolAction(action PoolAction, pool string) error {
 		return &PoolActionNeedsRootError{Action: action, Pool: pool, Cause: err}
 	}
 	// run by root, but zpool failed, e.g. "there is no active scrub"
+	return sudoErr
+}
+
+// RunDatasetCommand runs zfs as the current user. Linux only lets root mount and unmount, so if zfs is denied, it is
+// run again with "sudo -n", which works as root, or for a user sudo does not ask for a password.
+func (System) RunDatasetCommand(args []string) error {
+	_, err := runDatasetCommand("zfs", args...)
+	if err == nil || !needsRoot(err) {
+		return err
+	}
+	_, sudoErr := runSudoCommand(append([]string{"-n", ZfsPath()}, args...)...)
+	if sudoErr == nil {
+		return nil
+	}
+	if isSudoDenied(sudoErr) {
+		// the original error says more
+		return &DatasetCommandNeedsRootError{Commands: zfsCommandLines([][]string{args}), Cause: err}
+	}
+	// run by root, but zfs failed, e.g. "target is busy"
 	return sudoErr
 }
 

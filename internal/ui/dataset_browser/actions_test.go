@@ -1,7 +1,9 @@
 package dataset_browser
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -16,8 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// actionTest runs a browser with a clone "pool/clone" (mounted), a dataset "pool/data" and the root dataset of the
-// pool, and records the calls of the actions instead of changing anything.
+// actionTest runs a browser with a clone "pool/clone" (mounted), a dataset "pool/data", the root dataset of the
+// pool, an unmounted dataset "pool/later", an encrypted one with its key loaded "pool/secret" (mounted) and one
+// without "pool/locked", and records the calls of the actions instead of changing anything.
 type actionTest struct {
 	t       *testing.T
 	app     *tview.Application
@@ -29,6 +32,11 @@ type actionTest struct {
 	calls []string
 	// destroyPreview is the dry run of destroying a dataset
 	destroyPreview *zfs.DestroyPreview
+	// mountPlans are the plans of the mount actions, by action and dataset
+	mountPlans map[zfs.MountAction]map[string]*zfs.MountPlan
+	// mountErr is returned by runMountPlan, terminalErr by running a plan in the terminal
+	mountErr    error
+	terminalErr error
 }
 
 func newActionTest(t *testing.T) *actionTest {
@@ -36,13 +44,60 @@ func newActionTest(t *testing.T) *actionTest {
 		t:              t,
 		destroyPreview: &zfs.DestroyPreview{Destroyed: []string{"pool/clone"}, Reclaim: 1024},
 	}
-	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
-		return []*zfs.DatasetListEntry{
-			{Name: "pool", MountPath: "/pool"},
-			{Name: "pool/clone", MountPath: "/clone", Origin: "pool/data@daily"},
-			{Name: "pool/data", MountPath: "/data"},
-		}, nil
+	datasets := []*zfs.DatasetListEntry{
+		{Name: "pool", MountPath: "/pool"},
+		{Name: "pool/clone", MountPath: "/clone", Origin: "pool/data@daily"},
+		{Name: "pool/data", MountPath: "/data"},
+		{Name: "pool/later", CanMount: "noauto", Mountpoint: "/later"},
+		{Name: "pool/secret", CanMount: "on", Mountpoint: "/secret", MountPath: "/secret",
+			KeyStatus: "available", EncryptionRoot: "pool/secret", KeyLocation: "prompt"},
+		{Name: "pool/locked", CanMount: "on", Mountpoint: "/locked",
+			KeyStatus: "unavailable", EncryptionRoot: "pool/locked", KeyLocation: "prompt"},
+	}
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) { return datasets, nil })
+	at.mountPlans = map[zfs.MountAction]map[string]*zfs.MountPlan{
+		zfs.MountActionMount: {
+			"pool/later": {Action: zfs.MountActionMount, Dataset: "pool/later", MountPath: "/later",
+				Commands: [][]string{{"mount", "pool/later"}}},
+			"pool/locked": {Action: zfs.MountActionMount, Dataset: "pool/locked", MountPath: "/locked", EncryptionRoot: "pool/locked",
+				Commands: [][]string{{"mount", "-l", "pool/locked"}}, Prompts: true, NeedsRoot: true},
+		},
+		zfs.MountActionUnmount: {
+			"pool/data": {Action: zfs.MountActionUnmount, Dataset: "pool/data", MountPath: "/data",
+				Unmounted: []zfs.Mount{{Name: "pool/data/child", Mountpoint: "/data/child"}, {Name: "pool/data", Mountpoint: "/data"}},
+				Commands:  [][]string{{"unmount", "pool/data/child"}, {"unmount", "pool/data"}}},
+		},
+		zfs.MountActionLoadKey: {
+			"pool/locked": {Action: zfs.MountActionLoadKey, Dataset: "pool/locked", EncryptionRoot: "pool/locked",
+				Commands: [][]string{{"load-key", "pool/locked"}}, Prompts: true},
+		},
+		zfs.MountActionUnloadKey: {
+			"pool/secret": {Action: zfs.MountActionUnloadKey, Dataset: "pool/secret", EncryptionRoot: "pool/secret",
+				Unmounted: []zfs.Mount{{Name: "pool/secret", Mountpoint: "/secret"}},
+				Commands:  [][]string{{"unmount", "pool/secret"}, {"unload-key", "pool/secret"}}},
+		},
+	}
+	testutil.Replace(t, &planMountAction, func(action zfs.MountAction, dataset string) (*zfs.MountPlan, error) {
+		at.record("plan %d %s", action, dataset)
+		plan, ok := at.mountPlans[action][dataset]
+		if !ok {
+			return nil, fmt.Errorf("no plan for %d %s", action, dataset)
+		}
+		return plan, nil
 	})
+	testutil.Replace(t, &runMountPlan, func(plan *zfs.MountPlan) error {
+		at.record("run %s", plan.Name())
+		assert.Same(t, at.mountPlans[plan.Action][plan.Dataset], plan, "runs what was confirmed")
+		return at.mountErr
+	})
+	terminal := func(sudo bool) func(*tview.Application, string, [][]string) error {
+		return func(application *tview.Application, explanation string, commands [][]string) error {
+			at.record("terminal sudo=%t %v: %s", sudo, commands, explanation)
+			return at.terminalErr
+		}
+	}
+	testutil.Replace(t, &runInTerminal, terminal(false))
+	testutil.Replace(t, &runWithSudoInTerminal, terminal(true))
 	testutil.Replace(t, &createSnapshot, func(dataset string, name string, recursive bool) error {
 		at.record("snapshot %s recursive=%t", dataset, recursive)
 		return nil
@@ -66,11 +121,16 @@ func newActionTest(t *testing.T) *actionTest {
 	})
 
 	at.app, at.browser, at.screen = newBrowserApp(t)
-	testutil.OnUiThread(t, at.app, func() { at.browser.Refresh(false) })
+	testutil.OnUiThread(t, at.app, func() {
+		if at.browser.IsHidingUnmounted() {
+			at.browser.ToggleHideUnmounted()
+		}
+		at.browser.Refresh(false)
+	})
 	require.Eventually(t, func() bool {
 		count := 0
 		testutil.OnUiThread(t, at.app, func() { count = len(at.browser.tableContainer.GetEntries()) })
-		return count == 3
+		return count == len(datasets)
 	}, 2*time.Second, 10*time.Millisecond)
 	return at
 }
@@ -134,12 +194,18 @@ func (at *actionTest) settle() {
 }
 
 // the options of a clone (mounted): 1 open, 2 snapshot, 3 snapshot (recursive), 4 permissions, 5 properties,
-// 6 promote, 7 destroy; of other datasets the same without promote
+// 6 unmount, 7 promote, 8 destroy; of other mounted datasets the same without promote, with 7 unload key if
+// encrypted. Of datasets that are not mounted: 1 snapshot, 2 snapshot (recursive), 3 permissions, 4 properties,
+// 5 mount (or load key and mount), 6 load key if it is not loaded.
 const (
 	optionSnapshotRecursive = '3'
-	optionPromote           = '6'
-	optionDestroy           = '7'
-	optionDestroyNotAClone  = '6'
+	optionUnmount           = '6'
+	optionPromote           = '7'
+	optionDestroy           = '8'
+	optionDestroyNotAClone  = '7'
+	optionUnloadKey         = '7'
+	optionMount             = '5'
+	optionLoadKey           = '6'
 )
 
 func TestDatasetBrowser_DestroyClone(t *testing.T) {
@@ -217,16 +283,7 @@ func TestDatasetBrowser_DestroyWithSnapshotsNeedsTheCheckbox(t *testing.T) {
 func TestDatasetBrowser_DatasetsCanBeDestroyed(t *testing.T) {
 	at := newActionTest(t)
 
-	commandNames := func(dataset string) string {
-		at.selectDataset(dataset)
-		var names []string
-		testutil.OnUiThread(t, at.app, func() {
-			for _, command := range at.browser.GetCommands() {
-				names = append(names, command.Name)
-			}
-		})
-		return strings.Join(names, "|")
-	}
+	commandNames := func(dataset string) string { return strings.Join(at.commandNames(dataset), "|") }
 
 	assert.Contains(t, commandNames("pool/clone"), "Destroy dataset")
 	assert.Contains(t, commandNames("pool/clone"), "Promote clone")
@@ -322,4 +379,172 @@ func TestDatasetBrowser_OpenInFileBrowser(t *testing.T) {
 		return len(result) == 1 && result[0] == "/data"
 	}, 2*time.Second, 10*time.Millisecond)
 	assert.Empty(t, at.recorded())
+}
+
+// commandNames returns the names of the commands of the browser with the dataset selected.
+func (at *actionTest) commandNames(dataset string) []string {
+	at.selectDataset(dataset)
+	var names []string
+	testutil.OnUiThread(at.t, at.app, func() {
+		for _, command := range at.browser.GetCommands() {
+			names = append(names, command.Name)
+		}
+	})
+	return names
+}
+
+// waitForRecorded waits until the calls are the given ones.
+func (at *actionTest) waitForRecorded(calls ...string) {
+	require.Eventually(at.t, func() bool { return slices.Equal(calls, at.recorded()) }, 2*time.Second, 10*time.Millisecond,
+		"calls %v", calls)
+}
+
+// Only the mount actions that zfs would not refuse right away are offered.
+func TestDatasetBrowser_MountOptions(t *testing.T) {
+	at := newActionTest(t)
+
+	mountCommands := func(dataset string) []string {
+		return slices.DeleteFunc(at.commandNames(dataset), func(name string) bool {
+			return !slices.Contains([]string{"Mount", "Unmount", "Load key and mount", "Load key", "Unload key"}, name)
+		})
+	}
+	assert.Equal(t, []string{"Unmount"}, mountCommands("pool/data"))
+	assert.Equal(t, []string{"Mount"}, mountCommands("pool/later"))
+	assert.Equal(t, []string{"Unmount", "Unload key"}, mountCommands("pool/secret"))
+	assert.Equal(t, []string{"Load key and mount", "Load key"}, mountCommands("pool/locked"))
+}
+
+func TestDatasetBrowser_Mount(t *testing.T) {
+	at := newActionTest(t)
+	at.selectDataset("pool/later")
+
+	at.chooseAction(optionMount)
+
+	at.waitForRecorded("plan 0 pool/later", "run mount pool/later")
+}
+
+func TestDatasetBrowser_MountNeedsRoot(t *testing.T) {
+	at := newActionTest(t)
+	at.mountErr = &zfs.DatasetCommandNeedsRootError{Action: "mount pool/later", Done: "Mounted pool/later at /later",
+		Commands: [][]string{{"/usr/bin/zfs", "mount", "pool/later"}}, Cause: errors.New("cannot mount 'pool/later': Insufficient privileges")}
+	at.selectDataset("pool/later")
+
+	at.chooseAction(optionMount)
+
+	at.waitForDialog(string(dialog.DatasetCommandRootDialogPage))
+	assert.Contains(t, at.screenText(), "sudo /usr/bin/zfs mount pool/later")
+}
+
+// zfs asks for the passphrase in the terminal, so the application never sees it; with sudo if it needs root.
+func TestDatasetBrowser_LoadKeyAndMountInTheTerminal(t *testing.T) {
+	at := newActionTest(t)
+	at.selectDataset("pool/locked")
+
+	at.chooseAction(optionMount)
+
+	at.waitForRecorded("plan 0 pool/locked", "terminal sudo=true [["+zfs.ZfsPath()+" mount -l pool/locked]]: loading the key "+
+		"of pool/locked and mounting pool/locked: zfs asks for its passphrase. It runs as root, sudo asks for your password first.")
+}
+
+func TestDatasetBrowser_LoadKeyInTheTerminal(t *testing.T) {
+	at := newActionTest(t)
+	at.selectDataset("pool/locked")
+
+	at.chooseAction(optionLoadKey)
+
+	at.waitForRecorded("plan 2 pool/locked", "terminal sudo=false [["+zfs.ZfsPath()+" load-key pool/locked]]: loading the key "+
+		"of pool/locked: zfs asks for its passphrase.")
+	assert.False(t, at.hasDialog("ErrorDialog"))
+}
+
+// A failure in the terminal (e.g. a wrong passphrase) is shown.
+func TestDatasetBrowser_LoadKeyFails(t *testing.T) {
+	at := newActionTest(t)
+	at.terminalErr = errors.New("/usr/bin/zfs load-key pool/locked: exit status 255")
+	at.selectDataset("pool/locked")
+
+	at.chooseAction(optionLoadKey)
+
+	at.waitForDialog("ErrorDialog")
+	assert.Contains(t, at.screenText(), "exit status 255")
+}
+
+func TestDatasetBrowser_Unmount(t *testing.T) {
+	at := newActionTest(t)
+	at.selectDataset("pool/data")
+
+	// asks first, with what is unmounted
+	at.chooseAction(optionUnmount)
+	at.waitForDialog(string(dialog.UnmountDialogPage))
+	text := at.screenText()
+	assert.Contains(t, text, "Unmount pool/data from /data.")
+	assert.Contains(t, text, "pool/data/child (/data/child)")
+	assert.Equal(t, []string{"plan 1 pool/data"}, at.recorded())
+
+	at.press(tcell.KeyRune, '1') // unmount
+	at.press(tcell.KeyEnter, 0)
+	at.waitForRecorded("plan 1 pool/data", "run unmount pool/data")
+}
+
+func TestDatasetBrowser_UnmountCanBeCancelled(t *testing.T) {
+	at := newActionTest(t)
+	at.selectDataset("pool/data")
+
+	at.chooseAction(optionUnmount)
+	at.waitForDialog(string(dialog.UnmountDialogPage))
+	at.press(tcell.KeyEscape, 0)
+	at.waitForNoDialog(string(dialog.UnmountDialogPage))
+	testutil.WaitForUpdates(t, at.app)
+
+	assert.Equal(t, []string{"plan 1 pool/data"}, at.recorded())
+}
+
+// A failed unmount (e.g. a dataset in use) is shown.
+func TestDatasetBrowser_UnmountFails(t *testing.T) {
+	at := newActionTest(t)
+	at.mountErr = errors.New("cannot unmount '/data': pool or dataset is busy")
+	at.selectDataset("pool/data")
+
+	at.chooseAction(optionUnmount)
+	at.waitForDialog(string(dialog.UnmountDialogPage))
+	at.press(tcell.KeyRune, '1') // unmount
+	at.press(tcell.KeyEnter, 0)
+	at.waitForDialog("ErrorDialog")
+	assert.Contains(t, at.screenText(), "pool or dataset is busy")
+	assert.Equal(t, []string{"plan 1 pool/data", "run unmount pool/data"}, at.recorded())
+}
+
+// A retry after running the commands of the root dialog yourself plans again, and asks again before unmounting.
+func TestDatasetBrowser_UnmountRetryAsksAgain(t *testing.T) {
+	at := newActionTest(t)
+	at.mountErr = &zfs.DatasetCommandNeedsRootError{Action: "unmount pool/data", Done: "Unmounted pool/data",
+		Commands: [][]string{{"/usr/bin/zfs", "unmount", "pool/data"}}, Cause: errors.New("permission denied")}
+	at.selectDataset("pool/data")
+
+	at.chooseAction(optionUnmount)
+	at.waitForDialog(string(dialog.UnmountDialogPage))
+	at.press(tcell.KeyRune, '1') // unmount
+	at.press(tcell.KeyEnter, 0)
+	at.waitForDialog(string(dialog.DatasetCommandRootDialogPage))
+	at.press(tcell.KeyRune, '3') // retry
+	at.press(tcell.KeyEnter, 0)
+
+	at.waitForDialog(string(dialog.UnmountDialogPage))
+	assert.Equal(t, []string{"plan 1 pool/data", "run unmount pool/data", "plan 1 pool/data"}, at.recorded())
+}
+
+func TestDatasetBrowser_UnloadKey(t *testing.T) {
+	at := newActionTest(t)
+	at.selectDataset("pool/secret")
+
+	at.chooseAction(optionUnloadKey)
+	at.waitForDialog(string(dialog.UnmountDialogPage))
+	text := at.screenText()
+	assert.Contains(t, text, "Unload Key")
+	assert.Contains(t, text, "Unload the key of pool/secret.")
+	assert.Contains(t, text, "pool/secret (/secret)")
+
+	at.press(tcell.KeyRune, '1') // unload key
+	at.press(tcell.KeyEnter, 0)
+	at.waitForRecorded("plan 3 pool/secret", "run unload the key of pool/secret")
 }

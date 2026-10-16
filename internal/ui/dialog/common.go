@@ -28,7 +28,8 @@ func NewSuccessDialog(application *tview.Application, title string, message stri
 
 // NewErrorDialog creates a generic dialog for failed operations.
 // If ZFS permissions are missing, it explains which ones and offers to grant them, see NewMissingPermissionsDialog.
-// If a pool action needs root, it offers to run it with sudo or allow it, see NewPoolActionRootDialog.
+// If a pool action needs root, it offers to run it with sudo or allow it, see NewPoolActionRootDialog, if a command
+// on a dataset does, to run it with sudo, see NewDatasetCommandRootDialog.
 func NewErrorDialog(application *tview.Application, title string, err error) *SelectionDialog {
 	return NewErrorDialogWithRetry(application, title, err, nil)
 }
@@ -43,6 +44,10 @@ func NewErrorDialogWithRetry(application *tview.Application, title string, err e
 	var needsRoot *zfs.PoolActionNeedsRootError
 	if errors.As(err, &needsRoot) {
 		return NewPoolActionRootDialog(application, needsRoot, retry)
+	}
+	var commandNeedsRoot *zfs.DatasetCommandNeedsRootError
+	if errors.As(err, &commandNeedsRoot) {
+		return NewDatasetCommandRootDialog(application, commandNeedsRoot, retry)
 	}
 	return NewSelectionDialog(
 		application,

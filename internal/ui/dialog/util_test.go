@@ -141,6 +141,38 @@ func TestShowDialogOnPages_DialogShownFromDialog_ReturnsFocusToTheOther(t *testi
 	})
 }
 
+// Regression: a dialog closed after the next one was shown (Close only queues the removal, e.g. the action dialog
+// closed by its handler that shows the confirmation) moved the focus in the next one back to where it starts: tview
+// focuses the front page again when a page is removed. A key pressed meanwhile (e.g. ↑ to the checklist) was lost,
+// and the following ones went to the options instead (in CI: continuing without the checkbox checked).
+func TestShowDialogOnPages_ClosingAnotherDialogKeepsTheFocus(t *testing.T) {
+	app, _ := testutil.NewApp()
+	pages := tview.NewPages().AddPage("main", tview.NewTable(), true, true)
+	testutil.StartApp(t, app, pages)
+
+	options := []*DialogOption{
+		{Id: 1, Name: "Continue"},
+		{Id: DialogCloseActionId, Name: "Cancel"},
+	}
+	action := NewSelectionDialog(app, "action-dialog", "Action", "Desc", options, nil, nil)
+	confirmation := NewSelectionDialogWithChecklist(app, "confirmation-dialog", "Confirm", "Desc",
+		[]*ChecklistItem{{Name: "Also destroy"}}, options, nil, nil)
+
+	testutil.OnUiThread(t, app, func() {
+		ShowDialogOnPages(app, pages, action, nil)
+		ShowDialogOnPages(app, pages, confirmation, nil)
+		// e.g. ↑ from the options to the checklist, before the action dialog is removed
+		app.SetFocus(confirmation.checklistTable)
+	})
+
+	action.Close()
+	testutil.WaitForNoPage(t, app, pages, "action-dialog", 2*time.Second)
+
+	testutil.OnUiThread(t, app, func() {
+		assert.Same(t, confirmation.checklistTable, app.GetFocus())
+	})
+}
+
 // components that embed a Flex or Pages, e.g. util.ResizableSplit and util.LoadingContainer
 type embeddingFlex struct{ *tview.Flex }
 type embeddingPages struct{ *tview.Pages }
