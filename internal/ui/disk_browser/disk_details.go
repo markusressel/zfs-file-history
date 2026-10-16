@@ -27,11 +27,13 @@ var (
 	attributeColumnThreshold = &table.Column{Id: 4, Key: "threshold", Title: "Thresh", Alignment: tview.AlignRight}
 	attributeColumnValue     = &table.Column{Id: 5, Key: "value", Title: "Value", Alignment: tview.AlignRight}
 	attributeColumnFailed    = &table.Column{Id: 6, Key: "failed", Title: "Failed", Alignment: tview.AlignLeft}
+	// attributeColumnUsed shows how far an attribute went toward failing, see disk.SmartAttribute.Used
+	attributeColumnUsed = &table.Column{Id: 7, Key: "used", Title: "Used", Alignment: tview.AlignLeft}
 
 	// attributeColumns are the columns of all kinds of disks: only ATA attributes have an id and normalized values,
 	// the cells are empty for the values of NVMe and SCSI disks
 	attributeColumns = []*table.Column{attributeColumnId, attributeColumnName, attributeColumnNorm, attributeColumnWorst,
-		attributeColumnThreshold, attributeColumnValue, attributeColumnFailed}
+		attributeColumnThreshold, attributeColumnUsed, attributeColumnValue, attributeColumnFailed}
 )
 
 // stateKeyAttributesTable is the key of the column layout of the attributes remembered in state.Current
@@ -376,6 +378,10 @@ func toAttributeCells(row int, columns []*table.Column, entry *AttributeEntry) [
 			text = entry.Value
 		case attributeColumnFailed:
 			text = entry.Failed
+		case attributeColumnUsed:
+			// with style tags of its own, not escaped
+			cells = append(cells, tview.NewTableCell(formatUsed(entry.SmartAttribute)).SetAlign(column.Alignment))
+			continue
 		}
 		cells = append(cells, tview.NewTableCell(tview.Escape(text)).SetTextColor(color).SetAttributes(attributes).
 			SetAlign(column.Alignment))
@@ -411,6 +417,8 @@ func sortAttributes(entries []*AttributeEntry, column *table.Column, inverted bo
 			default:
 				result = cmp.Compare(a.Value, b.Value)
 			}
+		case attributeColumnUsed:
+			result = cmp.Compare(usedRank(a.SmartAttribute), usedRank(b.SmartAttribute))
 		case attributeColumnFailed:
 			// failing ones first
 			result = cmp.Compare(failedRank(a.Failed), failedRank(b.Failed))
@@ -424,6 +432,26 @@ func sortAttributes(entries []*AttributeEntry, column *table.Column, inverted bo
 		return result
 	})
 	return entries
+}
+
+// usedBarWidth is the width of the bar of the used column, see formatUsed.
+const usedBarWidth = 8
+
+// formatUsed returns how far the attribute went toward failing: a bar (empty on a new disk, full where it fails, like
+// the wear in the details) and the percentage, "" if it cannot fail.
+func formatUsed(attribute disk.SmartAttribute) string {
+	if !attribute.UsedKnown {
+		return ""
+	}
+	return uiutil.InfoBar(attribute.Used, usedBarWidth) + uiutil.InfoValue(fmt.Sprintf(" %3.0f%%", attribute.Used*100))
+}
+
+// usedRank orders the attributes by how far they went toward failing, the ones that cannot fail first (the least).
+func usedRank(attribute disk.SmartAttribute) float64 {
+	if !attribute.UsedKnown {
+		return -1
+	}
+	return attribute.Used
 }
 
 // failedRank orders the attributes by whether they fail: now, in the past, never.

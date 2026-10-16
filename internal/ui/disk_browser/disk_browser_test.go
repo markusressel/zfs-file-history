@@ -290,6 +290,8 @@ func TestSortAttributes(t *testing.T) {
 		{attributeColumnValue, false, []int{5, 194, 190, 9, 240}},
 		{attributeColumnNorm, false, []int{190, 9, 240, 194, 5}},
 		{attributeColumnFailed, false, []int{190, 5, 9, 194, 240}},
+		// the ones that cannot fail first, in the order of smartctl
+		{attributeColumnUsed, false, []int{9, 194, 240, 5, 190}},
 	}
 	for _, test := range tests {
 		t.Run(test.column.Key, func(t *testing.T) {
@@ -494,6 +496,19 @@ func TestDiskDetails_PoolNotClickedBehindDialog(t *testing.T) {
 	testutil.Click(t, dt.app, dt.screen, x+len("Pools     "), y)
 	testutil.WaitForUpdates(t, dt.app)
 	testutil.OnUiThread(t, dt.app, func() { assert.Empty(t, shown) })
+}
+
+// The attributes that can fail show how far they went toward it, sorted by it with the most used first.
+func TestDiskDetails_UsedColumn(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	text := dt.screenText()
+	assert.Contains(t, text, "Thresh Used ")
+	assert.Contains(t, text, "    40 ████████ 100%")
+	assert.Contains(t, text, "   140 ▏          2%")
+
+	testutil.OnUiThread(t, dt.app, func() { dt.details.tableContainer.SortBy(attributeColumnUsed, true) })
+	testutil.OnUiThread(t, dt.app, func() { dt.details.tableContainer.SetData(dt.details.tableContainer.GetAllEntries()) })
+	assert.Equal(t, []string{"Airflow_Temperature_Cel", "Reallocated_Sector_Ct"}, dt.attributeNames()[:2])
 }
 
 // Regression: a click into the details focused them, which Tab skips: there is nothing to do in them.
