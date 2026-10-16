@@ -118,9 +118,12 @@ of the code.
   `ErrChangedSinceConfirmation` if anything differs. `-R` (destroys clones elsewhere) is never used. Any dataset can
   be destroyed but the root dataset of a pool, and none that is (or has a child) mounted where the running system
   is (`protectedMountPaths`: zfs would destroy the others first and then fail on the busy one); with snapshots or
-  child datasets only after a checkbox. The confirmation lists the datasets before the snapshots. Both are confirmed
-  by typing the full name (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action
-  dialog and command menu only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
+  child datasets only after a checkbox. The confirmation lists the datasets before the snapshots. The previews of
+  destroying (datasets, pools, snapshots) and rolling back run in a `dialog.PreviewDialog` (red border, spinner,
+  what is checked, Cancel), shown at once in place of the confirmation, not with a spinner in the action dialog: that
+  looked like it was destroyed without a confirmation. Both are confirmed by typing the full name
+  (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action dialog and command menu
+  only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
   UI tests replace the package variables.
 - `internal/zfs/mount.go`: mounting and unmounting datasets, loading and unloading their encryption keys
   (`MountAction`; in the action dialog of the datasets page, offered by the state of the dataset: `CanMount`,

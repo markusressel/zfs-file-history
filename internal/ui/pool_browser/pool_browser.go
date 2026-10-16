@@ -310,8 +310,6 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 	name := pool.Name
 	// features are the ones listed by the last choice of the features, read on the UI thread once listed
 	var features *zfs.PoolFeatures
-	// destroyPreview is what destroying the pool would destroy, read on the UI thread once previewed
-	var destroyPreview *zfs.PoolDestroyPreview
 	asyncWork := func(d *dialog.SelectionDialog, id dialog.DialogActionId) error {
 		if action, ok := dialog.PoolActionOf(id); ok {
 			return runPoolAction(action, name)
@@ -320,8 +318,6 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 		switch id {
 		case dialog.PoolDialogFeaturesActionId:
 			features, err = listPoolFeatures(name)
-		case dialog.PoolDialogDestroyActionId:
-			destroyPreview, err = previewDestroyPool(name)
 		}
 		return err
 	}
@@ -340,13 +336,8 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 			poolBrowser.chooseFeatures(features)
 			return
 		case dialog.PoolDialogDestroyActionId:
-			if err != nil {
-				logging.Error("Cannot destroy %s: %s", name, err.Error())
-				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Cannot Destroy", err, d.RetryFunc(option)))
-				return
-			}
-			// nothing was destroyed yet, the confirmations do that
-			poolBrowser.showDestroyConfirmation(destroyPreview)
+			// nothing is destroyed yet, the confirmations do that
+			poolBrowser.previewAndConfirmDestroy(name)
 			return
 		}
 		action, ok := dialog.PoolActionOf(option.Id)
@@ -419,11 +410,20 @@ func formatDestroyPoolDescription(preview *zfs.PoolDestroyPreview) string {
 const maxListedDatasets = 10
 
 // previewAndConfirmDestroy lists what destroying the pool destroys in the background and then asks for
+// confirmation. Meanwhile, a dialog says that it is checked, and that nothing is destroyed yet; it can be cancelled.
+// It runs there, not in the action dialog: a spinner next to "Destroy pool" looked like it was destroyed without a
 // confirmation. Must be called on the UI thread.
 func (poolBrowser *PoolBrowserComponent) previewAndConfirmDestroy(pool string) {
+	checking := dialog.NewPreviewDialog(poolBrowser.application, " 💥 Destroy Pool ", fmt.Sprintf(
+		"Checking what destroying the pool %s would destroy: listing its datasets and where they are mounted. "+
+			"Nothing is destroyed yet.", pool))
+	poolBrowser.showDialog(checking)
 	go func() {
 		preview, err := previewDestroyPool(pool)
 		poolBrowser.application.QueueUpdateDraw(func() {
+			if !checking.Done() {
+				return // cancelled
+			}
 			if err != nil {
 				logging.Error("Cannot destroy %s: %s", pool, err.Error())
 				retry := func() { poolBrowser.previewAndConfirmDestroy(pool) }

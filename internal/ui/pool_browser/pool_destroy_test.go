@@ -149,3 +149,56 @@ func TestPoolBrowser_DestroyPoolRefused(t *testing.T) {
 	assert.False(t, testutil.HasPage(t, dt.app, dt.browser.layout, string(dialog.DestroyPoolDialogPage)))
 	assert.Empty(t, dt.recorded())
 }
+
+// blockPreview makes listing what destroying the pool destroys wait until the returned function is called.
+func (dt *destroyTest) blockPreview() (release func()) {
+	released := make(chan struct{})
+	testutil.Replace(dt.t, &previewDestroyPool, func(pool string) (*zfs.PoolDestroyPreview, error) {
+		<-released
+		dt.record("preview " + pool)
+		return dt.preview, nil
+	})
+	return sync.OnceFunc(func() { close(released) })
+}
+
+// Regression: choosing "Destroy pool" listed what it destroys in the action dialog, with a spinner next to the option,
+// which looked like the pool was destroyed without a confirmation. The dialog of the confirmation opens right away
+// and says what is checked; the confirmation follows once that is done.
+func TestPoolBrowser_DestroyPoolChecksInTheConfirmation(t *testing.T) {
+	dt := newDestroyTest(t)
+	release := dt.blockPreview()
+	t.Cleanup(release)
+
+	command := commandNamed(t, dt.app, dt.browser, "Destroy pool")
+	testutil.OnUiThread(t, dt.app, command.Run)
+
+	dt.waitForDialog(string(dialog.PreviewDialogPage))
+	testutil.WaitForNoPage(t, dt.app, dt.browser.layout, string(dialog.PoolActionDialogPage), 2*time.Second)
+	assert.Contains(t, testutil.ScreenText(t, dt.app, dt.screen), "Checking what destroying the pool tank would destroy")
+	assert.Empty(t, dt.recorded())
+
+	release()
+	dt.waitForDialog(string(dialog.DestroyPoolDialogPage))
+	testutil.WaitForNoPage(t, dt.app, dt.browser.layout, string(dialog.PreviewDialogPage), 2*time.Second)
+	assert.Equal(t, []string{"preview tank"}, dt.recorded())
+}
+
+// Cancelled while it is checked, the confirmation is not shown once that is done.
+func TestPoolBrowser_DestroyPoolCheckCanBeCancelled(t *testing.T) {
+	dt := newDestroyTest(t)
+	release := dt.blockPreview()
+	t.Cleanup(release)
+
+	command := commandNamed(t, dt.app, dt.browser, "Destroy pool")
+	testutil.OnUiThread(t, dt.app, command.Run)
+	dt.waitForDialog(string(dialog.PreviewDialogPage))
+	dt.press(tcell.KeyEscape, 0)
+	testutil.WaitForNoPage(t, dt.app, dt.browser.layout, string(dialog.PreviewDialogPage), 2*time.Second)
+	release()
+
+	require.Eventually(t, func() bool { return len(dt.recorded()) == 1 }, 2*time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool {
+		return testutil.HasPage(t, dt.app, dt.browser.layout, string(dialog.DestroyPoolDialogPage)) ||
+			testutil.HasPage(t, dt.app, dt.browser.layout, "ErrorDialog")
+	}, 200*time.Millisecond, 10*time.Millisecond)
+}
