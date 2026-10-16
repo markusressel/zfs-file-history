@@ -21,7 +21,7 @@ func TestSudoersRuleLines(t *testing.T) {
 	rules := strings.Split(strings.TrimSpace(SudoersRulePoolActions.Lines("alice")), "\n")
 	require.Len(t, rules, 2)
 	for _, path := range zpoolPaths {
-		for _, action := range []string{"scrub", "scrub -p", "scrub -s", "trim", "trim -c", "clear"} {
+		for _, action := range []string{"scrub", "scrub -p", "scrub -s", "trim", "trim -c", "clear", "upgrade"} {
 			assert.Contains(t, rules[0], " "+path+" "+action+" [a-zA-Z]*")
 		}
 		// the last rule wins: no further arguments for clear (e.g. -F)
@@ -193,4 +193,26 @@ func TestSudoersRuleSmart(t *testing.T) {
 	assert.True(t, SudoersRuleEvents.IsAvailable())
 	testutil.Replace(t, &disk.SmartctlInstalled, func() bool { return true })
 	assert.True(t, SudoersRuleSmart.IsAvailable())
+}
+
+// The rule of former versions did not allow upgrade: the other actions still work with it, and the setup command
+// writes the lines of the rule in its place, with upgrade.
+func TestSudoersRulePoolActions_WithoutUpgrade(t *testing.T) {
+	testutil.Replace(t, &isRoot, func() bool { return false })
+	former := SudoersRulePoolActions.fallback(ZpoolPath())
+	require.NotContains(t, strings.Join(former, ", "), " upgrade ")
+	testutil.Replace(t, &listSudoRules, func() (string, error) {
+		return "User alice may run the following commands on host:\n" +
+			"    (root) NOPASSWD: " + strings.Join(former, ", ") + "\n", nil
+	})
+	assert.True(t, AllowedSudoersRules()["pool-actions"])
+
+	var lines []string
+	for _, path := range zpoolPaths {
+		lines = append(lines, SudoersRulePoolActions.fallback(path)...)
+	}
+	file := ParseSudoersFile(sudoersFileHeader + "# Pool actions\nalice ALL=(root) NOPASSWD: " + strings.Join(lines, ", ") +
+		"\nalice ALL=(root) !" + ZpoolPath() + " clear * *\n")
+	assert.True(t, file.Has("alice", SudoersRulePoolActions))
+	assert.Equal(t, sudoersFileHeader+"# Pool actions\n"+SudoersRulePoolActions.Lines("alice"), file.String())
 }

@@ -67,6 +67,20 @@ class Click:
 
 
 @dataclass(frozen=True)
+class Select:
+    """Moves the selection with key (a navigation key, ↓ by default) until the line the pattern finds is selected,
+    i.e. drawn on the background of the selection (see driver.SELECTED_BACKGROUND), delay seconds before each key:
+    for an entry whose position differs between systems, e.g. an action offered only for some pools. into as for
+    Key. Stops the demo if it is not selected after max_keys keys, or if the selection does not move."""
+
+    pattern: str
+    into: str
+    key: str = DOWN
+    delay: float = 0.0
+    max_keys: int = 20
+
+
+@dataclass(frozen=True)
 class Wait:
     """Waits until the pattern is on the screen, e.g. until the application has loaded, at most timeout seconds
     (WAIT_TIMEOUT if None)."""
@@ -122,4 +136,4 @@ class ZoomOut:
     delay: float = 0.0
 
 
-Step = Key | Click | Wait | Ready | Search | Quit | Zoom | ZoomOut
+Step = Key | Click | Select | Wait | Ready | Search | Quit | Zoom | ZoomOut

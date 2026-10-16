@@ -24,6 +24,7 @@ from steps import (
     Quit,
     Ready,
     Search,
+    Select,
     Step,
     Wait,
     Zoom,
@@ -385,6 +386,41 @@ POOL_HISTORY_STORYBOARD = Storyboard(
     ],
 )
 
+# the dialog of the features of a pool, and the confirmation of the chosen ones
+POOL_FEATURES = r" Pool Features "
+ENABLE_FEATURES = r" Enable Features "
+
+POOL_FEATURES_STORYBOARD = Storyboard(
+    name="pool-features",
+    description="the features of a pool: chosen one by one, the others grayed out with the reason, confirmed by name",
+    steps=[
+        *LOADED,
+        Key("3", 0.0, shows=POOLS_PAGE),
+        Wait(r"\d+ pools?\b"),
+        Ready(),
+        # the actions of the first pool, down to "Enable features" (the actions differ between pools, e.g. upgrade
+        # only while zpool suggests it); Enter only once it is selected
+        Key(ENTER, 2.0, shows=r"Select Action"),
+        Select(r"Enable features", into=r"Select Action", delay=0.6),
+        Key(ENTER, 1.0, shows=POOL_FEATURES),
+        Zoom(POOL_FEATURES, 0.5, padding=2),
+        # the description of each below the list; two of them checked
+        Key(DOWN, 2.0, into=POOL_FEATURES),
+        Key(SPACE, 1.5, into=POOL_FEATURES),
+        Key(DOWN, 1.5, into=POOL_FEATURES),
+        Key(SPACE, 1.2, into=POOL_FEATURES),
+        # the ones that cannot be enabled: grayed out with the reason (enabled already, not allowed by the
+        # compatibility of the pool, ...), they cannot be checked
+        *[Key(DOWN, 0.5, into=POOL_FEATURES) for _ in range(14)],
+        Key(DOWN, 2.5, into=POOL_FEATURES),
+        # the confirmation asks for the name of the pool, which the demo never types: only shown and closed
+        Key(ENTER, 2.0, shows=ENABLE_FEATURES),
+        Key(ESC, 5.0, hides=ENABLE_FEATURES),
+        ZoomOut(1.0),
+        Quit(2.0),
+    ],
+)
+
 STORYBOARDS: dict[str, Storyboard] = {
     storyboard.name: storyboard
     for storyboard in [
@@ -396,6 +432,7 @@ STORYBOARDS: dict[str, Storyboard] = {
         COMMAND_MENU,
         FILE_HISTORY,
         POOL_HISTORY_STORYBOARD,
+        POOL_FEATURES_STORYBOARD,
         ACTIVITY,
         ALERTS,
     ]

@@ -29,21 +29,17 @@ func checklistWidth(items []*ChecklistItem) int {
 	return width
 }
 
-// createChecklistTable creates the table of the checklist: a click, Space or Enter checks or unchecks an item (see
-// checklistInputCapture). Its selection is only shown while it has the focus, so only one row of the dialog is
+// createChecklistTable creates the table of the checklist: Space or Enter checks or unchecks an item (see
+// checklistInputCapture), a click only the highlighted one (another one is selected first). Its selection is only shown while it has the focus, so only one row of the dialog is
 // highlighted.
 func (d *SelectionDialog) createChecklistTable() *tview.Table {
 	checklistTable := uiutil.SetSelectionStyle(tview.NewTable())
 	checklistTable.SetSelectable(false, false)
 	for row, item := range d.checklist {
-		cell := tview.NewTableCell(formatChecklistItem(item)).SetExpansion(1)
-		cell.SetClickedFunc(func() bool {
-			d.toggleChecklistItem(row)
-			return false
-		})
-		checklistTable.SetCell(row, 0, cell)
+		checklistTable.SetCell(row, 0, tview.NewTableCell(formatChecklistItem(item)).SetExpansion(1))
 	}
 	checklistTable.Select(0, 0)
+	uiutil.OnClickOnSelectedRow(checklistTable, d.toggleChecklistItem)
 	checklistTable.SetFocusFunc(func() { checklistTable.SetSelectable(true, false) })
 	checklistTable.SetBlurFunc(func() { checklistTable.SetSelectable(false, false) })
 	return checklistTable

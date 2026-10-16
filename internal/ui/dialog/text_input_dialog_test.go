@@ -99,6 +99,19 @@ func TestTextInputDialog_EscCancels(t *testing.T) {
 	assert.Empty(t, dt.getSubmitted())
 }
 
+// Regression: a click on the description focused it, and Esc (or typing) no longer reached the input field.
+func TestTextInputDialog_ClickOnTheTextKeepsTheFocus(t *testing.T) {
+	dt := newTextInputDialogTest(t, "")
+	for _, text := range []string{"Name of the thing:", "Enter: confirm"} {
+		testutil.ClickText(t, dt.app, dt.screen, text)
+		dt.typeText("x")
+	}
+	assert.Equal(t, "xx", dt.text())
+
+	dt.press(tcell.KeyEscape, 0)
+	assert.False(t, dt.isShown())
+}
+
 func TestTextInputDialog_Validator(t *testing.T) {
 	dt := newTextInputDialogTest(t, "")
 	testutil.OnUiThread(t, dt.app, func() {

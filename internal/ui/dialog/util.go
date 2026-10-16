@@ -635,3 +635,9 @@ func withoutTags(text string) string {
 func Highlight(text string) string {
 	return txwidgets.Span(theme.Colors.Dialog.Highlight, "%s", text)
 }
+
+// Link returns the text (escaped) underlined as a hyperlink to url (OSC 8), which the terminal opens, e.g. on a click
+// with a modifier (the application has the mouse). Terminals without hyperlinks show the underlined text.
+func Link(text string, url string) string {
+	return fmt.Sprintf("[::u:%s]%s[::U:-]", url, tview.Escape(text))
+}

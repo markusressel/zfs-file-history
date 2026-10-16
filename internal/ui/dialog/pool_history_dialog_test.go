@@ -608,7 +608,7 @@ func (dt *historyDialogTest) position() (row int, line int) {
 	return row, line
 }
 
-func (dt *historyDialogTest) table() *poolHistoryTable {
+func (dt *historyDialogTest) table() *scrollbar.Table {
 	return dt.dialog.table
 }
 

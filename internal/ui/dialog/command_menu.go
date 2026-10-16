@@ -3,6 +3,7 @@ package dialog
 import (
 	"slices"
 	"strings"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -157,7 +158,7 @@ func (menu *CommandMenu) createLayout() {
 	menu.input.SetInputCapture(menu.handleKey)
 
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(menu.list, 0, 1, false).
+		AddItem(scrollbar.NewTable(menu.list, 0), 0, 1, false).
 		AddItem(menu.input, 1, 0, true)
 
 	frame := tview.NewFlex()

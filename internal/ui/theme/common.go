@@ -84,6 +84,8 @@ type DialogColors struct {
 	DangerBorder tcell.Color
 	// SectionTitle is the color of the titles of the sections of lists, e.g. of the command menu
 	SectionTitle tcell.Color
+	// Unavailable is the color of entries that cannot be chosen, e.g. the features of a pool that are enabled already
+	Unavailable tcell.Color
 }
 
 type StyleStruct struct {

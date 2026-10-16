@@ -6,6 +6,7 @@ import (
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
+	"zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -98,12 +99,13 @@ func (d *TextInputDialog) createLayout(title string, description string, tagged 
 	d.errorView = tview.NewTextView().SetTextColor(theme.Colors.Dialog.Error)
 	d.inputField.SetChangedFunc(func(string) { d.errorView.SetText("") })
 
+	// A click on the text does not focus it: the keys (typing, Esc) would no longer reach the input field.
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(descriptionView, calculateWrappedHeight(plainDescription, textLineWidth), 0, false).
-		AddItem(tview.NewBox(), 1, 0, false).
+		AddItem(unfocusableTextView{descriptionView}, calculateWrappedHeight(plainDescription, textLineWidth), 0, false).
+		AddItem(unfocusableTextView{tview.NewTextView()}, 1, 0, false).
 		AddItem(d.inputField, 1, 0, true).
-		AddItem(d.errorView, 1, 0, false).
-		AddItem(helpView, 1, 0, false)
+		AddItem(unfocusableTextView{d.errorView}, 1, 0, false).
+		AddItem(unfocusableTextView{helpView}, 1, 0, false)
 	// like the other dialogs; CalculateDialogSize leaves room for it
 	content.SetBorderPadding(0, 0, 1, 1)
 
@@ -157,4 +159,14 @@ func (d *TextInputDialog) Close() {
 	go func() {
 		d.actionChannel <- DialogCloseActionId
 	}()
+}
+
+// unfocusableTextView is a text view a click does not focus (see util.WithoutFocus), e.g. the description of a dialog
+// whose input field has to keep the focus.
+type unfocusableTextView struct {
+	*tview.TextView
+}
+
+func (view unfocusableTextView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	return util.WithoutFocus(view.TextView.MouseHandler())
 }

@@ -380,6 +380,18 @@ func TestPoolStatus_TrimProgress(t *testing.T) {
 	}
 }
 
+func TestPoolStatus_CanUpgrade(t *testing.T) {
+	status, err := parsePoolStatus(readTestData(t, "zpool-status-healthy.txt"))
+	require.NoError(t, err)
+	assert.True(t, status.CanUpgrade(), "features not enabled")
+	// a pool of a version before feature flags
+	assert.True(t, (&PoolStatus{Action: "Upgrade the pool using 'zpool upgrade'. Once this is done, the pool will " +
+		"no longer be accessible on software that does not support feature flags."}).CanUpgrade())
+	assert.False(t, (&PoolStatus{}).CanUpgrade())
+	// e.g. a failed device
+	assert.False(t, (&PoolStatus{Action: "Replace the device using 'zpool replace'."}).CanUpgrade())
+}
+
 func TestPoolStatus_IsScrubPaused(t *testing.T) {
 	assert.True(t, (&PoolStatus{Scan: "scrub paused since Tue Oct 13 10:00:01 2026"}).IsScrubPaused())
 	assert.False(t, (&PoolStatus{Scan: "scrub in progress since Tue Oct 13 10:00:01 2026"}).IsScrubPaused())

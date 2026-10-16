@@ -225,6 +225,12 @@ func (status *PoolStatus) IsTrimming() bool {
 	return status.TrimProgress() >= 0
 }
 
+// CanUpgrade returns whether zpool suggests to upgrade the pool: features the installed ZFS supports are not enabled
+// (or the pool has a legacy version), see PoolActionUpgrade.
+func (status *PoolStatus) CanUpgrade() bool {
+	return strings.Contains(status.Action, "'zpool upgrade'")
+}
+
 // IsScrubPaused returns whether the last scrub was paused (and can be resumed).
 func (status *PoolStatus) IsScrubPaused() bool {
 	return strings.HasPrefix(status.Scan, "scrub paused")

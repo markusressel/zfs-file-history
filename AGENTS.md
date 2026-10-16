@@ -22,7 +22,9 @@ of the code.
   `hides`, `into`), checked before and after the key (`check_script` refuses a demo without), so a slow load stops
   the demo instead of sending the keys into something else. `Click` clicks what a pattern finds on the screen (hovered
   first, SGR mouse events), e.g. the page tabs, and must say what it shows or hides as well. `Search` types into a
-  search field until a pattern shows (e.g. one entry left). `Ready` marks the recording once the application stopped
+  search field until a pattern shows (e.g. one entry left). `Select` moves the selection with ↓ until the line a pattern finds is selected
+  (drawn on the background of the selection, `SELECTED_BACKGROUND`, checked against the theme), for an entry whose
+  position differs between systems (e.g. "Enable features" in the actions of a pool). `Ready` marks the recording once the application stopped
   drawing after the start, and `prepare_cast.py` moves everything before it to time 0, so the GIF starts with the
   loaded application. The application runs with `--fresh` and an empty `XDG_STATE_HOME`, so every run is the same
   and the state of the user is not changed. Storyboards wait for what the application shows (e.g. the page tabs,
@@ -88,11 +90,23 @@ of the code.
   at its top, where the new ones are shown. `h` on the pools page (the pool) and the datasets page (the dataset with its children and snapshots), only offered
   while the rule is allowed (`SetOnShowHistory`, updated on `zfs.SudoersChanged`).
 - `internal/zfs/pool_action.go`: the actions on pools (`zfs.PoolActions`: scrub start/pause/cancel, TRIM
-  start/cancel, clear). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
+  start/cancel, clear, upgrade). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
   denied, and returns a `PoolActionNeedsRootError` if that is not allowed either: `dialog.NewErrorDialogWithRetry`
   then offers to run it once with sudo or to run `setup --pool-actions` (like `NewMissingPermissionsDialog` does
-  for dataset permissions). Actions that lose data or make a pool unavailable (destroy, export, upgrade, `clear -F`) are deliberately
-  not offered.
+  for dataset permissions). Actions that lose data or make a pool unavailable (destroy, export, `clear -F`) are
+  deliberately not offered. Upgrade cannot be undone: only offered while `zpool status` suggests it
+  (`PoolStatus.CanUpgrade`), red, and confirmed by typing the name of the pool (`dialog.NewPoolUpgradeDialog`, not
+  run by the action dialog itself: `dialog.PoolActionOf`). The sudoers rule of former versions without upgrade is
+  its `fallback`. `pool_features.go`: single features (`zfs.ListPoolFeatures`: `zpool upgrade -v` and `zpool get`,
+  no root) can be chosen in `dialog.PoolFeaturesDialog` (a `RowSelectionTable`, grouped by whether they can be
+  enabled and why not) and enabled once confirmed by name
+  (`zfs.EnablePoolFeatures`, one `zpool set feature@…=enabled` per feature). Features the property `compatibility`
+  of the pool does not allow (its files in `compatibility.d`, e.g. `grub2`; `zpool set` ignores it, `upgrade` does
+  not), the loaded kernel module does not support (`/sys/module/zfs/features.pool`, if it lists them; the tools may
+  be newer, the dialog says so with the versions of `zfs version`) and enabled ones are grayed out with the reason
+  and cannot be checked. Features of the pool the installed ZFS does not know (`unsupported@<guid>`) are listed last. Not part of the sudoers rule (a
+  wildcard for the name would also match spaces, so any property could be set): `PoolActionNeedsRootError`
+  `AllowedBySetup` is false, and the root dialog only offers to run them once with sudo or to copy the commands.
 - `internal/zfs/dataset_actions.go`: the actions on datasets that lose data (destroying a clone, rolling back) work
   in two steps: a preview lists what would be lost without changing anything (dry run, newer snapshots, holds,
   clones, permissions), the action takes the confirmed preview, checks everything again and refuses with
@@ -161,7 +175,7 @@ of the code.
     Objects ZFS has no path for (`ds:<0x…>`) can be searched in the snapshots by their inode number (= object
     number; `zfs.FindObjects`, `f` in the dialog): it reads the inodes from `getdents64`, no `lstat` per file
     (millions of files per snapshot), newest snapshot first. The dialog also says how to enable `head_errlog`, but
-    the application never runs it (one-way pool upgrade).
+    does not run it (one-way; the features of the pool action dialog can).
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). The file history shows the
     changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
     `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with
@@ -240,13 +254,20 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 
 ## Tables
 
-- Lists use `table.RowSelectionTable[T]` (entries implement `TableRowId()`); dialogs use plain `tview.Table`s.
+- Lists use `table.RowSelectionTable[T]` (entries implement `TableRowId()`); dialogs use plain `tview.Table`s. Plain
+  tables that may have more rows than lines (the command menu, the damaged files, the history of a pool) are placed
+  in the layout as `scrollbar.Table`, which shows a scrollbar while not all rows fit, like
+  `RowSelectionTable` and `scrollbar.TextView` do.
 - The selected row is a dark bar on which each cell keeps its own text color (`theme.SelectedStyle`, lightened where
   it would be hard to read), so colors that mean something (states, a destructive action) stay visible.
   `RowSelectionTable` does this for all cells; plain tables use `uiutil.SetSelectionStyle` and
   `uiutil.KeepColorWhenSelected` for their colored cells.
 - Clicks into the empty space below the rows do nothing (`uiutil.IgnoreClicksBelowRows`, for every table); in
   `RowSelectionTable` also clicks to the right of the columns.
+- Lists of switches in dialogs (the checklist of a `SelectionDialog`, the features of a pool, the permissions): a
+  click checks or unchecks only the highlighted row, like Space; a click on another row selects it
+  (`uiutil.OnClickOnSelectedRow`, `RowSelectionTable.SetClickOnSelectedFunc`), so a stray click never changes one
+  by accident.
 - The header row: `←`/`→` change the sort column, `Enter` the direction. With the mouse, the first click selects the
   header, the next ones sort by the clicked column or toggle the direction.
 
@@ -316,7 +337,9 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   for their result, or with `testutil.WaitForUpdates` until the queued ones ran, to check that a key did nothing
   (instead of a sleep). Wait for a load with what it ends with (`IsLoading`, an event), not for a time. Tests that draw a primitive themselves get their screen from `testutil.NewScreen` or
   `DrawToScreen`; the text is read with `testutil.ScreenLines` and `FindInScreen` (a rune per cell, so it lines up with
-  the columns), a cell with `screen.Get` (`TestScreenIsReadWithTestutil`). `testutil.StripTags` removes style tags
+  the columns), a cell with `screen.Get` (`TestScreenIsReadWithTestutil`). The screen of a running app is only read on the UI thread
+  (`ScreenText`, `FindText`, or inside `OnUiThread`): it may redraw meanwhile, and a read saw it half drawn
+  (`TestScreenOfRunningAppIsReadOnTheUiThread`). `testutil.StripTags` removes style tags
   from text.
 - Regression tests start their comment with `// Regression:` and fail without the fix.
 - Fixtures from real systems go into `testdata/`, with serial numbers and other identifying data replaced.

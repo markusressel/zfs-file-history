@@ -12,7 +12,7 @@ import unittest
 import driver
 from driver import DemoFailed
 from prepare_cast import KEY_MARKER_PATTERN, READY_MARKER
-from steps import CTRL_Q, DOWN, ENTER, ESC, Click, Key, Quit, Ready, Search, Wait
+from steps import CTRL_Q, DOWN, ENTER, ESC, Click, Key, Quit, Ready, Search, Select, Wait
 from storyboards import (
     ACTIVITY,
     DATASETS_PAGE,
@@ -69,6 +69,30 @@ FAKE_APP = """\
             show("MAIN DIALOG")
         elif key == "\\x1b":
             show("MAIN")
+"""
+
+
+# A fake menu: "MENU" and its options, the selected one on the background of the selection, ↓ moves the selection (and
+# draws nothing at the last option), ctrl+q quits.
+FAKE_MENU_APP = """\
+    #!/usr/bin/env python3
+    import os, sys, tty
+    OPTIONS = ["Start scrub", "Clear errors", "Enable features", "Close"]
+    tty.setraw(0)
+    def show(selected):
+        background = "\\x1b[48;2;45;69;96m"
+        lines = [(background if i == selected else "") + option + "\\x1b[0m" for i, option in enumerate(OPTIONS)]
+        sys.stdout.write("\\x1b[2J\\x1b[HMENU\\r\\n" + "\\r\\n".join(lines))
+        sys.stdout.flush()
+    selected = 0
+    show(selected)
+    while True:
+        key = os.read(0, 16).decode()
+        if "\\x11" in key:
+            break
+        if key == "\\x1b[B" and selected < len(OPTIONS) - 1:
+            selected += 1
+            show(selected)
 """
 
 
@@ -298,6 +322,39 @@ class DriverTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("/MAIN/ did not show up", self.error())
 
+    def test_select_moves_until_the_pattern_is_selected(self) -> None:
+        self.app = self.write_app(FAKE_MENU_APP)
+
+        ok = self.run_script([Wait("MENU"), Select("Enable features", into="MENU"), Quit()])
+
+        self.assertTrue(ok, self.error() if os.path.exists(self.error_file) else "")
+        # shown as two keys in the GIF, nothing more
+        self.assertEqual(2, len(re.findall(KEY_MARKER_PATTERN, self.output.getvalue().decode())))
+
+    def test_select_does_nothing_if_selected_already(self) -> None:
+        self.app = self.write_app(FAKE_MENU_APP)
+
+        ok = self.run_script([Wait("MENU"), Select("Start scrub", into="MENU"), Quit()])
+
+        self.assertTrue(ok)
+        self.assertEqual([], re.findall(KEY_MARKER_PATTERN, self.output.getvalue().decode()))
+
+    def test_select_stops_if_the_selection_does_not_reach_the_pattern(self) -> None:
+        self.app = self.write_app(FAKE_MENU_APP)
+
+        ok = self.run_script([Wait("MENU"), Select("Upgrade pool", into="MENU"), Quit()])
+
+        self.assertFalse(ok)
+        self.assertIn("the selection did not move towards /Upgrade pool/", self.error())
+
+    def test_select_stops_after_max_keys(self) -> None:
+        self.app = self.write_app(FAKE_MENU_APP)
+
+        ok = self.run_script([Wait("MENU"), Select("Close", into="MENU", max_keys=2), Quit()])
+
+        self.assertFalse(ok)
+        self.assertIn("/Close/ was not selected after 2 keys", self.error())
+
 
 class CheckScriptTest(unittest.TestCase):
     def test_the_storyboards_are_safe_to_run(self) -> None:
@@ -310,6 +367,10 @@ class CheckScriptTest(unittest.TestCase):
         for keys in [ENTER, ESC, "h", "1", ":"]:
             with self.subTest(keys=keys), self.assertRaisesRegex(DemoFailed, "must say what it shows"):
                 driver.check_script([Wait("MAIN"), Key(keys)])
+
+    def test_refuses_selects_with_other_keys_than_navigation(self) -> None:
+        with self.assertRaisesRegex(DemoFailed, "may only move the selection"):
+            driver.check_script([Wait("MAIN"), Select("Enable", into="MAIN", key=ENTER)])
 
     def test_refuses_clicks_without_a_condition(self) -> None:
         with self.assertRaisesRegex(DemoFailed, "must say what it shows or hides"):

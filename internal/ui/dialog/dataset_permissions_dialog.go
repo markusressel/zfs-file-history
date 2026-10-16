@@ -99,6 +99,8 @@ func (d *DatasetPermissionsDialog) createLayout() {
 
 	d.table = tview.NewTable().SetSelectable(true, false)
 	util.IgnoreClicksBelowRows(d.table)
+	// like Space, a click grants or revokes only the highlighted permission, another one is selected first
+	util.OnClickOnSelectedRow(d.table, func(int) { d.toggleSelected() })
 	util.SetSelectionStyle(d.table)
 	d.table.SetSelectionChangedFunc(func(row, column int) { d.updateDetails(row) })
 	d.details = tview.NewTextView().SetWrap(true).SetWordWrap(true)

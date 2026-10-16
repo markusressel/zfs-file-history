@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -383,4 +384,19 @@ func TestCommandMenu_UnfocusedKeysAreDimmed(t *testing.T) {
 	}
 	assert.Equal(t, shortcut_helper.GroupView.KeyColor(), keyColor(1))
 	assert.Equal(t, tcell.ColorGray, keyColor(3))
+}
+
+// Regression: the list of commands had no scrollbar, so it did not show that more commands were below.
+func TestCommandMenu_Scrollbar(t *testing.T) {
+	app, screen, pages, _ := startCommandMenuApp(t)
+	var commands []shortcut_helper.ShortcutEntry
+	for i := range 60 {
+		commands = append(commands, shortcut_helper.ShortcutEntry{Name: fmt.Sprintf("Command %d", i), Run: func() {}})
+	}
+	menu := NewCommandMenu([]CommandSection{{Title: "Section", Commands: commands}})
+	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, menu, func() {}) })
+	testutil.WaitForText(t, app, screen, "Command 0", 3*time.Second)
+
+	// the arrow at the bottom of the bar: more commands below
+	assert.Contains(t, testutil.ScreenText(t, app, screen), "▾")
 }

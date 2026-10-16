@@ -116,26 +116,29 @@ var (
 		fallback: func(zpool string) []string { return []string{zpool + " " + strings.Join(historyArgs, " ")} },
 	}
 	// SudoersRulePoolActions allows to run the pool actions, see PoolActions. The pool name has to start with a
-	// letter, so no options can be given in its place. Further arguments are harmless for scrub and trim, but would
-	// allow "clear -F" (which discards transactions), so clear is denied with more than one argument (in sudoers, *
-	// also matches spaces, and the last matching rule wins).
+	// letter, so no options can be given in its place (e.g. "upgrade -a", all pools). Further arguments are harmless
+	// for scrub, trim and upgrade (more pools), but would allow "clear -F" (which discards transactions), so clear is
+	// denied with more than one argument (in sudoers, * also matches spaces, and the last matching rule wins).
+	// Former versions did not allow upgrade; the other actions still work with them, and the setup command writes
+	// the lines of the rule in their place.
 	SudoersRulePoolActions = &SudoersRule{
 		Id:       "pool-actions",
 		Name:     "Pool actions",
-		Summary:  "scrub, TRIM and clear the errors of pools",
-		Commands: "zpool scrub, trim and clear",
-		Description: "Start, pause and cancel scrubs, start and cancel TRIMs, and clear the errors of pools. " +
-			"Nothing else, in particular no destroying, exporting or rewinding of pools. " +
-			"Allows: zpool scrub, trim and clear",
+		Summary:  "scrub, TRIM, upgrade and clear the errors of pools",
+		Commands: "zpool scrub, trim, clear and upgrade",
+		Description: "Start, pause and cancel scrubs, start and cancel TRIMs, clear the errors of pools, and upgrade " +
+			"them (each upgrade is confirmed by typing the name of the pool). Nothing else, in particular no " +
+			"destroying, exporting or rewinding of pools. Allows: zpool scrub, trim, clear and upgrade",
 		allowed: func(zpool string) []string {
-			commands := make([]string, 0, len(PoolActions))
-			for _, action := range PoolActions {
-				commands = append(commands, fmt.Sprintf("%s %s [a-zA-Z]*", zpool, strings.Join(action.Args, " ")))
-			}
-			return commands
+			return poolActionCommands(zpool, PoolActions)
 		},
 		denied: func(zpool string) []string {
 			return []string{fmt.Sprintf("%s %s * *", zpool, strings.Join(PoolActionClear.Args, " "))}
+		},
+		fallback: func(zpool string) []string {
+			return poolActionCommands(zpool, slices.DeleteFunc(slices.Clone(PoolActions), func(action PoolAction) bool {
+				return action.Name == PoolActionUpgrade.Name
+			}))
 		},
 	}
 
@@ -162,6 +165,15 @@ var (
 	// SudoersRules are all rules, in the order they are offered and written.
 	SudoersRules = []*SudoersRule{SudoersRuleEvents, SudoersRuleDataErrors, SudoersRuleHistory, SudoersRuleSmart, SudoersRulePoolActions}
 )
+
+// poolActionCommands returns the sudoers commands that allow the actions on pools whose names start with a letter.
+func poolActionCommands(zpool string, actions []PoolAction) []string {
+	commands := make([]string, 0, len(actions))
+	for _, action := range actions {
+		commands = append(commands, fmt.Sprintf("%s %s [a-zA-Z]*", zpool, strings.Join(action.Args, " ")))
+	}
+	return commands
+}
 
 // SudoersRuleById returns the rule with the given id, nil if there is none.
 func SudoersRuleById(id string) *SudoersRule {
