@@ -19,14 +19,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// the lines of the tree of devices, like the ones of the tree view of the dataset browser
-const (
-	treeBranch     = "├─ "
-	treeLastBranch = "└─ "
-	treeLine       = "│  "
-	treeSpace      = "   "
-)
-
 // temperatureWidth is the width of the temperature column, e.g. " 45°C".
 const temperatureWidth = 5
 
@@ -472,15 +464,15 @@ func devicePrefixes(devices []*zfs.PoolDevice) []string {
 		var prefix strings.Builder
 		for depth := 1; depth < device.Depth; depth++ {
 			if hasNextSibling[depth] {
-				prefix.WriteString(treeLine)
+				prefix.WriteString(uiutil.TreeLine)
 			} else {
-				prefix.WriteString(treeSpace)
+				prefix.WriteString(uiutil.TreeSpace)
 			}
 		}
 		if hasNextSibling[device.Depth] {
-			prefix.WriteString(treeBranch)
+			prefix.WriteString(uiutil.TreeBranch)
 		} else {
-			prefix.WriteString(treeLastBranch)
+			prefix.WriteString(uiutil.TreeLastBranch)
 		}
 		prefixes[i] = prefix.String()
 	}

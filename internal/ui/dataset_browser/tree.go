@@ -3,6 +3,7 @@ package dataset_browser
 import (
 	"strings"
 	"unicode/utf8"
+	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 )
 
@@ -27,10 +28,6 @@ type treeRow struct {
 }
 
 const (
-	treeBranch     = "├─ "
-	treeLastBranch = "└─ "
-	treeLine       = "│  "
-	treeSpace      = "   "
 	// treeExpanded and treeCollapsed replace the line of the branch of a dataset with children ("├▾ "), so the names
 	// stay where they are, and stand in front of roots ("▾ tank"). Roots without children get as many spaces, so the
 	// names of all roots line up, if any root has children.
@@ -102,11 +99,11 @@ func buildDatasetTree(sorted []*zfs.DatasetListEntry, collapsed map[string]bool)
 			row.prefix = treeRootSpace
 		case !isRoot:
 			row.name = strings.TrimPrefix(entry.Name, parents[entry].Name+"/")
-			branch := treeBranch
-			childIndent = indent + treeLine
+			branch := uiutil.TreeBranch
+			childIndent = indent + uiutil.TreeLine
 			if isLast {
-				branch = treeLastBranch
-				childIndent = indent + treeSpace
+				branch = uiutil.TreeLastBranch
+				childIndent = indent + uiutil.TreeSpace
 			}
 			if len(entryChildren) > 0 {
 				// "├─ " becomes "├▾ "
