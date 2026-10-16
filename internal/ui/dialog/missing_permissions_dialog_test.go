@@ -285,3 +285,26 @@ func TestMissingPermissionsDialog_CopyFailsShowsCommand(t *testing.T) {
 	dt.waitForText("no clipboard utility found")
 	dt.waitForText("sudo zfs allow -u alice release pool/data")
 }
+
+func TestShellQuote(t *testing.T) {
+	tests := map[string]string{
+		"tank/data":          "tank/data",
+		"feature@async_dest": "feature@async_dest",
+		"--pool-actions":     "--pool-actions",
+		"":                   "''",
+		"tank/my data":       "'tank/my data'",
+		"it's":               `'it'\''s'`,
+		"$HOME":              "'$HOME'",
+		"a;b":                "'a;b'",
+	}
+	for argument, quoted := range tests {
+		assert.Equal(t, quoted, shellQuote(argument), argument)
+	}
+}
+
+// Regression: the commands to copy were joined with spaces, so the name of a dataset with a space (which ZFS allows)
+// was split into two arguments when pasted into a shell.
+func TestSudoCommands_QuoteNamesWithSpaces(t *testing.T) {
+	assert.Equal(t, []string{"sudo zfs mount 'tank/my data'", "sudo zfs allow -u me mount tank"},
+		sudoCommands([][]string{{"zfs", "mount", "tank/my data"}, {"zfs", "allow", "-u", "me", "mount", "tank"}}))
+}

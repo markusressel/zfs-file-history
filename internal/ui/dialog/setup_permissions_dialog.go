@@ -64,7 +64,7 @@ func NewSetupPermissionsDialog(application *tview.Application, allowed map[strin
 			if len(granted) == 0 {
 				return errNothingSelected
 			}
-			return copyToClipboard("sudo " + strings.Join(setupCommand(granted), " "))
+			return copyToClipboard(sudoCommand(setupCommand(granted)))
 		}
 		return nil
 	}
