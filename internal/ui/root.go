@@ -195,12 +195,13 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 			recorder.setPool(e.Pool.Name)
 		}
 	})
-	// a click on a running operation, a problem or the pool of a dataset shows the pool
+	// a click on a running operation, a problem or the pool of a dataset or a disk shows the pool
 	showPool := func(pool string) {
 		switchTo(Pool)
 		poolPage.poolBrowser.SelectPool(pool)
 	}
 	datasetPage.datasetInfo.SetOnShowPool(showPool)
+	diskPage.diskDetails.SetOnShowPool(showPool)
 	// the disks of a device (device "": of the pool) with their SMART values, from the devices pane or an alert
 	showDisk := func(pool string, device string) {
 		switchTo(Disks)

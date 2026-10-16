@@ -15,6 +15,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // ReadTemperatureIcon is shown instead of the temperature of an idle hard disk that was not read, see
@@ -130,25 +131,66 @@ const detailsColumnGap = 6
 // the health was cut off). Lines still wider are wrapped; a width of 0 or less does neither. Its name and model are
 // the title of the pane, the attributes are in a table of their own.
 func formatDetails(entry *DiskEntry, width int) []string {
+	lines, _ := formatDetailsWithPoolLinks(entry, width)
+	return lines
+}
+
+// poolLink is where the name of a pool the disk is used by is in the lines of formatDetails (line and column, without
+// scrolling), which shows the pool on the pools page when clicked.
+type poolLink struct {
+	pool         string
+	line, column int
+	width        int
+}
+
+// formatDetailsWithPoolLinks returns the lines of formatDetails, and where the names of the pools are in them.
+func formatDetailsWithPoolLinks(entry *DiskEntry, width int) ([]string, []poolLink) {
 	var info uiutil.InfoText
 	info.Verdict(detailsVerdict(entry)...)
 
 	var what, health uiutil.InfoText
-	addDiskSection(&what, entry)
-	addHealthSection(&health, entry)
-	if width <= 0 || what.Width()+detailsColumnGap+health.Width() <= width {
+	// poolsLine is the line of info of the first pool (the others follow), poolsColumn where its value starts in it
+	var poolsLine, poolsColumn int
+	if width <= 0 || sideBySideWidth(entry) <= width {
 		info.Line("")
+		poolsLine = info.LineCount() + addDiskSection(&what, entry)
+		addHealthSection(&health, entry)
+		// the lines of both are lines of info of their own, not fields
+		poolsColumn = what.ValueColumn()
 		info.SideBySide(detailsColumnGap, &what, &health)
 	} else {
 		// one column, the labels of both sections aligned
-		addDiskSection(&info, entry)
+		poolsLine = addDiskSection(&info, entry)
 		addHealthSection(&info, entry)
 	}
-	return info.WrappedLines(width)
+
+	lines, positions := info.Wrap(width)
+	var links []poolLink
+	for i, device := range entry.Devices {
+		// a wrapped line above moves it down, a narrow pane below its label
+		position := positions[poolsLine+i]
+		link := poolLink{pool: device.Pool, line: position.Line, column: position.Column + poolsColumn,
+			width: tview.TaggedStringWidth(tview.Escape(device.Pool))}
+		// the name is not wrapped: it comes first, and is short
+		if width > 0 {
+			link.width = min(link.width, width-link.column)
+		}
+		links = append(links, link)
+	}
+	return lines, links
 }
 
-// addDiskSection adds what the disk is: its type, where it is used, serial number, firmware and size.
-func addDiskSection(what *uiutil.InfoText, entry *DiskEntry) {
+// sideBySideWidth returns the width of what the disk is next to its health, see formatDetails.
+func sideBySideWidth(entry *DiskEntry) int {
+	var what, health uiutil.InfoText
+	addDiskSection(&what, entry)
+	addHealthSection(&health, entry)
+	return what.Width() + detailsColumnGap + health.Width()
+}
+
+// addDiskSection adds what the disk is: its type, where it is used, serial number, firmware and size. It returns the
+// line of the first pool, the one of each device of the entry follows.
+func addDiskSection(what *uiutil.InfoText, entry *DiskEntry) (poolsLine int) {
 	report := entry.Report
 	what.Section("Disk")
 	what.Field("Type", uiutil.InfoValue(typeOf(report)))
@@ -156,6 +198,7 @@ func addDiskSection(what *uiutil.InfoText, entry *DiskEntry) {
 	for _, device := range entry.Devices {
 		pools = append(pools, uiutil.InfoValue(device.Pool)+"  "+uiutil.InfoMuted(device.DisplayName()))
 	}
+	poolsLine = what.LineCount()
 	if len(pools) > 0 {
 		what.Field("Pools", strings.Join(pools, "\n"))
 	}
@@ -168,6 +211,7 @@ func addDiskSection(what *uiutil.InfoText, entry *DiskEntry) {
 	if report.Capacity > 0 {
 		what.Field("Size", uiutil.InfoValue(humanize.Bytes(uint64(report.Capacity))))
 	}
+	return poolsLine
 }
 
 // addHealthSection adds the health of the disk: its temperature and what its SMART values say, or why they are not

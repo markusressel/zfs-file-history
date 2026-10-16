@@ -2,6 +2,7 @@ package disk_browser
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var readAt = time.Date(2026, 10, 14, 12, 0, 0, 0, time.Local)
@@ -140,6 +142,28 @@ func TestFormatDetails_Stacked(t *testing.T) {
 	}
 	assert.Contains(t, strings.Split(testutil.StripTags(strings.Join(formatDetails(entry, 40), "\n")), "\n"),
 		"          at 60°C")
+}
+
+// The names of the pools can be clicked where they are shown: side by side, below each other, and below their label in
+// a narrow pane.
+func TestFormatDetails_PoolLinks(t *testing.T) {
+	entry := &DiskEntry{Devices: []PoolDevice{
+		{Pool: "bpool", Device: "/dev/disk/by-id/ata-DISK_1-part2"},
+		{Pool: "rpool", Device: "/dev/disk/by-id/ata-DISK_1-part3"},
+	}, Report: ataReport()}
+	for _, width := range []int{0, 90, 50, 30, 16} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			lines, links := formatDetailsWithPoolLinks(entry, width)
+			require.Len(t, links, 2)
+			for i, link := range links {
+				line := []rune(testutil.StripTags(lines[link.line]))
+				require.LessOrEqual(t, link.column+link.width, len(line), string(line))
+				assert.Equal(t, entry.Devices[i].Pool, string(line[link.column:link.column+link.width]), string(line))
+			}
+			// a wrapped device name moves the next one down
+			assert.Greater(t, links[1].line, links[0].line, "one below the other")
+		})
+	}
 }
 
 func TestFormatDetailsTemperature(t *testing.T) {
