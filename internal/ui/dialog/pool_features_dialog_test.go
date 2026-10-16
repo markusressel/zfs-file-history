@@ -3,6 +3,7 @@ package dialog
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,6 +67,18 @@ func (dt *poolFeaturesDialogTest) press(key tcell.Key, r rune) {
 func (dt *poolFeaturesDialogTest) checked() (names []string) {
 	testutil.OnUiThread(dt.t, dt.app, func() { names = dt.dialog.Checked() })
 	return names
+}
+
+// styleAt draws the dialog and returns the style of the first cell of text, and whether it is shown. It reads the
+// screen on the UI thread: read from the test, a redraw that ran meanwhile could leave it half drawn.
+func (dt *poolFeaturesDialogTest) styleAt(text string) (style tcell.Style, found bool) {
+	testutil.OnUiThread(dt.t, dt.app, func() {
+		dt.app.ForceDraw()
+		var x, y int
+		x, y, found = testutil.FindInScreen(dt.screen, text)
+		_, style, _ = dt.screen.Get(x, y)
+	})
+	return style, found
 }
 
 func (dt *poolFeaturesDialogTest) getEnabled() [][]string {
@@ -144,9 +157,8 @@ func TestPoolFeaturesDialog_LinksToTheDocumentation(t *testing.T) {
 	testutil.OnUiThread(t, dt.app, func() {
 		assert.Contains(t, dt.dialog.detailView.GetText(false), "[::u:"+zpoolFeaturesUrl+"#bookmarks]bookmarks[::U:-]")
 	})
-	x, y, found := testutil.FindInScreen(dt.screen, "bookmarks: ")
+	style, found := dt.styleAt("bookmarks: ")
 	require.True(t, found)
-	_, style, _ := dt.screen.Get(x, y)
 	assert.NotEqual(t, tcell.UnderlineStyleNone, style.GetUnderlineStyle())
 
 	for range len(features.Features) - 1 {
@@ -166,26 +178,22 @@ func TestPoolFeaturesDialog_Scrollbar(t *testing.T) {
 			State: zfs.PoolFeatureActive, Unavailable: "already enabled and in use"})
 	}
 	dt := newPoolFeaturesDialogTest(t, features)
-	testutil.ScreenText(t, dt.app, dt.screen)
 
 	// the top of the bar on the line of the header, at the right of the table
-	_, y, found := testutil.FindInScreen(dt.screen, "Description")
+	_, y, found := testutil.FindText(t, dt.app, dt.screen, "Description")
 	require.True(t, found)
-	assert.Regexp(t, `[•▴]\s*║\s*$`, testutil.ScreenLines(dt.screen)[y])
+	assert.Regexp(t, `[•▴]\s*║\s*$`, strings.Split(testutil.ScreenText(t, dt.app, dt.screen), "\n")[y])
 }
 
 func TestPoolFeaturesDialog_UnavailableAreGrayedOut(t *testing.T) {
 	dt := newPoolFeaturesDialogTest(t, testPoolFeatures())
-	testutil.ScreenText(t, dt.app, dt.screen)
 
-	x, y, found := testutil.FindInScreen(dt.screen, "zstd_compress")
+	style, found := dt.styleAt("zstd_compress")
 	require.True(t, found)
-	_, style, _ := dt.screen.Get(x, y)
 	foreground, _, _ := style.Decompose()
 	assert.Equal(t, theme.Colors.Dialog.Unavailable, foreground)
-	x, y, found = testutil.FindInScreen(dt.screen, "large_blocks")
+	style, found = dt.styleAt("large_blocks")
 	require.True(t, found)
-	_, style, _ = dt.screen.Get(x, y)
 	foreground, _, _ = style.Decompose()
 	assert.NotEqual(t, theme.Colors.Dialog.Unavailable, foreground)
 }

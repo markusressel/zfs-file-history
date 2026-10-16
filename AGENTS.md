@@ -337,7 +337,9 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   for their result, or with `testutil.WaitForUpdates` until the queued ones ran, to check that a key did nothing
   (instead of a sleep). Wait for a load with what it ends with (`IsLoading`, an event), not for a time. Tests that draw a primitive themselves get their screen from `testutil.NewScreen` or
   `DrawToScreen`; the text is read with `testutil.ScreenLines` and `FindInScreen` (a rune per cell, so it lines up with
-  the columns), a cell with `screen.Get` (`TestScreenIsReadWithTestutil`). `testutil.StripTags` removes style tags
+  the columns), a cell with `screen.Get` (`TestScreenIsReadWithTestutil`). The screen of a running app is only read on the UI thread
+  (`ScreenText`, `FindText`, or inside `OnUiThread`): it may redraw meanwhile, and a read saw it half drawn
+  (`TestScreenOfRunningAppIsReadOnTheUiThread`). `testutil.StripTags` removes style tags
   from text.
 - Regression tests start their comment with `// Regression:` and fail without the fix.
 - Fixtures from real systems go into `testdata/`, with serial numbers and other identifying data replaced.
