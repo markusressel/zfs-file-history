@@ -24,6 +24,7 @@ from steps import (
     Quit,
     Ready,
     Search,
+    Select,
     Step,
     Wait,
     Zoom,
@@ -397,12 +398,11 @@ POOL_FEATURES_STORYBOARD = Storyboard(
         Key("3", 0.0, shows=POOLS_PAGE),
         Wait(r"\d+ pools?\b"),
         Ready(),
-        # the actions of the first pool: "Enable features" is always the last one before Close, which the
-        # selection stops at (the options of the pool differ, e.g. upgrade only while zpool suggests it)
+        # the actions of the first pool, down to "Enable features" (the actions differ between pools, e.g. upgrade
+        # only while zpool suggests it); Enter only once it is selected
         Key(ENTER, 2.0, shows=r"Select Action"),
-        *[Key(DOWN, 0.4, into=r"Select Action") for _ in range(8)],
-        Key(UP, 0.8, into=r"Select Action"),
-        Key(ENTER, 1.5, shows=POOL_FEATURES),
+        Select(r"Enable features", into=r"Select Action", delay=0.6),
+        Key(ENTER, 1.0, shows=POOL_FEATURES),
         Zoom(POOL_FEATURES, 0.5, padding=2),
         # the description of each below the list; two of them checked
         Key(DOWN, 2.0, into=POOL_FEATURES),

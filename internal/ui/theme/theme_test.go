@@ -1,11 +1,14 @@
 package theme
 
 import (
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHeaderBackgroundIsDistinct(t *testing.T) {
@@ -48,4 +51,13 @@ func TestStateColorsAreRGB(t *testing.T) {
 	} {
 		assert.True(t, color.IsRGB(), name)
 	}
+}
+
+// The demo finds the selected row of a table by its background (scripts/demo/driver.py, SELECTED_BACKGROUND): with
+// another color, it would no longer find the entries it moves to.
+func TestSelectedBackgroundOfTheDemo(t *testing.T) {
+	source, err := os.ReadFile("../../../scripts/demo/driver.py")
+	require.NoError(t, err)
+	r, g, b := Colors.Layout.Table.SelectedBackground.RGB()
+	assert.Contains(t, string(source), fmt.Sprintf("SELECTED_BACKGROUND = %q", fmt.Sprintf("%02x%02x%02x", r, g, b)))
 }

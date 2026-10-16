@@ -22,7 +22,9 @@ of the code.
   `hides`, `into`), checked before and after the key (`check_script` refuses a demo without), so a slow load stops
   the demo instead of sending the keys into something else. `Click` clicks what a pattern finds on the screen (hovered
   first, SGR mouse events), e.g. the page tabs, and must say what it shows or hides as well. `Search` types into a
-  search field until a pattern shows (e.g. one entry left). `Ready` marks the recording once the application stopped
+  search field until a pattern shows (e.g. one entry left). `Select` moves the selection with ↓ until the line a pattern finds is selected
+  (drawn on the background of the selection, `SELECTED_BACKGROUND`, checked against the theme), for an entry whose
+  position differs between systems (e.g. "Enable features" in the actions of a pool). `Ready` marks the recording once the application stopped
   drawing after the start, and `prepare_cast.py` moves everything before it to time 0, so the GIF starts with the
   loaded application. The application runs with `--fresh` and an empty `XDG_STATE_HOME`, so every run is the same
   and the state of the user is not changed. Storyboards wait for what the application shows (e.g. the page tabs,

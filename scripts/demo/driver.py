@@ -53,6 +53,7 @@ from steps import (
     Key,
     Ready,
     Search,
+    Select,
     Step,
     Wait,
     Zoom,
@@ -65,6 +66,12 @@ from storyboards import ACTIVITY_TIMEOUT, STORYBOARDS, WAIT_FOR_ACTIVITY, Storyb
 TOP_LEFT_CORNERS = {"┌", "╔", "╭"}
 TOP_RIGHT_CORNERS = {"┐", "╗", "╮"}
 BOTTOM_LEFT_CORNERS = {"└", "╚", "╰"}
+
+# the background of the selected row of tables and dialogs (theme.Colors.Layout.Table.SelectedBackground, see
+# TestSelectedBackgroundOfTheDemo), as pyte keeps the color of a cell, see Select
+SELECTED_BACKGROUND = "2d4560"
+# how long the application may take to draw after a key that moves the selection, see Select
+SELECT_SETTLE = 0.1
 
 # how long a screen may take to show up (or go away) before the demo is stopped
 WAIT_TIMEOUT = 15.0
@@ -94,6 +101,10 @@ def check_script(script: list[Step]) -> None:
             if not conditions:
                 raise DemoFailed(f"step {number}: the click on /{step.pattern}/ must say what it shows or hides")
             conditions.append(step.pattern)
+        elif isinstance(step, Select):
+            if step.key not in NAVIGATION_KEYS:
+                raise DemoFailed(f"step {number}: a Select may only move the selection, not type {step.key!r}")
+            conditions = [step.pattern, step.into]
         elif isinstance(step, Wait):
             conditions = [step.pattern]
         elif isinstance(step, Zoom):
@@ -221,6 +232,35 @@ class Driver:
                 return left, y, right, bottom
         return None
 
+    def is_selected(self, pattern: str) -> bool:
+        """Returns whether the line of the first match of the pattern is selected: its first cell is drawn on the
+        background of the selection."""
+        cell = self.find(pattern, None)
+        if cell is None:
+            return False
+        x, y = cell
+        return self.screen.buffer[y][x].bg == SELECTED_BACKGROUND
+
+    def select(self, step: Select) -> None:
+        """Presses the key of the step until the pattern is selected, see Select."""
+        for _ in range(step.max_keys):
+            if self.is_selected(step.pattern):
+                return
+            self.sleep(step.delay)
+            self.require(step.into, True, step.key)
+            self.mark(key_marker(key_label(step.key)))
+            sent = time.monotonic()
+            self.send(step.key)
+            # the application draws the moved selection; it draws nothing if the selection cannot move further
+            deadline = sent + WAIT_TIMEOUT
+            while self.last_output < sent:
+                if not self.running or time.monotonic() >= deadline:
+                    raise self.failure(f"the selection did not move towards /{step.pattern}/")
+                self.pump(min(time.monotonic() + 0.1, deadline))
+            self.sleep(SELECT_SETTLE)
+        if not self.is_selected(step.pattern):
+            raise self.failure(f"/{step.pattern}/ was not selected after {step.max_keys} keys")
+
     def column(self, y: int, index: int) -> int:
         """Returns the column of the character at the index of the text of the line: a wide character (e.g. 名) takes
         two columns, the second one is empty in the text."""
@@ -272,6 +312,8 @@ class Driver:
                 self.wait(step.shows)
             if step.hides is not None:
                 self.wait(step.hides, shown=False)
+        elif isinstance(step, Select):
+            self.select(step)
         elif isinstance(step, Zoom):
             self.sleep(step.delay)
             box = self.box(step.title)
