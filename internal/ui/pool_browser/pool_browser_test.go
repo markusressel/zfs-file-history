@@ -459,7 +459,9 @@ func TestPoolBrowser_Actions(t *testing.T) {
 
 	require.Eventually(t, func() bool { return messages.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"scrub tank"}, actions())
-	assert.Equal(t, int32(1), reloads.Load(), "the pools are reloaded")
+	// Regression: the reload is emitted after the message, so it was checked before it came on a busy machine.
+	require.Eventually(t, func() bool { return reloads.Load() == 1 }, 2*time.Second, 10*time.Millisecond,
+		"the pools are reloaded")
 	// the dialog is closed
 	require.Eventually(t, func() bool {
 		count := -1
