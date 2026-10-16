@@ -978,23 +978,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 // a dialog says that it is checked, and that nothing is destroyed yet; it can be cancelled. Must be called on the UI
 // thread.
 func (snapshotBrowser *SnapshotBrowserComponent) previewAndConfirmDestroy(request *destroyRequest) {
-	checking := dialog.NewPreviewDialog(snapshotBrowser.application, " 💥 Destroy Snapshots ", formatDestroyCheck(request))
-	snapshotBrowser.showDialog(checking, nil)
-	go func() {
-		preview, err := request.preview()
-		snapshotBrowser.application.QueueUpdateDraw(func() {
-			if !checking.Done() {
-				return // cancelled
-			}
-			if err != nil {
-				logging.Error("Cannot destroy snapshots: %s", err.Error())
-				retry := func() { snapshotBrowser.previewAndConfirmDestroy(request) }
-				snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Cannot Destroy", err, retry), nil)
-				return
-			}
-			snapshotBrowser.showDestroyConfirmation(request, preview)
-		})
-	}()
+	dialog.RunPreview(snapshotBrowser.application, snapshotBrowser.showDialogWithoutCallback, dialog.Preview[*zfs.DestroyPreview]{
+		Title: " 💥 Destroy Snapshots ", Message: formatDestroyCheck(request),
+		ErrorTitle: "Cannot Destroy", Subject: "snapshots",
+		Check:   request.preview,
+		Confirm: func(preview *zfs.DestroyPreview) { snapshotBrowser.showDestroyConfirmation(request, preview) },
+		Retry:   func() { snapshotBrowser.previewAndConfirmDestroy(request) },
+	})
 }
 
 // formatDestroyCheck says what is checked before destroying the snapshots of request.
@@ -1117,6 +1107,11 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onC
 		pages = snapshotBrowser.dialogPages
 	}
 	dialog.ShowDialogOnPages(snapshotBrowser.application, pages, d, onClosed)
+}
+
+// showDialogWithoutCallback shows the dialog like showDialog, with nothing to do when it is closed.
+func (snapshotBrowser *SnapshotBrowserComponent) showDialogWithoutCallback(d dialog.Dialog) {
+	snapshotBrowser.showDialog(d, nil)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {

@@ -120,7 +120,7 @@ of the code.
   is (`protectedMountPaths`: zfs would destroy the others first and then fail on the busy one); with snapshots or
   child datasets only after a checkbox. The confirmation lists the datasets before the snapshots. The previews of
   destroying (datasets, pools, snapshots) and rolling back run in a `dialog.PreviewDialog` (red border, spinner,
-  what is checked, Cancel), shown at once in place of the confirmation, not with a spinner in the action dialog: that
+  what is checked, Cancel; `dialog.RunPreview` runs the check and shows the confirmation or the error), shown at once in place of the confirmation, not with a spinner in the action dialog: that
   looked like it was destroyed without a confirmation. Both are confirmed by typing the full name
   (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action dialog and command menu
   only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,

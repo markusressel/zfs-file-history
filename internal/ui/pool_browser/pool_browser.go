@@ -414,25 +414,15 @@ const maxListedDatasets = 10
 // It runs there, not in the action dialog: a spinner next to "Destroy pool" looked like it was destroyed without a
 // confirmation. Must be called on the UI thread.
 func (poolBrowser *PoolBrowserComponent) previewAndConfirmDestroy(pool string) {
-	checking := dialog.NewPreviewDialog(poolBrowser.application, " 💥 Destroy Pool ", fmt.Sprintf(
-		"Checking what destroying the pool %s would destroy: listing its datasets and where they are mounted. "+
-			"Nothing is destroyed yet.", pool))
-	poolBrowser.showDialog(checking)
-	go func() {
-		preview, err := previewDestroyPool(pool)
-		poolBrowser.application.QueueUpdateDraw(func() {
-			if !checking.Done() {
-				return // cancelled
-			}
-			if err != nil {
-				logging.Error("Cannot destroy %s: %s", pool, err.Error())
-				retry := func() { poolBrowser.previewAndConfirmDestroy(pool) }
-				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Cannot Destroy", err, retry))
-				return
-			}
-			poolBrowser.showDestroyConfirmation(preview)
-		})
-	}()
+	dialog.RunPreview(poolBrowser.application, poolBrowser.showDialog, dialog.Preview[*zfs.PoolDestroyPreview]{
+		Title: " 💥 Destroy Pool ",
+		Message: fmt.Sprintf("Checking what destroying the pool %s would destroy: listing its datasets and where they are "+
+			"mounted. Nothing is destroyed yet.", pool),
+		ErrorTitle: "Cannot Destroy", Subject: pool,
+		Check:   func() (*zfs.PoolDestroyPreview, error) { return previewDestroyPool(pool) },
+		Confirm: poolBrowser.showDestroyConfirmation,
+		Retry:   func() { poolBrowser.previewAndConfirmDestroy(pool) },
+	})
 }
 
 // showDestroyConfirmation asks for confirmation to destroy the pool as previewed: a checkbox that the data is lost

@@ -230,25 +230,15 @@ func formatDestroyDescription(entry *zfs.DatasetListEntry, preview *zfs.DestroyP
 // confirmation. Meanwhile, a dialog says that it is checked, and that nothing is destroyed yet; it can be cancelled.
 // Must be called on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) previewAndConfirmDestroy(entry *zfs.DatasetListEntry) {
-	checking := dialog.NewPreviewDialog(datasetBrowser.application, " 💥 Destroy Dataset ", fmt.Sprintf(
-		"Checking what destroying %s would destroy: a dry run, and its permissions, holds and mounts. Nothing is "+
-			"destroyed yet.", entry.Name))
-	datasetBrowser.showDialog(checking)
-	go func() {
-		preview, err := previewDestroyDataset(entry.Name)
-		datasetBrowser.application.QueueUpdateDraw(func() {
-			if !checking.Done() {
-				return // cancelled
-			}
-			if err != nil {
-				logging.Error("Cannot destroy %s: %s", entry.Name, err.Error())
-				retry := func() { datasetBrowser.previewAndConfirmDestroy(entry) }
-				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Cannot Destroy", err, retry))
-				return
-			}
-			datasetBrowser.showDestroyConfirmation(entry, preview)
-		})
-	}()
+	dialog.RunPreview(datasetBrowser.application, datasetBrowser.showDialog, dialog.Preview[*zfs.DestroyPreview]{
+		Title: " 💥 Destroy Dataset ",
+		Message: fmt.Sprintf("Checking what destroying %s would destroy: a dry run, and its permissions, holds and "+
+			"mounts. Nothing is destroyed yet.", entry.Name),
+		ErrorTitle: "Cannot Destroy", Subject: entry.Name,
+		Check:   func() (*zfs.DestroyPreview, error) { return previewDestroyDataset(entry.Name) },
+		Confirm: func(preview *zfs.DestroyPreview) { datasetBrowser.showDestroyConfirmation(entry, preview) },
+		Retry:   func() { datasetBrowser.previewAndConfirmDestroy(entry) },
+	})
 }
 
 // showDestroyConfirmation asks for confirmation to destroy the dataset as the dry run says. If it has snapshots or
