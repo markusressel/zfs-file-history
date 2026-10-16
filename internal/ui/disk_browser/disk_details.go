@@ -101,40 +101,21 @@ func (view *detailsView) Draw(screen tcell.Screen) {
 	if component.onShowPool == nil {
 		return
 	}
-	x, y, width, height := view.GetInnerRect()
-	row, column := view.GetScrollOffset()
+	onShowPool := component.onShowPool
+	links := make([]clickable.TextLink, 0, len(component.poolLinks))
 	for _, link := range component.poolLinks {
-		linkY := y + link.line - row
-		if linkY < y || linkY >= y+height {
-			continue
-		}
-		start := max(x+link.column-column, x)
-		end := min(x+link.column-column+link.width, x+width)
-		onShowPool, pool := component.onShowPool, link.pool
-		component.regions.Add(clickable.Region{
-			X: start, Y: linkY, Width: end - start, Key: pool,
-			HoverBackground: theme.Colors.Pool.HoverBackground,
-			OnClick:         func() { onShowPool(pool) },
-		})
+		links = append(links, clickable.TextLink{Line: link.line, Column: link.column, Width: link.width, Key: link.pool,
+			OnClick: func() { onShowPool(link.pool) }})
 	}
+	component.regions.AddTextLinks(view, links, theme.Colors.Pool.HoverBackground)
 }
 
 // MouseHandler shows a pool when its name is clicked (see clickable.Regions), and otherwise handles the mouse like
 // the text view (e.g. scrolling), without focusing it: there is nothing to do in it, like Tab skips it.
 func (view *detailsView) MouseHandler() uiutil.MouseHandler {
-	textViewHandler := uiutil.WithoutFocus(view.TextView.MouseHandler())
-	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		component := view.component
-		consumed, captures := component.regions.HandleMouse(action, event, component.enabled() && view.InRect(event.Position()))
-		if !consumed {
-			consumed, capture = textViewHandler(action, event, setFocus)
-		}
-		if capture == nil && captures {
-			// to learn when the mouse leaves
-			capture = view
-		}
-		return consumed, capture
-	}
+	component := view.component
+	return component.regions.WrapMouseHandler(view, func() bool { return component.enabled() },
+		uiutil.WithoutFocus(view.TextView.MouseHandler()))
 }
 
 // detailsLayout is the layout of the details above the attributes: drawing it renders the details again for its

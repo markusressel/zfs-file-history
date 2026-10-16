@@ -253,7 +253,10 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   adds each part where it draws it (`Reset`, `Add`, `DrawHover` at the end), the mouse handler calls `HandleMouse`.
   No second layout for hit testing. A region's `Key` identifies it across draws (regions with the same key are
   highlighted together); the last added region wins where they overlap. Regions exist once drawn: UI tests draw
-  (`app.ForceDraw()`) before sending mouse events.
+  (`app.ForceDraw()`) before sending mouse events. Links in a text (the name of a pool, the fields of the devices)
+  are `clickable.TextLink`s by their position in the text (`AddTextLinks` places them, scrolled and cut off); a
+  primitive with regions takes `Regions.WrapMouseHandler`: a click on a region runs it, everything else (pressing,
+  which focuses, scrolling) goes on to the primitive, also on a region.
 - **tview hands mouse events to all pages until one consumes them** (rivo/tview#926). Dialogs consume clicks next to
   them; things on a page that react to the mouse check `isInFront` (splits, the shortcut bar), so they do nothing
   while a dialog is in front.

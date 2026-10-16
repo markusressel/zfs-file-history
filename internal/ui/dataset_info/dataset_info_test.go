@@ -456,6 +456,24 @@ func TestDatasetInfo_ClickOnPoolShowsIt(t *testing.T) {
 	}
 }
 
+// Regression: a click into the dataset info did not focus it (the clickable name of the pool took all clicks), so its
+// keys could not be used after a click.
+func TestDatasetInfo_ClickFocuses(t *testing.T) {
+	app, screen := testutil.NewApp()
+	datasetInfo := NewDatasetInfo(app)
+	other := tview.NewBox()
+	testutil.StartApp(t, app, tview.NewFlex().AddItem(datasetInfo.GetLayout(), 0, 1, false).AddItem(other, 0, 1, true))
+	testutil.OnUiThread(t, app, func() {
+		datasetInfo.updateUi(&datasetInfoResult{dataset: &zfs.Dataset{Path: "/home"}, title: "Dataset: rpool/home", facts: homeFacts()})
+	})
+	x, y, found := testutil.FindText(t, app, screen, "Compression")
+	require.True(t, found)
+	testutil.Click(t, app, screen, x, y)
+	focused := false
+	testutil.OnUiThread(t, app, func() { focused = datasetInfo.HasFocus() })
+	assert.True(t, focused)
+}
+
 // Regression: the dataset info did not wrap its lines, and the page gives it at most a share of the width, so on a
 // small terminal the ends of long values were cut off. They are wrapped at the width of the pane, and the name of the
 // pool can still be clicked where it is drawn then.
