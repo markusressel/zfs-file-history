@@ -270,7 +270,9 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
 - Panes are split with `uiutil.ResizableSplit` (via `basePage.newSplit`, registered with `captureSplitDrags`). The
   boundary can be dragged; a right click on it goes back to the automatic size.
 - `SetAutoSize` sizes the first pane by its content on every draw (e.g. the dataset info and the pool status fit
-  their text, capped with `uiutil.FitContent`). A drag overrides it, per direction.
+  their text, capped with `uiutil.FitContent`). A drag overrides it, per direction. Where the cap leaves an
+  `InfoText` pane narrower than its text, its lines are wrapped at the width it got (`InfoText.Wrap`, again when the
+  width changes), not cut off; its `ContentSize` stays the width of the text not wrapped.
 - `SetVerticalFunc` switches between side by side and stacked depending on the available space (the pools page:
   side by side if the pools and the widest of status and devices fit). Each direction keeps its own sizes.
 - Components that are sized by their content have `ContentSize() (width, height)`, including their border (0 if

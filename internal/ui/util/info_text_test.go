@@ -72,6 +72,13 @@ func TestInfoText_WrappedLines(t *testing.T) {
 		plain[i] = testutil.StripTags(line)
 	}
 	assert.Equal(t, []string{"Error", "smartctl", "failed: no", "such device", "Temp   40°C"}, plain[len(plain)-5:])
+
+	// where the values are, e.g. to click one
+	_, positions := info.Wrap(20)
+	assert.Equal(t, []InfoPosition{{0, 0}, {2, 0}, {3, 0}, {4, 7}, {7, 7}}, positions)
+	_, positions = info.Wrap(12)
+	assert.Equal(t, InfoPosition{Line: 6}, positions[3], "below its label")
+	assert.Equal(t, InfoPosition{Line: 9, Column: 7}, positions[4], "fits")
 }
 
 func TestInfoBar(t *testing.T) {

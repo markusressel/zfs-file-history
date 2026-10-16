@@ -2,6 +2,7 @@ package dataset_info
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -261,7 +262,7 @@ func homeFacts() *datasetFacts {
 }
 
 func infoLines(facts *datasetFacts) []string {
-	return strings.Split(testutil.StripTags(formatInfo(facts)), "\n")
+	return strings.Split(testutil.StripTags(formatInfo(facts, 0)), "\n")
 }
 
 func TestFormatInfo(t *testing.T) {
@@ -285,7 +286,7 @@ func TestFormatInfo(t *testing.T) {
 		"Permissions     snapshot, mount",
 	}, infoLines(facts), "defaults that say nothing are left out (read-only, can mount)")
 	// the verdict is green: all is well
-	assert.True(t, strings.HasPrefix(formatInfo(facts), txwidgets.ColorTag(uiutil.InfoOk.Color())+"●"))
+	assert.True(t, strings.HasPrefix(formatInfo(facts, 0), txwidgets.ColorTag(uiutil.InfoOk.Color())+"●"))
 }
 
 func TestFormatInfo_Verdict(t *testing.T) {
@@ -316,7 +317,7 @@ func TestFormatInfo_Verdict(t *testing.T) {
 			facts := homeFacts()
 			test.change(facts)
 			assert.Equal(t, test.verdict, infoLines(facts)[0])
-			assert.True(t, strings.HasPrefix(formatInfo(facts), txwidgets.ColorTag(test.state.Color())+"●"), "the dot in the color of the worst part")
+			assert.True(t, strings.HasPrefix(formatInfo(facts, 0), txwidgets.ColorTag(test.state.Color())+"●"), "the dot in the color of the worst part")
 		})
 	}
 }
@@ -330,7 +331,7 @@ func TestFormatInfo_Quota(t *testing.T) {
 	assert.Equal(t, "████████████████▊    84% of 400 GiB quota · 64 GiB free", lines[2], "and the quota")
 
 	facts.available = facts.poolAvailable + 10*gib
-	assert.NotContains(t, formatInfo(facts), "quota", "more than the pool has: a reservation, not a quota")
+	assert.NotContains(t, formatInfo(facts, 0), "quota", "more than the pool has: a reservation, not a quota")
 }
 
 func TestFormatInfo_PoolRoot(t *testing.T) {
@@ -353,7 +354,7 @@ func TestFormatInfo_PoolSpaceUnknown(t *testing.T) {
 
 func TestFormatInfo_PoolBarColors(t *testing.T) {
 	facts := homeFacts()
-	text := formatInfo(facts)
+	text := formatInfo(facts, 0)
 	colors := theme.Colors.Info
 	for _, color := range []tcell.Color{colors.SpaceData, colors.SpaceSnapshots, colors.SpaceChildren, colors.SpaceOthers} {
 		assert.Contains(t, text, txwidgets.Span(color, "■"), "a swatch for each part of the bar")
@@ -383,22 +384,46 @@ func TestFormatInfo_Unknown(t *testing.T) {
 	assert.Contains(t, lines, "Snapshots       ■ 0 B")
 	assert.Contains(t, lines, "Permissions     unknown")
 	// dimmed: they say little
-	text := formatInfo(facts)
+	text := formatInfo(facts, 0)
 	assert.Contains(t, text, uiutil.InfoMuted("off"))
 	assert.Contains(t, text, uiutil.InfoMuted("0 B"))
 	assert.Contains(t, text, uiutil.InfoMuted("unknown"))
 }
 
-// The link to the pool is where its name is in the text: after the label, on the line of the field.
+// The link to the pool is where its name is in the text: after the label, on the line of the field, also where lines
+// above it are wrapped, or it is below its label.
 func TestFormatInfo_PoolLink(t *testing.T) {
-	text, link := formatInfoWithPoolLink(homeFacts())
+	facts := homeFacts()
+	facts.mountPoint = "/home/with/a/long/mount/point"
+	for _, width := range []int{0, 30, 20} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			text, link := formatInfoWithPoolLink(facts, width)
 
-	lines := strings.Split(testutil.StripTags(text), "\n")
-	require.Less(t, link.line, len(lines))
-	line := []rune(lines[link.line])
-	require.LessOrEqual(t, link.column+link.width, len(line))
-	assert.Equal(t, "rpool", string(line[link.column:link.column+link.width]))
-	assert.Equal(t, "rpool", link.pool)
+			lines := strings.Split(testutil.StripTags(text), "\n")
+			require.Less(t, link.line, len(lines))
+			line := []rune(lines[link.line])
+			require.LessOrEqual(t, link.column+link.width, len(line), lines)
+			assert.Equal(t, "rpool", string(line[link.column:link.column+link.width]), lines)
+			assert.Equal(t, "rpool", link.pool)
+		})
+	}
+}
+
+// Lines wider than the pane are wrapped, the further lines of a value below its first one.
+func TestFormatInfo_Wrapped(t *testing.T) {
+	facts := homeFacts()
+	facts.permissions = "snapshot, mount, create, destroy, rollback, send"
+	lines := strings.Split(formatInfo(facts, 40), "\n")
+	for _, line := range lines {
+		assert.LessOrEqual(t, tview.TaggedStringWidth(line), 40, testutil.StripTags(line))
+	}
+	plain := strings.Split(testutil.StripTags(strings.Join(lines, "\n")), "\n")
+	assert.Equal(t, []string{
+		"Permissions     snapshot, mount,",
+		"                create, destroy,",
+		"                rollback, send",
+	}, plain[len(plain)-3:])
+	assert.Equal(t, infoLines(facts), strings.Split(testutil.StripTags(formatInfo(facts, 80)), "\n"), "fits")
 }
 
 // A click on the name of the pool shows the pool (on the pools page, see CreateUi), the rest of the text does not.
@@ -423,6 +448,44 @@ func TestDatasetInfo_ClickOnPoolShowsIt(t *testing.T) {
 	testutil.Click(t, app, screen, poolX-3, poolY)
 	assert.Empty(t, shown, "the label is not the link")
 	testutil.Click(t, app, screen, poolX+2, poolY)
+	select {
+	case pool := <-shown:
+		assert.Equal(t, "rpool", pool)
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "the pool was not shown")
+	}
+}
+
+// Regression: the dataset info did not wrap its lines, and the page gives it at most a share of the width, so on a
+// small terminal the ends of long values were cut off. They are wrapped at the width of the pane, and the name of the
+// pool can still be clicked where it is drawn then.
+func TestDatasetInfo_WrapsToItsWidth(t *testing.T) {
+	app, screen := testutil.NewApp()
+	screen.SetSize(44, 30)
+	datasetInfo := NewDatasetInfo(app)
+	testutil.StartApp(t, app, datasetInfo.GetLayout())
+	shown := make(chan string, 10)
+	facts := homeFacts()
+	facts.mountPoint = "/home/with/a/long/mount/point"
+	facts.permissions = "snapshot, mount, create, destroy, rollback, send"
+	testutil.OnUiThread(t, app, func() {
+		datasetInfo.SetOnShowPool(func(pool string) { shown <- pool })
+		datasetInfo.updateUi(&datasetInfoResult{dataset: &zfs.Dataset{Path: "/home"}, title: "Dataset: rpool/home", facts: facts})
+	})
+
+	text := testutil.ScreenText(t, app, screen)
+	assert.Contains(t, text, "║ ● mounted at /home/with/a/long/mount/    ║\n║   point ")
+	assert.Contains(t, text, "║ Permissions     snapshot, mount,         ║\n"+
+		"║                 create, destroy,         ║\n"+
+		"║                 rollback, send           ║")
+
+	var contentWidth int
+	testutil.OnUiThread(t, app, func() { contentWidth, _ = datasetInfo.ContentSize() })
+	assert.Greater(t, contentWidth, 44, "the width it needs not wrapped, so the page gives it more if it can")
+
+	x, y, found := testutil.FindText(t, app, screen, "rpool ONLINE")
+	require.True(t, found, text)
+	testutil.Click(t, app, screen, x+2, y)
 	select {
 	case pool := <-shown:
 		assert.Equal(t, "rpool", pool)
