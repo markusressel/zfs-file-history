@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// The actions on datasets that lose data (destroying a clone, rolling back) work in two steps: a preview lists what
+// The actions on datasets that lose data (destroying a dataset, rolling back) work in two steps: a preview lists what
 // would be lost, without changing anything, and the action takes the confirmed preview. It checks everything again
 // and refuses if the result differs from what was confirmed (ErrChangedSinceConfirmation), so it never destroys more
 // than the user saw. Neither ever uses "-R", which would also destroy clones, wherever they are.
@@ -51,36 +51,39 @@ func CreateSnapshot(dataset string, name string, recursive bool) error {
 // cloneOrigin returns the origin of the dataset (the full name of the snapshot it was cloned from), or an error if it
 // is not a clone. It reads the property again, the listed datasets may be outdated.
 func cloneOrigin(name string, action string) (string, error) {
-	properties, err := cloneProperties(name, action)
+	if err := validateDatasetName(name); err != nil {
+		return "", err
+	}
+	properties, err := backend.DatasetProperties(name)
 	if err != nil {
 		return "", err
+	}
+	if !IsClone(properties[propOrigin]) {
+		return "", fmt.Errorf("cannot %s: '%s' is not a clone", action, name)
 	}
 	return properties[propOrigin], nil
 }
 
-// cloneProperties returns the datasetProperties of the dataset, or an error if it is not a clone, see cloneOrigin.
-func cloneProperties(name string, action string) (map[string]string, error) {
+// protectedMountPaths are the paths of the running system: datasets mounted there (or below "/boot") are never
+// destroyed. zfs would destroy the other datasets of a recursive destroy first and then fail to unmount the busy one,
+// or destroy the system it runs on.
+var protectedMountPaths = []string{"/", "/boot", "/etc", "/opt", "/root", "/srv", "/usr", "/var"}
+
+// PreviewDestroyDataset does a dry run of destroying the dataset with the given name, together with its snapshots
+// and descendants ("zfs destroy -nvp -r"): DestroyPreview.Destroyed lists all of them, including the dataset. It
+// refuses the root dataset of a pool, datasets the running system is mounted from (protectedMountPaths), missing
+// permissions and held snapshots, so the destroy does not fail halfway. The dry run fails if snapshots that would
+// be destroyed have clones, those are never destroyed with it.
+// This spawns zfs processes, so it must not be called on the UI thread.
+func PreviewDestroyDataset(name string) (*DestroyPreview, error) {
+	const action = "destroy the dataset"
 	if err := validateDatasetName(name); err != nil {
 		return nil, err
 	}
+	if !strings.Contains(name, "/") {
+		return nil, fmt.Errorf("cannot %s: '%s' is the root dataset of a pool, which is only destroyed with the pool", action, name)
+	}
 	properties, err := backend.DatasetProperties(name)
-	if err != nil {
-		return nil, err
-	}
-	if !IsClone(properties[propOrigin]) {
-		return nil, fmt.Errorf("cannot %s: '%s' is not a clone", action, name)
-	}
-	return properties, nil
-}
-
-// PreviewDestroyClone does a dry run of destroying the clone with the given name, together with its snapshots and
-// descendants ("zfs destroy -nvp -r"): DestroyPreview.Destroyed lists all of them, including the clone. It refuses
-// datasets that are not clones, missing permissions and held snapshots, so the destroy does not fail halfway. The dry
-// run fails if snapshots of the clone have clones themselves, those are never destroyed with it.
-// This spawns zfs processes, so it must not be called on the UI thread.
-func PreviewDestroyClone(name string) (*DestroyPreview, error) {
-	const action = "destroy the clone"
-	properties, err := cloneProperties(name, action)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +95,7 @@ func PreviewDestroyClone(name string) (*DestroyPreview, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot %s: %w", action, err)
 	}
-	// zfs prints the reclaimed space only for snapshots: the clone frees what it uses, with its snapshots and
+	// zfs prints the reclaimed space only for snapshots: the dataset frees what it uses, with its snapshots and
 	// descendants
 	if preview.Reclaim == 0 {
 		preview.Reclaim, _ = strconv.ParseUint(properties[propUsed], 10, 64)
@@ -103,18 +106,49 @@ func PreviewDestroyClone(name string) (*DestroyPreview, error) {
 	var snapshots []string
 	for _, destroyed := range preview.Destroyed {
 		if !isWithinDataset(destroyed, name) {
-			// zfs never lists anything else for "-r", but nothing outside the clone is destroyed, whatever happens
+			// zfs never lists anything else for "-r", but nothing outside the dataset is destroyed, whatever happens
 			return nil, fmt.Errorf("cannot %s: the dry run lists '%s', which is not part of it", action, destroyed)
 		}
 		if strings.Contains(destroyed, "@") {
 			snapshots = append(snapshots, destroyed)
 		}
 	}
+	if err := refuseSystemMounts(preview.Destroyed, action); err != nil {
+		return nil, err
+	}
 	// the dry run does not check holds, the destroy would fail with "dataset is busy"
 	if err := refuseHeld(snapshots, action); err != nil {
 		return nil, err
 	}
 	return preview, nil
+}
+
+// refuseSystemMounts returns an error if any of the datasets (full names, snapshots are skipped) is mounted at one
+// of the protectedMountPaths.
+func refuseSystemMounts(names []string, action string) error {
+	datasets, err := backend.ListDatasets()
+	if err != nil {
+		return err
+	}
+	var mounted []string
+	for _, dataset := range datasets {
+		if dataset.MountPath != "" && slices.Contains(names, dataset.Name) && isSystemPath(dataset.MountPath) {
+			mounted = append(mounted, fmt.Sprintf("%s (%s)", dataset.Name, dataset.MountPath))
+		}
+	}
+	if len(mounted) > 0 {
+		return fmt.Errorf("cannot %s: the running system is mounted from datasets that would be destroyed:%s", action, formatNames(mounted))
+	}
+	return nil
+}
+
+// isSystemPath returns whether path is one of the protectedMountPaths, or below "/boot".
+func isSystemPath(path string) bool {
+	path = strings.TrimSuffix(path, "/")
+	if path == "" {
+		path = "/"
+	}
+	return slices.Contains(protectedMountPaths, path) || strings.HasPrefix(path, "/boot/")
 }
 
 // isWithinDataset returns whether name is the dataset, one of its descendants, or a snapshot or bookmark of either.
@@ -126,16 +160,16 @@ func isWithinDataset(name string, dataset string) bool {
 	return found && rest != "" && strings.ContainsRune("/@#", rune(rest[0]))
 }
 
-// DestroyClone destroys the clone with the given name exactly as confirmed, a preview of PreviewDestroyClone. Without
-// recursive it refuses a clone with snapshots or descendants, with it they are destroyed as well ("zfs destroy -r").
-// Returns ErrChangedSinceConfirmation if the clone changed since the preview.
+// DestroyDataset destroys the dataset with the given name exactly as confirmed, a preview of PreviewDestroyDataset.
+// Without recursive it refuses a dataset with snapshots or descendants, with it they are destroyed as well
+// ("zfs destroy -r"). Returns ErrChangedSinceConfirmation if the dataset changed since the preview.
 // This spawns zfs processes, so it must not be called on the UI thread.
-func DestroyClone(name string, recursive bool, confirmed *DestroyPreview) error {
-	const action = "destroy the clone"
+func DestroyDataset(name string, recursive bool, confirmed *DestroyPreview) error {
+	const action = "destroy the dataset"
 	if confirmed == nil {
 		return fmt.Errorf("cannot %s: not confirmed", action)
 	}
-	preview, err := PreviewDestroyClone(name)
+	preview, err := PreviewDestroyDataset(name)
 	if err != nil {
 		return err
 	}
