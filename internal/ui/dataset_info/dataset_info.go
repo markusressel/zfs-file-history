@@ -34,6 +34,12 @@ type DatasetInfoComponent struct {
 
 	// dataset is the currently displayed dataset. It is only used on the UI thread after it was loaded.
 	dataset *zfs.Dataset
+	// shown is the result displayed, nil: none
+	shown *datasetInfoResult
+	// renderedWidth is the width the text was wrapped at (0: not wrapped), see render
+	renderedWidth int
+	// contentWidth is the width of the widest line of the text, not wrapped, see ContentSize
+	contentWidth int
 	// poolLink is where the name of the pool is shown, which can be clicked (see infoView)
 	poolLink poolLink
 	// regions are the parts of the text that can be clicked: the name of the pool
@@ -62,11 +68,15 @@ func (datasetInfo *DatasetInfoComponent) SetEnabledFunc(enabled func() bool) {
 	datasetInfo.enabled = enabled
 }
 
-// Draw draws the text, and adds the name of the pool, which can be clicked, where it is shown.
+// Draw draws the text, wrapped again if the width changed, and adds the name of the pool, which can be clicked, where
+// it is shown.
 func (view *infoView) Draw(screen tcell.Screen) {
+	datasetInfo := view.datasetInfo
+	if _, _, width, _ := view.GetInnerRect(); datasetInfo.shown != nil && width != datasetInfo.renderedWidth {
+		datasetInfo.render(width)
+	}
 	view.TextView.Draw(screen)
 
-	datasetInfo := view.datasetInfo
 	datasetInfo.regions.Reset()
 	defer datasetInfo.regions.DrawHover(screen)
 	link := datasetInfo.poolLink
@@ -484,9 +494,10 @@ func poolState(state string) uiutil.InfoState {
 }
 
 // formatInfo returns the text of the dataset info: whether all is well (see verdict), how full it is, what uses the
-// space, then what else is known about it. Defaults that say nothing (e.g. not read-only) are left out.
-func formatInfo(facts *datasetFacts) string {
-	text, _ := formatInfoWithPoolLink(facts)
+// space, then what else is known about it. Defaults that say nothing (e.g. not read-only) are left out. Lines wider
+// than width are wrapped (see uiutil.InfoText.WrappedLines), 0: none.
+func formatInfo(facts *datasetFacts, width int) string {
+	text, _ := formatInfoWithPoolLink(facts, width)
 	return text
 }
 
@@ -499,9 +510,10 @@ type poolLink struct {
 }
 
 // formatInfoWithPoolLink returns the text of formatInfo, and where the name of the pool is in it.
-func formatInfoWithPoolLink(facts *datasetFacts) (string, poolLink) {
+func formatInfoWithPoolLink(facts *datasetFacts, width int) (string, poolLink) {
 	var info uiutil.InfoText
 	var link poolLink
+	poolField := -1
 	info.Verdict(verdict(facts)...)
 	if bar := formatPoolBar(facts); bar != "" {
 		info.Line(bar)
@@ -536,7 +548,8 @@ func formatInfoWithPoolLink(facts *datasetFacts) (string, poolLink) {
 			pool = uiutil.InfoValue(facts.poolName) + " " + txwidgets.Span(poolState(facts.pool.State).Color(), "%s", facts.pool.State) +
 				uiutil.InfoMuted(" · "+formatPoolScan(facts.pool))
 		}
-		link = poolLink{pool: facts.poolName, line: info.LineCount(), width: tview.TaggedStringWidth(tview.Escape(facts.poolName))}
+		poolField = info.LineCount()
+		link = poolLink{pool: facts.poolName, width: tview.TaggedStringWidth(tview.Escape(facts.poolName))}
 		info.Field("Pool", pool)
 	}
 	if !facts.created.IsZero() {
@@ -561,9 +574,16 @@ func formatInfoWithPoolLink(facts *datasetFacts) (string, poolLink) {
 		permissions = uiutil.InfoMuted(facts.permissions)
 	}
 	info.Field("Permissions", permissions)
-	// the labels are padded to the longest one, known once all fields are added
-	link.column = info.ValueColumn()
-	return info.String(), link
+	lines, positions := info.Wrap(width)
+	if poolField >= 0 {
+		// a wrapped line above moves it down, a narrow pane below its label
+		link.line, link.column = positions[poolField].Line, positions[poolField].Column
+		// the name is not wrapped: it comes first, and is short
+		if width > 0 {
+			link.width = min(link.width, width-link.column)
+		}
+	}
+	return strings.Join(lines, "\n"), link
 }
 
 // verdict returns the parts of the verdict line: the problems (the pool, a key that is not loaded, how full it is),
@@ -635,14 +655,26 @@ func formatCompression(facts *datasetFacts) string {
 // It only uses the pre-fetched values of the result and must not call into ZFS.
 func (datasetInfo *DatasetInfoComponent) updateUi(result *datasetInfoResult) {
 	if result == nil {
+		datasetInfo.shown = nil
 		datasetInfo.textView.Clear()
 		uiutil.SetupWindow(datasetInfo.textView, "Dataset")
 		datasetInfo.poolLink = poolLink{}
 		return
 	}
 
+	datasetInfo.shown = result
 	uiutil.SetupWindow(datasetInfo.textView, result.title)
-	text, link := formatInfoWithPoolLink(result.facts)
+	unwrapped, _ := formatInfoWithPoolLink(result.facts, 0)
+	datasetInfo.contentWidth, _ = uiutil.TextSize(unwrapped)
+	datasetInfo.render(datasetInfo.renderedWidth)
+}
+
+// render shows the text of the shown dataset, its lines wrapped at width, 0: not wrapped (before the view was drawn).
+// The page sizes the pane by its content (see ContentSize), but only up to a share of the screen: the lines that do
+// not fit then are wrapped instead of cut off. Must be called on the UI thread.
+func (datasetInfo *DatasetInfoComponent) render(width int) {
+	datasetInfo.renderedWidth = width
+	text, link := formatInfoWithPoolLink(datasetInfo.shown.facts, width)
 	datasetInfo.textView.SetText(text)
 	datasetInfo.poolLink = link
 }
@@ -666,13 +698,16 @@ func (datasetInfo *DatasetInfoComponent) SetBorderColor(color tcell.Color) {
 	}
 }
 
-// ContentSize returns the size needed to show all of the text, including the border and its padding. Must be called
-// on the UI thread.
+// ContentSize returns the size needed to show all of the text, including the border and its padding: the width of
+// the text not wrapped, so the page gives it all the width it needs, and the height of the text as wrapped at the
+// width it got. Must be called on the UI thread.
 func (datasetInfo *DatasetInfoComponent) ContentSize() (width int, height int) {
-	width, height = uiutil.TextViewContentSize(datasetInfo.textView.TextView)
-	if width == 0 {
+	_, height = uiutil.TextViewContentSize(datasetInfo.textView.TextView)
+	if height == 0 {
 		return 0, 0
 	}
+	// and the border
+	width = datasetInfo.contentWidth + 2
 	// the padding, see NewDatasetInfo, and the scrollbar while not all lines fit
 	return width + 2 + datasetInfo.textView.BarWidth(), height
 }

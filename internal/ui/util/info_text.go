@@ -214,36 +214,62 @@ const verdictIndent = 2
 
 // WrappedLines returns the lines of the text like Lines, but wraps the lines wider than width (e.g. a long error on a
 // narrow pane) instead of letting the pane cut them off. A value is wrapped next to its label, its further lines
-// aligned below its first one, so the labels stay readable as a column; the verdict below its first part. A width of
-// 0 or less does not wrap.
+// aligned below its first one, so the labels stay readable as a column; where that leaves it less than half of the
+// width, it is below its label. The verdict is wrapped below its first part. A width of 0 or less does not wrap.
 func (info *InfoText) WrappedLines(width int) []string {
+	lines, _ := info.Wrap(width)
+	return lines
+}
+
+// InfoPosition is where the value of a line of an InfoText is after wrapping (see Wrap): the wrapped line its value
+// starts on, and the column.
+type InfoPosition struct {
+	Line, Column int
+}
+
+// Wrap returns the lines of WrappedLines, and for each line added to the text where its value starts (for lines that
+// are not fields, where the line starts), e.g. to find a value that can be clicked.
+func (info *InfoText) Wrap(width int) ([]string, []InfoPosition) {
 	lines := info.Lines()
-	if width <= 0 {
-		return lines
-	}
 	labelWidth := info.labelWidth()
 	valueColumn := info.ValueColumn()
 	wrapped := make([]string, 0, len(lines))
+	positions := make([]InfoPosition, len(lines))
 	for i, line := range lines {
+		field := info.lines[i]
 		switch {
-		case tview.TaggedStringWidth(line) <= width:
+		case width <= 0 || tview.TaggedStringWidth(line) <= width:
+			if field.isField {
+				positions[i] = InfoPosition{Line: len(wrapped), Column: valueColumn}
+			} else {
+				positions[i] = InfoPosition{Line: len(wrapped)}
+			}
 			wrapped = append(wrapped, line)
-		// a value squeezed into a few columns is harder to read than one below its label
-		case info.lines[i].isField && width-valueColumn >= width/2:
-			parts := wrapLine(info.lines[i].value, width-valueColumn, 0)
-			wrapped = append(wrapped, fieldPrefix(info.lines[i].label, labelWidth)+parts[0])
+		case field.isField && width-valueColumn >= width/2:
+			positions[i] = InfoPosition{Line: len(wrapped), Column: valueColumn}
+			parts := wrapLine(field.value, width-valueColumn, 0)
+			wrapped = append(wrapped, fieldPrefix(field.label, labelWidth)+parts[0])
 			padding := strings.Repeat(" ", valueColumn)
 			for _, part := range parts[1:] {
 				wrapped = append(wrapped, padding+part)
 			}
 			wrapped[len(wrapped)-1] += "[-]"
-		case info.lines[i].isVerdict:
+		case field.isField:
+			// a value squeezed into a few columns is harder to read than one below its label
+			if field.label != "" {
+				wrapped = append(wrapped, txwidgets.Span(theme.Colors.Info.Label, "%s", field.label))
+			}
+			positions[i] = InfoPosition{Line: len(wrapped)}
+			wrapped = append(wrapped, wrapLine(txwidgets.ColorTag(theme.Colors.Info.Value)+field.value+"[-]", width, 0)...)
+		case field.isVerdict:
+			positions[i] = InfoPosition{Line: len(wrapped)}
 			wrapped = append(wrapped, wrapLine(line, width, verdictIndent)...)
 		default:
+			positions[i] = InfoPosition{Line: len(wrapped)}
 			wrapped = append(wrapped, wrapLine(line, width, 0)...)
 		}
 	}
-	return wrapped
+	return wrapped, positions
 }
 
 // wrapLine wraps the line (with style tags) at width, the further lines indented by indent columns. They take the
