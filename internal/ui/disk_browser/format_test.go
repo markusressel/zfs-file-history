@@ -43,11 +43,11 @@ func ataReport() disk.SmartReport {
 		Problems: []disk.SmartProblem{reallocated},
 		Attributes: []disk.SmartAttribute{
 			{Id: 5, Name: "Reallocated_Sector_Ct", Value: "8", Raw: 8, Normalized: 199, Worst: 199, Threshold: 140, Important: true,
-				Used: 1.0 / 60, UsedKnown: true},
+				Risk: 0, RiskKnown: true},
 			{Id: 9, Name: "Power_On_Hours", Value: "8760", Raw: 8760, Normalized: 52, Worst: 52, Threshold: 0},
 			{Id: 194, Name: "Temperature_Celsius", Value: "35 (Min/Max 20/45)", Raw: 35, Normalized: 115, Worst: 100, Threshold: 0},
 			{Id: 190, Name: "Airflow_Temperature_Cel", Value: "62", Raw: 62, Normalized: 38, Worst: 30, Threshold: 40, Failed: "now",
-				Used: 1, UsedKnown: true},
+				Risk: 1, RiskKnown: true},
 		},
 	}
 }
@@ -168,11 +168,12 @@ func TestFormatDetails_PoolLinks(t *testing.T) {
 	}
 }
 
-func TestFormatUsed(t *testing.T) {
-	assert.Equal(t, "", formatUsed(disk.SmartAttribute{Used: 0.5}), "not known: cannot fail")
-	assert.Equal(t, "           0%", testutil.StripTags(formatUsed(disk.SmartAttribute{UsedKnown: true})), "an empty bar")
-	assert.Equal(t, "████      50%", testutil.StripTags(formatUsed(disk.SmartAttribute{Used: 0.5, UsedKnown: true})))
-	assert.Equal(t, "████████ 100%", testutil.StripTags(formatUsed(disk.SmartAttribute{Used: 1, UsedKnown: true})))
+func TestFormatRisk(t *testing.T) {
+	assert.Equal(t, "", formatRisk(disk.SmartAttribute{Risk: 0.5}), "not known: cannot fail")
+	assert.Equal(t, "           0%", testutil.StripTags(formatRisk(disk.SmartAttribute{RiskKnown: true})), "an empty bar")
+	assert.Equal(t, "████      50%", testutil.StripTags(formatRisk(disk.SmartAttribute{Risk: 0.5, RiskKnown: true})))
+	assert.Equal(t, "████████  99%", testutil.StripTags(formatRisk(disk.SmartAttribute{Risk: 0.996, RiskKnown: true})), "100% only when failing")
+	assert.Equal(t, "████████ 100%", testutil.StripTags(formatRisk(disk.SmartAttribute{Risk: 1, RiskKnown: true})))
 }
 
 func TestFormatDetailsTemperature(t *testing.T) {

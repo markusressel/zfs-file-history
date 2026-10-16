@@ -291,7 +291,7 @@ func TestSortAttributes(t *testing.T) {
 		{attributeColumnNorm, false, []int{190, 9, 240, 194, 5}},
 		{attributeColumnFailed, false, []int{190, 5, 9, 194, 240}},
 		// the ones that cannot fail first, in the order of smartctl
-		{attributeColumnUsed, false, []int{9, 194, 240, 5, 190}},
+		{attributeColumnRisk, false, []int{9, 194, 240, 5, 190}},
 	}
 	for _, test := range tests {
 		t.Run(test.column.Key, func(t *testing.T) {
@@ -498,16 +498,23 @@ func TestDiskDetails_PoolNotClickedBehindDialog(t *testing.T) {
 	testutil.OnUiThread(t, dt.app, func() { assert.Empty(t, shown) })
 }
 
-// The attributes that can fail show how far they went toward it, sorted by it with the most used first.
-func TestDiskDetails_UsedColumn(t *testing.T) {
+// The attributes that can fail show how close they are to it; sorted by it (a click on the header), the closest come
+// first.
+func TestDiskDetails_RiskColumn(t *testing.T) {
 	dt := newDiskBrowserTest(t)
 	text := dt.screenText()
-	assert.Contains(t, text, "Thresh Used ")
+	assert.Contains(t, text, "Thresh Risk ")
 	assert.Contains(t, text, "    40 ████████ 100%")
-	assert.Contains(t, text, "   140 ▏          2%")
+	assert.Contains(t, text, "   140            0%")
 
-	testutil.OnUiThread(t, dt.app, func() { dt.details.tableContainer.SortBy(attributeColumnUsed, true) })
-	testutil.OnUiThread(t, dt.app, func() { dt.details.tableContainer.SetData(dt.details.tableContainer.GetAllEntries()) })
+	// the first click selects the header, the next ones sort by the column and toggle the direction
+	for range 3 {
+		if strings.Contains(dt.screenText(), "Risk ↓") {
+			break
+		}
+		testutil.ClickText(t, dt.app, dt.screen, "Risk")
+	}
+	require.Contains(t, dt.screenText(), "Risk ↓")
 	assert.Equal(t, []string{"Airflow_Temperature_Cel", "Reallocated_Sector_Ct"}, dt.attributeNames()[:2])
 }
 
