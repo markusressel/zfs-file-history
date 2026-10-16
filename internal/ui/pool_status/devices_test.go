@@ -179,11 +179,33 @@ func TestFormatDevices_Temperatures(t *testing.T) {
 	column := len(" NAME               STATE      READ WRITE CKSUM  ")
 	assert.Equal(t, []clickableField{
 		{device: "sda", width: temperatureWidth, line: 3, column: column},
-		{device: "sdc", width: temperatureWidth, line: 5, column: column},
-		{device: "sde", width: temperatureWidth, line: 6, column: column},
+		{device: "sdc", idle: true, width: temperatureWidth, line: 5, column: column},
+		{device: "sde", idle: true, width: temperatureWidth, line: 6, column: column},
 		{device: "nvme0n1p1", width: temperatureWidth, line: 9, column: column},
 		{device: "sdg", width: temperatureWidth, line: 12, column: column},
-	}, fields)
+	}, fieldsOfKind(fields, fieldTemperature))
+
+	// the names of the ones on disks, also without sensor, show them on the disks page; columns in cells, behind the
+	// tree lines
+	assert.Equal(t, []clickableField{
+		{device: "sda", kind: fieldName, line: 3, column: 7, width: 3},
+		{device: "sdc", kind: fieldName, line: 5, column: 10, width: 3},
+		{device: "sde", kind: fieldName, line: 6, column: 10, width: 3},
+		{device: "sdb", kind: fieldName, line: 7, column: 7, width: 3},
+		{device: "nvme0n1p1", kind: fieldName, line: 9, column: 4, width: 9},
+		{device: "sdg", kind: fieldName, line: 12, column: 4, width: 3},
+	}, fieldsOfKind(fields, fieldName))
+}
+
+// fieldsOfKind returns the fields of the kind, in their order.
+func fieldsOfKind(fields []clickableField, kind fieldKind) []clickableField {
+	var ofKind []clickableField
+	for _, field := range fields {
+		if field.kind == kind {
+			ofKind = append(ofKind, field)
+		}
+	}
+	return ofKind
 }
 
 func TestFormatDevices_SpareWithoutTemperature(t *testing.T) {
@@ -249,7 +271,7 @@ func TestPoolDevices_ClickReadsIdleDisk(t *testing.T) {
 			app.ForceDraw()
 			x, y = -1, -1
 			for _, field := range devices.fields {
-				if field.device == "sdc" {
+				if field.kind == fieldTemperature && field.device == "sdc" {
 					x, y = 1+field.column+temperatureWidth-1, 1+field.line
 				}
 			}
@@ -267,6 +289,23 @@ func TestPoolDevices_ClickReadsIdleDisk(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { line = strings.Split(devices.GetLayout().GetText(true), "\n")[5] })
 		return strings.Contains(line, "45°C")
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// Regression: a click on a temperature that is read anyway read it again, which changed nothing on the screen. It
+// shows the disk on the disks page instead, only the ones of idle hard disks are read.
+func TestPoolDevices_ClickOnReadTemperatureShowsDisk(t *testing.T) {
+	sampler := disktest.NewSampler(testReadings())
+	app, devices, screen := setupDevicesTest(t, sampler)
+	shown := ""
+	testutil.OnUiThread(t, app, func() {
+		devices.SetOnShowDisk(func(pool string, device string) { shown = pool + "/" + device })
+	})
+	require.Eventually(t, func() bool { return len(sampler.Forced()) == 1 }, 2*time.Second, 10*time.Millisecond)
+
+	testutil.ClickText(t, app, screen, "35°C")
+	testutil.WaitForUpdates(t, app)
+	testutil.OnUiThread(t, app, func() { assert.Equal(t, "tank/sda", shown) })
+	assert.Equal(t, [][]string{nil}, sampler.Forced(), "nothing read")
 }
 
 func TestPoolDevices_KeyReadsAll(t *testing.T) {
@@ -322,14 +361,14 @@ func TestPoolDevices_CriticalBlinksOnScreen(t *testing.T) {
 		var fields []clickableField
 		testutil.OnUiThread(t, app, func() {
 			app.ForceDraw()
-			fields = devices.fields
+			fields = fieldsOfKind(devices.fields, fieldTemperature)
 		})
 		return len(fields) == 1
 	}, 2*time.Second, 10*time.Millisecond)
 
 	var x, y int
 	testutil.OnUiThread(t, app, func() {
-		field := devices.fields[0]
+		field := fieldsOfKind(devices.fields, fieldTemperature)[0]
 		x, y = 1+field.column+temperatureWidth-1, 1+field.line
 	})
 	text, style, _ := screen.Get(x, y)
@@ -384,19 +423,13 @@ func TestFormatDevices_Smart(t *testing.T) {
 	}, lines)
 
 	column := len(" NAME               STATE      READ WRITE CKSUM   TEMP  ")
-	var smartFields []clickableField
-	for _, field := range fields {
-		if field.smart {
-			smartFields = append(smartFields, field)
-		}
-	}
 	assert.Equal(t, []clickableField{
-		{device: "sda", smart: true, line: 3, column: column, width: 9},
-		{device: "sdc", smart: true, line: 5, column: column, width: 9},
-		{device: "sde", smart: true, line: 6, column: column, width: 9},
-		{device: "nvme0n1p1", smart: true, line: 9, column: column, width: 9},
-		{device: "sdg", smart: true, line: 12, column: column, width: 9},
-	}, smartFields)
+		{device: "sda", kind: fieldSmart, line: 3, column: column, width: 9},
+		{device: "sdc", kind: fieldSmart, line: 5, column: column, width: 9},
+		{device: "sde", kind: fieldSmart, line: 6, column: column, width: 9},
+		{device: "nvme0n1p1", kind: fieldSmart, line: 9, column: column, width: 9},
+		{device: "sdg", kind: fieldSmart, line: 12, column: column, width: 9},
+	}, fieldsOfKind(fields, fieldSmart))
 }
 
 func TestFormatDevices_SmartWithoutTemperatures(t *testing.T) {
@@ -408,7 +441,10 @@ func TestFormatDevices_SmartWithoutTemperatures(t *testing.T) {
 	lines := strings.Split(strings.TrimSuffix(testutil.StripTags(text), "\n"), "\n")
 	assert.Equal(t, " NAME    STATE    READ WRITE CKSUM  SMART", lines[0])
 	assert.Equal(t, " └─ sda  ONLINE      0     0     0  OK     (trimming)", lines[2])
-	assert.Equal(t, []clickableField{{device: "sda", smart: true, line: 2, column: len(" NAME    STATE    READ WRITE CKSUM  "), width: 5}}, fields)
+	assert.Equal(t, []clickableField{
+		{device: "sda", kind: fieldName, line: 2, column: 4, width: 3},
+		{device: "sda", kind: fieldSmart, line: 2, column: len(" NAME    STATE    READ WRITE CKSUM  "), width: 5},
+	}, fields)
 
 	// smartctl is not installed: no column
 	text, _ = formatDevices(devices, nil, map[string][]disk.SmartReport{"sda": {{Disk: "sda", Err: disk.ErrSmartctlMissing}}})
@@ -461,7 +497,7 @@ func TestPoolDevices_Smart(t *testing.T) {
 	testutil.OnUiThread(t, app, func() {
 		app.ForceDraw()
 		for _, field := range devices.fields {
-			if field.smart && field.device == "sda" {
+			if field.kind == fieldSmart && field.device == "sda" {
 				x, y = 1+field.column, 1+field.line
 			}
 		}
@@ -472,6 +508,22 @@ func TestPoolDevices_Smart(t *testing.T) {
 		testutil.OnUiThread(t, app, func() { shown = *showDisk })
 		return shown == "tank/sda"
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// A click on the name of a device stored on disks shows them on the disks page; the names of the others (groups,
+// devices not on a disk) do nothing.
+func TestPoolDevices_ClickOnNameShowsDisk(t *testing.T) {
+	smart := disktest.NewSmart(map[string][]disk.SmartReport{"sdb": {healthy("sdb")}})
+	app, _, showDisk, screen := setupSmartTest(t, smart)
+	testutil.WaitForText(t, app, screen, "OK", 2*time.Second)
+
+	testutil.ClickText(t, app, screen, "raidz2-0")
+	testutil.ClickText(t, app, screen, "sdf")
+	testutil.WaitForUpdates(t, app)
+	testutil.OnUiThread(t, app, func() { assert.Empty(t, *showDisk) })
+
+	testutil.ClickText(t, app, screen, "sdb ")
+	testutil.OnUiThread(t, app, func() { assert.Equal(t, "tank/sdb", *showDisk) })
 }
 
 func TestPoolDevices_SmartNeedsRoot(t *testing.T) {

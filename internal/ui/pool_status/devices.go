@@ -35,7 +35,8 @@ const temperatureWidth = 5
 //
 // The temperatures and SMART values are only read while the devices are drawn (the pools page is shown), see
 // disk_browser.HealthReader. Idle hard disks are not read, so they can spin down: a click on their temperature, or t,
-// reads them. s reads the SMART values again, a click on them, or Enter, shows them on the disks page.
+// reads them. s reads the SMART values again. A click on the name of a disk, on its SMART values or on a temperature
+// that is read anyway, or Enter, shows them on the disks page.
 type PoolDevicesComponent struct {
 	application *tview.Application
 	textView    *DevicesView
@@ -45,7 +46,7 @@ type PoolDevicesComponent struct {
 	// All fields below are only accessed on the UI thread.
 
 	status *zfs.PoolStatus
-	// fields are the temperatures and SMART values in the text, which can be clicked
+	// fields are the names, temperatures and SMART values in the text, which can be clicked
 	fields  []clickableField
 	regions clickable.Regions
 	// enabled returns whether the fields can be clicked, e.g. not while a dialog is in front
@@ -224,9 +225,9 @@ func (view *DevicesView) Draw(screen tcell.Screen) {
 		start := max(x+field.column-column, x)
 		end := min(x+field.column-column+field.width, x+width)
 		name := field.device
-		onClick := func() { devices.readTemperature(name) }
-		if field.smart {
-			onClick = func() { devices.ShowSmart(name) }
+		onClick := func() { devices.ShowSmart(name) }
+		if field.kind == fieldTemperature && field.idle {
+			onClick = func() { devices.readTemperature(name) }
 		}
 		devices.regions.Add(clickable.Region{
 			X: start, Y: fieldY, Width: end - start, Key: field,
@@ -236,8 +237,8 @@ func (view *DevicesView) Draw(screen tcell.Screen) {
 	}
 }
 
-// MouseHandler reads a clicked temperature (see clickable.Regions), or the ones of the footer, and otherwise
-// scrolls and focuses like a text view.
+// MouseHandler reads a clicked temperature of an idle hard disk, shows the disk of another clicked field (see
+// clickable.Regions), reads the temperatures of the footer, and otherwise scrolls and focuses like a text view.
 func (view *DevicesView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
 	textViewHandler := view.TextView.MouseHandler()
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
@@ -266,7 +267,7 @@ func (poolDevices *PoolDevicesComponent) GetShortcutMap() []shortcut_helper.Shor
 		shortcuts = append(shortcuts,
 			shortcut_helper.ShortcutEntry{
 				KeyCombo: []string{shortcut_helper.KeyEnter}, Name: "Disk health", Group: shortcut_helper.GroupAction,
-				Description: "Show the SMART values of the disks of the pool on the disks page (also a click on them)",
+				Description: "Show the SMART values of the disks of the pool on the disks page (also a click on them or on the name of a disk)",
 				Run:         func() { poolDevices.ShowSmart("") },
 			},
 			shortcut_helper.ShortcutEntry{
@@ -300,11 +301,27 @@ func devicesTitle(devices []*zfs.PoolDevice) string {
 	return fmt.Sprintf("Devices · %d with errors", withErrors)
 }
 
-// clickableField is where the temperature or the SMART values of a device are in the text of formatDevices.
+// fieldKind is what a clickableField shows, and what a click on it does.
+type fieldKind int
+
+const (
+	// fieldTemperature is the temperature of a device: a click reads it if it is an idle hard disk (see idle), else
+	// shows its disks on the disks page
+	fieldTemperature fieldKind = iota
+	// fieldSmart is the SMART summary of a device: a click shows its disks on the disks page
+	fieldSmart
+	// fieldName is the name of a device stored on disks: a click shows them on the disks page
+	fieldName
+)
+
+// clickableField is where the name, the temperature or the SMART values of a device are in the text of
+// formatDevices.
 type clickableField struct {
 	device string
-	// smart is set for the SMART values, else it is the temperature
-	smart bool
+	kind   fieldKind
+	// idle is whether the temperature of a fieldTemperature is not read, as the device is an idle hard disk. The
+	// others are read anyway, a click reading them again would change nothing.
+	idle bool
 	// line, column and width are the position in the text, in cells
 	line   int
 	column int
@@ -313,7 +330,8 @@ type clickableField struct {
 
 // formatDevices formats the devices as a table: the tree of their names, their state, their errors, the
 // temperature of their disks (if any device is stored on a disk, see readings), their health (if smartctl could
-// run, see smart) and their note. It returns the fields that can be clicked as well.
+// run, see smart) and their note. It returns the fields that can be clicked as well: the names of the devices stored
+// on disks (which the disks page lists), their temperatures and their SMART values.
 func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, smart map[string][]disk.SmartReport) (string, []clickableField) {
 	prefixes := devicePrefixes(devices)
 	showTemperatures := false
@@ -366,7 +384,11 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 			continue
 		}
 
-		padding := nameWidth - utf8.RuneCountInString(prefixes[i]) - len(device.Name)
+		prefixWidth := utf8.RuneCountInString(prefixes[i])
+		if isLeaf[device.Name] && (readings[device.Name].IsDisk || len(smart[device.Name]) > 0) {
+			fields = append(fields, clickableField{device: device.Name, kind: fieldName, line: i + 1, column: 1 + prefixWidth, width: utf8.RuneCountInString(device.Name)})
+		}
+		padding := nameWidth - prefixWidth - len(device.Name)
 		out.WriteString(txwidgets.Span(tcell.ColorWhite, "%s", device.Name) + strings.Repeat(" ", padding) + "  ")
 
 		// the columns behind the counters; empty ones (and the padding of left-aligned ones) are only filled with
@@ -390,7 +412,7 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 					}
 				}
 				if reading.IsDisk && !reading.NoSensor {
-					fields = append(fields, clickableField{device: device.Name, line: i + 1, column: temperatureColumn, width: temperatureWidth})
+					fields = append(fields, clickableField{device: device.Name, kind: fieldTemperature, idle: reading.Idle, line: i + 1, column: temperatureColumn, width: temperatureWidth})
 				}
 			}
 			addColumn(cell, temperatureWidth, temperatureWidth)
@@ -400,7 +422,7 @@ func formatDevices(devices []*zfs.PoolDevice, readings map[string]disk.Reading, 
 			if isLeaf[device.Name] {
 				if text, color := disk_browser.SmartSummary(smart[device.Name]); text != "" {
 					cell, cellWidth = txwidgets.Span(color, "%s", text), utf8.RuneCountInString(text)
-					fields = append(fields, clickableField{device: device.Name, smart: true, line: i + 1, column: smartColumn, width: smartWidth})
+					fields = append(fields, clickableField{device: device.Name, kind: fieldSmart, line: i + 1, column: smartColumn, width: smartWidth})
 				}
 			}
 			addColumn(cell, cellWidth, smartWidth)

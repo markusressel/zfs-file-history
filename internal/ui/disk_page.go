@@ -41,6 +41,7 @@ func NewDiskPage(application *tview.Application, messages *status_message.Center
 		diskDetails: diskDetails,
 	}
 	diskBrowser.SetEnabledFunc(diskPage.isInFront)
+	diskDetails.SetEnabledFunc(diskPage.isInFront)
 	diskPage.focusableComponents = func() []FocusableUiComponent {
 		return []FocusableUiComponent{diskBrowser, diskDetails}
 	}

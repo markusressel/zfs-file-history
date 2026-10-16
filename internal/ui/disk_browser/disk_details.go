@@ -7,6 +7,7 @@ import (
 	"strings"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
@@ -70,17 +71,67 @@ type DiskDetailsComponent struct {
 	renderedWidth, renderedHeight int
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
 	dialogPages *tview.Pages
+	// poolLinks are where the names of the pools are in the details, which can be clicked (see detailsView)
+	poolLinks []poolLink
+	// regions are the parts of the details that can be clicked: the names of the pools
+	regions clickable.Regions
+	// onShowPool shows a pool on the pools page (nil: the names of the pools cannot be clicked), see SetOnShowPool
+	onShowPool func(pool string)
+	// enabled returns whether the names of the pools can be clicked, e.g. not while a dialog is in front
+	enabled func() bool
 }
 
-// detailsView is the text of the details as placed in the layout.
+// detailsView is the text of the details as placed in the layout, which also draws the names of the pools that can be
+// clicked.
 type detailsView struct {
 	*scrollbar.TextView
+	component *DiskDetailsComponent
 }
 
-// MouseHandler handles the mouse like the text view (e.g. scrolling), without focusing it: there is nothing to do in
-// it, like Tab skips it.
+// Draw draws the details, and adds the names of the pools, which can be clicked, where they are shown.
+func (view *detailsView) Draw(screen tcell.Screen) {
+	view.TextView.Draw(screen)
+
+	component := view.component
+	component.regions.Reset()
+	defer component.regions.DrawHover(screen)
+	if component.onShowPool == nil {
+		return
+	}
+	x, y, width, height := view.GetInnerRect()
+	row, column := view.GetScrollOffset()
+	for _, link := range component.poolLinks {
+		linkY := y + link.line - row
+		if linkY < y || linkY >= y+height {
+			continue
+		}
+		start := max(x+link.column-column, x)
+		end := min(x+link.column-column+link.width, x+width)
+		onShowPool, pool := component.onShowPool, link.pool
+		component.regions.Add(clickable.Region{
+			X: start, Y: linkY, Width: end - start, Key: pool,
+			HoverBackground: theme.Colors.Pool.HoverBackground,
+			OnClick:         func() { onShowPool(pool) },
+		})
+	}
+}
+
+// MouseHandler shows a pool when its name is clicked (see clickable.Regions), and otherwise handles the mouse like
+// the text view (e.g. scrolling), without focusing it: there is nothing to do in it, like Tab skips it.
 func (view *detailsView) MouseHandler() uiutil.MouseHandler {
-	return uiutil.WithoutFocus(view.TextView.MouseHandler())
+	textViewHandler := uiutil.WithoutFocus(view.TextView.MouseHandler())
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		component := view.component
+		consumed, captures := component.regions.HandleMouse(action, event, component.enabled() && view.InRect(event.Position()))
+		if !consumed {
+			consumed, capture = textViewHandler(action, event, setFocus)
+		}
+		if capture == nil && captures {
+			// to learn when the mouse leaves
+			capture = view
+		}
+		return consumed, capture
+	}
 }
 
 // detailsLayout is the layout of the details above the attributes: drawing it renders the details again for its
@@ -110,7 +161,7 @@ const detailsMaxPercent = 60
 
 // NewDiskDetails returns the details of a disk. Must be called on the UI thread.
 func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
-	component := &DiskDetailsComponent{application: application}
+	component := &DiskDetailsComponent{application: application, enabled: func() bool { return true }}
 
 	// the attributes below take the space they need, the details may not fit
 	component.details = scrollbar.NewTextView(application)
@@ -119,7 +170,7 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	component.details.SetBorder(true)
 	component.details.SetBorderPadding(0, 0, 1, 1)
 	uiutil.SetupWindow(component.details, "Disk")
-	component.detailsView = &detailsView{TextView: component.details}
+	component.detailsView = &detailsView{TextView: component.details, component: component}
 
 	t := table.NewTableContainer[AttributeEntry](application, toAttributeCells, sortAttributes)
 	t.SetTitle("Attributes")
@@ -153,12 +204,25 @@ func (component *DiskDetailsComponent) SetDialogPages(pages *tview.Pages) {
 	component.dialogPages = pages
 }
 
+// SetOnShowPool sets the function that shows a pool on the pools page, called when the name of a pool the disk is used
+// by is clicked. Must be called on the UI thread.
+func (component *DiskDetailsComponent) SetOnShowPool(onShowPool func(pool string)) {
+	component.onShowPool = onShowPool
+}
+
+// SetEnabledFunc sets a function that returns whether the names of the pools can be clicked, e.g. not while a dialog
+// is in front (tview hands mouse events to all pages, see rivo/tview#926). Must be called on the UI thread.
+func (component *DiskDetailsComponent) SetEnabledFunc(enabled func() bool) {
+	component.enabled = enabled
+}
+
 // SetDisk shows the details and the attributes of the disk, nil: none. The selected attribute (or the header), the
 // sort order and the filter are kept while the same disk is shown (e.g. read again). Must be called on the UI thread.
 func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 	component.shownEntry = entry
 	if entry == nil {
 		component.details.SetText("")
+		component.poolLinks = nil
 		uiutil.SetupWindow(component.details, "Disk")
 		component.layout.ResizeItem(component.detailsView, 0, 0)
 		component.shownDisk = ""
@@ -201,7 +265,7 @@ func (component *DiskDetailsComponent) renderDetails() {
 	if component.layoutWidth > 0 {
 		width = max(component.layoutWidth-detailsFrameWidth, 1)
 	}
-	lines := formatDetails(component.shownEntry, width)
+	lines, links := formatDetailsWithPoolLinks(component.shownEntry, width)
 	// and the border
 	height := len(lines) + 2
 	if component.layoutHeight > 0 {
@@ -209,12 +273,13 @@ func (component *DiskDetailsComponent) renderDetails() {
 			height = capped
 			// the details scroll, the scrollbar takes a column (see scrollbar.TextView)
 			if width > 1 {
-				lines = formatDetails(component.shownEntry, width-1)
+				lines, links = formatDetailsWithPoolLinks(component.shownEntry, width-1)
 			}
 		}
 	}
 	uiutil.SetupWindow(component.details, detailsTitle(component.shownEntry))
 	component.details.SetText(strings.Join(lines, "\n"))
+	component.poolLinks = links
 	component.layout.ResizeItem(component.detailsView, height, 0)
 }
 

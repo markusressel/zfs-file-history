@@ -460,6 +460,42 @@ func TestDiskEntry_DeviceNames(t *testing.T) {
 	assert.Equal(t, "sdb1, sdb2", entry.DeviceNames())
 }
 
+// A click on the name of a pool in the details shows the pool, also where they are below each other.
+func TestDiskDetails_ClickOnPoolShowsPool(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	shown := ""
+	testutil.OnUiThread(t, dt.app, func() { dt.details.SetOnShowPool(func(pool string) { shown = pool }) })
+
+	for _, width := range []int{140, 44} {
+		dt.screen.SetSize(width, 40)
+		x, y, found := testutil.FindText(t, dt.app, dt.screen, "Pools     tank")
+		require.True(t, found, dt.screenText())
+		testutil.Click(t, dt.app, dt.screen, x+len("Pools     "), y)
+		testutil.OnUiThread(t, dt.app, func() { assert.Equal(t, "tank", shown, "width %d", width) })
+		testutil.OnUiThread(t, dt.app, func() { shown = "" })
+
+		// the label does nothing
+		testutil.Click(t, dt.app, dt.screen, x, y)
+		testutil.WaitForUpdates(t, dt.app)
+		testutil.OnUiThread(t, dt.app, func() { assert.Empty(t, shown) })
+	}
+}
+
+// Not while a dialog is in front.
+func TestDiskDetails_PoolNotClickedBehindDialog(t *testing.T) {
+	dt := newDiskBrowserTest(t)
+	shown := ""
+	testutil.OnUiThread(t, dt.app, func() {
+		dt.details.SetOnShowPool(func(pool string) { shown = pool })
+		dt.details.SetEnabledFunc(func() bool { return false })
+	})
+	x, y, found := testutil.FindText(t, dt.app, dt.screen, "Pools     tank")
+	require.True(t, found)
+	testutil.Click(t, dt.app, dt.screen, x+len("Pools     "), y)
+	testutil.WaitForUpdates(t, dt.app)
+	testutil.OnUiThread(t, dt.app, func() { assert.Empty(t, shown) })
+}
+
 // Regression: a click into the details focused them, which Tab skips: there is nothing to do in them.
 func TestDiskDetails_ClickDoesNotFocus(t *testing.T) {
 	dt := newDiskBrowserTest(t)
