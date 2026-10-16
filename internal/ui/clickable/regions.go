@@ -64,6 +64,16 @@ func (regions *Regions) IsHovered(key any) bool {
 	return regions.isHovered && regions.hovered == key
 }
 
+// IsAnyHovered returns whether any region is below the mouse.
+func (regions *Regions) IsAnyHovered() bool {
+	return regions.isHovered
+}
+
+// Contains returns whether a region is at the position.
+func (regions *Regions) Contains(x int, y int) bool {
+	return regions.at(x, y) != nil
+}
+
 // Hovered returns the key of the regions below the mouse, false if none.
 func (regions *Regions) Hovered() (key any, ok bool) {
 	return regions.hovered, regions.isHovered

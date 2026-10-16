@@ -47,11 +47,11 @@ func TestBuildDatasetTree(t *testing.T) {
 	)
 
 	assert.Equal(t, []string{
-		"bpool",
+		"▾ bpool",
 		"└─ BOOT",
-		"rpool",
-		"├─ arch",
-		"│  ├─ DATA",
+		"▾ rpool",
+		"├▾ arch",
+		"│  ├▾ DATA",
 		"│  │  ├─ home",
 		"│  │  └─ var",
 		"│  └─ ROOT",
@@ -63,9 +63,9 @@ func TestBuildDatasetTree_KeepsTheSiblingOrder(t *testing.T) {
 	// sorted by size, descending: siblings keep that order, parents still come before their children
 	sorted := datasets("rpool/small", "rpool", "rpool/big/child", "rpool/big")
 	assert.Equal(t, []string{
-		"rpool",
+		"▾ rpool",
 		"├─ small",
-		"└─ big",
+		"└▾ big",
 		"   └─ child",
 	}, renderTree(sorted))
 }
@@ -81,16 +81,17 @@ func TestBuildDatasetTree_HiddenParents(t *testing.T) {
 		"rpool/arch/ROOT/default",
 	)
 	assert.Equal(t, []string{
-		"rpool/arch/DATA/default/home",
-		"rpool/arch/DATA/default/var/lib/docker",
+		// lined up with the root that has children
+		"  rpool/arch/DATA/default/home",
+		"▾ rpool/arch/DATA/default/var/lib/docker",
 		"└─ layer1",
-		"rpool/arch/DATA/default/var/log",
-		"rpool/arch/ROOT/default",
+		"  rpool/arch/DATA/default/var/log",
+		"  rpool/arch/ROOT/default",
 	}, renderTree(sorted))
 
 	sorted = datasets("rpool", "rpool/arch/DATA/default/home", "rpool/data")
 	assert.Equal(t, []string{
-		"rpool",
+		"▾ rpool",
 		"├─ arch/DATA/default/home",
 		"└─ data",
 	}, renderTree(sorted))
@@ -100,9 +101,9 @@ func TestBuildDatasetTree_SimilarNames(t *testing.T) {
 	// "rpool/data2" is not a child of "rpool/data"
 	sorted := datasets("rpool/data", "rpool/data2", "rpool/data/x")
 	assert.Equal(t, []string{
-		"rpool/data",
+		"▾ rpool/data",
 		"└─ x",
-		"rpool/data2",
+		"  rpool/data2",
 	}, renderTree(sorted))
 }
 
@@ -164,7 +165,7 @@ func TestDatasetBrowser_TreeViewIsTheDefaultAndCanBeToggled(t *testing.T) {
 	assert.Equal(t, "rpool/var/log", selected)
 	require.Eventually(t, func() bool {
 		text := screenText()
-		return strings.Contains(text, "├─ home") && strings.Contains(text, "└─ var") && strings.Contains(text, "   └─ log")
+		return strings.Contains(text, "├─ home") && strings.Contains(text, "└▾ var") && strings.Contains(text, "   └─ log")
 	}, 2*time.Second, 10*time.Millisecond, "the name column shows the tree")
 
 	// flat list: same order when sorted by name ascending, but full names
@@ -264,7 +265,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	waitFor("collapsed", func(visible []string, selected string) bool {
 		return assert.ObjectsAreEqual([]string{"rpool", "rpool/home", "rpool/var"}, visible) && selected == "rpool/var"
 	})
-	testutil.WaitForText(t, app, screen, "var ▸ +2", 2*time.Second)
+	testutil.WaitForText(t, app, screen, "└▸ var +2", 2*time.Second)
 	_, _, collapsedFooter := state()
 	assert.Equal(t, footer, collapsedFooter)
 
@@ -272,7 +273,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	typeRune('-')
 	waitFor("parent selected", selectedIs("rpool"))
 
-	// on rows that are not selected, the indicator is drawn in its own (readable) color,
+	// on rows that are not selected, the toggle is drawn in its own (readable) color,
 	// not in the dark color of the tree lines (selected rows use the selection colors)
 	require.Eventually(t, func() bool {
 		var foreground tcell.Color
@@ -319,6 +320,7 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	typeRune('-')
 	waitFor("parent selected", selectedIs("rpool/var"))
 	assert.NotContains(t, testutil.ScreenText(t, app, screen), "▸")
+	assert.Contains(t, testutil.ScreenText(t, app, screen), "└▾ var")
 
 	// ← and → on data rows are left to the table (horizontal scrolling), they don't change the tree
 	pressKey(tcell.KeyLeft)
@@ -342,4 +344,57 @@ func TestDatasetBrowser_CollapseAndExpand(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { browser.tableContainer.SelectHeader() })
 	pressKey(tcell.KeyRight)
 	testutil.WaitForText(t, app, screen, "Used ↑", 2*time.Second)
+}
+
+// The toggle in front of a dataset with children expands or collapses it when clicked, without selecting it. A
+// selected dataset that gets hidden passes the selection to the collapsed one.
+func TestDatasetBrowser_ClickOnToggle(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return datasets("rpool", "rpool/home", "rpool/var", "rpool/var/lib", "rpool/var/log", "rpool/web"), nil
+	})
+	app, browser, screen := newBrowserApp(t)
+	testutil.OnUiThread(t, app, func() {
+		browser.SetPath("/rpool/home", false)
+		browser.Refresh(false)
+	})
+	state := func() (visible []string, selected string) {
+		testutil.OnUiThread(t, app, func() {
+			visible = names(browser.tableContainer.GetEntries())
+			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
+				selected = entry.Name
+			}
+		})
+		return visible, selected
+	}
+	waitFor := func(message string, visible []string, selected string) {
+		require.Eventually(t, func() bool {
+			shownVisible, shownSelected := state()
+			return assert.ObjectsAreEqual(visible, shownVisible) && shownSelected == selected
+		}, 2*time.Second, 10*time.Millisecond, message)
+	}
+	clickToggle := func(text string, toggle int) {
+		x, y, found := testutil.FindText(t, app, screen, text)
+		require.True(t, found, testutil.ScreenText(t, app, screen))
+		testutil.Click(t, app, screen, x+toggle, y)
+	}
+	all := []string{"rpool", "rpool/home", "rpool/var", "rpool/var/lib", "rpool/var/log", "rpool/web"}
+	waitFor("loaded", all, "rpool/home")
+
+	clickToggle("├▾ var", 1)
+	waitFor("collapsed, the selection stays", []string{"rpool", "rpool/home", "rpool/var", "rpool/web"}, "rpool/home")
+	testutil.WaitForText(t, app, screen, "├▸ var +2", 2*time.Second)
+
+	clickToggle("├▸ var", 1)
+	waitFor("expanded", all, "rpool/home")
+
+	// the name next to it selects as before
+	clickToggle("├▾ var", 3)
+	waitFor("selected", all, "rpool/var")
+
+	clickToggle("│  └─ log", 6)
+	waitFor("log selected", all, "rpool/var/log")
+	clickToggle("├▾ var", 1)
+	waitFor("the selected one is hidden: var selected", []string{"rpool", "rpool/home", "rpool/var", "rpool/web"}, "rpool/var")
+	clickToggle("▾ rpool", 0)
+	waitFor("rpool selected", []string{"rpool"}, "rpool")
 }

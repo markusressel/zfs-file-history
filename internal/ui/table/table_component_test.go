@@ -1083,3 +1083,50 @@ func TestTable_SelectionStaysVisibleWhenLower(t *testing.T) {
 	rowOffset, _ = table.table.GetOffset()
 	assert.Equal(t, 4, rowOffset, "the selected row is the last one shown")
 }
+
+// Cell regions are where their column is drawn, also scrolled horizontally. A click on one runs it instead of selecting
+// the row, a hovered one is highlighted.
+func TestTable_CellRegions(t *testing.T) {
+	table, entries, cols := newWideTestTable(4)
+	table.Select(entries[0])
+	var clicked []string
+	table.SetCellRegionsFunc(func(entry *namedEntry, column *Column) []CellRegion {
+		if column != cols[2] {
+			return nil
+		}
+		name := entry.name
+		return []CellRegion{{Start: 2, Width: 3, Key: name, OnClick: func() { clicked = append(clicked, name) }}}
+	})
+	screen := testutil.NewScreen(t, 40, 10)
+	draw := func() { table.view.Draw(screen) }
+	mouse := func(action tview.MouseAction, x int, y int) {
+		event := tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone)
+		table.view.MouseHandler()(action, event, func(p tview.Primitive) {})
+	}
+
+	// col2 starts at 42, out of the view
+	draw()
+	for x := range 40 {
+		assert.False(t, table.regions.Contains(x, 3), "x %d", x)
+	}
+
+	// scrolled to col1 and col2: col2 at 21
+	pressTableKey(table, tcell.KeyRight)
+	draw()
+	x, y := 21+2, 3 // the third entry, below the header
+	mouse(tview.MouseMove, x, y)
+	draw()
+	_, style, _ := screen.Get(x, y)
+	_, background, _ := style.Decompose()
+	assert.Equal(t, theme.Colors.Layout.CellHoverBackground, background)
+	mouse(tview.MouseLeftDown, x+2, y)
+	mouse(tview.MouseLeftClick, x+2, y)
+	assert.Equal(t, []string{"entry-02"}, clicked)
+	assert.Same(t, entries[0], table.GetSelectedEntry(), "the row is not selected")
+
+	// next to it: the row is selected
+	mouse(tview.MouseLeftDown, x+3, y)
+	mouse(tview.MouseLeftClick, x+3, y)
+	assert.Len(t, clicked, 1)
+	assert.Same(t, entries[2], table.GetSelectedEntry())
+}
