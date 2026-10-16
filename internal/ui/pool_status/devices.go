@@ -19,14 +19,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// the lines of the tree of devices, like the ones of the tree view of the dataset browser
-const (
-	treeBranch     = "├─ "
-	treeLastBranch = "└─ "
-	treeLine       = "│  "
-	treeSpace      = "   "
-)
-
 // temperatureWidth is the width of the temperature column, e.g. " 45°C".
 const temperatureWidth = 5
 
@@ -215,47 +207,29 @@ func (view *DevicesView) Draw(screen tcell.Screen) {
 
 	devices.regions.Reset()
 	defer devices.regions.DrawHover(screen)
-	x, y, width, height := view.GetInnerRect()
-	row, column := view.GetScrollOffset()
+	links := make([]clickable.TextLink, 0, len(devices.fields))
 	for _, field := range devices.fields {
-		fieldY := y + field.line - row
-		if fieldY < y || fieldY >= y+height {
-			continue
-		}
-		start := max(x+field.column-column, x)
-		end := min(x+field.column-column+field.width, x+width)
 		name := field.device
 		onClick := func() { devices.ShowSmart(name) }
 		if field.kind == fieldTemperature && field.idle {
 			onClick = func() { devices.readTemperature(name) }
 		}
-		devices.regions.Add(clickable.Region{
-			X: start, Y: fieldY, Width: end - start, Key: field,
-			HoverBackground: theme.Colors.Pool.HoverBackground,
-			OnClick:         onClick,
-		})
+		links = append(links, clickable.TextLink{Line: field.line, Column: field.column, Width: field.width, Key: field,
+			OnClick: onClick})
 	}
+	devices.regions.AddTextLinks(view, links, theme.Colors.Pool.HoverBackground)
 }
 
 // MouseHandler reads a clicked temperature of an idle hard disk, shows the disk of another clicked field (see
 // clickable.Regions), reads the temperatures of the footer, and otherwise scrolls and focuses like a text view.
-func (view *DevicesView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	textViewHandler := view.TextView.MouseHandler()
+func (view *DevicesView) MouseHandler() clickable.MouseHandler {
+	devices := view.devices
+	handler := devices.regions.WrapMouseHandler(view, func() bool { return devices.enabled() }, view.TextView.MouseHandler())
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		devices := view.devices
-		enabled := devices.enabled()
-		if devices.footer.HandleMouse(action, event, enabled) {
+		if devices.footer.HandleMouse(action, event, devices.enabled()) {
 			return true, nil
 		}
-		consumed, captures := devices.regions.HandleMouse(action, event, enabled && view.InRect(event.Position()))
-		if !consumed {
-			consumed, capture = textViewHandler(action, event, setFocus)
-		}
-		if capture == nil && captures {
-			// to learn when the mouse leaves
-			capture = view
-		}
-		return consumed, capture
+		return handler(action, event, setFocus)
 	}
 }
 
@@ -490,15 +464,15 @@ func devicePrefixes(devices []*zfs.PoolDevice) []string {
 		var prefix strings.Builder
 		for depth := 1; depth < device.Depth; depth++ {
 			if hasNextSibling[depth] {
-				prefix.WriteString(treeLine)
+				prefix.WriteString(uiutil.TreeLine)
 			} else {
-				prefix.WriteString(treeSpace)
+				prefix.WriteString(uiutil.TreeSpace)
 			}
 		}
 		if hasNextSibling[device.Depth] {
-			prefix.WriteString(treeBranch)
+			prefix.WriteString(uiutil.TreeBranch)
 		} else {
-			prefix.WriteString(treeLastBranch)
+			prefix.WriteString(uiutil.TreeLastBranch)
 		}
 		prefixes[i] = prefix.String()
 	}

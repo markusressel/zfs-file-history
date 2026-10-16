@@ -979,9 +979,9 @@ func (c *poolHistoryContent) cell(row int, index int) *tview.TableCell {
 	case poolHistoryColumnEvent:
 		prefix := ""
 		if shown.child && shown.last {
-			prefix = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "└─ ")
+			prefix = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "%s", util.TreeLastBranch)
 		} else if shown.child {
-			prefix = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "├─ ")
+			prefix = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "%s", util.TreeBranch)
 		}
 		return tview.NewTableCell(prefix + tview.Escape(entry.Event)).SetTextColor(color)
 	case poolHistoryColumnDataset:

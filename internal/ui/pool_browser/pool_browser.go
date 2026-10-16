@@ -110,6 +110,9 @@ type PoolBrowserStatusEvent struct {
 
 // PoolBrowserComponent lists the pools, like "zpool list".
 type PoolBrowserComponent struct {
+	// Host shows its dialogs
+	dialog.Host
+
 	Events *util.Emitter[Event]
 
 	application    *tview.Application
@@ -122,8 +125,6 @@ type PoolBrowserComponent struct {
 	// initialSelection is the name of the pool to select once the pools are loaded, see SelectOnLoad.
 	// Only accessed on the UI thread.
 	initialSelection string
-	// dialogPages are the pages dialogs are shown on, see SetDialogPages
-	dialogPages *tview.Pages
 	// status is the status of the selected pool (nil if not known), which decides the actions offered, see
 	// SetStatus. Only accessed on the UI thread.
 	status *zfs.PoolStatus
@@ -145,6 +146,7 @@ func NewPoolBrowser(application *tview.Application) *PoolBrowserComponent {
 	)
 	poolBrowser.layout = tview.NewPages().
 		AddPage("pool-browser", poolBrowser.tableContainer.GetLayout(), true, true)
+	poolBrowser.Host = dialog.NewHost(application, poolBrowser.layout)
 	poolBrowser.setupTable()
 
 	poolBrowser.loader = uiutil.NewDataLoader[[]*zfs.PoolListEntry](application).
@@ -272,17 +274,7 @@ func sortPoolEntries(entries []*zfs.PoolListEntry, column *table.Column, inverte
 
 // openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
 func (poolBrowser *PoolBrowserComponent) openColumnSelectionDialog() {
-	d := dialog.NewTableColumnSelectionDialog(poolBrowser.application, "Configure Pool Columns", tableColumns, poolBrowser.tableContainer)
-	poolBrowser.showDialog(d)
-}
-
-// showDialog shows the dialog on the dialog pages (see SetDialogPages). Must be called on the UI thread.
-func (poolBrowser *PoolBrowserComponent) showDialog(d dialog.Dialog) {
-	pages := poolBrowser.layout
-	if poolBrowser.dialogPages != nil {
-		pages = poolBrowser.dialogPages
-	}
-	dialog.ShowDialogOnPages(poolBrowser.application, pages, d, nil)
+	dialog.ShowColumnSelection(&poolBrowser.Host, "Configure Pool Columns", tableColumns, poolBrowser.tableContainer)
 }
 
 // SetStatus sets the status of the selected pool (nil if not known), which decides the actions offered, e.g.
@@ -302,7 +294,7 @@ func (poolBrowser *PoolBrowserComponent) statusOf(pool *zfs.PoolListEntry) *zfs.
 
 // openActionDialog shows the actions for the pool, e.g. starting a scrub. Must be called on the UI thread.
 func (poolBrowser *PoolBrowserComponent) openActionDialog(pool *zfs.PoolListEntry) {
-	poolBrowser.showDialog(poolBrowser.newActionDialog(pool))
+	poolBrowser.ShowDialog(poolBrowser.newActionDialog(pool), nil)
 }
 
 // newActionDialog creates the dialog with the actions for the pool, see openActionDialog.
@@ -330,7 +322,7 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 		case dialog.PoolDialogFeaturesActionId:
 			if err != nil {
 				logging.Error("Could not list the features of %s: %s", name, err.Error())
-				poolBrowser.showDialog(dialog.NewErrorDialog(poolBrowser.application, "Listing Features Failed", err))
+				poolBrowser.ShowDialog(dialog.NewErrorDialog(poolBrowser.application, "Listing Features Failed", err), nil)
 				return
 			}
 			poolBrowser.chooseFeatures(features)
@@ -346,7 +338,7 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 		}
 		if err != nil {
 			logging.Error("Could not %s on %s: %s", action.Name, name, err.Error())
-			poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Operation Failed", err, d.RetryFunc(option)))
+			poolBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Operation Failed", err, d.RetryFunc(option)), nil)
 			return
 		}
 		poolBrowser.Events.Emit(PoolBrowserStatusEvent{
@@ -360,32 +352,32 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 
 // confirmUpgrade upgrades the pool once its name was typed: it cannot be undone. Must be called on the UI thread.
 func (poolBrowser *PoolBrowserComponent) confirmUpgrade(pool string) {
-	poolBrowser.showDialog(dialog.NewPoolUpgradeDialog(poolBrowser.application, pool, func() {
+	poolBrowser.ShowDialog(dialog.NewPoolUpgradeDialog(poolBrowser.application, pool, func() {
 		action := zfs.PoolActionUpgrade
 		poolBrowser.runConfirmedInBackground(pool, "Upgrade Failed", action.Name, action.Done,
 			func() error { return runPoolAction(action, pool) },
 			func() { poolBrowser.confirmUpgrade(pool) })
-	}))
+	}), nil)
 }
 
 // chooseFeatures shows the features of the pool, to enable the chosen ones once confirmed. Must be called on the UI
 // thread.
 func (poolBrowser *PoolBrowserComponent) chooseFeatures(features *zfs.PoolFeatures) {
-	poolBrowser.showDialog(dialog.NewPoolFeaturesDialog(poolBrowser.application, features, func(chosen []string) {
+	poolBrowser.ShowDialog(dialog.NewPoolFeaturesDialog(poolBrowser.application, features, func(chosen []string) {
 		poolBrowser.confirmFeatures(features.Pool, chosen)
-	}))
+	}), nil)
 }
 
 // confirmFeatures enables the features of the pool once its name was typed: it cannot be undone. Must be called on
 // the UI thread.
 func (poolBrowser *PoolBrowserComponent) confirmFeatures(pool string, features []string) {
-	poolBrowser.showDialog(dialog.NewEnablePoolFeaturesDialog(poolBrowser.application, pool, features, func() {
+	poolBrowser.ShowDialog(dialog.NewEnablePoolFeaturesDialog(poolBrowser.application, pool, features, func() {
 		names := strings.Join(features, ", ")
 		poolBrowser.runConfirmedInBackground(pool, "Enabling Features Failed", "enable the features "+names,
 			"Enabled the features "+names,
 			func() error { return enablePoolFeatures(pool, features) },
 			func() { poolBrowser.confirmFeatures(pool, features) })
-	}))
+	}), nil)
 }
 
 // formatDestroyPoolDescription describes what destroying the pool destroys, with style tags.
@@ -414,25 +406,15 @@ const maxListedDatasets = 10
 // It runs there, not in the action dialog: a spinner next to "Destroy pool" looked like it was destroyed without a
 // confirmation. Must be called on the UI thread.
 func (poolBrowser *PoolBrowserComponent) previewAndConfirmDestroy(pool string) {
-	checking := dialog.NewPreviewDialog(poolBrowser.application, " 💥 Destroy Pool ", fmt.Sprintf(
-		"Checking what destroying the pool %s would destroy: listing its datasets and where they are mounted. "+
-			"Nothing is destroyed yet.", pool))
-	poolBrowser.showDialog(checking)
-	go func() {
-		preview, err := previewDestroyPool(pool)
-		poolBrowser.application.QueueUpdateDraw(func() {
-			if !checking.Done() {
-				return // cancelled
-			}
-			if err != nil {
-				logging.Error("Cannot destroy %s: %s", pool, err.Error())
-				retry := func() { poolBrowser.previewAndConfirmDestroy(pool) }
-				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Cannot Destroy", err, retry))
-				return
-			}
-			poolBrowser.showDestroyConfirmation(preview)
-		})
-	}()
+	dialog.RunPreview(&poolBrowser.Host, dialog.Preview[*zfs.PoolDestroyPreview]{
+		Title: " 💥 Destroy Pool ",
+		Message: fmt.Sprintf("Checking what destroying the pool %s would destroy: listing its datasets and where they are "+
+			"mounted. Nothing is destroyed yet.", pool),
+		ErrorTitle: "Cannot Destroy", Subject: pool,
+		Check:   func() (*zfs.PoolDestroyPreview, error) { return previewDestroyPool(pool) },
+		Confirm: poolBrowser.showDestroyConfirmation,
+		Retry:   func() { poolBrowser.previewAndConfirmDestroy(pool) },
+	})
 }
 
 // showDestroyConfirmation asks for confirmation to destroy the pool as previewed: a checkbox that the data is lost
@@ -449,14 +431,14 @@ func (poolBrowser *PoolBrowserComponent) showDestroyConfirmation(preview *zfs.Po
 		if !d.Checked()[0] {
 			// shows this dialog again, so the box can be checked
 			retry := func() { poolBrowser.showDestroyConfirmation(preview) }
-			poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Nothing Destroyed",
-				fmt.Errorf("check '%s' to destroy the pool %s", lost, preview.Pool), retry))
+			poolBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Nothing Destroyed",
+				fmt.Errorf("check '%s' to destroy the pool %s", lost, preview.Pool), retry), nil)
 			return
 		}
-		poolBrowser.showDialog(dialog.NewConfirmByNameDialog(poolBrowser.application, "DestroyPoolByNameDialog",
-			" 💥 Destroy Pool ", description, preview.Pool, func() { poolBrowser.destroyInBackground(preview) }))
+		poolBrowser.ShowDialog(dialog.NewConfirmByNameDialog(poolBrowser.application, "DestroyPoolByNameDialog",
+			" 💥 Destroy Pool ", description, preview.Pool, func() { poolBrowser.destroyInBackground(preview) }), nil)
 	}
-	poolBrowser.showDialog(dialog.NewDestroyPoolDialog(poolBrowser.application, description, lost, nil, onComplete))
+	poolBrowser.ShowDialog(dialog.NewDestroyPoolDialog(poolBrowser.application, description, lost, nil, onComplete), nil)
 }
 
 // destroyInBackground destroys the pool as confirmed in the background and shows the result. Must be called on the
@@ -470,12 +452,12 @@ func (poolBrowser *PoolBrowserComponent) destroyInBackground(preview *zfs.PoolDe
 				logging.Error("Failed to destroy %s: %s", pool, err.Error())
 				// a retry asks for confirmation again, with a new preview
 				retry := func() { poolBrowser.previewAndConfirmDestroy(pool) }
-				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Destroy Failed", err, retry))
+				poolBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Destroy Failed", err, retry), nil)
 				return
 			}
 			count := len(preview.Datasets)
-			poolBrowser.showDialog(dialog.NewSuccessDialog(poolBrowser.application, "Pool Destroyed",
-				fmt.Sprintf("Destroyed the pool '%s' with its %d %s.", pool, count, uiutil.Plural(count, "dataset", "datasets"))))
+			poolBrowser.ShowDialog(dialog.NewSuccessDialog(poolBrowser.application, "Pool Destroyed",
+				fmt.Sprintf("Destroyed the pool '%s' with its %d %s.", pool, count, uiutil.Plural(count, "dataset", "datasets"))), nil)
 			// the event watcher may not run (see "setup"), so the pools are reloaded here
 			zfs.PoolsChanged.Emit(struct{}{})
 			zfs.RefreshZfsData()
@@ -492,7 +474,7 @@ func (poolBrowser *PoolBrowserComponent) runConfirmedInBackground(pool string, f
 		poolBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
 				logging.Error("Could not %s on %s: %s", name, pool, err.Error())
-				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, failedTitle, err, retry))
+				poolBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, failedTitle, err, retry), nil)
 				return
 			}
 			poolBrowser.Events.Emit(PoolBrowserStatusEvent{
@@ -502,12 +484,6 @@ func (poolBrowser *PoolBrowserComponent) runConfirmedInBackground(pool string, f
 			zfs.PoolsChanged.Emit(struct{}{})
 		})
 	}()
-}
-
-// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
-// whole screen, not only the area of this component. Without them, they are shown on its own layout.
-func (poolBrowser *PoolBrowserComponent) SetDialogPages(pages *tview.Pages) {
-	poolBrowser.dialogPages = pages
 }
 
 // SetOnShowHistory sets the function that shows the history of a pool (h, see zfs.PoolHistory), nil while it cannot
@@ -656,7 +632,7 @@ func (poolBrowser *PoolBrowserComponent) GetSelectedPool() *zfs.PoolListEntry {
 func (poolBrowser *PoolBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
 	var commands []shortcut_helper.ShortcutEntry
 	if selection := poolBrowser.GetSelectedPool(); selection != nil {
-		show := func(d dialog.Dialog) { poolBrowser.showDialog(d) }
+		show := func(d dialog.Dialog) { poolBrowser.ShowDialog(d, nil) }
 		commands = poolBrowser.newActionDialog(selection).OptionCommands(show)
 	}
 	return append(commands, poolBrowser.tableContainer.SortCommands()...)

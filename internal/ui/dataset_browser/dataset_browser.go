@@ -125,6 +125,9 @@ type DatasetBrowserStatusEvent struct {
 }
 
 type DatasetBrowserComponent struct {
+	// Host shows its dialogs
+	dialog.Host
+
 	Events *util.Emitter[Event]
 
 	application    *tview.Application
@@ -142,8 +145,6 @@ type DatasetBrowserComponent struct {
 	// allEntries are all datasets of the last load, including the ones hidden by hideUnmounted.
 	// Only accessed on the UI thread.
 	allEntries []*zfs.DatasetListEntry
-	// dialogPages are the pages dialogs are shown on, see SetDialogPages
-	dialogPages *tview.Pages
 	// sizeScales color the size columns, see updateSizeScales
 	sizeScales map[*table.Column]uiutil.MagnitudeScale
 	// hideUnmounted hides datasets that are not mounted. Only accessed on the UI thread.
@@ -178,6 +179,7 @@ func NewDatasetBrowser(application *tview.Application) *DatasetBrowserComponent 
 
 	datasetBrowser.tableContainer = datasetBrowser.createTable(application)
 	datasetBrowser.createLayout()
+	datasetBrowser.Host = dialog.NewHost(application, datasetBrowser.layout)
 	datasetBrowser.setupTable()
 
 	datasetBrowser.loader = uiutil.NewDataLoader[[]*zfs.DatasetListEntry](application).
@@ -432,8 +434,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 
 // openColumnSelectionDialog lets the user select and order the displayed columns. Runs on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) openColumnSelectionDialog() {
-	d := dialog.NewTableColumnSelectionDialog(datasetBrowser.application, "Configure Dataset Columns", tableColumns, datasetBrowser.tableContainer)
-	datasetBrowser.showDialog(d)
+	dialog.ShowColumnSelection(&datasetBrowser.Host, "Configure Dataset Columns", tableColumns, datasetBrowser.tableContainer)
 }
 
 // setCurrentPath updates the current path and notifies listeners.
@@ -754,12 +755,6 @@ func findEntryToSelect(entries []*zfs.DatasetListEntry, previousName string, pat
 	return entries[0]
 }
 
-// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
-// whole screen, not only the area of this component. Without them, they are shown on its own layout.
-func (datasetBrowser *DatasetBrowserComponent) SetDialogPages(pages *tview.Pages) {
-	datasetBrowser.dialogPages = pages
-}
-
 // SetOnShowHistory sets the function that shows the history of a dataset (h, see zfs.PoolHistory), nil while it
 // cannot be read (it needs root). Must be called on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) SetOnShowHistory(onShowHistory func(dataset string)) {
@@ -780,7 +775,7 @@ func (datasetBrowser *DatasetBrowserComponent) SetPath(path string, checkExists 
 func (datasetBrowser *DatasetBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
 	var commands []shortcut_helper.ShortcutEntry
 	if selection := datasetBrowser.tableContainer.GetSelectedEntry(); selection != nil {
-		show := func(d dialog.Dialog) { datasetBrowser.showDialog(d) }
+		show := func(d dialog.Dialog) { datasetBrowser.ShowDialog(d, nil) }
 		commands = datasetBrowser.newActionDialog(selection).OptionCommands(show,
 			dialog.DatasetDialogPermissionsActionId, dialog.DatasetDialogPropertiesActionId)
 	}

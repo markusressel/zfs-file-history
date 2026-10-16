@@ -226,15 +226,15 @@ func (datasetBrowser *DatasetBrowserComponent) openPermissionsDialog(entry *zfs.
 		datasetBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
 				logging.Error("Could not read the permissions of %s: %v", name, err)
-				datasetBrowser.showDialog(dialog.NewErrorDialog(datasetBrowser.application, "Cannot Read Permissions",
-					fmt.Errorf("cannot read the permissions of %s: %w", name, err)))
+				datasetBrowser.ShowDialog(dialog.NewErrorDialog(datasetBrowser.application, "Cannot Read Permissions",
+					fmt.Errorf("cannot read the permissions of %s: %w", name, err)), nil)
 				return
 			}
 			// the dialog read them anyway, so the column shows the same
 			datasetBrowser.applyPermissions(map[string]permissionState{name: {permissions: permissions}})
 			// changed delegations can affect the descendants as well, and the dataset info shows them too
 			onChanged := func() { zfs.RefreshZfsData() }
-			datasetBrowser.showDialog(dialog.NewDatasetPermissionsDialog(datasetBrowser.application, permissions, onChanged))
+			datasetBrowser.ShowDialog(dialog.NewDatasetPermissionsDialog(datasetBrowser.application, permissions, onChanged), nil)
 		})
 	}()
 }
@@ -252,21 +252,13 @@ func (datasetBrowser *DatasetBrowserComponent) openPropertiesDialog(entry *zfs.D
 		datasetBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
 				logging.Error("Could not read the properties of %s: %v", name, err)
-				datasetBrowser.showDialog(dialog.NewErrorDialog(datasetBrowser.application, "Cannot Read Properties",
-					fmt.Errorf("cannot read the properties of %s: %w", name, err)))
+				datasetBrowser.ShowDialog(dialog.NewErrorDialog(datasetBrowser.application, "Cannot Read Properties",
+					fmt.Errorf("cannot read the properties of %s: %w", name, err)), nil)
 				return
 			}
 			// e.g. a new mountpoint changes the dataset list, the dataset info shows properties as well
 			onChanged := func() { zfs.RefreshZfsData() }
-			datasetBrowser.showDialog(dialog.NewDatasetPropertiesDialog(datasetBrowser.application, name, properties, isRoot, onChanged))
+			datasetBrowser.ShowDialog(dialog.NewDatasetPropertiesDialog(datasetBrowser.application, name, properties, isRoot, onChanged), nil)
 		})
 	}()
-}
-
-func (datasetBrowser *DatasetBrowserComponent) showDialog(d dialog.Dialog) {
-	pages := datasetBrowser.layout
-	if datasetBrowser.dialogPages != nil {
-		pages = datasetBrowser.dialogPages
-	}
-	dialog.ShowDialogOnPages(datasetBrowser.application, pages, d, nil)
 }

@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/util"
@@ -88,4 +89,42 @@ func (d *PreviewDialog) Done() bool {
 	}
 	d.Close()
 	return true
+}
+
+// Preview is a check that runs before the confirmation of an action that loses data, see RunPreview. P is its result,
+// e.g. what would be destroyed.
+type Preview[P any] struct {
+	// Title and Message are the ones of the PreviewDialog, see NewPreviewDialog
+	Title, Message string
+	// ErrorTitle is the title of the error dialog if the check fails, e.g. "Cannot Destroy"; Subject is what is
+	// checked, for the log
+	ErrorTitle, Subject string
+	// Check runs in the background
+	Check func() (P, error)
+	// Confirm shows the confirmation of the result of Check, on the UI thread
+	Confirm func(result P)
+	// Retry starts over after an error, e.g. RunPreview with the same preview again
+	Retry func()
+}
+
+// RunPreview shows a PreviewDialog on the host, runs the check in the background, and then shows the confirmation, or
+// the error with a retry. Nothing follows if the dialog was cancelled meanwhile. Must be called on the UI thread.
+func RunPreview[P any](host *Host, preview Preview[P]) {
+	application := host.application
+	checking := NewPreviewDialog(application, preview.Title, preview.Message)
+	host.ShowDialog(checking, nil)
+	go func() {
+		result, err := preview.Check()
+		application.QueueUpdateDraw(func() {
+			if !checking.Done() {
+				return // cancelled
+			}
+			if err != nil {
+				logging.Error("%s %s: %s", preview.ErrorTitle, preview.Subject, err.Error())
+				host.ShowDialog(NewErrorDialogWithRetry(application, preview.ErrorTitle, err, preview.Retry), nil)
+				return
+			}
+			preview.Confirm(result)
+		})
+	}()
 }

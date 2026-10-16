@@ -34,13 +34,9 @@ func NewPoolActionRootDialog(application *tview.Application, needsRoot *zfs.Pool
 	setup := setupPoolActionsCommand()
 	allowable := needsRoot.AllowedBySetup()
 	// what "Copy command" copies: the setup, or the commands themselves if the setup does not allow them
-	copied := "sudo " + strings.Join(setup, " ")
+	copied := sudoCommand(setup)
 	if !allowable {
-		var commands []string
-		for _, command := range needsRoot.Commands() {
-			commands = append(commands, "sudo "+strings.Join(command, " "))
-		}
-		copied = strings.Join(commands, " && ")
+		copied = strings.Join(sudoCommands(needsRoot.Commands()), " && ")
 	}
 
 	asyncWork := func(d *SelectionDialog, action DialogActionId) error {

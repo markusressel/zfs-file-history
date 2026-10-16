@@ -106,6 +106,9 @@ var (
 )
 
 type FileBrowserComponent struct {
+	// Host shows its dialogs
+	dialog.Host
+
 	Events *util.Emitter[Event]
 
 	path string
@@ -121,9 +124,7 @@ type FileBrowserComponent struct {
 
 	// selectionMemory remembers the selected entry of each folder, also between runs
 	selectionMemory *uiutil.SelectionMemory[data.FileBrowserEntry]
-	// dialogPages are the pages dialogs are shown on, see SetDialogPages
-	dialogPages *tview.Pages
-	fileWatcher *util.FileWatcher
+	fileWatcher     *util.FileWatcher
 
 	diffLoader    *uiutil.DebouncedLoader
 	refreshLoader *uiutil.DebouncedLoader
@@ -154,6 +155,7 @@ func NewFileBrowser(application *tview.Application) *FileBrowserComponent {
 	fileBrowser.tableContainer = fileBrowser.createFileBrowserTable(application)
 
 	fileBrowser.createLayout()
+	fileBrowser.Host = dialog.NewHost(application, fileBrowser.layout)
 	fileBrowser.setupTable()
 
 	return fileBrowser
@@ -479,7 +481,7 @@ func (fileBrowser *FileBrowserComponent) openActionDialog(selection *data.FileBr
 	if selection == nil {
 		return
 	}
-	fileBrowser.showDialog(fileBrowser.newActionDialog(selection), nil)
+	fileBrowser.ShowDialog(fileBrowser.newActionDialog(selection), nil)
 }
 
 // newActionDialog creates the dialog with the actions for the selection (not nil), see openActionDialog.
@@ -509,7 +511,7 @@ func (fileBrowser *FileBrowserComponent) newActionDialog(selection *data.FileBro
 
 		if err != nil {
 			errDialog := dialog.NewErrorDialogWithRetry(fileBrowser.application, "Action Failed", err, d.RetryFunc(option))
-			fileBrowser.showDialog(errDialog, nil)
+			fileBrowser.ShowDialog(errDialog, nil)
 			return
 		}
 
@@ -548,7 +550,7 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 
 		if err != nil {
 			errDialog := dialog.NewErrorDialog(fileBrowser.application, "Delete Failed", err)
-			fileBrowser.showDialog(errDialog, nil)
+			fileBrowser.ShowDialog(errDialog, nil)
 		} else {
 			// Refresh the UI once the file is deleted
 			fileBrowser.Refresh(false)
@@ -556,7 +558,7 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 	}
 
 	deleteDialog := dialog.NewDeleteFileDialog(fileBrowser.application, selection, asyncWork, onComplete)
-	fileBrowser.showDialog(deleteDialog, nil) // nil for the onUpdate callback
+	fileBrowser.ShowDialog(deleteDialog, nil) // nil for the onUpdate callback
 }
 func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileBrowserEntry) {
 	if selection == nil {
@@ -580,7 +582,7 @@ func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileB
 	}
 
 	restoreDialog := dialog.NewRestoreFileDialog(fileBrowser.application, selection, nil, onComplete)
-	fileBrowser.showDialog(restoreDialog, nil)
+	fileBrowser.ShowDialog(restoreDialog, nil)
 }
 
 func (fileBrowser *FileBrowserComponent) SetSelectedSnapshot(snapshot *data.SnapshotBrowserEntry) {
@@ -898,23 +900,8 @@ func (fileBrowser *FileBrowserComponent) HasFocus() bool {
 	return fileBrowser.layout.HasFocus()
 }
 
-// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
-// whole screen, not only the area of this component. Without them, they are shown on its own layout.
-func (fileBrowser *FileBrowserComponent) SetDialogPages(pages *tview.Pages) {
-	fileBrowser.dialogPages = pages
-}
-
-func (fileBrowser *FileBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
-	pages := fileBrowser.layout
-	if fileBrowser.dialogPages != nil {
-		pages = fileBrowser.dialogPages
-	}
-	dialog.ShowDialogOnPages(fileBrowser.application, pages, d, onClosed)
-}
-
 func (fileBrowser *FileBrowserComponent) openColumnSelectionDialog() {
-	d := dialog.NewTableColumnSelectionDialog(fileBrowser.application, "Configure File Browser Columns", tableColumns, fileBrowser.tableContainer)
-	fileBrowser.showDialog(d, nil)
+	dialog.ShowColumnSelection(&fileBrowser.Host, "Configure File Browser Columns", tableColumns, fileBrowser.tableContainer)
 }
 
 // enterFileEntry opens the given directory. The remembered selection of that directory is restored
@@ -951,7 +938,7 @@ func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBr
 
 	// Pass the refresh logic as the onUpdate callback.
 	// This will execute safely on the main thread after the dialog closes.
-	fileBrowser.showDialog(d, func() {
+	fileBrowser.ShowDialog(d, func() {
 		fileBrowser.Refresh(false)
 	})
 
@@ -1102,7 +1089,7 @@ func (fileBrowser *FileBrowserComponent) currentFolderEntry() *data.FileBrowserE
 func (fileBrowser *FileBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
 	var commands []shortcut_helper.ShortcutEntry
 	if selection := fileBrowser.GetSelection(); selection != nil {
-		show := func(d dialog.Dialog) { fileBrowser.showDialog(d, nil) }
+		show := func(d dialog.Dialog) { fileBrowser.ShowDialog(d, nil) }
 		commands = fileBrowser.newActionDialog(selection).OptionCommands(show,
 			dialog.FileDialogShowHistoryActionId, dialog.FileDialogDeleteDialogActionId)
 	}

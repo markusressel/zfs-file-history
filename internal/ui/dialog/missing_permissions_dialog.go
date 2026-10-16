@@ -131,10 +131,34 @@ func formatMissingPermissions(missing *zfs.MissingPermissionsError, commands []s
 	return description.String()
 }
 
+// sudoCommands returns the commands run with sudo, as they are typed into a shell, see sudoCommand.
 func sudoCommands(commands [][]string) []string {
 	result := make([]string, 0, len(commands))
 	for _, command := range commands {
-		result = append(result, "sudo "+strings.Join(command, " "))
+		result = append(result, sudoCommand(command))
 	}
 	return result
+}
+
+// sudoCommand returns the command run with sudo, as it is typed into a shell (e.g. to copy it): arguments a shell would
+// split or interpret are quoted, e.g. the name of a dataset with a space, which ZFS allows.
+func sudoCommand(command []string) string {
+	quoted := make([]string, 0, len(command)+1)
+	quoted = append(quoted, "sudo")
+	for _, argument := range command {
+		quoted = append(quoted, shellQuote(argument))
+	}
+	return strings.Join(quoted, " ")
+}
+
+// shellQuote returns the argument as a shell reads it: as it is if it only has characters a shell does not interpret,
+// else in single quotes.
+func shellQuote(argument string) string {
+	plain := argument != "" && strings.IndexFunc(argument, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_./:=@%+,", r))
+	}) < 0
+	if plain {
+		return argument
+	}
+	return "'" + strings.ReplaceAll(argument, "'", `'\''`) + "'"
 }

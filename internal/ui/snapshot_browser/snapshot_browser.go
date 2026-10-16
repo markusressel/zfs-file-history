@@ -26,6 +26,9 @@ import (
 )
 
 type SnapshotBrowserComponent struct {
+	// Host shows its dialogs
+	dialog.Host
+
 	Events util.Emitter[Event]
 
 	application *tview.Application
@@ -73,8 +76,6 @@ type SnapshotBrowserComponent struct {
 	onlyChanges bool
 	// layoutStateKey is where the columns of the page are saved, see UseColumnLayout
 	layoutStateKey string
-	// dialogPages are the pages dialogs are shown on, see SetDialogPages
-	dialogPages *tview.Pages
 	// dataErrors are the damaged files, nil if there are none, see SetDataErrors. Only accessed on the UI thread.
 	dataErrors *zfs.DataErrorIndex
 }
@@ -276,6 +277,7 @@ func NewSnapshotBrowser(application *tview.Application) *SnapshotBrowserComponen
 	snapshotBrowser.tableContainer.SetMultiSelect(true)
 
 	snapshotBrowser.container = uiutil.NewLoadingContainer(application, snapshotBrowser.tableContainer.GetLayout(), "Snapshots", "Loading snapshots...")
+	snapshotBrowser.Host = dialog.NewHost(application, snapshotBrowser.container.Pages)
 
 	snapshotBrowser.loader = uiutil.NewDataLoader[snapshotLoadResult](application).
 		OnStart(func() {
@@ -337,7 +339,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) setupTable() {
 		}
 		if snapshotBrowser.GetSelection() != nil {
 			if key == tcell.KeyEnter {
-				snapshotBrowser.showDialog(snapshotBrowser.selectionActionDialog(), nil)
+				snapshotBrowser.ShowDialog(snapshotBrowser.selectionActionDialog(), nil)
 				return nil
 			} else if key == tcell.KeyRune && event.Rune() == 'v' {
 				snapshotBrowser.toggleOnlyChanges()
@@ -790,7 +792,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openActionDialog(selection *dat
 	if snapshotBrowser.GetSelection() == nil {
 		return
 	}
-	snapshotBrowser.showDialog(snapshotBrowser.newActionDialog(selection), nil)
+	snapshotBrowser.ShowDialog(snapshotBrowser.newActionDialog(selection), nil)
 }
 
 // newActionDialog creates the dialog with the actions for the snapshot, see openActionDialog. The previews of
@@ -834,7 +836,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) newActionDialog(selection *data
 		if err != nil {
 			logging.Error("Action failed: %s", err.Error())
 			errDialog := dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Operation Failed", err, d.RetryFunc(option))
-			snapshotBrowser.showDialog(errDialog, nil)
+			snapshotBrowser.ShowDialog(errDialog, nil)
 			return
 		}
 
@@ -851,7 +853,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) newActionDialog(selection *data
 			snapshotBrowser.selectLatestOnNextLoad = true
 
 			successDialog := dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshot Created", fmt.Sprintf("Snapshot '%s' created successfully.", createdName))
-			snapshotBrowser.showDialog(successDialog, nil)
+			snapshotBrowser.ShowDialog(successDialog, nil)
 
 		case dialog.SnapshotDialogDestroySnapshotActionId:
 			// nothing is destroyed yet, the confirmation does that
@@ -891,7 +893,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openCloneDialog(selection *data
 			snapshotBrowser.cloneInBackground(snapshot, targetName)
 		},
 	)
-	snapshotBrowser.showDialog(cloneDialog, nil)
+	snapshotBrowser.ShowDialog(cloneDialog, nil)
 }
 
 // cloneInBackground creates the clone in the background and shows the result. Must be called on the UI thread.
@@ -903,9 +905,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) cloneInBackground(snapshot *zfs
 			if err != nil {
 				logging.Error("Failed to clone snapshot %s to %s: %s", snapshot.FullName, targetName, err.Error())
 				retry := func() { snapshotBrowser.cloneInBackground(snapshot, targetName) }
-				snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Clone Failed", err, retry), nil)
+				snapshotBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Clone Failed", err, retry), nil)
 			} else {
-				snapshotBrowser.showDialog(dialog.NewSuccessDialog(
+				snapshotBrowser.ShowDialog(dialog.NewSuccessDialog(
 					snapshotBrowser.application,
 					"Snapshot Cloned",
 					fmt.Sprintf("Created dataset '%s' from snapshot '%s'.", targetName, snapshot.FullName),
@@ -921,7 +923,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) openMultiActionDialog(entries [
 	if len(entries) <= 0 {
 		return
 	}
-	snapshotBrowser.showDialog(snapshotBrowser.newMultiActionDialog(entries), nil)
+	snapshotBrowser.ShowDialog(snapshotBrowser.newMultiActionDialog(entries), nil)
 }
 
 // newMultiActionDialog creates the dialog with the actions for the snapshots (at least one), see
@@ -978,23 +980,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) openDeleteDialog(selection *dat
 // a dialog says that it is checked, and that nothing is destroyed yet; it can be cancelled. Must be called on the UI
 // thread.
 func (snapshotBrowser *SnapshotBrowserComponent) previewAndConfirmDestroy(request *destroyRequest) {
-	checking := dialog.NewPreviewDialog(snapshotBrowser.application, " 💥 Destroy Snapshots ", formatDestroyCheck(request))
-	snapshotBrowser.showDialog(checking, nil)
-	go func() {
-		preview, err := request.preview()
-		snapshotBrowser.application.QueueUpdateDraw(func() {
-			if !checking.Done() {
-				return // cancelled
-			}
-			if err != nil {
-				logging.Error("Cannot destroy snapshots: %s", err.Error())
-				retry := func() { snapshotBrowser.previewAndConfirmDestroy(request) }
-				snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Cannot Destroy", err, retry), nil)
-				return
-			}
-			snapshotBrowser.showDestroyConfirmation(request, preview)
-		})
-	}()
+	dialog.RunPreview(&snapshotBrowser.Host, dialog.Preview[*zfs.DestroyPreview]{
+		Title: " 💥 Destroy Snapshots ", Message: formatDestroyCheck(request),
+		ErrorTitle: "Cannot Destroy", Subject: "snapshots",
+		Check:   request.preview,
+		Confirm: func(preview *zfs.DestroyPreview) { snapshotBrowser.showDestroyConfirmation(request, preview) },
+		Retry:   func() { snapshotBrowser.previewAndConfirmDestroy(request) },
+	})
 }
 
 // formatDestroyCheck says what is checked before destroying the snapshots of request.
@@ -1087,7 +1079,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDestroyConfirmation(request
 			logging.Error("Failed to destroy snapshots: %s", err.Error())
 			// a retry asks for confirmation again, with a new dry run (some snapshots may be gone already)
 			retry := func() { snapshotBrowser.previewAndConfirmDestroy(request) }
-			snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Destroy Failed", err, retry), nil)
+			snapshotBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Destroy Failed", err, retry), nil)
 			// some snapshots may have been destroyed already
 			snapshotBrowser.ClearMultiSelection()
 			snapshotBrowser.Refresh(true)
@@ -1096,32 +1088,17 @@ func (snapshotBrowser *SnapshotBrowserComponent) showDestroyConfirmation(request
 
 		message := fmt.Sprintf("Destroyed %d %s, freed %s.",
 			len(preview.Destroyed), uiutil.Plural(len(preview.Destroyed), "snapshot", "snapshots"), uiutil.HumanizedBytes(preview.Reclaim))
-		snapshotBrowser.showDialog(dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshots Destroyed", message), nil)
+		snapshotBrowser.ShowDialog(dialog.NewSuccessDialog(snapshotBrowser.application, "Snapshots Destroyed", message), nil)
 		snapshotBrowser.ClearMultiSelection()
 		snapshotBrowser.Refresh(true)
 	}
 
 	confirmation := dialog.NewDestroySnapshotsDialog(snapshotBrowser.application, formatDestroyDescription(preview), asyncWork, onComplete)
-	snapshotBrowser.showDialog(confirmation, nil)
-}
-
-// SetDialogPages sets the pages its dialogs are shown on: the pages of the application, so they are modal for the
-// whole screen, not only the area of this component. Without them, they are shown on its own layout.
-func (snapshotBrowser *SnapshotBrowserComponent) SetDialogPages(pages *tview.Pages) {
-	snapshotBrowser.dialogPages = pages
-}
-
-func (snapshotBrowser *SnapshotBrowserComponent) showDialog(d dialog.Dialog, onClosed func()) {
-	pages := snapshotBrowser.container.Pages
-	if snapshotBrowser.dialogPages != nil {
-		pages = snapshotBrowser.dialogPages
-	}
-	dialog.ShowDialogOnPages(snapshotBrowser.application, pages, d, onClosed)
+	snapshotBrowser.ShowDialog(confirmation, nil)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) openColumnSelectionDialog() {
-	d := dialog.NewTableColumnSelectionDialog(snapshotBrowser.application, "Configure Snapshot Columns", tableColumns, snapshotBrowser.tableContainer)
-	snapshotBrowser.showDialog(d, nil)
+	dialog.ShowColumnSelection(&snapshotBrowser.Host, "Configure Snapshot Columns", tableColumns, snapshotBrowser.tableContainer)
 }
 
 func (snapshotBrowser *SnapshotBrowserComponent) createSnapshot(entry *data.SnapshotBrowserEntry) (name string, err error) {
@@ -1210,7 +1187,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) selectionActionDialog() *dialog
 func (snapshotBrowser *SnapshotBrowserComponent) GetCommands() []shortcut_helper.ShortcutEntry {
 	var commands []shortcut_helper.ShortcutEntry
 	if snapshotBrowser.GetSelection() != nil {
-		show := func(d dialog.Dialog) { snapshotBrowser.showDialog(d, nil) }
+		show := func(d dialog.Dialog) { snapshotBrowser.ShowDialog(d, nil) }
 		commands = snapshotBrowser.selectionActionDialog().OptionCommands(show,
 			dialog.SnapshotDialogShowHistoryActionId, dialog.SnapshotDialogDestroySnapshotActionId)
 	}
@@ -1226,7 +1203,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) GetShortcutMap() []shortcut_hel
 
 	if selection := snapshotBrowser.GetSelection(); selection != nil {
 		shortcutMap = append(shortcutMap,
-			uiutil.TableComponentShortcutActions.WithRun(func() { snapshotBrowser.showDialog(snapshotBrowser.selectionActionDialog(), nil) }),
+			uiutil.TableComponentShortcutActions.WithRun(func() { snapshotBrowser.ShowDialog(snapshotBrowser.selectionActionDialog(), nil) }),
 			// named like in the action dialog and by ZFS
 			uiutil.TableComponentShortcutDelete.WithRun(func() { snapshotBrowser.openDeleteDialog(selection) }).OnlyInMenu().
 				WithName("Destroy").WithDescription("Destroy the selected snapshot, after asking (zfs destroy)"),

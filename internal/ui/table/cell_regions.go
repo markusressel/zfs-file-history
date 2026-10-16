@@ -3,9 +3,6 @@ package table
 import (
 	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/theme"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 // CellRegion is a part of the text of a cell that reacts to the mouse, see SetCellRegionsFunc.
@@ -74,27 +71,8 @@ func (c *RowSelectionTable[T]) addCellRegions() {
 }
 
 // MouseHandler runs a clicked cell region (see SetCellRegionsFunc) instead of selecting its row, and otherwise
-// handles the mouse like the table. While the mouse is on a region, it captures the mouse, to learn when it leaves.
-func (v *tableView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	tableHandler := v.Table.MouseHandler()
-	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		regions := v.regions
-		active := (v.regionsEnabled == nil || v.regionsEnabled()) && v.InRect(event.Position())
-		onRegion := active && regions.Contains(event.Position())
-		hovered := regions.IsAnyHovered()
-		regions.HandleMouse(action, event, active)
-		if onRegion {
-			// a click on a region does not select the row, but focuses the table like a click elsewhere
-			if action == tview.MouseLeftDown {
-				setFocus(v)
-			}
-			return true, v
-		}
-		consumed, capture = tableHandler(action, event, setFocus)
-		if capture == nil && regions.IsAnyHovered() {
-			capture = v
-		}
-		// a hover that ended needs a redraw
-		return consumed || hovered != regions.IsAnyHovered(), capture
-	}
+// handles the mouse like the table, see clickable.Regions.WrapMouseHandler.
+func (v *tableView) MouseHandler() clickable.MouseHandler {
+	enabled := func() bool { return v.regionsEnabled == nil || v.regionsEnabled() }
+	return v.regions.WrapMouseHandler(v, enabled, v.Table.MouseHandler())
 }

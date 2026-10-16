@@ -159,9 +159,9 @@ func (snapshotBrowser *SnapshotBrowserComponent) showHoldResult(result *holdResu
 		if hold {
 			failedTitle = "Hold Failed"
 		}
-		snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, failedTitle, err, retry), nil)
+		snapshotBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, failedTitle, err, retry), nil)
 	} else {
-		snapshotBrowser.showDialog(dialog.NewSuccessDialog(snapshotBrowser.application, title, formatHoldMessage(result, hold)), nil)
+		snapshotBrowser.ShowDialog(dialog.NewSuccessDialog(snapshotBrowser.application, title, formatHoldMessage(result, hold)), nil)
 		snapshotBrowser.ClearMultiSelection()
 	}
 	// reload the snapshot properties (number of holds), the cached ones are outdated

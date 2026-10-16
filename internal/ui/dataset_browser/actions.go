@@ -47,7 +47,7 @@ func (datasetBrowser *DatasetBrowserComponent) openActionDialog(entry *zfs.Datas
 	if entry == nil {
 		return
 	}
-	datasetBrowser.showDialog(datasetBrowser.newActionDialog(entry))
+	datasetBrowser.ShowDialog(datasetBrowser.newActionDialog(entry), nil)
 }
 
 // newActionDialog creates the dialog with the actions for the dataset, see openActionDialog. Promoting a clone,
@@ -84,7 +84,7 @@ func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.Datase
 		d.Close()
 		if err != nil {
 			logging.Error("Action on %s failed: %s", name, err.Error())
-			datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Operation Failed", err, d.RetryFunc(option)))
+			datasetBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Operation Failed", err, d.RetryFunc(option)), nil)
 			if option.Id == dialog.DatasetDialogCreateSnapshotRecursivelyActionId {
 				// some of the snapshots may exist
 				zfs.RefreshZfsData()
@@ -166,7 +166,7 @@ func (datasetBrowser *DatasetBrowserComponent) showPromoteConfirmation(preview *
 		}
 		if err != nil {
 			logging.Error("Failed to promote %s: %s", preview.Clone, err.Error())
-			datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Promote Failed", err, d.RetryFunc(option)))
+			datasetBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Promote Failed", err, d.RetryFunc(option)), nil)
 			return
 		}
 		datasetBrowser.Events.Emit(DatasetBrowserStatusEvent{
@@ -174,7 +174,7 @@ func (datasetBrowser *DatasetBrowserComponent) showPromoteConfirmation(preview *
 		})
 		zfs.RefreshZfsData()
 	}
-	datasetBrowser.showDialog(dialog.NewPromoteCloneDialog(datasetBrowser.application, formatPromoteDescription(preview), asyncWork, onComplete))
+	datasetBrowser.ShowDialog(dialog.NewPromoteCloneDialog(datasetBrowser.application, formatPromoteDescription(preview), asyncWork, onComplete), nil)
 }
 
 // destroyedParts returns the datasets and the snapshots of a dry run of destroying a dataset, each in the order of the
@@ -230,25 +230,15 @@ func formatDestroyDescription(entry *zfs.DatasetListEntry, preview *zfs.DestroyP
 // confirmation. Meanwhile, a dialog says that it is checked, and that nothing is destroyed yet; it can be cancelled.
 // Must be called on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) previewAndConfirmDestroy(entry *zfs.DatasetListEntry) {
-	checking := dialog.NewPreviewDialog(datasetBrowser.application, " 💥 Destroy Dataset ", fmt.Sprintf(
-		"Checking what destroying %s would destroy: a dry run, and its permissions, holds and mounts. Nothing is "+
-			"destroyed yet.", entry.Name))
-	datasetBrowser.showDialog(checking)
-	go func() {
-		preview, err := previewDestroyDataset(entry.Name)
-		datasetBrowser.application.QueueUpdateDraw(func() {
-			if !checking.Done() {
-				return // cancelled
-			}
-			if err != nil {
-				logging.Error("Cannot destroy %s: %s", entry.Name, err.Error())
-				retry := func() { datasetBrowser.previewAndConfirmDestroy(entry) }
-				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Cannot Destroy", err, retry))
-				return
-			}
-			datasetBrowser.showDestroyConfirmation(entry, preview)
-		})
-	}()
+	dialog.RunPreview(&datasetBrowser.Host, dialog.Preview[*zfs.DestroyPreview]{
+		Title: " 💥 Destroy Dataset ",
+		Message: fmt.Sprintf("Checking what destroying %s would destroy: a dry run, and its permissions, holds and "+
+			"mounts. Nothing is destroyed yet.", entry.Name),
+		ErrorTitle: "Cannot Destroy", Subject: entry.Name,
+		Check:   func() (*zfs.DestroyPreview, error) { return previewDestroyDataset(entry.Name) },
+		Confirm: func(preview *zfs.DestroyPreview) { datasetBrowser.showDestroyConfirmation(entry, preview) },
+		Retry:   func() { datasetBrowser.previewAndConfirmDestroy(entry) },
+	})
 }
 
 // showDestroyConfirmation asks for confirmation to destroy the dataset as the dry run says. If it has snapshots or
@@ -272,27 +262,27 @@ func (datasetBrowser *DatasetBrowserComponent) showDestroyConfirmation(entry *zf
 		if !d.Checked()[0] {
 			// shows this dialog again, so the box can be checked
 			retry := func() { datasetBrowser.showDestroyConfirmation(entry, preview) }
-			datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Nothing Destroyed",
+			datasetBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Nothing Destroyed",
 				fmt.Errorf("'%s' has %s, which are destroyed with it: check '%s' to destroy them as well", entry.Name,
-					dependents, recursive), retry))
+					dependents, recursive), retry), nil)
 			return
 		}
 		datasetBrowser.showDestroyByName(entry, true, preview, description)
 	}
-	datasetBrowser.showDialog(dialog.NewDestroyDatasetDialog(datasetBrowser.application, description, recursive, nil, onComplete))
+	datasetBrowser.ShowDialog(dialog.NewDestroyDatasetDialog(datasetBrowser.application, description, recursive, nil, onComplete), nil)
 }
 
 // showDestroyByName destroys the dataset as the dry run says once its full name is typed. Must be called on the UI
 // thread.
 func (datasetBrowser *DatasetBrowserComponent) showDestroyByName(entry *zfs.DatasetListEntry, recursive bool, preview *zfs.DestroyPreview, description string) {
-	datasetBrowser.showDialog(dialog.NewConfirmByNameDialog(
+	datasetBrowser.ShowDialog(dialog.NewConfirmByNameDialog(
 		datasetBrowser.application,
 		"DestroyDatasetByNameDialog",
 		" 💥 Destroy Dataset ",
 		description,
 		entry.Name,
 		func() { datasetBrowser.destroyInBackground(entry, recursive, preview) },
-	))
+	), nil)
 }
 
 // destroyInBackground destroys the dataset as confirmed in the background and shows the result. Must be called on
@@ -306,11 +296,11 @@ func (datasetBrowser *DatasetBrowserComponent) destroyInBackground(entry *zfs.Da
 				logging.Error("Failed to destroy %s: %s", name, err.Error())
 				// a retry asks for confirmation again, with a new dry run
 				retry := func() { datasetBrowser.previewAndConfirmDestroy(entry) }
-				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Destroy Failed", err, retry))
+				datasetBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Destroy Failed", err, retry), nil)
 			} else {
 				message := fmt.Sprintf("Destroyed '%s' (%d %s), freed %s.", name, len(preview.Destroyed),
 					uiutil.Plural(len(preview.Destroyed), "dataset or snapshot", "datasets and snapshots"), uiutil.HumanizedBytes(preview.Reclaim))
-				datasetBrowser.showDialog(dialog.NewSuccessDialog(datasetBrowser.application, "Dataset Destroyed", message))
+				datasetBrowser.ShowDialog(dialog.NewSuccessDialog(datasetBrowser.application, "Dataset Destroyed", message), nil)
 			}
 			// some of it may be destroyed, also after an error
 			zfs.RefreshZfsData()
@@ -347,7 +337,7 @@ func (datasetBrowser *DatasetBrowserComponent) runInTerminal(entry *zfs.DatasetL
 				logging.Error("Failed to %s: %s", plan.Name(), err.Error())
 				// zfs printed why in the terminal, e.g. a wrong passphrase
 				retry := func() { datasetBrowser.startMountAction(entry, plan.Action) }
-				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry))
+				datasetBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry), nil)
 				return
 			}
 			datasetBrowser.mounted(plan)
@@ -365,7 +355,7 @@ func (datasetBrowser *DatasetBrowserComponent) startMountAction(entry *zfs.Datas
 			case err != nil:
 				logging.Error("Cannot change the mounts of %s: %s", entry.Name, err.Error())
 				retry := func() { datasetBrowser.startMountAction(entry, action) }
-				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry))
+				datasetBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry), nil)
 			case plan.Prompts:
 				datasetBrowser.runInTerminal(entry, plan)
 			case action == zfs.MountActionUnmount || action == zfs.MountActionUnloadKey:
@@ -412,7 +402,7 @@ func (datasetBrowser *DatasetBrowserComponent) showUnmountConfirmation(entry *zf
 			datasetBrowser.runMountPlanInBackground(entry, plan)
 		}
 	}
-	datasetBrowser.showDialog(dialog.NewUnmountDialog(datasetBrowser.application, title, formatUnmountDescription(plan), confirm, nil, onComplete))
+	datasetBrowser.ShowDialog(dialog.NewUnmountDialog(datasetBrowser.application, title, formatUnmountDescription(plan), confirm, nil, onComplete), nil)
 }
 
 // runMountPlanInBackground does what the plan says in the background and shows the result. Must be called on the UI
@@ -428,7 +418,7 @@ func (datasetBrowser *DatasetBrowserComponent) runMountPlanInBackground(entry *z
 			logging.Error("Failed to %s: %s", plan.Name(), err.Error())
 			// a retry plans again, and asks again before unmounting
 			retry := func() { datasetBrowser.startMountAction(entry, plan.Action) }
-			datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry))
+			datasetBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Failed", err, retry), nil)
 			// some of it may be unmounted, also after an error
 			zfs.RefreshZfsData()
 		})

@@ -21,25 +21,15 @@ var (
 // asks for confirmation. Meanwhile, a dialog says that it is checked, and that nothing is changed yet; it can be
 // cancelled. Must be called on the UI thread.
 func (snapshotBrowser *SnapshotBrowserComponent) previewAndConfirmRollback(snapshot string) {
-	checking := dialog.NewPreviewDialog(snapshotBrowser.application, " ⏪ Roll Back ", fmt.Sprintf(
-		"Checking what rolling back to %s would lose: the newer snapshots, their clones and holds, and the "+
-			"permissions. Nothing is changed yet.", snapshot))
-	snapshotBrowser.showDialog(checking, nil)
-	go func() {
-		preview, err := previewRollback(snapshot)
-		snapshotBrowser.application.QueueUpdateDraw(func() {
-			if !checking.Done() {
-				return // cancelled
-			}
-			if err != nil {
-				logging.Error("Cannot roll back to %s: %s", snapshot, err.Error())
-				retry := func() { snapshotBrowser.previewAndConfirmRollback(snapshot) }
-				snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Cannot Roll Back", err, retry), nil)
-				return
-			}
-			snapshotBrowser.showRollbackConfirmation(preview)
-		})
-	}()
+	dialog.RunPreview(&snapshotBrowser.Host, dialog.Preview[*zfs.RollbackPreview]{
+		Title: " ⏪ Roll Back ",
+		Message: fmt.Sprintf("Checking what rolling back to %s would lose: the newer snapshots, their clones and holds, "+
+			"and the permissions. Nothing is changed yet.", snapshot),
+		ErrorTitle: "Cannot Roll Back", Subject: snapshot,
+		Check:   func() (*zfs.RollbackPreview, error) { return previewRollback(snapshot) },
+		Confirm: snapshotBrowser.showRollbackConfirmation,
+		Retry:   func() { snapshotBrowser.previewAndConfirmRollback(snapshot) },
+	})
 }
 
 // formatRollbackDescription describes what rolling back loses, based on the preview, with style tags: what is lost
@@ -78,7 +68,7 @@ func (snapshotBrowser *SnapshotBrowserComponent) showRollbackConfirmation(previe
 		preview.Snapshot,
 		func() { snapshotBrowser.rollbackInBackground(preview) },
 	)
-	snapshotBrowser.showDialog(confirmation, nil)
+	snapshotBrowser.ShowDialog(confirmation, nil)
 }
 
 // rollbackInBackground rolls back as confirmed in the background and shows the result. Must be called on the UI
@@ -91,13 +81,13 @@ func (snapshotBrowser *SnapshotBrowserComponent) rollbackInBackground(preview *z
 				logging.Error("Failed to roll back to %s: %s", preview.Snapshot, err.Error())
 				// a retry asks for confirmation again, with a new preview
 				retry := func() { snapshotBrowser.previewAndConfirmRollback(preview.Snapshot) }
-				snapshotBrowser.showDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Rollback Failed", err, retry), nil)
+				snapshotBrowser.ShowDialog(dialog.NewErrorDialogWithRetry(snapshotBrowser.application, "Rollback Failed", err, retry), nil)
 			} else {
 				message := fmt.Sprintf("Rolled back to '%s'.", preview.Snapshot)
 				if count := len(preview.Destroyed); count > 0 {
 					message += fmt.Sprintf(" Destroyed %d newer %s.", count, uiutil.Plural(count, "snapshot", "snapshots"))
 				}
-				snapshotBrowser.showDialog(dialog.NewSuccessDialog(snapshotBrowser.application, "Rolled Back", message), nil)
+				snapshotBrowser.ShowDialog(dialog.NewSuccessDialog(snapshotBrowser.application, "Rolled Back", message), nil)
 				snapshotBrowser.emit(RolledBackEvent{Snapshot: preview.Snapshot})
 			}
 			// newer snapshots may be gone, also after an error

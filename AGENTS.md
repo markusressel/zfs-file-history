@@ -120,7 +120,7 @@ of the code.
   is (`protectedMountPaths`: zfs would destroy the others first and then fail on the busy one); with snapshots or
   child datasets only after a checkbox. The confirmation lists the datasets before the snapshots. The previews of
   destroying (datasets, pools, snapshots) and rolling back run in a `dialog.PreviewDialog` (red border, spinner,
-  what is checked, Cancel), shown at once in place of the confirmation, not with a spinner in the action dialog: that
+  what is checked, Cancel; `dialog.RunPreview` runs the check and shows the confirmation or the error), shown at once in place of the confirmation, not with a spinner in the action dialog: that
   looked like it was destroyed without a confirmation. Both are confirmed by typing the full name
   (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action dialog and command menu
   only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
@@ -205,7 +205,9 @@ of the code.
   - `dialog/`: dialogs, overlays (file and folder history) and the command menu (`:`). The file history shows the
     changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
     `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with
-    `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
+    `ShowDialogOnPages`; components embed `dialog.Host` (`SetDialogPages`, `ShowDialog`,
+    `dialog.ShowColumnSelection` for F2, `RunPreview`), which shows them on the pages of the application, set by the
+    page, and on the own pages of the component until then. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
     ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started. The
     description of a selection or text input dialog scrolls when the dialog does not fit, so the checklist, the
     options and the input field are always shown.
@@ -253,7 +255,10 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   adds each part where it draws it (`Reset`, `Add`, `DrawHover` at the end), the mouse handler calls `HandleMouse`.
   No second layout for hit testing. A region's `Key` identifies it across draws (regions with the same key are
   highlighted together); the last added region wins where they overlap. Regions exist once drawn: UI tests draw
-  (`app.ForceDraw()`) before sending mouse events.
+  (`app.ForceDraw()`) before sending mouse events. Links in a text (the name of a pool, the fields of the devices)
+  are `clickable.TextLink`s by their position in the text (`AddTextLinks` places them, scrolled and cut off); a
+  primitive with regions takes `Regions.WrapMouseHandler`: a click on a region runs it, everything else (pressing,
+  which focuses, scrolling) goes on to the primitive, also on a region.
 - **tview hands mouse events to all pages until one consumes them** (rivo/tview#926). Dialogs consume clicks next to
   them; things on a page that react to the mouse check `isInFront` (splits, the shortcut bar), so they do nothing
   while a dialog is in front.

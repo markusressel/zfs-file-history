@@ -526,6 +526,21 @@ func TestPoolDevices_ClickOnNameShowsDisk(t *testing.T) {
 	testutil.OnUiThread(t, app, func() { assert.Equal(t, "tank/sdb", *showDisk) })
 }
 
+// Regression: a click into the devices did not focus them (their clickable fields took all clicks), so t, s and Enter
+// could not be used after a click.
+func TestPoolDevices_ClickFocuses(t *testing.T) {
+	app, devices, screen := setupDevicesTest(t, disktest.NewSampler(nil))
+	other := tview.NewBox()
+	testutil.OnUiThread(t, app, func() {
+		app.SetRoot(tview.NewFlex().AddItem(devices.GetLayout(), 0, 1, false).AddItem(other, 0, 1, true), true)
+		app.SetFocus(other)
+	})
+	testutil.ClickText(t, app, screen, "DEGRADED")
+	focused := false
+	testutil.OnUiThread(t, app, func() { focused = devices.HasFocus() })
+	assert.True(t, focused)
+}
+
 func TestPoolDevices_SmartNeedsRoot(t *testing.T) {
 	smart := disktest.NewSmart(map[string][]disk.SmartReport{"sda": {{Disk: "sda", Err: disk.ErrSmartNeedsRoot}}})
 	app, devices, _, screen := setupSmartTest(t, smart)

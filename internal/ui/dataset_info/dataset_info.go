@@ -83,38 +83,16 @@ func (view *infoView) Draw(screen tcell.Screen) {
 	if link.width == 0 || datasetInfo.onShowPool == nil {
 		return
 	}
-	x, y, width, height := view.GetInnerRect()
-	row, column := view.GetScrollOffset()
-	linkY := y + link.line - row
-	if linkY < y || linkY >= y+height {
-		return
-	}
-	start := max(x+link.column-column, x)
-	end := min(x+link.column-column+link.width, x+width)
 	onShowPool := datasetInfo.onShowPool
-	datasetInfo.regions.Add(clickable.Region{
-		X: start, Y: linkY, Width: end - start, Key: link.pool,
-		HoverBackground: theme.Colors.Pool.HoverBackground,
-		OnClick:         func() { onShowPool(link.pool) },
-	})
+	datasetInfo.regions.AddTextLinks(view, []clickable.TextLink{{Line: link.line, Column: link.column, Width: link.width,
+		Key: link.pool, OnClick: func() { onShowPool(link.pool) }}}, theme.Colors.Pool.HoverBackground)
 }
 
 // MouseHandler shows the pool when its name is clicked (see clickable.Regions), and otherwise scrolls and focuses like
 // a text view.
-func (view *infoView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	textViewHandler := view.TextView.MouseHandler()
-	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-		datasetInfo := view.datasetInfo
-		consumed, captures := datasetInfo.regions.HandleMouse(action, event, datasetInfo.enabled() && view.InRect(event.Position()))
-		if !consumed {
-			consumed, capture = textViewHandler(action, event, setFocus)
-		}
-		if capture == nil && captures {
-			// to learn when the mouse leaves
-			capture = view
-		}
-		return consumed, capture
-	}
+func (view *infoView) MouseHandler() clickable.MouseHandler {
+	datasetInfo := view.datasetInfo
+	return datasetInfo.regions.WrapMouseHandler(view, func() bool { return datasetInfo.enabled() }, view.TextView.MouseHandler())
 }
 
 // datasetInfoResult is the result of a background load.
