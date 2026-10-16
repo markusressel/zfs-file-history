@@ -18,11 +18,19 @@ var (
 )
 
 // previewAndConfirmRollback lists in the background what rolling back to the snapshot (full name) loses, and then
-// asks for confirmation. Must be called on the UI thread.
+// asks for confirmation. Meanwhile, a dialog says that it is checked, and that nothing is changed yet; it can be
+// cancelled. Must be called on the UI thread.
 func (snapshotBrowser *SnapshotBrowserComponent) previewAndConfirmRollback(snapshot string) {
+	checking := dialog.NewPreviewDialog(snapshotBrowser.application, " ⏪ Roll Back ", fmt.Sprintf(
+		"Checking what rolling back to %s would lose: the newer snapshots, their clones and holds, and the "+
+			"permissions. Nothing is changed yet.", snapshot))
+	snapshotBrowser.showDialog(checking, nil)
 	go func() {
 		preview, err := previewRollback(snapshot)
 		snapshotBrowser.application.QueueUpdateDraw(func() {
+			if !checking.Done() {
+				return // cancelled
+			}
 			if err != nil {
 				logging.Error("Cannot roll back to %s: %s", snapshot, err.Error())
 				retry := func() { snapshotBrowser.previewAndConfirmRollback(snapshot) }
