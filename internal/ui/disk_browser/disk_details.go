@@ -51,7 +51,7 @@ func (entry AttributeEntry) TableRowId() string {
 // of its SMART attributes (the ones that tell of failures highlighted).
 type DiskDetailsComponent struct {
 	application    *tview.Application
-	layout         *tview.Flex
+	layout         *detailsLayout
 	details        *scrollbar.TextView
 	detailsView    *detailsView
 	tableContainer *table.RowSelectionTable[AttributeEntry]
@@ -64,16 +64,17 @@ type DiskDetailsComponent struct {
 	shownEntry *DiskEntry
 	// renderedTimeFormat is the uiutil.TimeFormatGeneration the details were rendered with
 	renderedTimeFormat uint64
+	// layoutWidth and layoutHeight are the size of the layout as last drawn, 0 before; renderedWidth and
+	// renderedHeight the one the details were rendered for, see renderDetails
+	layoutWidth, layoutHeight     int
+	renderedWidth, renderedHeight int
 	// dialogPages are the pages dialogs are shown on, see SetDialogPages
 	dialogPages *tview.Pages
 }
 
-// detailsView is the text of the details as placed in the layout: drawing it renders the details again if formatted
-// times changed (when the SMART values were read, "38 seconds ago"), like the tables do (see
-// uiutil.TimeFormatGeneration).
+// detailsView is the text of the details as placed in the layout.
 type detailsView struct {
 	*scrollbar.TextView
-	component *DiskDetailsComponent
 }
 
 // MouseHandler handles the mouse like the text view (e.g. scrolling), without focusing it: there is nothing to do in
@@ -82,12 +83,30 @@ func (view *detailsView) MouseHandler() uiutil.MouseHandler {
 	return uiutil.WithoutFocus(view.TextView.MouseHandler())
 }
 
-func (view *detailsView) Draw(screen tcell.Screen) {
-	if view.component.shownEntry != nil && view.component.renderedTimeFormat != uiutil.TimeFormatGeneration() {
-		view.component.renderDetails()
-	}
-	view.TextView.Draw(screen)
+// detailsLayout is the layout of the details above the attributes: drawing it renders the details again for its
+// size (side by side or one below the other, see formatDetails), or if formatted times changed (when the SMART values
+// were read, "38 seconds ago"), like the tables do (see uiutil.TimeFormatGeneration).
+type detailsLayout struct {
+	*tview.Flex
+	component *DiskDetailsComponent
 }
+
+func (layout *detailsLayout) Draw(screen tcell.Screen) {
+	component := layout.component
+	_, _, component.layoutWidth, component.layoutHeight = layout.GetRect()
+	if component.shownEntry != nil && (component.renderedTimeFormat != uiutil.TimeFormatGeneration() ||
+		component.renderedWidth != component.layoutWidth || component.renderedHeight != component.layoutHeight) {
+		component.renderDetails()
+	}
+	layout.Flex.Draw(screen)
+}
+
+// detailsFrameWidth is the width the border and the padding of the details take.
+const detailsFrameWidth = 4
+
+// detailsMaxPercent is the most of the height of the layout the details take, so some attributes are always shown;
+// the rest of the details scrolls.
+const detailsMaxPercent = 60
 
 // NewDiskDetails returns the details of a disk. Must be called on the UI thread.
 func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
@@ -100,7 +119,7 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	component.details.SetBorder(true)
 	component.details.SetBorderPadding(0, 0, 1, 1)
 	uiutil.SetupWindow(component.details, "Disk")
-	component.detailsView = &detailsView{TextView: component.details, component: component}
+	component.detailsView = &detailsView{TextView: component.details}
 
 	t := table.NewTableContainer[AttributeEntry](application, toAttributeCells, sortAttributes)
 	t.SetTitle("Attributes")
@@ -122,8 +141,8 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	})
 	component.tableContainer = t
 
-	component.layout = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(component.detailsView, 0, 0, false).
+	component.layout = &detailsLayout{Flex: tview.NewFlex().SetDirection(tview.FlexRow), component: component}
+	component.layout.AddItem(component.detailsView, 0, 0, false).
 		AddItem(t.GetLayout(), 0, 1, true)
 	return component
 }
@@ -173,14 +192,30 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 	component.updateFooter()
 }
 
-// renderDetails shows the details of the shown disk. Runs on the UI thread.
+// renderDetails shows the details of the shown disk, fitted into the size of the layout as last drawn (any width
+// before it was drawn). Runs on the UI thread.
 func (component *DiskDetailsComponent) renderDetails() {
 	component.renderedTimeFormat = uiutil.TimeFormatGeneration()
-	lines := formatDetails(component.shownEntry)
+	component.renderedWidth, component.renderedHeight = component.layoutWidth, component.layoutHeight
+	width := 0
+	if component.layoutWidth > 0 {
+		width = max(component.layoutWidth-detailsFrameWidth, 1)
+	}
+	lines := formatDetails(component.shownEntry, width)
+	// and the border
+	height := len(lines) + 2
+	if component.layoutHeight > 0 {
+		if capped := uiutil.FitContent(component.layoutHeight, height, detailsMaxPercent); capped < height {
+			height = capped
+			// the details scroll, the scrollbar takes a column (see scrollbar.TextView)
+			if width > 1 {
+				lines = formatDetails(component.shownEntry, width-1)
+			}
+		}
+	}
 	uiutil.SetupWindow(component.details, detailsTitle(component.shownEntry))
 	component.details.SetText(strings.Join(lines, "\n"))
-	// and the border
-	component.layout.ResizeItem(component.detailsView, len(lines)+2, 0)
+	component.layout.ResizeItem(component.detailsView, height, 0)
 }
 
 // updateFooter shows the number of attributes in the bottom border of the table. Runs on the UI thread.
@@ -224,7 +259,7 @@ func (component *DiskDetailsComponent) GetCommands() []shortcut_helper.ShortcutE
 	return component.tableContainer.SortCommands()
 }
 
-func (component *DiskDetailsComponent) GetLayout() *tview.Flex {
+func (component *DiskDetailsComponent) GetLayout() tview.Primitive {
 	return component.layout
 }
 

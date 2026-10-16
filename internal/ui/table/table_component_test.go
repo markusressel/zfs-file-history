@@ -1054,3 +1054,32 @@ func TestSelectedRowKeepsTextColors(t *testing.T) {
 
 	assert.Equal(t, theme.SelectedStyle(tcell.ColorGreen), table.table.GetCell(1, 0).SelectedStyle)
 }
+
+// Regression: tview's table follows the end of the rows once all of them fit, so when it got lower (e.g. a smaller
+// terminal), it showed the last rows, without the selected one.
+func TestTable_SelectionStaysVisibleWhenLower(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	table.SetData(entries[:8])
+	screen := testutil.NewScreen(t, 40, 12)
+	table.GetLayout().SetRect(0, 0, 40, 12)
+	table.table.Focus(func(tview.Primitive) {})
+	table.Select(entries[1])
+	drawTableLayout(table, screen)
+
+	// the border (2) and the header row (1) leave 3 lines for data rows
+	table.GetLayout().SetRect(0, 0, 40, 6)
+	screen.Clear()
+	drawTableLayout(table, screen)
+	rowOffset, _ := table.table.GetOffset()
+	assert.Zero(t, rowOffset, "the first rows are still shown")
+	assert.Equal(t, entries[1], table.GetSelectedEntry())
+
+	// a selection below the rows shown at the new height comes into view
+	table.GetLayout().SetRect(0, 0, 40, 12)
+	table.Select(entries[6])
+	drawTableLayout(table, screen)
+	table.GetLayout().SetRect(0, 0, 40, 6)
+	drawTableLayout(table, screen)
+	rowOffset, _ = table.table.GetOffset()
+	assert.Equal(t, 4, rowOffset, "the selected row is the last one shown")
+}

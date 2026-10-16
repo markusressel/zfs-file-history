@@ -61,7 +61,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	view *tableView
 	// renderedTimeFormat is the uiutil.TimeFormatGeneration the cells were rendered with
 	renderedTimeFormat uint64
-	scrollbar          *scrollbar.ScrollbarComponent
+	// drawnHeight is the height of the table as last drawn, see keepSelectionVisible. Only accessed on the UI thread.
+	drawnHeight int
+	scrollbar   *scrollbar.ScrollbarComponent
 
 	// allEntries are all entries set with SetData, entries are the ones that match the filter (displayed)
 	allEntries   []*T
@@ -315,7 +317,7 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.table = table
 
 	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
-	c.view = &tableView{Table: c.table, beforeDraw: c.renderIfTimeFormatChanged, afterDraw: c.afterDraw}
+	c.view = &tableView{Table: c.table, beforeDraw: c.beforeDraw, afterDraw: c.afterDraw}
 
 	c.isScrollbarVisible = true
 	c.layout = tview.NewFlex().
@@ -373,6 +375,33 @@ func (v *tableView) Draw(screen tcell.Screen) {
 	v.beforeDraw()
 	v.Table.Draw(screen)
 	v.afterDraw(screen)
+}
+
+// beforeDraw prepares the table for drawing at its size. Runs while drawing.
+func (c *RowSelectionTable[T]) beforeDraw() {
+	c.renderIfTimeFormatChanged()
+	c.keepSelectionVisible()
+}
+
+// keepSelectionVisible scrolls the selected row into view when the table got lower (e.g. a smaller terminal, a pane
+// above that grew): tview follows the end of the rows once all of them fit, and showed the last rows then, without
+// the selected one. Runs while drawing.
+func (c *RowSelectionTable[T]) keepSelectionVisible() {
+	_, _, _, height := c.table.GetInnerRect()
+	shrunk := height < c.drawnHeight
+	c.drawnHeight = height
+	if !shrunk {
+		return
+	}
+	row, _ := c.table.GetSelection()
+	rowOffset, columnOffset := c.table.GetOffset()
+	// without the (fixed) header row
+	dataRow, visibleDataRows := row-1, height-1
+	if dataRow >= 0 && visibleDataRows > 0 {
+		rowOffset = max(min(rowOffset, dataRow), dataRow-visibleDataRows+1)
+	}
+	// also stops following the end
+	c.table.SetOffset(rowOffset, columnOffset)
 }
 
 // renderIfTimeFormatChanged renders the cells again if times are formatted differently now, e.g. after switching

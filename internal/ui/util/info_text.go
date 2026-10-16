@@ -61,6 +61,8 @@ type infoLine struct {
 	value     string
 	isSection bool
 	isField   bool
+	// isVerdict is set on the verdict line, whose further lines are indented below its first part, see WrappedLines
+	isVerdict bool
 }
 
 // Verdict adds the line that says how the thing is: a dot in the color of the worst part (green if nothing is wrong
@@ -91,7 +93,10 @@ func (info *InfoText) Verdict(parts ...InfoPart) {
 		}
 		texts = append(texts, txwidgets.Span(color, "%s", part.Text))
 	}
-	info.Line(txwidgets.Span(worst.Color(), "●") + " " + strings.Join(texts, txwidgets.Span(theme.Colors.Info.Muted, " · ")))
+	info.lines = append(info.lines, infoLine{
+		text:      txwidgets.Span(worst.Color(), "●") + " " + strings.Join(texts, txwidgets.Span(theme.Colors.Info.Muted, " · ")),
+		isVerdict: true,
+	})
 }
 
 // Line adds a line as is, which may contain style tags.
@@ -187,13 +192,81 @@ func (info *InfoText) Lines() []string {
 		case line.isSection:
 			lines = append(lines, "[::b]"+txwidgets.Span(colors.Section, "%s", line.section)+"[::-]")
 		case line.isField:
-			padding := strings.Repeat(" ", labelWidth-tview.TaggedStringWidth(line.label))
-			lines = append(lines, txwidgets.Span(colors.Label, "%s", line.label)+padding+infoLabelGap+txwidgets.ColorTag(colors.Value)+line.value+"[-]")
+			lines = append(lines, fieldPrefix(line.label, labelWidth)+line.value+"[-]")
 		default:
 			lines = append(lines, line.text)
 		}
 	}
 	return lines
+}
+
+// Width returns the width of the widest line, see Lines.
+func (info *InfoText) Width() int {
+	width := 0
+	for _, line := range info.Lines() {
+		width = max(width, tview.TaggedStringWidth(line))
+	}
+	return width
+}
+
+// verdictIndent is the width of the dot of the verdict and the space after it, see Verdict.
+const verdictIndent = 2
+
+// WrappedLines returns the lines of the text like Lines, but wraps the lines wider than width (e.g. a long error on a
+// narrow pane) instead of letting the pane cut them off. A value is wrapped next to its label, its further lines
+// aligned below its first one, so the labels stay readable as a column; the verdict below its first part. A width of
+// 0 or less does not wrap.
+func (info *InfoText) WrappedLines(width int) []string {
+	lines := info.Lines()
+	if width <= 0 {
+		return lines
+	}
+	labelWidth := info.labelWidth()
+	valueColumn := info.ValueColumn()
+	wrapped := make([]string, 0, len(lines))
+	for i, line := range lines {
+		switch {
+		case tview.TaggedStringWidth(line) <= width:
+			wrapped = append(wrapped, line)
+		// a value squeezed into a few columns is harder to read than one below its label
+		case info.lines[i].isField && width-valueColumn >= width/2:
+			parts := wrapLine(info.lines[i].value, width-valueColumn, 0)
+			wrapped = append(wrapped, fieldPrefix(info.lines[i].label, labelWidth)+parts[0])
+			padding := strings.Repeat(" ", valueColumn)
+			for _, part := range parts[1:] {
+				wrapped = append(wrapped, padding+part)
+			}
+			wrapped[len(wrapped)-1] += "[-]"
+		case info.lines[i].isVerdict:
+			wrapped = append(wrapped, wrapLine(line, width, verdictIndent)...)
+		default:
+			wrapped = append(wrapped, wrapLine(line, width, 0)...)
+		}
+	}
+	return wrapped
+}
+
+// wrapLine wraps the line (with style tags) at width, the further lines indented by indent columns. They take the
+// style the line had where it was split: tview keeps it across line breaks.
+func wrapLine(line string, width int, indent int) []string {
+	if tview.TaggedStringWidth(line) <= width {
+		return []string{line}
+	}
+	first := tview.WordWrap(line, width)[0]
+	rest := strings.TrimLeft(line[len(first):], " ")
+	lines := []string{strings.TrimRight(first, " ")}
+	padding := strings.Repeat(" ", indent)
+	for _, part := range tview.WordWrap(rest, width-indent) {
+		lines = append(lines, padding+strings.TrimRight(part, " "))
+	}
+	return lines
+}
+
+// fieldPrefix returns the label of a field padded to labelWidth, and the gap to its value, which starts in the color
+// of values (closed by "[-]" after it).
+func fieldPrefix(label string, labelWidth int) string {
+	padding := strings.Repeat(" ", labelWidth-tview.TaggedStringWidth(label))
+	return txwidgets.Span(theme.Colors.Info.Label, "%s", label) + padding + infoLabelGap + txwidgets.ColorTag(theme.Colors.Info.Value)
 }
 
 // InfoValue returns the text in the color of values (escaped).
