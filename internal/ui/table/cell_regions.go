@@ -1,0 +1,100 @@
+package table
+
+import (
+	"zfs-file-history/internal/ui/clickable"
+	"zfs-file-history/internal/ui/theme"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
+
+// CellRegion is a part of the text of a cell that reacts to the mouse, see SetCellRegionsFunc.
+type CellRegion struct {
+	// Start and Width are the cells of the text it covers, from the left of the cell (left-aligned columns only)
+	Start, Width int
+	// Key identifies it across draws, see clickable.Region
+	Key any
+	// OnClick is called on the UI thread when it is clicked
+	OnClick func()
+}
+
+// SetCellRegionsFunc sets a function that returns the parts of the cell of an entry in a column that react to the
+// mouse: highlighted while hovered, and running OnClick when clicked instead of selecting the row (e.g. the toggle of
+// a tree). Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetCellRegionsFunc(cellRegions func(entry *T, column *Column) []CellRegion) {
+	c.cellRegions = cellRegions
+}
+
+// addCellRegions adds the cell regions of the visible rows where they were drawn. The columns are where tview drew
+// them (CellAt), so horizontal scrolling and the widths of the columns need not be computed again. Runs while drawing.
+func (c *RowSelectionTable[T]) addCellRegions() {
+	c.regions.Reset()
+	if c.cellRegions == nil {
+		return
+	}
+	x, y, width, height := c.table.GetInnerRect()
+	// the columns of the table, without the ones scrolled out on the left (see scrollColumns)
+	columns := c.visibleColumns()
+	// the left edge of each column as drawn, -1 for the ones not drawn
+	columnX := make([]int, len(columns))
+	for i := range columnX {
+		columnX[i] = -1
+	}
+	for screenX := x; screenX < x+width; screenX++ {
+		if _, column := c.table.CellAt(screenX, y); column >= 0 && column < len(columnX) && columnX[column] < 0 {
+			columnX[column] = screenX
+		}
+	}
+	rowOffset, _ := c.table.GetOffset()
+	// below the fixed header row
+	for screenY := y + 1; screenY < y+height; screenY++ {
+		row := screenY - y + rowOffset
+		if row >= len(c.rowEntries) {
+			break
+		}
+		entry := c.rowEntries[row]
+		if entry == nil {
+			continue
+		}
+		for column, left := range columnX {
+			if left < 0 {
+				continue
+			}
+			for _, region := range c.cellRegions(entry, columns[column]) {
+				start := max(left+region.Start, x)
+				end := min(left+region.Start+region.Width, x+width)
+				c.regions.Add(clickable.Region{
+					X: start, Y: screenY, Width: end - start, Key: region.Key,
+					HoverBackground: theme.Colors.Layout.CellHoverBackground,
+					OnClick:         region.OnClick,
+				})
+			}
+		}
+	}
+}
+
+// MouseHandler runs a clicked cell region (see SetCellRegionsFunc) instead of selecting its row, and otherwise
+// handles the mouse like the table. While the mouse is on a region, it captures the mouse, to learn when it leaves.
+func (v *tableView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	tableHandler := v.Table.MouseHandler()
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+		regions := v.regions
+		active := (v.regionsEnabled == nil || v.regionsEnabled()) && v.InRect(event.Position())
+		onRegion := active && regions.Contains(event.Position())
+		hovered := regions.IsAnyHovered()
+		regions.HandleMouse(action, event, active)
+		if onRegion {
+			// a click on a region does not select the row, but focuses the table like a click elsewhere
+			if action == tview.MouseLeftDown {
+				setFocus(v)
+			}
+			return true, v
+		}
+		consumed, capture = tableHandler(action, event, setFocus)
+		if capture == nil && regions.IsAnyHovered() {
+			capture = v
+		}
+		// a hover that ended needs a redraw
+		return consumed || hovered != regions.IsAnyHovered(), capture
+	}
+}

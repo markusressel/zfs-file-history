@@ -266,9 +266,9 @@ func (datasetBrowser *DatasetBrowserComponent) toTableCells(row int, columns []*
 		case columnName:
 			text = tview.Escape(entry.Name)
 			if row, ok := datasetBrowser.treeRows[entry]; ok && datasetBrowser.treeView {
-				text = txwidgets.Span(theme.Colors.Layout.Table.TreeLines, "%s", row.prefix) + tview.Escape(row.name)
+				text = formatTreePrefix(row) + tview.Escape(row.name)
 				if row.collapsed {
-					text += txwidgets.Span(theme.Colors.Layout.Table.TreeCollapsedIndicator, " ▸ +%d", row.hiddenCount)
+					text += txwidgets.Span(theme.Colors.Layout.Table.TreeCollapsedIndicator, " +%d", row.hiddenCount)
 				}
 			}
 		case columnUsed, columnUsedBySnapshots, columnUsedByDataset, columnUsedByChildren, columnUsedByRefreservation:
@@ -382,6 +382,7 @@ func (datasetBrowser *DatasetBrowserComponent) setupTable() {
 	// the permissions are only loaded while their column is displayed
 	datasetBrowser.tableContainer.SetColumnLayoutChangedCallback(func(table.ColumnLayout) { datasetBrowser.loadPermissions() })
 
+	datasetBrowser.tableContainer.SetCellRegionsFunc(datasetBrowser.treeToggleRegions)
 	datasetBrowser.tableContainer.SetSelectionChangedCallback(func(selectedEntry *zfs.DatasetListEntry) {
 		datasetBrowser.Events.Emit(SelectedDatasetChangedEvent{selectedEntry})
 		if selectedEntry != nil {
@@ -483,6 +484,34 @@ func (datasetBrowser *DatasetBrowserComponent) ToggleHideUnmounted() {
 	if headerSelected {
 		datasetBrowser.tableContainer.SelectHeader()
 	}
+}
+
+// formatTreePrefix returns the tree lines in front of the name of the row, in their color, with its toggle (if any) in
+// the color of the indicator: it can be clicked, and the dark color of the lines is hard to read.
+func formatTreePrefix(row treeRow) string {
+	colors := theme.Colors.Layout.Table
+	if row.toggle < 0 {
+		return txwidgets.Span(colors.TreeLines, "%s", row.prefix)
+	}
+	runes := []rune(row.prefix)
+	return txwidgets.Span(colors.TreeLines, "%s", string(runes[:row.toggle])) +
+		txwidgets.Span(colors.TreeCollapsedIndicator, "%s", string(runes[row.toggle])) +
+		txwidgets.Span(colors.TreeLines, "%s", string(runes[row.toggle+1:]))
+}
+
+// treeToggleRegions returns the toggle of the dataset in the name column of the tree view, which expands or collapses
+// it when clicked, like + and -, without selecting it. Runs on the UI thread.
+func (datasetBrowser *DatasetBrowserComponent) treeToggleRegions(entry *zfs.DatasetListEntry, column *table.Column) []table.CellRegion {
+	row, ok := datasetBrowser.treeRows[entry]
+	if column != columnName || !datasetBrowser.treeView || !ok || row.toggle < 0 {
+		return nil
+	}
+	name, collapsed := entry.Name, row.collapsed
+	return []table.CellRegion{{
+		Start: row.toggle, Width: 1, Key: name,
+		// a selected dataset that gets hidden passes the selection on, see updateEntries
+		OnClick: func() { datasetBrowser.setCollapsed(name, !collapsed) },
+	}}
 }
 
 // handleTreeKey collapses and expands datasets in the tree view, like htop's tree view:
@@ -779,8 +808,8 @@ func (datasetBrowser *DatasetBrowserComponent) GetShortcutMap() []shortcut_helpe
 	if datasetBrowser.treeView && selection != nil {
 		shortcuts = append(shortcuts,
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"-", "+"}, Name: "Collapse/expand", Group: shortcut_helper.GroupView},
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"-"}, Name: "Collapse", Description: "Hide the children of the dataset, or go to its parent", Group: shortcut_helper.GroupView, Run: func() { datasetBrowser.handleTreeKey('-') }, MenuOnly: true},
-			shortcut_helper.ShortcutEntry{KeyCombo: []string{"+"}, Name: "Expand", Description: "Show the children of the dataset, or go to the first one", Group: shortcut_helper.GroupView, Run: func() { datasetBrowser.handleTreeKey('+') }, MenuOnly: true},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"-"}, Name: "Collapse", Description: "Hide the children of the dataset, or go to its parent (also a click on ▾)", Group: shortcut_helper.GroupView, Run: func() { datasetBrowser.handleTreeKey('-') }, MenuOnly: true},
+			shortcut_helper.ShortcutEntry{KeyCombo: []string{"+"}, Name: "Expand", Description: "Show the children of the dataset, or go to the first one (also a click on ▸)", Group: shortcut_helper.GroupView, Run: func() { datasetBrowser.handleTreeKey('+') }, MenuOnly: true},
 			shortcut_helper.ShortcutEntry{KeyCombo: []string{"*"}, Name: "Collapse/expand all", Description: "Collapse or expand all datasets at once", Group: shortcut_helper.GroupView, Run: datasetBrowser.toggleCollapseAll, MenuOnly: true},
 		)
 	}

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 	"time"
+	"zfs-file-history/internal/ui/clickable"
 	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -54,9 +55,14 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	layout *tview.Flex
 	footer *uiutil.BorderFooter
-	// footerEnabled returns whether the parts of the footer can be clicked, nil: always, see SetFooterEnabledFunc
+	// footerEnabled returns whether the parts of the footer and the cell regions can be clicked, nil: always, see
+	// SetFooterEnabledFunc
 	footerEnabled func() bool
-	table         *tview.Table
+	// cellRegions returns the parts of a cell that react to the mouse, nil: none, see SetCellRegionsFunc;
+	// regions are the ones drawn. Only accessed on the UI thread.
+	cellRegions func(entry *T, column *Column) []CellRegion
+	regions     clickable.Regions
+	table       *tview.Table
 	// view is the table as placed in the layout, see tableView
 	view *tableView
 	// renderedTimeFormat is the uiutil.TimeFormatGeneration the cells were rendered with
@@ -317,7 +323,8 @@ func (c *RowSelectionTable[T]) createLayout() {
 	c.table = table
 
 	c.scrollbar = scrollbar.NewScrollbarComponent(c.application, scrollbar.ScrollBarVertical, 0, 0, 0, 0)
-	c.view = &tableView{Table: c.table, beforeDraw: c.beforeDraw, afterDraw: c.afterDraw}
+	c.view = &tableView{Table: c.table, beforeDraw: c.beforeDraw, afterDraw: c.afterDraw, regions: &c.regions,
+		regionsEnabled: func() bool { return c.footerEnabled == nil || c.footerEnabled() }}
 
 	c.isScrollbarVisible = true
 	c.layout = tview.NewFlex().
@@ -369,6 +376,10 @@ type tableView struct {
 	*tview.Table
 	beforeDraw func()
 	afterDraw  func(screen tcell.Screen)
+	// regions are the cell regions of the table (see SetCellRegionsFunc), which react to the mouse while
+	// regionsEnabled
+	regions        *clickable.Regions
+	regionsEnabled func() bool
 }
 
 func (v *tableView) Draw(screen tcell.Screen) {
@@ -415,6 +426,8 @@ func (c *RowSelectionTable[T]) renderIfTimeFormatChanged() {
 // afterDraw draws what is drawn over the table. Runs while drawing.
 func (c *RowSelectionTable[T]) afterDraw(screen tcell.Screen) {
 	c.drawGroupRows(screen)
+	c.addCellRegions()
+	c.regions.DrawHover(screen)
 	c.drawEmptyState(screen)
 	c.redrawScrollbar(screen)
 }
@@ -538,8 +551,8 @@ func (c *RowSelectionTable[T]) SetFooterParts(parts ...uiutil.FooterPart) {
 	c.footer.SetParts(parts...)
 }
 
-// SetFooterEnabledFunc sets a function that returns whether the parts of the footer can be clicked, e.g. not while
-// a dialog is in front (see rivo/tview#926).
+// SetFooterEnabledFunc sets a function that returns whether the parts of the footer and the cell regions (see
+// SetCellRegionsFunc) can be clicked, e.g. not while a dialog is in front (see rivo/tview#926).
 func (c *RowSelectionTable[T]) SetFooterEnabledFunc(enabled func() bool) {
 	c.footerEnabled = enabled
 }

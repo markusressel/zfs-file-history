@@ -289,6 +289,10 @@ tview is not thread safe, and it redraws the whole screen. Most UI bugs in this 
   it would be hard to read), so colors that mean something (states, a destructive action) stay visible.
   `RowSelectionTable` does this for all cells; plain tables use `uiutil.SetSelectionStyle` and
   `uiutil.KeepColorWhenSelected` for their colored cells.
+- Parts of a cell that react to the mouse (e.g. the toggle of a dataset in the tree, `▾`/`▸` in place of its branch
+  line, so the names do not move) are `table.CellRegion`s (`SetCellRegionsFunc`): placed where tview drew the column
+  (`CellAt`), so the widths and the horizontal scrolling are not computed again; a click runs them instead of
+  selecting the row.
 - Clicks into the empty space below the rows do nothing (`uiutil.IgnoreClicksBelowRows`, for every table); in
   `RowSelectionTable` also clicks to the right of the columns.
 - Lists of switches in dialogs (the checklist of a `SelectionDialog`, the features of a pool, the permissions): a
