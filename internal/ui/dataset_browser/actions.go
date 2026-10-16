@@ -7,17 +7,19 @@ import (
 	"zfs-file-history/internal/logging"
 	"zfs-file-history/internal/ui/dialog"
 	"zfs-file-history/internal/ui/status_message"
+	"zfs-file-history/internal/ui/theme"
+	"zfs-file-history/internal/ui/txwidgets"
 	uiutil "zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
 )
 
 // Replaceable in tests, so tests never change anything.
 var (
-	createSnapshot      = zfs.CreateSnapshot
-	previewPromote      = zfs.PreviewPromote
-	promoteClone        = zfs.PromoteClone
-	previewDestroyClone = zfs.PreviewDestroyClone
-	destroyClone        = zfs.DestroyClone
+	createSnapshot        = zfs.CreateSnapshot
+	previewPromote        = zfs.PreviewPromote
+	promoteClone          = zfs.PromoteClone
+	previewDestroyDataset = zfs.PreviewDestroyDataset
+	destroyDataset        = zfs.DestroyDataset
 )
 
 // maxListedNames is the maximum number of snapshots or datasets listed in the confirmations.
@@ -36,8 +38,8 @@ func (datasetBrowser *DatasetBrowserComponent) openActionDialog(entry *zfs.Datas
 	datasetBrowser.showDialog(datasetBrowser.newActionDialog(entry))
 }
 
-// newActionDialog creates the dialog with the actions for the dataset, see openActionDialog. Promoting and destroying
-// a clone ask for confirmation first, with what changes.
+// newActionDialog creates the dialog with the actions for the dataset, see openActionDialog. Promoting a clone and
+// destroying a dataset ask for confirmation first, with what changes.
 func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.DatasetListEntry) *dialog.SelectionDialog {
 	name := entry.Name
 	var createdName string
@@ -52,8 +54,8 @@ func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.Datase
 			err = createSnapshot(name, createdName, action == dialog.DatasetDialogCreateSnapshotRecursivelyActionId)
 		case dialog.DatasetDialogPromoteActionId:
 			promotePreview, err = previewPromote(name)
-		case dialog.DatasetDialogDestroyCloneActionId:
-			destroyPreview, err = previewDestroyClone(name)
+		case dialog.DatasetDialogDestroyActionId:
+			destroyPreview, err = previewDestroyDataset(name)
 		}
 		return err
 	}
@@ -84,9 +86,9 @@ func (datasetBrowser *DatasetBrowserComponent) newActionDialog(entry *zfs.Datase
 		case dialog.DatasetDialogPromoteActionId:
 			// nothing was promoted yet, the confirmation does that
 			datasetBrowser.showPromoteConfirmation(promotePreview)
-		case dialog.DatasetDialogDestroyCloneActionId:
+		case dialog.DatasetDialogDestroyActionId:
 			// nothing was destroyed yet, the confirmations do that
-			datasetBrowser.showDestroyCloneConfirmation(name, destroyPreview)
+			datasetBrowser.showDestroyConfirmation(entry, destroyPreview)
 		}
 	}
 
@@ -146,90 +148,132 @@ func (datasetBrowser *DatasetBrowserComponent) showPromoteConfirmation(preview *
 	datasetBrowser.showDialog(dialog.NewPromoteCloneDialog(datasetBrowser.application, formatPromoteDescription(preview), asyncWork, onComplete))
 }
 
-// formatDestroyCloneDescription describes what destroying the clone destroys, based on its dry run, with style tags.
-func formatDestroyCloneDescription(name string, preview *zfs.DestroyPreview) string {
+// destroyedParts returns the datasets and the snapshots of a dry run of destroying a dataset, each in the order of the
+// dry run, so the confirmation lists the datasets first: hundreds of snapshots would hide them.
+func destroyedParts(preview *zfs.DestroyPreview) (datasets []string, snapshots []string) {
+	for _, name := range preview.Destroyed {
+		if strings.Contains(name, "@") {
+			snapshots = append(snapshots, name)
+		} else {
+			datasets = append(datasets, name)
+		}
+	}
+	return datasets, snapshots
+}
+
+// formatDestroyedCount returns e.g. "2 child datasets and 3 snapshots", leaving out what there is none of. children
+// is the number of datasets besides the destroyed one.
+func formatDestroyedCount(children int, snapshots int) string {
+	var parts []string
+	if children > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", children, uiutil.Plural(children, "child dataset", "child datasets")))
+	}
+	if snapshots > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", snapshots, uiutil.Plural(snapshots, "snapshot", "snapshots")))
+	}
+	return strings.Join(parts, " and ")
+}
+
+// formatDestroyDescription describes what destroying the dataset destroys, based on its dry run, with style tags.
+func formatDestroyDescription(entry *zfs.DatasetListEntry, preview *zfs.DestroyPreview) string {
+	danger := func(text string) string { return txwidgets.Span(theme.Colors.Dialog.Danger, "%s", text) }
 	var description strings.Builder
-	fmt.Fprintf(&description, "Destroy the clone %s. This frees %s and cannot be undone.\n\n", dialog.Highlight(name),
-		dialog.Highlight(uiutil.HumanizedBytes(preview.Reclaim)))
-	fmt.Fprintf(&description, "Will be destroyed (%d):%s", len(preview.Destroyed), formatNameList(preview.Destroyed))
+	if entry.IsClone() {
+		fmt.Fprintf(&description, "Destroy the clone %s of %s", dialog.Highlight(entry.Name), dialog.Highlight(entry.Origin))
+	} else {
+		fmt.Fprintf(&description, "Destroy the dataset %s", dialog.Highlight(entry.Name))
+	}
+	fmt.Fprintf(&description, " with all its files. This frees %s and %s.", dialog.Highlight(uiutil.HumanizedBytes(preview.Reclaim)),
+		danger("cannot be undone"))
+	if entry.MountPath != "" {
+		fmt.Fprintf(&description, "\n\nIt is unmounted from %s first. A dataset in use cannot be unmounted: the destroy "+
+			"stops there, after destroying what came before it.", dialog.Highlight(entry.MountPath))
+	}
+	datasets, snapshots := destroyedParts(preview)
+	fmt.Fprintf(&description, "\n\nDatasets that will be destroyed (%d):%s", len(datasets), formatNameList(datasets))
+	if len(snapshots) > 0 {
+		fmt.Fprintf(&description, "\n\nSnapshots that will be destroyed (%d):%s", len(snapshots), formatNameList(snapshots))
+	}
 	return description.String()
 }
 
-// previewAndConfirmDestroyClone does the dry run of destroying the clone in the background and then asks for
+// previewAndConfirmDestroy does the dry run of destroying the dataset in the background and then asks for
 // confirmation. Must be called on the UI thread.
-func (datasetBrowser *DatasetBrowserComponent) previewAndConfirmDestroyClone(name string) {
+func (datasetBrowser *DatasetBrowserComponent) previewAndConfirmDestroy(entry *zfs.DatasetListEntry) {
 	go func() {
-		preview, err := previewDestroyClone(name)
+		preview, err := previewDestroyDataset(entry.Name)
 		datasetBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
-				logging.Error("Cannot destroy %s: %s", name, err.Error())
-				retry := func() { datasetBrowser.previewAndConfirmDestroyClone(name) }
+				logging.Error("Cannot destroy %s: %s", entry.Name, err.Error())
+				retry := func() { datasetBrowser.previewAndConfirmDestroy(entry) }
 				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Cannot Destroy", err, retry))
 				return
 			}
-			datasetBrowser.showDestroyCloneConfirmation(name, preview)
+			datasetBrowser.showDestroyConfirmation(entry, preview)
 		})
 	}()
 }
 
-// showDestroyCloneConfirmation asks for confirmation to destroy the clone as the dry run says. If it has snapshots or
-// child datasets, they must be included explicitly (a checkbox) first. In any case its name must be typed.
+// showDestroyConfirmation asks for confirmation to destroy the dataset as the dry run says. If it has snapshots or
+// child datasets, they must be included explicitly (a checkbox) first. In any case its full name must be typed.
 // Must be called on the UI thread.
-func (datasetBrowser *DatasetBrowserComponent) showDestroyCloneConfirmation(name string, preview *zfs.DestroyPreview) {
-	description := formatDestroyCloneDescription(name, preview)
-	dependents := len(preview.Destroyed) - 1
-	if dependents == 0 {
-		datasetBrowser.showDestroyCloneByName(name, false, preview, description)
+func (datasetBrowser *DatasetBrowserComponent) showDestroyConfirmation(entry *zfs.DatasetListEntry, preview *zfs.DestroyPreview) {
+	description := formatDestroyDescription(entry, preview)
+	datasets, snapshots := destroyedParts(preview)
+	dependents := formatDestroyedCount(len(datasets)-1, len(snapshots))
+	if dependents == "" {
+		datasetBrowser.showDestroyByName(entry, false, preview, description)
 		return
 	}
 
-	recursive := fmt.Sprintf("Also destroy its %d %s", dependents, uiutil.Plural(dependents, "snapshot or child dataset", "snapshots and child datasets"))
+	recursive := "Also destroy its " + dependents
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
-		if option.Id != dialog.DestroyCloneDialogContinueActionId {
+		if option.Id != dialog.DestroyDatasetDialogContinueActionId {
 			return
 		}
 		if !d.Checked()[0] {
 			// shows this dialog again, so the box can be checked
-			retry := func() { datasetBrowser.showDestroyCloneConfirmation(name, preview) }
+			retry := func() { datasetBrowser.showDestroyConfirmation(entry, preview) }
 			datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Nothing Destroyed",
-				fmt.Errorf("'%s' has %d %s, which are destroyed with it: check '%s' to destroy them as well", name, dependents,
-					uiutil.Plural(dependents, "snapshot or child dataset", "snapshots and child datasets"), recursive), retry))
+				fmt.Errorf("'%s' has %s, which are destroyed with it: check '%s' to destroy them as well", entry.Name,
+					dependents, recursive), retry))
 			return
 		}
-		datasetBrowser.showDestroyCloneByName(name, true, preview, description)
+		datasetBrowser.showDestroyByName(entry, true, preview, description)
 	}
-	datasetBrowser.showDialog(dialog.NewDestroyCloneDialog(datasetBrowser.application, description, recursive, nil, onComplete))
+	datasetBrowser.showDialog(dialog.NewDestroyDatasetDialog(datasetBrowser.application, description, recursive, nil, onComplete))
 }
 
-// showDestroyCloneByName destroys the clone as the dry run says once its name is typed. Must be called on the UI
+// showDestroyByName destroys the dataset as the dry run says once its full name is typed. Must be called on the UI
 // thread.
-func (datasetBrowser *DatasetBrowserComponent) showDestroyCloneByName(name string, recursive bool, preview *zfs.DestroyPreview, description string) {
+func (datasetBrowser *DatasetBrowserComponent) showDestroyByName(entry *zfs.DatasetListEntry, recursive bool, preview *zfs.DestroyPreview, description string) {
 	datasetBrowser.showDialog(dialog.NewConfirmByNameDialog(
 		datasetBrowser.application,
-		"DestroyCloneByNameDialog",
-		" 💥 Destroy Clone ",
+		"DestroyDatasetByNameDialog",
+		" 💥 Destroy Dataset ",
 		description,
-		name,
-		func() { datasetBrowser.destroyCloneInBackground(name, recursive, preview) },
+		entry.Name,
+		func() { datasetBrowser.destroyInBackground(entry, recursive, preview) },
 	))
 }
 
-// destroyCloneInBackground destroys the clone as confirmed in the background and shows the result. Must be called on
+// destroyInBackground destroys the dataset as confirmed in the background and shows the result. Must be called on
 // the UI thread.
-func (datasetBrowser *DatasetBrowserComponent) destroyCloneInBackground(name string, recursive bool, preview *zfs.DestroyPreview) {
+func (datasetBrowser *DatasetBrowserComponent) destroyInBackground(entry *zfs.DatasetListEntry, recursive bool, preview *zfs.DestroyPreview) {
+	name := entry.Name
 	go func() {
-		err := destroyClone(name, recursive, preview)
+		err := destroyDataset(name, recursive, preview)
 		datasetBrowser.application.QueueUpdateDraw(func() {
 			if err != nil {
 				logging.Error("Failed to destroy %s: %s", name, err.Error())
 				// a retry asks for confirmation again, with a new dry run
-				retry := func() { datasetBrowser.previewAndConfirmDestroyClone(name) }
+				retry := func() { datasetBrowser.previewAndConfirmDestroy(entry) }
 				datasetBrowser.showDialog(dialog.NewErrorDialogWithRetry(datasetBrowser.application, "Destroy Failed", err, retry))
 			} else {
 				message := fmt.Sprintf("Destroyed '%s' (%d %s), freed %s.", name, len(preview.Destroyed),
 					uiutil.Plural(len(preview.Destroyed), "dataset or snapshot", "datasets and snapshots"), uiutil.HumanizedBytes(preview.Reclaim))
-				datasetBrowser.showDialog(dialog.NewSuccessDialog(datasetBrowser.application, "Clone Destroyed", message))
+				datasetBrowser.showDialog(dialog.NewSuccessDialog(datasetBrowser.application, "Dataset Destroyed", message))
 			}
 			// some of it may be destroyed, also after an error
 			zfs.RefreshZfsData()

@@ -25,6 +25,8 @@ type actionBackend struct {
 	holds  []Hold
 	// destroyPreviews are the results of the dry runs, by dataset; a dataset without one fails like "-R" was needed
 	destroyPreviews map[string]*DestroyPreview
+	// mounts are the paths the datasets are mounted at, by name
+	mounts map[string]string
 	// calls records the calls that change something, e.g. "destroy pool/clone -r"
 	calls []string
 	// failChanges is returned by the calls that change something
@@ -48,6 +50,14 @@ func (b *actionBackend) DatasetProperties(name string) (map[string]string, error
 		return nil, errors.New("dataset does not exist")
 	}
 	return map[string]string{propOrigin: origin, propUsed: "4096"}, nil
+}
+
+func (b *actionBackend) ListDatasets() ([]*DatasetListEntry, error) {
+	var datasets []*DatasetListEntry
+	for name := range b.origins {
+		datasets = append(datasets, &DatasetListEntry{Name: name, MountPath: b.mounts[name]})
+	}
+	return datasets, nil
 }
 
 func (b *actionBackend) ListSnapshotNames(dataset string) ([]string, error) {
@@ -74,7 +84,7 @@ func (b *actionBackend) ListHolds(snapshotNames []string, recursive bool) ([]Hol
 
 func (b *actionBackend) PreviewDestroyDataset(name string, recursive bool) (*DestroyPreview, error) {
 	if !recursive {
-		panic("the preview of a clone is always recursive")
+		panic("the preview of a dataset is always recursive")
 	}
 	preview, ok := b.destroyPreviews[name]
 	if !ok {
@@ -119,10 +129,15 @@ func useActionBackend(t *testing.T, b *actionBackend) *actionBackend {
 	return b
 }
 
-// cloneBackend has the clone "pool/clone" of "pool/data@b", with a snapshot and a child dataset.
+// cloneBackend has the clone "pool/clone" of "pool/data@b", with a snapshot and a child dataset, and the dataset
+// "pool/home", which is not a clone, with a child dataset. "pool/data" cannot be destroyed without "-R": its snapshots
+// have clones.
 func cloneBackend() *actionBackend {
 	return &actionBackend{
-		origins: map[string]string{"pool/data": "-", "pool/clone": "pool/data@b", "pool/plain-clone": "pool/data@a"},
+		origins: map[string]string{"pool": "-", "pool/data": "-", "pool/clone": "pool/data@b", "pool/plain-clone": "pool/data@a",
+			"pool/clone/child": "-", "pool/home": "-", "pool/home/user": "-"},
+		mounts: map[string]string{"pool/clone": "/clone", "pool/clone/child": "/clone/child", "pool/home": "/home",
+			"pool/home/user": "/home/user"},
 		snapshots: map[string][]string{
 			"pool/data":  {"c", "b", "a"},
 			"pool/clone": {"x"},
@@ -131,44 +146,53 @@ func cloneBackend() *actionBackend {
 			"pool/clone": {Destroyed: []string{"pool/clone/child", "pool/clone@x", "pool/clone"}, Reclaim: 300},
 			// like zfs prints it: no reclaimed space for datasets
 			"pool/plain-clone": {Destroyed: []string{"pool/plain-clone"}},
+			"pool/home":        {Destroyed: []string{"pool/home/user", "pool/home"}},
 		},
 	}
 }
 
-func TestPreviewDestroyClone(t *testing.T) {
+func TestPreviewDestroyDataset(t *testing.T) {
 	b := useActionBackend(t, cloneBackend())
 
-	preview, err := PreviewDestroyClone("pool/clone")
+	preview, err := PreviewDestroyDataset("pool/clone")
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pool/clone/child", "pool/clone@x", "pool/clone"}, preview.Destroyed)
 	assert.Empty(t, b.calls)
 }
 
-func TestPreviewDestroyClone_Refuses(t *testing.T) {
+func TestPreviewDestroyDataset_Refuses(t *testing.T) {
 	tests := map[string]struct {
 		name   string
 		change func(b *actionBackend)
 		err    string
 	}{
-		"not a clone":     {name: "pool/data", err: "'pool/data' is not a clone"},
-		"no origin":       {name: "pool/other", change: func(b *actionBackend) { b.origins["pool/other"] = "" }, err: "is not a clone"},
 		"unknown dataset": {name: "pool/missing", err: "does not exist"},
-		"snapshot":        {name: "pool/clone@x", err: "invalid dataset name"},
-		"option":          {name: "-r", err: "invalid dataset name"},
-		"empty":           {name: "", err: "invalid dataset name"},
+		"root of a pool":  {name: "pool", err: "root dataset of a pool"},
+		// the dry run fails, "-R" is never used
+		"snapshots with clones": {name: "pool/data", err: "use '-R'"},
+		// Regression: only clones could be destroyed, so nothing protected the datasets of the running system.
+		"mounted at /": {name: "pool/home", err: "pool/home (/)",
+			change: func(b *actionBackend) { b.mounts["pool/home"] = "/" }},
+		"child mounted at a system path": {name: "pool/home", err: "pool/home/user (/var)",
+			change: func(b *actionBackend) { b.mounts["pool/home/user"] = "/var" }},
+		"child mounted below /boot": {name: "pool/home", err: "pool/home/user (/boot/efi)",
+			change: func(b *actionBackend) { b.mounts["pool/home/user"] = "/boot/efi" }},
+		"snapshot": {name: "pool/clone@x", err: "invalid dataset name"},
+		"option":   {name: "-r", err: "invalid dataset name"},
+		"empty":    {name: "", err: "invalid dataset name"},
 		"dependent clones": {name: "pool/clone", err: "use '-R'",
 			change: func(b *actionBackend) { delete(b.destroyPreviews, "pool/clone") }},
 		"held snapshot": {name: "pool/clone", err: "pool/clone@x (keep)",
 			change: func(b *actionBackend) { b.holds = []Hold{{Snapshot: "pool/clone@x", Tag: "keep"}} }},
 		"missing permissions": {name: "pool/clone", err: "destroy",
 			change: func(b *actionBackend) { b.identity = Identity{Name: "user", Uid: "1000"} }},
-		// nothing outside of the clone is ever destroyed, whatever the dry run lists
-		"outside of the clone": {name: "pool/clone", err: "'pool/clone2', which",
+		// nothing outside of the dataset is ever destroyed, whatever the dry run lists
+		"outside of the dataset": {name: "pool/clone", err: "'pool/clone2', which",
 			change: func(b *actionBackend) {
 				b.destroyPreviews["pool/clone"] = &DestroyPreview{Destroyed: []string{"pool/clone", "pool/clone2"}}
 			}},
-		"clone not listed": {name: "pool/clone", err: "does not list",
+		"dataset not listed": {name: "pool/clone", err: "does not list",
 			change: func(b *actionBackend) {
 				b.destroyPreviews["pool/clone"] = &DestroyPreview{Destroyed: []string{"pool/clone@x"}}
 			}},
@@ -181,7 +205,7 @@ func TestPreviewDestroyClone_Refuses(t *testing.T) {
 			}
 			useActionBackend(t, b)
 
-			_, err := PreviewDestroyClone(test.name)
+			_, err := PreviewDestroyDataset(test.name)
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.err)
@@ -190,86 +214,117 @@ func TestPreviewDestroyClone_Refuses(t *testing.T) {
 	}
 }
 
-func TestDestroyClone(t *testing.T) {
+func TestDestroyDataset(t *testing.T) {
 	b := useActionBackend(t, cloneBackend())
-	preview, err := PreviewDestroyClone("pool/plain-clone")
+	preview, err := PreviewDestroyDataset("pool/plain-clone")
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(4096), preview.Reclaim, "the space used by the clone")
-	err = DestroyClone("pool/plain-clone", false, preview)
+	err = DestroyDataset("pool/plain-clone", false, preview)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"destroy pool/plain-clone"}, b.calls)
 }
 
-func TestDestroyClone_Recursive(t *testing.T) {
+// Datasets that are not clones are destroyed the same way, with their child datasets.
+func TestDestroyDataset_NotAClone(t *testing.T) {
 	b := useActionBackend(t, cloneBackend())
-	preview, err := PreviewDestroyClone("pool/clone")
+	preview, err := PreviewDestroyDataset("pool/home")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pool/home/user", "pool/home"}, preview.Destroyed)
+
+	err = DestroyDataset("pool/home", true, preview)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"destroy pool/home -r"}, b.calls)
+}
+
+func TestDestroyDataset_Recursive(t *testing.T) {
+	b := useActionBackend(t, cloneBackend())
+	preview, err := PreviewDestroyDataset("pool/clone")
 	require.NoError(t, err)
 
-	err = DestroyClone("pool/clone", true, preview)
+	err = DestroyDataset("pool/clone", true, preview)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"destroy pool/clone -r"}, b.calls)
 }
 
-func TestDestroyClone_RefusesDescendantsWithoutRecursive(t *testing.T) {
+func TestDestroyDataset_RefusesDescendantsWithoutRecursive(t *testing.T) {
 	b := useActionBackend(t, cloneBackend())
-	preview, err := PreviewDestroyClone("pool/clone")
+	preview, err := PreviewDestroyDataset("pool/clone")
 	require.NoError(t, err)
 
-	err = DestroyClone("pool/clone", false, preview)
+	err = DestroyDataset("pool/clone", false, preview)
 
 	require.Error(t, err)
 	assert.Empty(t, b.calls)
 }
 
-func TestDestroyClone_RefusesChanges(t *testing.T) {
+func TestDestroyDataset_RefusesChanges(t *testing.T) {
 	b := useActionBackend(t, cloneBackend())
-	preview, err := PreviewDestroyClone("pool/clone")
+	preview, err := PreviewDestroyDataset("pool/clone")
 	require.NoError(t, err)
 	// e.g. a snapshot created after the confirmation
 	b.destroyPreviews["pool/clone"] = &DestroyPreview{Destroyed: append(slices.Clone(preview.Destroyed), "pool/clone@new")}
 
-	err = DestroyClone("pool/clone", true, preview)
+	err = DestroyDataset("pool/clone", true, preview)
 
 	assert.ErrorIs(t, err, ErrChangedSinceConfirmation)
 	assert.Empty(t, b.calls)
 }
 
-func TestDestroyClone_ChecksAgain(t *testing.T) {
+func TestDestroyDataset_ChecksAgain(t *testing.T) {
 	b := useActionBackend(t, cloneBackend())
-	preview, err := PreviewDestroyClone("pool/clone")
+	preview, err := PreviewDestroyDataset("pool/clone")
 	require.NoError(t, err)
 	b.holds = []Hold{{Snapshot: "pool/clone@x", Tag: "keep"}}
 
-	err = DestroyClone("pool/clone", true, preview)
+	err = DestroyDataset("pool/clone", true, preview)
 
 	require.Error(t, err)
 	assert.Empty(t, b.calls)
 }
 
-func TestDestroyClone_NotConfirmed(t *testing.T) {
+func TestDestroyDataset_NotConfirmed(t *testing.T) {
 	b := useActionBackend(t, cloneBackend())
 
-	err := DestroyClone("pool/clone", true, nil)
+	err := DestroyDataset("pool/clone", true, nil)
 
 	require.Error(t, err)
 	assert.Empty(t, b.calls)
 }
 
-func TestDestroyClone_ExplainsDeniedPermissions(t *testing.T) {
+func TestDestroyDataset_ExplainsDeniedPermissions(t *testing.T) {
 	b := cloneBackend()
 	b.failChanges = errors.New("permission denied")
 	useActionBackend(t, b)
-	preview, err := PreviewDestroyClone("pool/plain-clone")
+	preview, err := PreviewDestroyDataset("pool/plain-clone")
 	require.NoError(t, err)
 
-	err = DestroyClone("pool/plain-clone", false, preview)
+	err = DestroyDataset("pool/plain-clone", false, preview)
 
 	var missing *MissingPermissionsError
 	require.ErrorAs(t, err, &missing)
-	assert.Equal(t, "destroy the clone", missing.Action)
+	assert.Equal(t, "destroy the dataset", missing.Action)
+}
+
+func TestIsSystemPath(t *testing.T) {
+	tests := map[string]bool{
+		"/":           true,
+		"/usr":        true,
+		"/var/":       true,
+		"/boot/efi":   true,
+		"/home":       false,
+		"/var/lib":    false,
+		"/srvdata":    false,
+		"/data/usr":   false,
+		"/bootstrap":  false,
+		"/mnt/backup": false,
+	}
+	for path, expected := range tests {
+		assert.Equal(t, expected, isSystemPath(path), path)
+	}
 }
 
 func TestIsWithinDataset(t *testing.T) {

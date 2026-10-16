@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"fmt"
+	"strings"
 	"zfs-file-history/internal/ui/localization"
 	"zfs-file-history/internal/ui/util"
 	"zfs-file-history/internal/zfs"
@@ -18,11 +19,11 @@ const (
 	DatasetDialogPermissionsActionId
 	DatasetDialogPropertiesActionId
 	DatasetDialogPromoteActionId
-	DatasetDialogDestroyCloneActionId
+	DatasetDialogDestroyActionId
 )
 
-// NewDatasetActionDialog creates the dialog with the actions for a dataset. Promoting and destroying are only offered
-// for clones: other datasets are never destroyed by the application.
+// NewDatasetActionDialog creates the dialog with the actions for a dataset. Promoting is only offered for clones,
+// destroying for all datasets but the root dataset of a pool (which is only destroyed with the pool).
 func NewDatasetActionDialog(
 	application *tview.Application,
 	dataset *zfs.DatasetListEntry,
@@ -74,20 +75,20 @@ func buildDatasetDialogOptions(dataset *zfs.DatasetListEntry) []*DialogOption {
 		},
 	)
 	if dataset.IsClone() {
-		options = append(options,
-			&DialogOption{
-				Id:          DatasetDialogPromoteActionId,
-				Name:        "🔀 Promote clone",
-				Description: fmt.Sprintf("Make the clone independent of '%s', after asking (zfs promote)", dataset.Origin),
-				Severity:    DialogSeverityWarning,
-			},
-			&DialogOption{
-				Id:          DatasetDialogDestroyCloneActionId,
-				Name:        "💥 Destroy clone",
-				Description: "Destroy the clone, after a dry run and typing its name (zfs destroy)",
-				Severity:    DialogSeverityDanger,
-			},
-		)
+		options = append(options, &DialogOption{
+			Id:          DatasetDialogPromoteActionId,
+			Name:        "🔀 Promote clone",
+			Description: fmt.Sprintf("Make the clone independent of '%s', after asking (zfs promote)", dataset.Origin),
+			Severity:    DialogSeverityWarning,
+		})
+	}
+	if strings.Contains(dataset.Name, "/") {
+		options = append(options, &DialogOption{
+			Id:          DatasetDialogDestroyActionId,
+			Name:        "💥 Destroy dataset",
+			Description: "Destroy the dataset with its files, after a dry run and typing its name (zfs destroy)",
+			Severity:    DialogSeverityDanger,
+		})
 	}
 	return append(options, &DialogOption{Id: DialogCloseActionId, Name: localization.LocalizationCommonClose})
 }
@@ -120,17 +121,17 @@ func NewPromoteCloneDialog(
 }
 
 const (
-	DestroyCloneDialogPage util.Page = "DestroyCloneDialog"
+	DestroyDatasetDialogPage util.Page = "DestroyDatasetDialog"
 
-	DestroyCloneDialogContinueActionId DialogActionId = iota
+	DestroyDatasetDialogContinueActionId DialogActionId = iota
 )
 
-// NewDestroyCloneDialog is the first confirmation of destroying a clone that has snapshots or child datasets: they
-// are only destroyed with it if the checklist item recursive (e.g. "Also destroy its 3 snapshots and child datasets")
-// is checked, see SelectionDialog.Checked. The description should list what would be destroyed, it may contain
-// style tags (see Highlight). asyncWork receives
-// DestroyCloneDialogContinueActionId on confirmation; the name of the clone is typed afterwards, to destroy it.
-func NewDestroyCloneDialog(
+// NewDestroyDatasetDialog is the first confirmation of destroying a dataset that has snapshots or child datasets:
+// they are only destroyed with it if the checklist item recursive (e.g. "Also destroy its 2 child datasets and 3
+// snapshots") is checked, see SelectionDialog.Checked. The description should list what would be destroyed, it may
+// contain style tags (see Highlight). asyncWork receives DestroyDatasetDialogContinueActionId on confirmation; the
+// name of the dataset is typed afterwards, to destroy it.
+func NewDestroyDatasetDialog(
 	application *tview.Application,
 	description string,
 	recursive string,
@@ -139,11 +140,11 @@ func NewDestroyCloneDialog(
 ) *SelectionDialog {
 	return newTaggedSelectionDialog(
 		application,
-		string(DestroyCloneDialogPage),
-		" 💥 Destroy Clone ",
+		string(DestroyDatasetDialogPage),
+		" 💥 Destroy Dataset ",
 		description,
 		[]*ChecklistItem{{Name: recursive}},
-		buildConfirmDialogOptions(DestroyCloneDialogContinueActionId, "Continue", true, DialogSeverityDanger),
+		buildConfirmDialogOptions(DestroyDatasetDialogContinueActionId, "Continue", true, DialogSeverityDanger),
 		asyncWork,
 		onComplete,
 	).SetDanger()

@@ -1,6 +1,8 @@
 package dialog
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -288,4 +290,45 @@ func TestOptionTable_SelectedOptionKeepsSeverityColor(t *testing.T) {
 	optionTable := createOptionTable(testutil.App(), options, func(*DialogOption) {})
 
 	assert.Equal(t, theme.SelectedStyle(theme.Colors.Dialog.Danger), optionTable.GetCell(0, 1).SelectedStyle)
+}
+
+// longDescription returns a description of more lines than the dialogs fit on a terminal of 80x24 (the size dialogs
+// assume in tests, see CalculateDialogSize), like the list of what destroying a dataset destroys.
+func longDescription() string {
+	var description strings.Builder
+	description.WriteString("Will be destroyed:")
+	for i := range 40 {
+		fmt.Fprintf(&description, "\n  pool/data@snapshot%d", i)
+	}
+	return description.String()
+}
+
+// Regression: a long description pushed the checklist and the options below the screen, so a dialog that destroys
+// something could not be confirmed, or only blindly. The description scrolls instead.
+func TestSelectionDialog_LongDescriptionKeepsTheOptions(t *testing.T) {
+	app, screen := testutil.NewApp(testutil.WithSize(80, 24))
+	pages := tview.NewPages()
+	testutil.StartApp(t, app, pages)
+	d := NewDestroyDatasetDialog(app, longDescription(), "Also destroy its 40 snapshots", nil, nil)
+
+	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
+
+	text := testutil.ScreenText(t, app, screen)
+	assert.Contains(t, text, "pool/data@snapshot0")
+	assert.Contains(t, text, "Also destroy its 40 snapshots")
+	assert.Contains(t, text, "Continue")
+}
+
+// Regression: a long description pushed the input field of a confirmation by name below the screen.
+func TestConfirmByNameDialog_LongDescriptionKeepsTheInputField(t *testing.T) {
+	app, screen := testutil.NewApp(testutil.WithSize(80, 24))
+	pages := tview.NewPages()
+	testutil.StartApp(t, app, pages)
+	d := NewConfirmByNameDialog(app, "Confirm", "Destroy", longDescription(), "pool/data", func() {})
+
+	testutil.OnUiThread(t, app, func() { ShowDialogOnPages(app, pages, d, nil) })
+
+	text := testutil.ScreenText(t, app, screen)
+	assert.Contains(t, text, "pool/data@snapshot0")
+	assert.Contains(t, text, "Esc: cancel")
 }

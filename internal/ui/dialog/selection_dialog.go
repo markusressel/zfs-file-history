@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/util"
@@ -201,16 +202,10 @@ func (d *SelectionDialog) createLayout() {
 		constraints.StaticHeight += len(d.checklist) + 1
 	}
 
-	dialogWidth, _ := CalculateDialogSize(constraints)
-
-	textLineWidth := dialogWidth - 6
-	if textLineWidth < 5 {
-		textLineWidth = 5
-	}
-	descHeight := calculateWrappedHeight(plainDescription, textLineWidth)
-
-	textDescriptionView := tview.NewTextView().
-		SetDynamicColors(d.tagged).
+	// a scrollbar shows that more follows: the description gets what is left of a dialog that does not fit (e.g. a
+	// long list of what would be destroyed on a small terminal), so the checklist and the options are always shown
+	textDescriptionView := scrollbar.NewTextView(nil)
+	textDescriptionView.SetDynamicColors(d.tagged).
 		SetText(d.description).
 		SetWrap(true).
 		SetWordWrap(true)
@@ -220,7 +215,7 @@ func (d *SelectionDialog) createLayout() {
 	dialogContent := tview.NewFlex().SetDirection(tview.FlexRow)
 	// like the other dialogs; CalculateDialogSize leaves room for it
 	dialogContent.SetBorderPadding(0, 0, 1, 1)
-	dialogContent.AddItem(textDescriptionView, descHeight, 0, false)
+	dialogContent.AddItem(textDescriptionView, 0, 1, false)
 	dialogContent.AddItem(tview.NewBox(), 1, 0, false)
 	if len(d.checklist) > 0 {
 		d.checklistTable = d.createChecklistTable()

@@ -25,6 +25,7 @@
   * [x] Space usage breakdown
   * [x] Edit properties
   * [x] Manage delegated permissions
+  * [x] Destroy datasets, after a dry run and typing their name
 * [x] Pool health and `zpool status`
 * [x] Progress of running scrubs, resilvers, TRIMs and other pool operations on every page
 * [x] Alerts on every page when a pool has problems (data errors, degraded, failing devices)

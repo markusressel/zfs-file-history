@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// actionTest runs a browser with a clone "pool/clone" (mounted) and a dataset "pool/data", and records the calls of
-// the actions instead of changing anything.
+// actionTest runs a browser with a clone "pool/clone" (mounted), a dataset "pool/data" and the root dataset of the
+// pool, and records the calls of the actions instead of changing anything.
 type actionTest struct {
 	t       *testing.T
 	app     *tview.Application
@@ -27,7 +27,7 @@ type actionTest struct {
 	mu sync.Mutex
 	// calls are the calls of the actions, e.g. "destroy pool/clone recursive=false"
 	calls []string
-	// destroyPreview is the dry run of destroying the clone
+	// destroyPreview is the dry run of destroying a dataset
 	destroyPreview *zfs.DestroyPreview
 }
 
@@ -38,6 +38,7 @@ func newActionTest(t *testing.T) *actionTest {
 	}
 	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
 		return []*zfs.DatasetListEntry{
+			{Name: "pool", MountPath: "/pool"},
 			{Name: "pool/clone", MountPath: "/clone", Origin: "pool/data@daily"},
 			{Name: "pool/data", MountPath: "/data"},
 		}, nil
@@ -54,11 +55,11 @@ func newActionTest(t *testing.T) *actionTest {
 		at.record("promote %s", name)
 		return nil
 	})
-	testutil.Replace(t, &previewDestroyClone, func(name string) (*zfs.DestroyPreview, error) {
+	testutil.Replace(t, &previewDestroyDataset, func(name string) (*zfs.DestroyPreview, error) {
 		at.record("preview destroy %s", name)
 		return at.destroyPreview, nil
 	})
-	testutil.Replace(t, &destroyClone, func(name string, recursive bool, confirmed *zfs.DestroyPreview) error {
+	testutil.Replace(t, &destroyDataset, func(name string, recursive bool, confirmed *zfs.DestroyPreview) error {
 		at.record("destroy %s recursive=%t", name, recursive)
 		assert.Same(t, at.destroyPreview, confirmed, "destroys what was confirmed")
 		return nil
@@ -69,7 +70,7 @@ func newActionTest(t *testing.T) *actionTest {
 	require.Eventually(t, func() bool {
 		count := 0
 		testutil.OnUiThread(t, at.app, func() { count = len(at.browser.tableContainer.GetEntries()) })
-		return count == 2
+		return count == 3
 	}, 2*time.Second, 10*time.Millisecond)
 	return at
 }
@@ -133,11 +134,12 @@ func (at *actionTest) settle() {
 }
 
 // the options of a clone (mounted): 1 open, 2 snapshot, 3 snapshot (recursive), 4 permissions, 5 properties,
-// 6 promote, 7 destroy
+// 6 promote, 7 destroy; of other datasets the same without promote
 const (
 	optionSnapshotRecursive = '3'
 	optionPromote           = '6'
 	optionDestroy           = '7'
+	optionDestroyNotAClone  = '6'
 )
 
 func TestDatasetBrowser_DestroyClone(t *testing.T) {
@@ -145,7 +147,7 @@ func TestDatasetBrowser_DestroyClone(t *testing.T) {
 	at.selectDataset("pool/clone")
 
 	at.chooseAction(optionDestroy)
-	at.waitForDialog("DestroyCloneByNameDialog")
+	at.waitForDialog("DestroyDatasetByNameDialog")
 	assert.Equal(t, []string{"preview destroy pool/clone"}, at.recorded())
 
 	// Enter alone, or a wrong name, destroys nothing
@@ -153,7 +155,7 @@ func TestDatasetBrowser_DestroyClone(t *testing.T) {
 	at.typeText("pool/clon")
 	at.press(tcell.KeyEnter, 0)
 	at.settle()
-	assert.True(t, at.hasDialog("DestroyCloneByNameDialog"))
+	assert.True(t, at.hasDialog("DestroyDatasetByNameDialog"))
 	assert.Equal(t, []string{"preview destroy pool/clone"}, at.recorded())
 
 	at.typeText("e")
@@ -162,46 +164,46 @@ func TestDatasetBrowser_DestroyClone(t *testing.T) {
 	assert.Equal(t, []string{"preview destroy pool/clone", "destroy pool/clone recursive=false"}, at.recorded())
 }
 
-func TestDatasetBrowser_DestroyCloneCanBeCancelled(t *testing.T) {
+func TestDatasetBrowser_DestroyCanBeCancelled(t *testing.T) {
 	at := newActionTest(t)
 	at.selectDataset("pool/clone")
 
 	at.chooseAction(optionDestroy)
-	at.waitForDialog("DestroyCloneByNameDialog")
+	at.waitForDialog("DestroyDatasetByNameDialog")
 	at.typeText("pool/clone")
 	at.press(tcell.KeyEscape, 0)
-	at.waitForNoDialog("DestroyCloneByNameDialog")
+	at.waitForNoDialog("DestroyDatasetByNameDialog")
 	at.settle()
 
 	assert.Equal(t, []string{"preview destroy pool/clone"}, at.recorded())
 }
 
-func TestDatasetBrowser_DestroyCloneWithSnapshotsNeedsTheCheckbox(t *testing.T) {
+func TestDatasetBrowser_DestroyWithSnapshotsNeedsTheCheckbox(t *testing.T) {
 	at := newActionTest(t)
 	at.destroyPreview = &zfs.DestroyPreview{Destroyed: []string{"pool/clone@x", "pool/clone/child", "pool/clone"}, Reclaim: 1024}
 	at.selectDataset("pool/clone")
 
 	// without the checkbox: nothing is destroyed
 	at.chooseAction(optionDestroy)
-	at.waitForDialog(string(dialog.DestroyCloneDialogPage))
+	at.waitForDialog(string(dialog.DestroyDatasetDialogPage))
 	require.Eventually(t, func() bool {
-		return strings.Contains(at.screenText(), "Also destroy its 2 snapshots and child datasets")
+		return strings.Contains(at.screenText(), "Also destroy its 1 child dataset and 1 snapshot")
 	}, 2*time.Second, 10*time.Millisecond)
 	at.press(tcell.KeyRune, '1') // continue
 	at.press(tcell.KeyEnter, 0)
 	at.waitForDialog("ErrorDialog")
-	assert.False(t, at.hasDialog("DestroyCloneByNameDialog"))
+	assert.False(t, at.hasDialog("DestroyDatasetByNameDialog"))
 	at.press(tcell.KeyEscape, 0)
 	at.waitForNoDialog("ErrorDialog")
 
 	// with it, the name is asked for
 	at.chooseAction(optionDestroy)
-	at.waitForDialog(string(dialog.DestroyCloneDialogPage))
+	at.waitForDialog(string(dialog.DestroyDatasetDialogPage))
 	at.press(tcell.KeyUp, 0) // to the checklist
 	at.press(tcell.KeyRune, ' ')
 	at.press(tcell.KeyRune, '1') // continue
 	at.press(tcell.KeyEnter, 0)
-	at.waitForDialog("DestroyCloneByNameDialog")
+	at.waitForDialog("DestroyDatasetByNameDialog")
 	assert.Len(t, at.recorded(), 2, "only the dry runs")
 
 	at.typeText("pool/clone")
@@ -210,7 +212,9 @@ func TestDatasetBrowser_DestroyCloneWithSnapshotsNeedsTheCheckbox(t *testing.T) 
 	assert.Equal(t, "destroy pool/clone recursive=true", at.recorded()[2])
 }
 
-func TestDatasetBrowser_OnlyClonesCanBeDestroyed(t *testing.T) {
+// Regression: only clones could be destroyed. All datasets can, except the root dataset of a pool, which is only
+// destroyed with the pool; only clones can be promoted.
+func TestDatasetBrowser_DatasetsCanBeDestroyed(t *testing.T) {
 	at := newActionTest(t)
 
 	commandNames := func(dataset string) string {
@@ -224,10 +228,55 @@ func TestDatasetBrowser_OnlyClonesCanBeDestroyed(t *testing.T) {
 		return strings.Join(names, "|")
 	}
 
-	assert.Contains(t, commandNames("pool/clone"), "Destroy clone")
+	assert.Contains(t, commandNames("pool/clone"), "Destroy dataset")
 	assert.Contains(t, commandNames("pool/clone"), "Promote clone")
-	assert.NotContains(t, commandNames("pool/data"), "Destroy")
+	assert.Contains(t, commandNames("pool/data"), "Destroy dataset")
 	assert.NotContains(t, commandNames("pool/data"), "Promote")
+	assert.NotContains(t, commandNames("pool"), "Destroy")
+}
+
+// A dataset that is not a clone is destroyed the same way: after a dry run, which the confirmation shows, and its
+// full name typed.
+func TestDatasetBrowser_DestroyDataset(t *testing.T) {
+	at := newActionTest(t)
+	at.destroyPreview = &zfs.DestroyPreview{Destroyed: []string{"pool/data"}, Reclaim: 1024}
+	at.selectDataset("pool/data")
+
+	at.chooseAction(optionDestroyNotAClone)
+	at.waitForDialog("DestroyDatasetByNameDialog")
+	text := at.screenText()
+	assert.Contains(t, text, "Destroy the dataset pool/data with all its files")
+	assert.Contains(t, text, "cannot be undone")
+	assert.Contains(t, text, "It is unmounted from /data first")
+
+	at.typeText("pool/data")
+	at.press(tcell.KeyEnter, 0)
+	at.waitForDialog("SuccessDialog")
+	assert.Equal(t, []string{"preview destroy pool/data", "destroy pool/data recursive=false"}, at.recorded())
+}
+
+// Regression: the confirmation listed what would be destroyed in the order of the dry run, so the child datasets
+// were hidden behind "… and 12 more" snapshots.
+func TestDatasetBrowser_DestroyListsTheDatasetsFirst(t *testing.T) {
+	at := newActionTest(t)
+	destroyed := []string{"pool/data/child"}
+	for i := range 12 {
+		destroyed = append(destroyed, fmt.Sprintf("pool/data@snap%d", i))
+	}
+	at.destroyPreview = &zfs.DestroyPreview{Destroyed: append(destroyed, "pool/data"), Reclaim: 1024}
+	at.selectDataset("pool/data")
+
+	at.chooseAction(optionDestroyNotAClone)
+	at.waitForDialog(string(dialog.DestroyDatasetDialogPage))
+	require.Eventually(t, func() bool {
+		return strings.Contains(at.screenText(), "Also destroy its 1 child dataset and 12 snapshots")
+	}, 2*time.Second, 10*time.Millisecond)
+	testutil.OnUiThread(t, at.app, func() {
+		description := formatDestroyDescription(&zfs.DatasetListEntry{Name: "pool/data"}, at.destroyPreview)
+		assert.Contains(t, description, "Datasets that will be destroyed (2)")
+		assert.Contains(t, description, "pool/data/child")
+		assert.Contains(t, description, "Snapshots that will be destroyed (12)")
+	})
 }
 
 func TestDatasetBrowser_PromoteClone(t *testing.T) {

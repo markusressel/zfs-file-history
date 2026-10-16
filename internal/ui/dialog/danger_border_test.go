@@ -17,7 +17,7 @@ func TestDangerBorder(t *testing.T) {
 
 	assert.Equal(t, theme.Colors.Dialog.DangerBorder, borderOf(NewConfirmByNameDialog(app, "n", "t", "d", "pool/x", func() {}).frame))
 	assert.Equal(t, theme.Colors.Dialog.DangerBorder, borderOf(NewDestroySnapshotsDialog(app, "d", nil, nil).frame))
-	assert.Equal(t, theme.Colors.Dialog.DangerBorder, borderOf(NewDestroyCloneDialog(app, "d", "also", nil, nil).frame))
+	assert.Equal(t, theme.Colors.Dialog.DangerBorder, borderOf(NewDestroyDatasetDialog(app, "d", "also", nil, nil).frame))
 
 	assert.Equal(t, theme.Colors.Dialog.Border, borderOf(NewTextInputDialog(app, "n", "t", "d", "x", nil).frame))
 	assert.Equal(t, theme.Colors.Dialog.Border, borderOf(NewPromoteCloneDialog(app, "d", nil, nil).frame))

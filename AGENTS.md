@@ -107,11 +107,13 @@ of the code.
   and cannot be checked. Features of the pool the installed ZFS does not know (`unsupported@<guid>`) are listed last. Not part of the sudoers rule (a
   wildcard for the name would also match spaces, so any property could be set): `PoolActionNeedsRootError`
   `AllowedBySetup` is false, and the root dialog only offers to run them once with sudo or to copy the commands.
-- `internal/zfs/dataset_actions.go`: the actions on datasets that lose data (destroying a clone, rolling back) work
+- `internal/zfs/dataset_actions.go`: the actions on datasets that lose data (destroying a dataset, rolling back) work
   in two steps: a preview lists what would be lost without changing anything (dry run, newer snapshots, holds,
   clones, permissions), the action takes the confirmed preview, checks everything again and refuses with
-  `ErrChangedSinceConfirmation` if anything differs. `-R` (destroys clones elsewhere) is never used. Only clones can
-  be destroyed (`DatasetListEntry.Origin`); with snapshots or child datasets only after a checkbox. Both are confirmed
+  `ErrChangedSinceConfirmation` if anything differs. `-R` (destroys clones elsewhere) is never used. Any dataset can
+  be destroyed but the root dataset of a pool, and none that is (or has a child) mounted where the running system
+  is (`protectedMountPaths`: zfs would destroy the others first and then fail on the busy one); with snapshots or
+  child datasets only after a checkbox. The confirmation lists the datasets before the snapshots. Both are confirmed
   by typing the full name (`dialog.NewConfirmByNameDialog`, no button confirms), and have no shortcut key (action
   dialog and command menu only). Tests never run them: `zfs` tests use a fake `Backend` whose missing methods panic,
   UI tests replace the package variables.
@@ -180,7 +182,9 @@ of the code.
     changes of each version (there is no separate diff), `e` in the external diff viewer (`configuration` `Diff`,
     `external_diff_viewer.go`; the paths are arguments, never part of a shell script). Shown with
     `ShowDialogOnPages`. `NewSelectionDialogWithChecklist` adds a checklist above the options (its own table,
-    ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started.
+    ↑/↓ move between both, Space toggles); the handler reads it with `Checked`, a copy taken when the action started. The
+    description of a selection or text input dialog scrolls when the dialog does not fit, so the checklist, the
+    options and the input field are always shown.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),
     grouping (`SetGroupings`, `b` cycles them: a row above each group that cannot be selected, its title drawn over
     the row so it does not widen the first column; saved with the column layout),

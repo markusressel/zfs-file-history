@@ -3,6 +3,7 @@ package dialog
 import (
 	"strings"
 	"unicode/utf8"
+	"zfs-file-history/internal/ui/scrollbar"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/txwidgets"
@@ -66,14 +67,10 @@ func (d *TextInputDialog) createLayout(title string, description string, tagged 
 		ExtraContentWidth: inputWidth,
 		StaticHeight:      4, // spacer, input field, spacer, help text
 	}
-	dialogWidth, _ := CalculateDialogSize(constraints)
-	textLineWidth := dialogWidth - 6
-	if textLineWidth < 5 {
-		textLineWidth = 5
-	}
-
-	descriptionView := tview.NewTextView().
-		SetDynamicColors(tagged).
+	// a scrollbar shows that more follows: the description gets what is left of a dialog that does not fit (e.g. a
+	// long list of what would be destroyed on a small terminal), so the input field is always shown
+	descriptionView := scrollbar.NewTextView(nil)
+	descriptionView.SetDynamicColors(tagged).
 		SetText(description).
 		SetWrap(true).
 		SetWordWrap(true)
@@ -101,7 +98,7 @@ func (d *TextInputDialog) createLayout(title string, description string, tagged 
 
 	// A click on the text does not focus it: the keys (typing, Esc) would no longer reach the input field.
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(unfocusableTextView{descriptionView}, calculateWrappedHeight(plainDescription, textLineWidth), 0, false).
+		AddItem(unfocusableTextView{descriptionView}, 0, 1, false).
 		AddItem(unfocusableTextView{tview.NewTextView()}, 1, 0, false).
 		AddItem(d.inputField, 1, 0, true).
 		AddItem(unfocusableTextView{d.errorView}, 1, 0, false).
@@ -161,12 +158,12 @@ func (d *TextInputDialog) Close() {
 	}()
 }
 
-// unfocusableTextView is a text view a click does not focus (see util.WithoutFocus), e.g. the description of a dialog
-// whose input field has to keep the focus.
+// unfocusableTextView is a text view (a tview.TextView or a scrollbar.TextView) a click does not focus (see
+// util.WithoutFocus), e.g. the description of a dialog whose input field has to keep the focus.
 type unfocusableTextView struct {
-	*tview.TextView
+	tview.Primitive
 }
 
 func (view unfocusableTextView) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
-	return util.WithoutFocus(view.TextView.MouseHandler())
+	return util.WithoutFocus(view.Primitive.MouseHandler())
 }
