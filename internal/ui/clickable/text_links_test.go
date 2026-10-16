@@ -78,3 +78,27 @@ func TestRegions_WrapMouseHandler(t *testing.T) {
 	mouse(tview.MouseLeftClick, 3)
 	assert.Len(t, clicked, 1)
 }
+
+// Regression: moving from one region to the next did not redraw (the text view does not consume moves), so the
+// highlight stayed on the first one until the mouse left both.
+func TestRegions_WrapMouseHandler_RedrawsWhenTheHoverMoves(t *testing.T) {
+	box := area{tview.NewBox()}
+	box.SetRect(0, 0, 10, 1)
+	regions := &Regions{}
+	regions.Add(Region{X: 0, Y: 0, Width: 3, Key: "first", HoverBackground: hover})
+	regions.Add(Region{X: 3, Y: 0, Width: 3, Key: "second", HoverBackground: hover})
+	handler := regions.WrapMouseHandler(box, func() bool { return true },
+		func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (bool, tview.Primitive) {
+			return false, nil
+		})
+	move := func(x int) bool {
+		consumed, _ := handler(tview.MouseMove, tcell.NewEventMouse(x, 0, tcell.ButtonNone, tcell.ModNone), func(p tview.Primitive) {})
+		return consumed
+	}
+
+	assert.True(t, move(1), "onto the first")
+	assert.False(t, move(2), "within the first: nothing to redraw")
+	assert.True(t, move(4), "onto the second")
+	assert.True(t, regions.IsHovered("second"))
+	assert.True(t, move(8), "off both")
+}

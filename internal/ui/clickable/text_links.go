@@ -55,7 +55,7 @@ func (regions *Regions) WrapMouseHandler(area Area, enabled func() bool, handler
 	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
 		x, y := event.Position()
 		active := enabled() && area.InRect(x, y)
-		hovered := regions.IsAnyHovered()
+		hovered, wasHovered := regions.Hovered()
 		if active && action == tview.MouseLeftClick && regions.Contains(x, y) {
 			// a click on a region does only that, e.g. it does not select the row of a table
 			regions.HandleMouse(action, event, active)
@@ -66,7 +66,8 @@ func (regions *Regions) WrapMouseHandler(area Area, enabled func() bool, handler
 		if capture == nil && regions.IsAnyHovered() {
 			capture = area
 		}
-		// a hover that changed needs a redraw
-		return consumed || hovered != regions.IsAnyHovered(), capture
+		// a hover that changed needs a redraw, also from one region to the next
+		key, isHovered := regions.Hovered()
+		return consumed || wasHovered != isHovered || key != hovered, capture
 	}
 }
