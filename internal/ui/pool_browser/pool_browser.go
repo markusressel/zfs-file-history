@@ -94,6 +94,8 @@ var (
 	runPoolAction      = zfs.RunPoolAction
 	listPoolFeatures   = zfs.ListPoolFeatures
 	enablePoolFeatures = zfs.EnablePoolFeatures
+	previewDestroyPool = zfs.PreviewDestroyPool
+	destroyPool        = zfs.DestroyPool
 )
 
 type Event interface{}
@@ -308,16 +310,20 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 	name := pool.Name
 	// features are the ones listed by the last choice of the features, read on the UI thread once listed
 	var features *zfs.PoolFeatures
+	// destroyPreview is what destroying the pool would destroy, read on the UI thread once previewed
+	var destroyPreview *zfs.PoolDestroyPreview
 	asyncWork := func(d *dialog.SelectionDialog, id dialog.DialogActionId) error {
 		if action, ok := dialog.PoolActionOf(id); ok {
 			return runPoolAction(action, name)
 		}
-		if id == dialog.PoolDialogFeaturesActionId {
-			var err error
+		var err error
+		switch id {
+		case dialog.PoolDialogFeaturesActionId:
 			features, err = listPoolFeatures(name)
-			return err
+		case dialog.PoolDialogDestroyActionId:
+			destroyPreview, err = previewDestroyPool(name)
 		}
-		return nil
+		return err
 	}
 	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
 		d.Close()
@@ -332,6 +338,15 @@ func (poolBrowser *PoolBrowserComponent) newActionDialog(pool *zfs.PoolListEntry
 				return
 			}
 			poolBrowser.chooseFeatures(features)
+			return
+		case dialog.PoolDialogDestroyActionId:
+			if err != nil {
+				logging.Error("Cannot destroy %s: %s", name, err.Error())
+				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Cannot Destroy", err, d.RetryFunc(option)))
+				return
+			}
+			// nothing was destroyed yet, the confirmations do that
+			poolBrowser.showDestroyConfirmation(destroyPreview)
 			return
 		}
 		action, ok := dialog.PoolActionOf(option.Id)
@@ -380,6 +395,92 @@ func (poolBrowser *PoolBrowserComponent) confirmFeatures(pool string, features [
 			func() error { return enablePoolFeatures(pool, features) },
 			func() { poolBrowser.confirmFeatures(pool, features) })
 	}))
+}
+
+// formatDestroyPoolDescription describes what destroying the pool destroys, with style tags.
+func formatDestroyPoolDescription(preview *zfs.PoolDestroyPreview) string {
+	var description strings.Builder
+	fmt.Fprintf(&description, "Destroy the pool %s with all its datasets, snapshots and files (%s). This %s. Its "+
+		"devices can be used for other pools afterwards.", dialog.Highlight(preview.Pool),
+		dialog.Highlight(uiutil.HumanizedBytes(preview.Allocated)), txwidgets.Span(theme.Colors.Dialog.Danger, "%s", "cannot be undone"))
+	description.WriteString("\n\nThe datasets are unmounted first. If one is in use, nothing is destroyed.")
+	fmt.Fprintf(&description, "\n\nDatasets that will be destroyed (%d):", len(preview.Datasets))
+	for i, name := range preview.Datasets {
+		if i == maxListedDatasets {
+			fmt.Fprintf(&description, "\n  … and %d more", len(preview.Datasets)-maxListedDatasets)
+			break
+		}
+		fmt.Fprintf(&description, "\n  %s", dialog.Highlight(name))
+	}
+	return description.String()
+}
+
+// maxListedDatasets is the maximum number of datasets listed in the confirmation of destroying a pool.
+const maxListedDatasets = 10
+
+// previewAndConfirmDestroy lists what destroying the pool destroys in the background and then asks for
+// confirmation. Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) previewAndConfirmDestroy(pool string) {
+	go func() {
+		preview, err := previewDestroyPool(pool)
+		poolBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Cannot destroy %s: %s", pool, err.Error())
+				retry := func() { poolBrowser.previewAndConfirmDestroy(pool) }
+				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Cannot Destroy", err, retry))
+				return
+			}
+			poolBrowser.showDestroyConfirmation(preview)
+		})
+	}()
+}
+
+// showDestroyConfirmation asks for confirmation to destroy the pool as previewed: a checkbox that the data is lost
+// first, then its name typed. Must be called on the UI thread.
+func (poolBrowser *PoolBrowserComponent) showDestroyConfirmation(preview *zfs.PoolDestroyPreview) {
+	description := formatDestroyPoolDescription(preview)
+	count := len(preview.Datasets)
+	lost := fmt.Sprintf("Destroy its %d %s with all snapshots and files", count, uiutil.Plural(count, "dataset", "datasets"))
+	onComplete := func(d *dialog.SelectionDialog, option *dialog.DialogOption, err error) {
+		d.Close()
+		if option.Id != dialog.DestroyPoolDialogContinueActionId {
+			return
+		}
+		if !d.Checked()[0] {
+			// shows this dialog again, so the box can be checked
+			retry := func() { poolBrowser.showDestroyConfirmation(preview) }
+			poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Nothing Destroyed",
+				fmt.Errorf("check '%s' to destroy the pool %s", lost, preview.Pool), retry))
+			return
+		}
+		poolBrowser.showDialog(dialog.NewConfirmByNameDialog(poolBrowser.application, "DestroyPoolByNameDialog",
+			" 💥 Destroy Pool ", description, preview.Pool, func() { poolBrowser.destroyInBackground(preview) }))
+	}
+	poolBrowser.showDialog(dialog.NewDestroyPoolDialog(poolBrowser.application, description, lost, nil, onComplete))
+}
+
+// destroyInBackground destroys the pool as confirmed in the background and shows the result. Must be called on the
+// UI thread.
+func (poolBrowser *PoolBrowserComponent) destroyInBackground(preview *zfs.PoolDestroyPreview) {
+	pool := preview.Pool
+	go func() {
+		err := destroyPool(preview)
+		poolBrowser.application.QueueUpdateDraw(func() {
+			if err != nil {
+				logging.Error("Failed to destroy %s: %s", pool, err.Error())
+				// a retry asks for confirmation again, with a new preview
+				retry := func() { poolBrowser.previewAndConfirmDestroy(pool) }
+				poolBrowser.showDialog(dialog.NewErrorDialogWithRetry(poolBrowser.application, "Destroy Failed", err, retry))
+				return
+			}
+			count := len(preview.Datasets)
+			poolBrowser.showDialog(dialog.NewSuccessDialog(poolBrowser.application, "Pool Destroyed",
+				fmt.Sprintf("Destroyed the pool '%s' with its %d %s.", pool, count, uiutil.Plural(count, "dataset", "datasets"))))
+			// the event watcher may not run (see "setup"), so the pools are reloaded here
+			zfs.PoolsChanged.Emit(struct{}{})
+			zfs.RefreshZfsData()
+		})
+	}()
 }
 
 // runConfirmedInBackground runs what was confirmed for the pool in the background and shows the result: done (e.g.

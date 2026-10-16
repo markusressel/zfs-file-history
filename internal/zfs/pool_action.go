@@ -7,8 +7,9 @@ import (
 )
 
 // PoolAction is an operation on a pool that can be started from the application, see RunPoolAction. Operations
-// that lose data or make the pool unavailable (destroy, export, "clear -F", ...) are deliberately not offered.
-// Upgrading cannot be undone, the application only runs it once the name of the pool was typed.
+// that make the pool unavailable or may lose data (export, "clear -F", ...) are deliberately not offered.
+// Upgrading cannot be undone, the application only runs it once the name of the pool was typed. Destroying the pool
+// (PoolActionDestroy) only runs with a confirmed preview, see DestroyPool.
 type PoolAction struct {
 	// Name is what is done, e.g. "start a scrub", used in error messages
 	Name string

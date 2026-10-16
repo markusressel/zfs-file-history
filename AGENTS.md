@@ -93,8 +93,13 @@ of the code.
   start/cancel, clear, upgrade). Pool operations cannot be delegated, so `RunPoolAction` retries with `sudo -n` if zpool is
   denied, and returns a `PoolActionNeedsRootError` if that is not allowed either: `dialog.NewErrorDialogWithRetry`
   then offers to run it once with sudo or to run `setup --pool-actions` (like `NewMissingPermissionsDialog` does
-  for dataset permissions). Actions that lose data or make a pool unavailable (destroy, export, `clear -F`) are
-  deliberately not offered. Upgrade cannot be undone: only offered while `zpool status` suggests it
+  for dataset permissions). Actions that make a pool unavailable or may lose data (export, `clear -F`) are
+  deliberately not offered. Destroying a pool (`pool_destroy.go`) works like destroying a dataset: a preview
+  (`PreviewDestroyPool`: all its datasets, refused if the running system is mounted from it, `protectedMountPaths`),
+  a checkbox (`dialog.NewDestroyPoolDialog`), its name typed, and `DestroyPool` refuses with
+  `ErrChangedSinceConfirmation` if its datasets changed. Never `-f`: a dataset in use stops it before anything is
+  destroyed. `PoolActionDestroy` is not in `PoolActions`, so the sudoers rule never allows it (run once with sudo, or
+  copy the command). Upgrade cannot be undone: only offered while `zpool status` suggests it
   (`PoolStatus.CanUpgrade`), red, and confirmed by typing the name of the pool (`dialog.NewPoolUpgradeDialog`, not
   run by the action dialog itself: `dialog.PoolActionOf`). The sudoers rule of former versions without upgrade is
   its `fallback`. `pool_features.go`: single features (`zfs.ListPoolFeatures`: `zpool upgrade -v` and `zpool get`,
