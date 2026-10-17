@@ -110,13 +110,6 @@ type SmartAttribute struct {
 	Failed string
 	// Important is whether the attribute tells of failures, see importantAtaAttributes
 	Important bool
-	// Risk is how close the attribute is to the value it fails at: 0 far from it, 1 failing (all of the rated
-	// endurance or spare used), valid if RiskKnown. Only known for the endurance and spare of NVMe disks, which the
-	// standard defines. Not for ATA attributes: their normalized values, where they start and where they fail are
-	// chosen by each vendor, and smartctl only tells the threshold. The distance to it said nothing (e.g. 100 of 97 is
-	// the value of a new Seagate disk), and Failed and Problems tell the ones that matter.
-	Risk      float64
-	RiskKnown bool
 }
 
 // SmartReport is what is known about the SMART values of a disk, see SmartReader.
@@ -141,6 +134,11 @@ type SmartReport struct {
 	HealthKnown, Passed bool
 	// PowerOnHours is how long the disk has run, -1 if unknown
 	PowerOnHours int64
+	// SparePercent is how much of its spare capacity (to replace worn out blocks) an NVMe drive has left, from 100
+	// down; at SpareThresholdPercent it warns (critical warning). Valid if SpareKnown: not for ATA SSDs, whose
+	// attributes for it differ by vendor.
+	SparePercent, SpareThresholdPercent int
+	SpareKnown                          bool
 	// Rotational is whether the disk spins (a hard disk, see IsRotational), known also if the values were not read
 	Rotational bool
 	// Counters are the values that mean the same for all kinds of disks, to compare them
@@ -401,15 +399,12 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 	}
 	if log := parsed.NvmeLog; log != nil {
 		mediaErrors := jsonCount(log.MediaErrors)
-		// the spare goes down from 100% to its threshold, where the disk warns
-		spareRisk, spareRiskKnown := 0.0, log.AvailableSpareThreshold > 0 && log.AvailableSpareThreshold < 100
-		if spareRiskKnown {
-			spareRisk = min(max(float64(100-log.AvailableSpare)/float64(100-log.AvailableSpareThreshold), 0), 1)
-		}
+		report.SparePercent, report.SpareKnown = log.AvailableSpare, true
+		report.SpareThresholdPercent = log.AvailableSpareThreshold
 		report.Attributes = append(report.Attributes,
 			SmartAttribute{Name: "Critical warning", Value: fmt.Sprintf("0x%02x", log.CriticalWarning), Raw: int64(log.CriticalWarning), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
-			SmartAttribute{Name: "Available spare", Value: fmt.Sprintf("%d%% (threshold %d%%)", log.AvailableSpare, log.AvailableSpareThreshold), Raw: int64(log.AvailableSpare), Normalized: -1, Worst: -1, Threshold: -1, Important: true, Risk: spareRisk, RiskKnown: spareRiskKnown},
-			SmartAttribute{Name: "Percentage used", Value: fmt.Sprintf("%d%%", log.PercentageUsed), Raw: int64(log.PercentageUsed), Normalized: -1, Worst: -1, Threshold: -1, Important: true, Risk: min(float64(log.PercentageUsed)/100, 1), RiskKnown: true},
+			SmartAttribute{Name: "Available spare", Value: fmt.Sprintf("%d%% (threshold %d%%)", log.AvailableSpare, log.AvailableSpareThreshold), Raw: int64(log.AvailableSpare), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
+			SmartAttribute{Name: "Percentage used", Value: fmt.Sprintf("%d%%", log.PercentageUsed), Raw: int64(log.PercentageUsed), Normalized: -1, Worst: -1, Threshold: -1, Important: true},
 			SmartAttribute{Name: "Media errors", Value: strconv.FormatInt(mediaErrors, 10), Raw: mediaErrors, Normalized: -1, Worst: -1, Threshold: -1, Important: true},
 			SmartAttribute{Name: "Error log entries", Value: strconv.FormatInt(jsonCount(log.NumErrLogEntries), 10), Raw: jsonCount(log.NumErrLogEntries), Normalized: -1, Worst: -1, Threshold: -1},
 			SmartAttribute{Name: "Unsafe shutdowns", Value: strconv.FormatInt(jsonCount(log.UnsafeShutdowns), 10), Raw: jsonCount(log.UnsafeShutdowns), Normalized: -1, Worst: -1, Threshold: -1},

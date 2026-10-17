@@ -245,6 +245,9 @@ func addHealthFields(health *uiutil.InfoText, report disk.SmartReport) {
 		health.Field("Wear", uiutil.InfoBar(float64(wear)/100, detailsBarWidth)+" "+uiutil.InfoValue(fmt.Sprintf("%d%%", wear))+
 			uiutil.InfoMuted(" of its rated endurance"))
 	}
+	if spare := formatSpare(report); spare != "" {
+		health.Field("Spare", spare)
+	}
 	if report.PowerOnHours >= 0 {
 		health.Field("Age", uiutil.InfoValue(fmt.Sprintf("%.1f years", float64(report.PowerOnHours)/(24*365)))+
 			uiutil.InfoMuted(" · "+humanize.Comma(report.PowerOnHours)+" h"))
@@ -265,6 +268,21 @@ func addHealthFields(health *uiutil.InfoText, report disk.SmartReport) {
 		read += ", asleep now"
 	}
 	health.Field("Read", uiutil.InfoMuted(read))
+}
+
+// formatSpare returns the spare capacity an NVMe drive has left in its details: a bar of the way used from 100% down
+// to the threshold where it warns (empty on a new drive, full at the threshold, like the wear), "" if unknown.
+func formatSpare(report disk.SmartReport) string {
+	if !report.SpareKnown {
+		return ""
+	}
+	text := uiutil.InfoValue(fmt.Sprintf("%d%%", report.SparePercent)) + uiutil.InfoMuted(" left")
+	used := float64(100-report.SparePercent) / 100
+	if threshold := report.SpareThresholdPercent; threshold > 0 && threshold < 100 {
+		used = float64(100-report.SparePercent) / float64(100-threshold)
+		text += uiutil.InfoMuted(fmt.Sprintf(" · warns at %d%%", threshold))
+	}
+	return uiutil.InfoBar(used, detailsBarWidth) + " " + text
 }
 
 // formatDetailsTemperature returns the temperature of the disk in its details: a bar up to the temperature at which it

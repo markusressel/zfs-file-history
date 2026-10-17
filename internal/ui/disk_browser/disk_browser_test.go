@@ -41,8 +41,8 @@ func testStatuses() []*zfs.PoolStatus {
 func testSmart() *disktest.Smart {
 	nvme := healthy("nvme0n1")
 	nvme.Attributes = []disk.SmartAttribute{
-		{Name: "Percentage used", Value: "93%", Raw: 93, Normalized: -1, Worst: -1, Threshold: -1, Important: true, Risk: 0.93, RiskKnown: true},
-		{Name: "Available spare", Value: "100%", Raw: 100, Normalized: -1, Worst: -1, Threshold: -1, RiskKnown: true},
+		{Name: "Percentage used", Value: "93%", Raw: 93, Normalized: -1, Worst: -1, Threshold: -1, Important: true},
+		{Name: "Available spare", Value: "100%", Raw: 100, Normalized: -1, Worst: -1, Threshold: -1},
 	}
 	return disktest.NewSmart(map[string][]disk.SmartReport{
 		"/dev/disk/by-id/ata-DISK_1-part1": {ataReport()},
@@ -498,52 +498,25 @@ func TestDiskDetails_PoolNotClickedBehindDialog(t *testing.T) {
 	testutil.OnUiThread(t, dt.app, func() { assert.Empty(t, shown) })
 }
 
-// The values of NVMe disks show how close they are to failing; sorted by it (a click on the header), the closest come
-// first.
-func TestDiskDetails_RiskColumn(t *testing.T) {
-	dt := newDiskBrowserTest(t)
-	dt.press(tcell.KeyDown, 0)
-	dt.press(tcell.KeyDown, 0)
-	dt.waitFor("details of nvme0n1", func() bool { return strings.Contains(dt.detailsText(), "nvme0n1\n● healthy") })
-	text := dt.screenText()
-	assert.Contains(t, text, "Thresh Risk ")
-	assert.Contains(t, text, "███████▌  93%")
-	assert.Contains(t, text, "            0%")
-
-	// the first click selects the header, the next ones sort by the column and toggle the direction
-	for range 3 {
-		if strings.Contains(dt.screenText(), "Risk ↓") {
-			break
-		}
-		testutil.ClickText(t, dt.app, dt.screen, "Risk")
-	}
-	require.Contains(t, dt.screenText(), "Risk ↓")
-	assert.Equal(t, []string{"Percentage used", "Available spare"}, dt.attributeNames())
-}
-
-// Regression: the attributes of ATA disks had a risk (how far their normalized value was in the last 30 points above
-// their threshold), which said nothing: vendors choose where the values start and fail, and a new disk looked 90% of
-// the way to failing. They have none, and the column is not drawn for them.
-func TestDiskDetails_NoRiskColumnForAta(t *testing.T) {
-	dt := newDiskBrowserTest(t)
-	text := dt.screenText()
-	assert.Contains(t, text, "Reallocated_Sector_Ct")
-	assert.Contains(t, text, "Thresh  ")
-	assert.NotContains(t, text, "Risk")
-}
-
-// Regression: a layout of the attributes saved by 2.7.0 (before the column Risk) did not get the column.
-func TestDiskDetails_RiskColumnAddedToSavedLayout(t *testing.T) {
+// A layout of the attributes saved by 2.8 (with the column Risk, which is gone) loads without it.
+func TestDiskDetails_LayoutWithRiskColumn(t *testing.T) {
 	store := statetest.Use(t)
 	store.SetTableLayout(stateKeyAttributesTable, state.TableLayout{
-		Columns:    []string{"id", "name", "normalized", "worst", "threshold", "value", "failed"},
-		SortColumn: "name",
+		Columns:    []string{"id", "name", "normalized", "worst", "threshold", "risk", "value", "failed"},
+		Known:      []string{"id", "name", "normalized", "worst", "threshold", "risk", "value", "failed"},
+		SortColumn: "risk",
 	})
-	app, _ := testutil.NewApp()
+	app, screen := testutil.NewApp()
 	testutil.RunApp(t, app)
 	var columns []*table.Column
-	testutil.OnUiThread(t, app, func() { columns = NewDiskDetails(app).tableContainer.GetColumnSpec() })
-	assert.Equal(t, attributeColumns, columns, "after the threshold, as in the default layout")
+	testutil.OnUiThread(t, app, func() {
+		details := NewDiskDetails(app)
+		app.SetRoot(details.GetLayout(), true)
+		details.SetDisk(&DiskEntry{Report: ataReport()})
+		columns = details.tableContainer.GetColumnSpec()
+	})
+	assert.Equal(t, attributeColumns, columns)
+	assert.NotContains(t, testutil.ScreenText(t, app, screen), "Risk")
 }
 
 // Regression: a click into the details focused them, which Tab skips: there is nothing to do in them.
