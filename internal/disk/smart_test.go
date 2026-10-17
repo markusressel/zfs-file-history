@@ -40,6 +40,7 @@ func TestParseSmartctl_Ata(t *testing.T) {
 	assert.True(t, report.HealthKnown)
 	assert.True(t, report.Passed)
 	assert.Equal(t, int64(35123), report.PowerOnHours)
+	assert.False(t, report.SpareKnown, "only NVMe drives tell it")
 	// CRC errors (199) are not a problem: they count errors of the cable
 	assert.Equal(t, []SmartProblem{{Severity: SmartWarning, Short: "8 realloc", Text: "8 reallocated sectors"}}, report.Problems)
 
@@ -99,7 +100,9 @@ func TestParseSmartctl_Nvme(t *testing.T) {
 	}
 	assert.Equal(t, "0x00", values["Critical warning"])
 	assert.Equal(t, "100% (threshold 10%)", values["Available spare"])
-	assert.Equal(t, map[string]float64{"Available spare": 0, "Percentage used": 0.93}, riskOf(report), "only the ones with a limit")
+	assert.True(t, report.SpareKnown)
+	assert.Equal(t, 100, report.SparePercent)
+	assert.Equal(t, 10, report.SpareThresholdPercent)
 	// a counter of 128 bits
 	assert.Equal(t, "9223372036854775807", values["Error log entries"])
 }
@@ -132,27 +135,6 @@ func TestParseSmartctl_NvmeHealthy(t *testing.T) {
 	}, values)
 }
 
-// riskOf returns how close the attributes of the report are to failing, the ones it is known of.
-func riskOf(report SmartReport) map[string]float64 {
-	risks := map[string]float64{}
-	for _, attribute := range report.Attributes {
-		if attribute.RiskKnown {
-			risks[attribute.Name] = attribute.Risk
-		}
-	}
-	return risks
-}
-
-// Regression: the risk of ATA attributes was how far their normalized value was in the last 30 points above their
-// threshold, so the Spin_Retry_Count of a new Seagate disk (100 of 97, never changed) looked 90% of the way to failing.
-// Vendors choose where the values start and fail, so the distance to the threshold says nothing.
-func TestParseSmartctl_NoRiskOfAtaAttributes(t *testing.T) {
-	report, _, err := parseSmartctl("sda", readFixture(t, "smartctl-ata-hot.json"), smartTime)
-	require.NoError(t, err)
-	require.NotEmpty(t, report.Attributes)
-	assert.Empty(t, riskOf(report))
-}
-
 func TestParseSmartctl_NvmeCritical(t *testing.T) {
 	report, _, err := parseSmartctl("nvme1n1", readFixture(t, "smartctl-nvme-critical.json"), smartTime)
 	require.NoError(t, err)
@@ -162,8 +144,8 @@ func TestParseSmartctl_NvmeCritical(t *testing.T) {
 		{Severity: SmartError, Short: "critical", Text: "critical warning: available spare below threshold, reliability degraded"},
 		{Severity: SmartWarning, Short: "100% worn", Text: "100% of the rated endurance used"},
 	}, report.Problems)
-	// the spare is below its threshold: all used
-	assert.Equal(t, map[string]float64{"Available spare": 1, "Percentage used": 1}, riskOf(report))
+	assert.Equal(t, 4, report.SparePercent, "below its threshold")
+	assert.Equal(t, 10, report.SpareThresholdPercent)
 }
 
 func TestParseSmartctl_Scsi(t *testing.T) {

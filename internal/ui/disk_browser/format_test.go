@@ -166,12 +166,15 @@ func TestFormatDetails_PoolLinks(t *testing.T) {
 	}
 }
 
-func TestFormatRisk(t *testing.T) {
-	assert.Equal(t, "", formatRisk(disk.SmartAttribute{Risk: 0.5}), "not known: cannot fail")
-	assert.Equal(t, "           0%", testutil.StripTags(formatRisk(disk.SmartAttribute{RiskKnown: true})), "an empty bar")
-	assert.Equal(t, "████      50%", testutil.StripTags(formatRisk(disk.SmartAttribute{Risk: 0.5, RiskKnown: true})))
-	assert.Equal(t, "████████  99%", testutil.StripTags(formatRisk(disk.SmartAttribute{Risk: 0.996, RiskKnown: true})), "100% only when failing")
-	assert.Equal(t, "████████ 100%", testutil.StripTags(formatRisk(disk.SmartAttribute{Risk: 1, RiskKnown: true})))
+func TestFormatSpare(t *testing.T) {
+	spare := func(percent, threshold int) string {
+		return testutil.StripTags(formatSpare(disk.SmartReport{SparePercent: percent, SpareThresholdPercent: threshold, SpareKnown: true}))
+	}
+	assert.Equal(t, "", formatSpare(disk.SmartReport{SparePercent: 100}), "not known: an ATA disk")
+	assert.Equal(t, "             100% left · warns at 10%", spare(100, 10), "new: an empty bar")
+	assert.Equal(t, "████████     40% left · warns at 10%", spare(40, 10), "two thirds of the way to the threshold")
+	assert.Equal(t, "████████████ 4% left · warns at 10%", spare(4, 10), "below the threshold")
+	assert.Equal(t, "██████       50% left", spare(50, 0), "no threshold: the way to 0%")
 }
 
 func TestFormatDetailsTemperature(t *testing.T) {
@@ -193,6 +196,7 @@ func TestFormatDetails_Ssd(t *testing.T) {
 	report := healthy("nvme0n1")
 	report.Protocol = "NVMe"
 	report.Counters = disk.SmartCounters{WearPercent: 4, BytesWritten: -1}
+	report.SparePercent, report.SpareThresholdPercent, report.SpareKnown = 100, 10, true
 	entry := &DiskEntry{Devices: []PoolDevice{{Pool: "bpool", Device: "nvme0n1p2"}, {Pool: "rpool", Device: "nvme0n1p3"}}, Report: report}
 	lines := detailsLines(entry)
 	assert.Equal(t, "● healthy · NVMe SSD in bpool, rpool", lines[0])
@@ -201,6 +205,7 @@ func TestFormatDetails_Ssd(t *testing.T) {
 	assert.Contains(t, text, "Pools  bpool  nvme0n1p2")
 	assert.Contains(t, text, "       rpool  nvme0n1p3")
 	assert.Contains(t, text, "Wear   ▌            4% of its rated endurance")
+	assert.Contains(t, text, "Spare               100% left · warns at 10%")
 	assert.NotContains(t, text, "Temp", "no temperature read")
 }
 
