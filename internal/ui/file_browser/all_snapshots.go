@@ -2,11 +2,14 @@ package file_browser
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/data/diff_state"
 	"zfs-file-history/internal/folder_listing"
@@ -15,9 +18,14 @@ import (
 )
 
 // loadSnapshotsOfPath loads the snapshots of the dataset that contains path, if the snapshot browser does not know
-// them yet. Calls into ZFS, so it must not run on the UI thread. Replaceable in tests.
+// them yet, none if path is not on a dataset. Calls into ZFS, so it must not run on the UI thread. Replaceable in
+// tests.
 var loadSnapshotsOfPath = func(path string) ([]*zfs.Snapshot, error) {
 	dataset, err := zfs.FindHostDataset(path)
+	if errors.Is(err, zfs.ErrNoHostDataset) {
+		// e.g. a folder of the system outside of the pools: nothing to search, not an error
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -27,11 +35,16 @@ var loadSnapshotsOfPath = func(path string) ([]*zfs.Snapshot, error) {
 // allSnapshotsInput is what the entries of all snapshots are found with, captured on the UI thread, see
 // computeTableEntries.
 type allSnapshotsInput struct {
-	// snapshots of the dataset of the folder, if known is true
-	snapshots []*zfs.Snapshot
-	known     bool
+	// snapshots of the dataset at datasetPath, which contains the folder (unless a child dataset between them does,
+	// see isInDataset), if known is true
+	snapshots   []*zfs.Snapshot
+	datasetPath string
+	known       bool
 	// load loads the snapshots if they are not known
 	load func(path string) ([]*zfs.Snapshot, error)
+	// showEntriesAfter is showEntriesWhileSearchingAfter, captured so a load that outlives a test does not read it
+	// while the next test replaces it
+	showEntriesAfter time.Duration
 }
 
 // allSnapshotsInput returns what the entries of all snapshots of the folder at path are found with, nil while they
@@ -40,17 +53,17 @@ func (fileBrowser *FileBrowserComponent) allSnapshotsInput(path string) *allSnap
 	if !fileBrowser.showAllSnapshots || path == "" {
 		return nil
 	}
-	input := &allSnapshotsInput{load: loadSnapshotsOfPath}
+	input := &allSnapshotsInput{load: loadSnapshotsOfPath, showEntriesAfter: showEntriesWhileSearchingAfter}
 	if fileBrowser.snapshotsOf != nil {
-		input.snapshots, input.known = fileBrowser.snapshotsOf(path)
+		input.datasetPath, input.snapshots, input.known = fileBrowser.snapshotsOf(path)
 	}
 	return input
 }
 
-// SetSnapshotsFunc sets the function that returns the snapshots of the dataset that contains a path if they are
-// loaded already (e.g. by the snapshot browser), so showing the entries of all snapshots need not load them again.
-// Must be called on the UI thread.
-func (fileBrowser *FileBrowserComponent) SetSnapshotsFunc(snapshotsOf func(path string) ([]*zfs.Snapshot, bool)) {
+// SetSnapshotsFunc sets the function that returns the snapshots of the dataset that contains a path and the path of
+// the dataset if they are loaded already (e.g. by the snapshot browser), so showing the entries of all snapshots need
+// not load them again. Must be called on the UI thread.
+func (fileBrowser *FileBrowserComponent) SetSnapshotsFunc(snapshotsOf func(path string) (datasetPath string, snapshots []*zfs.Snapshot, ok bool)) {
 	fileBrowser.snapshotsOf = snapshotsOf
 }
 
@@ -77,9 +90,14 @@ func (cache *snapshotListingCache) read(ctx context.Context, folderPath string, 
 		cache.folderPath = folderPath
 		cache.listings = map[string]folder_listing.Listing{}
 	}
+	// taken now: once the lock is released, a read of another folder may replace them
+	listingsByKey := make(map[string]folder_listing.Listing, len(snapshots))
 	var missing []*zfs.Snapshot
 	for _, snapshot := range snapshots {
-		if _, ok := cache.listings[snapshotKey(snapshot)]; !ok {
+		key := snapshotKey(snapshot)
+		if listing, ok := cache.listings[key]; ok {
+			listingsByKey[key] = listing
+		} else {
 			missing = append(missing, snapshot)
 		}
 	}
@@ -99,21 +117,16 @@ func (cache *snapshotListingCache) read(ctx context.Context, folderPath string, 
 
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	listings := make([]folder_listing.Listing, len(snapshots))
-	readByKey := make(map[string]folder_listing.Listing, len(missing))
 	for i, snapshot := range missing {
-		readByKey[snapshotKey(snapshot)] = read[i]
-	}
-	for i, snapshot := range snapshots {
 		key := snapshotKey(snapshot)
-		listing, ok := readByKey[key]
-		if !ok {
-			listing = cache.listings[key]
-		}
+		listingsByKey[key] = read[i]
 		if cache.folderPath == folderPath {
-			cache.listings[key] = listing
+			cache.listings[key] = read[i]
 		}
-		listings[i] = listing
+	}
+	listings := make([]folder_listing.Listing, len(snapshots))
+	for i, snapshot := range snapshots {
+		listings[i] = listingsByKey[snapshotKey(snapshot)]
 	}
 	return listings, nil
 }
@@ -129,7 +142,8 @@ func (fileBrowser *FileBrowserComponent) findOnlyInSnapshots(
 	progress func(done int, total int),
 ) (map[string]folder_listing.SnapshotOnlyEntry, error) {
 	snapshots := input.snapshots
-	if !input.known {
+	// the snapshot browser still shows the parent dataset right after entering a child dataset
+	if !input.known || !isInDataset(path, input.datasetPath) {
 		var err error
 		if snapshots, err = input.load(path); err != nil {
 			return nil, err
@@ -151,6 +165,21 @@ func (fileBrowser *FileBrowserComponent) findOnlyInSnapshots(
 		}
 	}
 	return folder_listing.FindOnlyInSnapshots(sorted, listings, workingCopy), nil
+}
+
+// isInDataset returns whether the folder at path is in the dataset mounted at datasetPath, not in a child dataset
+// mounted below it (found by its .zfs folder, like zfs.FindHostDataset). Accesses the file system, so it must not run
+// on the UI thread.
+func isInDataset(path string, datasetPath string) bool {
+	if path != datasetPath && !strings.HasPrefix(path, datasetPath+"/") {
+		return false
+	}
+	for folder := filepath.Clean(path); folder != datasetPath && folder != filepath.Dir(folder); folder = filepath.Dir(folder) {
+		if stat, err := os.Lstat(filepath.Join(folder, ".zfs")); err == nil && stat.IsDir() {
+			return false
+		}
+	}
+	return true
 }
 
 // entriesOnlyInOtherSnapshots returns the entries of onlyInSnapshots that are not listed yet (they exist neither now

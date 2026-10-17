@@ -154,14 +154,26 @@ type FileBrowserComponent struct {
 	// SetOnlyInSnapshots. Only accessed on the UI thread.
 	onlyInSnapshots     map[string]folder_listing.SnapshotOnlyEntry
 	onlyInSnapshotsPath string
-	// snapshotsOf returns the snapshots of the dataset that contains a path if they are known (see SetSnapshotsFunc),
-	// nil if none are. Only accessed on the UI thread.
-	snapshotsOf func(path string) ([]*zfs.Snapshot, bool)
+	// snapshotsOf returns the snapshots of the dataset that contains a path and the path of the dataset if they are
+	// known (see SetSnapshotsFunc), nil if none are. Only accessed on the UI thread.
+	snapshotsOf func(path string) (datasetPath string, snapshots []*zfs.Snapshot, ok bool)
 	// snapshotListings are the folders read in the snapshots while all snapshots are shown
 	snapshotListings snapshotListingCache
 	// snapshotSearch is the progress of the search of the snapshots while the entries are shown without those found
 	// in them, nil otherwise. Only accessed on the UI thread.
 	snapshotSearch *snapshotSearchProgress
+	// pendingSelection is the remembered selection that was not found while the entries are shown without those of
+	// the snapshots, see addFoundEntries. Only accessed on the UI thread.
+	pendingSelection *pendingSelection
+}
+
+// pendingSelection is a remembered selection that is restored once the entries found in the snapshots are added, e.g.
+// a deleted folder after going up from it, unless the user selected another entry meanwhile.
+type pendingSelection struct {
+	// info is the remembered selection, replaced in the memory by fallback
+	info uiutil.SelectionInfo
+	// fallback is the entry selected in its place
+	fallback *data.FileBrowserEntry
 }
 
 // snapshotSearchProgress is how many snapshots of how many were searched, see snapshotSearch.
@@ -832,7 +844,7 @@ func (fileBrowser *FileBrowserComponent) addEntriesOfAllSnapshots(
 		return &snapshotSearchProgress{done: int(done.Load()), total: int(total.Load())}
 	}
 
-	showWhileSearching := time.NewTimer(showEntriesWhileSearchingAfter)
+	showWhileSearching := time.NewTimer(allSnapshots.showEntriesAfter)
 	defer showWhileSearching.Stop()
 	select {
 	case <-ctx.Done():
@@ -884,6 +896,7 @@ func (fileBrowser *FileBrowserComponent) addEntriesOfAllSnapshots(
 // is the progress of the search of the snapshots while it goes on (nil: done, or not searched). Runs on the UI thread.
 func (fileBrowser *FileBrowserComponent) showEntries(path string, entries []*data.FileBrowserEntry, err error, searching *snapshotSearchProgress) {
 	fileBrowser.snapshotSearch = searching
+	fileBrowser.pendingSelection = nil
 	if err != nil {
 		// e.g. no permission: shown in place of the entries, until the entries of a path can be listed
 		logging.Error("Cannot list %s: %s", path, err.Error())
@@ -898,7 +911,15 @@ func (fileBrowser *FileBrowserComponent) showEntries(path string, entries []*dat
 	fileBrowser.tableContainer.SetData(entries)
 	fileBrowser.entriesPath = path
 	fileBrowser.updateFooter()
+	remembered := fileBrowser.selectionMemory.Get(path)
 	fileBrowser.restoreSelectionForPath()
+	fileBrowser.pendingSelection = nil
+	if searching != nil && remembered != nil && remembered.Key != "" {
+		// the remembered entry may only exist in the snapshots, which are still searched
+		if selected := fileBrowser.GetSelection(); selected == nil || selected.Name != remembered.Key {
+			fileBrowser.pendingSelection = &pendingSelection{info: *remembered, fallback: selected}
+		}
+	}
 	fileBrowser.updateFileWatcher()
 
 	fileBrowser.startAsyncDiffCalculation()
@@ -908,12 +929,21 @@ func (fileBrowser *FileBrowserComponent) showEntries(path string, entries []*dat
 }
 
 // addFoundEntries adds the entries found in the snapshots to the shown ones, once the search that went on while
-// they were shown ended. The selection stays where it is. Runs on the UI thread.
+// they were shown ended. The selection stays where it is, unless it is where the remembered one was not found (see
+// pendingSelection). Runs on the UI thread.
 func (fileBrowser *FileBrowserComponent) addFoundEntries(found []*data.FileBrowserEntry) {
 	fileBrowser.snapshotSearch = nil
 	all := append(slices.Clone(fileBrowser.tableContainer.GetAllEntries()), found...)
 	fileBrowser.tableContainer.SetDataKeepingSelection(all)
 	fileBrowser.updateFooter()
+	if pending := fileBrowser.pendingSelection; pending != nil {
+		fileBrowser.pendingSelection = nil
+		if fileBrowser.GetSelection() == pending.fallback {
+			// not moved meanwhile: the remembered entry is selected if it was found
+			fileBrowser.selectionMemory.RememberInfo(fileBrowser.path, pending.info)
+			fileBrowser.restoreSelectionForPath()
+		}
+	}
 }
 
 // truncatePath shortens a file path string to fit within a given maximum width,

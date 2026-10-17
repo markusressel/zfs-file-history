@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data"
@@ -36,8 +37,8 @@ func newAllSnapshotsTest(t *testing.T) *allSnapshotsTest {
 		panic("the snapshots are known")
 	})
 	testutil.OnUiThread(t, ft.app, func() {
-		ft.fileBrowser.SetSnapshotsFunc(func(string) ([]*zfs.Snapshot, bool) {
-			return []*zfs.Snapshot{at.s2, at.s1}, true // in any order
+		ft.fileBrowser.SetSnapshotsFunc(func(string) (string, []*zfs.Snapshot, bool) {
+			return ft.dir, []*zfs.Snapshot{at.s2, at.s1}, true // in any order
 		})
 	})
 	ft.fileBrowser.Events.Subscribe(func(event Event) {
@@ -161,7 +162,7 @@ func TestFileBrowser_ShowAllSnapshots_LoadsOnce(t *testing.T) {
 
 	// one that differs (s1 was destroyed) loads the folder again
 	testutil.OnUiThread(t, at.app, func() {
-		at.fileBrowser.SetSnapshotsFunc(func(string) ([]*zfs.Snapshot, bool) { return []*zfs.Snapshot{at.s2}, true })
+		at.fileBrowser.SetSnapshotsFunc(func(string) (string, []*zfs.Snapshot, bool) { return at.dir, []*zfs.Snapshot{at.s2}, true })
 		at.fileBrowser.SetOnlyInSnapshots(at.dir, map[string]folder_listing.SnapshotOnlyEntry{
 			"gone.txt": {Snapshots: []*zfs.Snapshot{at.s2}},
 		})
@@ -176,7 +177,7 @@ func TestFileBrowser_ShowAllSnapshots_LoadsUnknownSnapshots(t *testing.T) {
 		return []*zfs.Snapshot{at.s1}, nil
 	})
 	testutil.OnUiThread(t, at.app, func() {
-		at.fileBrowser.SetSnapshotsFunc(func(string) ([]*zfs.Snapshot, bool) { return nil, false })
+		at.fileBrowser.SetSnapshotsFunc(func(string) (string, []*zfs.Snapshot, bool) { return "", nil, false })
 		at.fileBrowser.SetPath(at.dir, true)
 	})
 	at.waitFor("loaded", func(s fileBrowserState) bool { return s.footer == "6 entries · 2 deleted (all snapshots)" })
@@ -193,7 +194,7 @@ func TestFileBrowser_ShowAllSnapshots_SlowSearch(t *testing.T) {
 		return []*zfs.Snapshot{at.s1, at.s2}, nil
 	})
 	testutil.OnUiThread(t, at.app, func() {
-		at.fileBrowser.SetSnapshotsFunc(func(string) ([]*zfs.Snapshot, bool) { return nil, false })
+		at.fileBrowser.SetSnapshotsFunc(func(string) (string, []*zfs.Snapshot, bool) { return "", nil, false })
 		at.fileBrowser.SetPath(at.dir, true)
 	})
 	at.waitFor("shown while searching", func(s fileBrowserState) bool {
@@ -221,6 +222,66 @@ func TestFileBrowser_ShowAllSnapshots_SlowSearch(t *testing.T) {
 	var selected string
 	testutil.OnUiThread(t, at.app, func() { selected = at.fileBrowser.GetSelection().Name })
 	assert.Equal(t, "c.log", selected, "the selection stays")
+}
+
+// Regression: the remembered selection (e.g. a deleted folder after going up from it) was replaced by the entry
+// selected in its place while the snapshots were searched, and not selected once it was found.
+func TestFileBrowser_ShowAllSnapshots_SlowSearchRestoresSelection(t *testing.T) {
+	at := newAllSnapshotsTest(t)
+	testutil.Replace(t, &showEntriesWhileSearchingAfter, 0)
+	release := make(chan struct{})
+	testutil.Replace(t, &loadSnapshotsOfPath, func(path string) ([]*zfs.Snapshot, error) {
+		<-release
+		return []*zfs.Snapshot{at.s1, at.s2}, nil
+	})
+	testutil.OnUiThread(t, at.app, func() {
+		at.fileBrowser.SetSnapshotsFunc(func(string) (string, []*zfs.Snapshot, bool) { return "", nil, false })
+		at.fileBrowser.SetPathWithSelection(at.dir, filepath.Join(at.dir, "lost.txt"))
+	})
+	at.waitFor("shown while searching", func(s fileBrowserState) bool {
+		return strings.HasSuffix(s.footer, " reading snapshots")
+	})
+
+	close(release)
+	at.waitFor("found entries added", func(s fileBrowserState) bool { return s.footer == "6 entries · 2 deleted (all snapshots)" })
+	var selected string
+	testutil.OnUiThread(t, at.app, func() { selected = at.fileBrowser.GetSelection().Name })
+	assert.Equal(t, "lost.txt", selected)
+}
+
+// Regression: right after entering a child dataset, the snapshots of its parent (still shown by the snapshot
+// browser) were read in place of its own.
+func TestFileBrowser_ShowAllSnapshots_ChildDataset(t *testing.T) {
+	at := newAllSnapshotsTest(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(at.sub, ".zfs"), 0o755))
+	loaded := make(chan string, 10)
+	testutil.Replace(t, &loadSnapshotsOfPath, func(path string) ([]*zfs.Snapshot, error) {
+		loaded <- path
+		return nil, nil
+	})
+	testutil.OnUiThread(t, at.app, func() { at.fileBrowser.SetPath(at.sub, true) })
+	select {
+	case path := <-loaded:
+		assert.Equal(t, at.sub, path)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the snapshots of the child dataset were not loaded")
+	}
+	at.waitFor("loaded", func(s fileBrowserState) bool { return s.footer == "1 entry" })
+}
+
+// isInDataset tells a folder of a dataset from one of a child dataset mounted below it.
+func TestIsInDataset(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "child", ".zfs"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "child", "folder"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "plain", "folder"), 0o755))
+
+	assert.True(t, isInDataset(root, root))
+	assert.True(t, isInDataset(filepath.Join(root, "plain", "folder"), root))
+	assert.False(t, isInDataset(filepath.Join(root, "child"), root), "the root of a child dataset")
+	assert.False(t, isInDataset(filepath.Join(root, "child", "folder"), root), "in a child dataset")
+	assert.True(t, isInDataset(filepath.Join(root, "child", "folder"), filepath.Join(root, "child")))
+	assert.False(t, isInDataset(root+"-other", root), "another folder with the same prefix")
 }
 
 func TestFormatSearchProgress(t *testing.T) {
@@ -260,6 +321,29 @@ func TestSnapshotListingCache(t *testing.T) {
 	listings, err = cache.read(context.Background(), at.sub, []*zfs.Snapshot{at.s1}, nil)
 	require.NoError(t, err)
 	assert.False(t, listings[0].Exists, "another folder is read")
+}
+
+// Regression: a read of another folder while a folder was read replaced the cache, and the snapshots the first read
+// had taken from the cache were looked up in the listings of the other folder.
+func TestSnapshotListingCache_OtherFolderReadMeanwhile(t *testing.T) {
+	at := newAllSnapshotsTest(t)
+	var cache snapshotListingCache
+	_, err := cache.read(context.Background(), at.dir, []*zfs.Snapshot{at.s1}, nil)
+	require.NoError(t, err)
+
+	readOther := func(int) {
+		if _, err := cache.read(context.Background(), at.sub, []*zfs.Snapshot{at.s1}, nil); err != nil {
+			t.Error(err)
+		}
+	}
+	// the first call comes before the read, the others from the readers
+	var once sync.Once
+	listings, err := cache.read(context.Background(), at.dir, []*zfs.Snapshot{at.s1, at.s2}, func(done int) {
+		once.Do(func() { readOther(done) })
+	})
+	require.NoError(t, err)
+	assert.Len(t, listings[0].Entries, 2, "s1 from the cache, of this folder")
+	assert.Len(t, listings[1].Entries, 1)
 }
 
 func TestFormatAndCompareFoundIn(t *testing.T) {

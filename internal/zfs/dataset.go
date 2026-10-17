@@ -106,7 +106,10 @@ func OpenDatasetByName(name string, mountPath string) (*Dataset, error) {
 	return dataset, nil
 }
 
-// FindHostDataset returns the root path of the dataset containing this path
+// ErrNoHostDataset is returned by FindHostDataset for a path that is not on a ZFS dataset.
+var ErrNoHostDataset = errors.New("could not find dataset")
+
+// FindHostDataset returns the root path of the dataset containing this path, ErrNoHostDataset if it is not on one.
 func FindHostDataset(path string) (*Dataset, error) {
 	if path == "" {
 		return nil, errors.New("cannot find host dataset for empty path")
@@ -128,7 +131,7 @@ func FindHostDataset(path string) (*Dataset, error) {
 		old := currentPath
 		currentPath = gopath.Dir(currentPath)
 		if old == currentPath {
-			return nil, fmt.Errorf("could not find dataset for path: %s", path)
+			return nil, fmt.Errorf("%w for path: %s", ErrNoHostDataset, path)
 		}
 	}
 }
