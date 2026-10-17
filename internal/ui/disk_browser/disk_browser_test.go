@@ -8,6 +8,8 @@ import (
 	"time"
 	"zfs-file-history/internal/disk"
 	"zfs-file-history/internal/disk/disktest"
+	"zfs-file-history/internal/state"
+	"zfs-file-history/internal/state/statetest"
 	"zfs-file-history/internal/testutil"
 	"zfs-file-history/internal/ui/table"
 	uiutil "zfs-file-history/internal/ui/util"
@@ -516,6 +518,20 @@ func TestDiskDetails_RiskColumn(t *testing.T) {
 	}
 	require.Contains(t, dt.screenText(), "Risk ↓")
 	assert.Equal(t, []string{"Airflow_Temperature_Cel", "Reallocated_Sector_Ct"}, dt.attributeNames()[:2])
+}
+
+// Regression: a layout of the attributes saved by 2.7.0 (before the column Risk) did not get the column.
+func TestDiskDetails_RiskColumnAddedToSavedLayout(t *testing.T) {
+	store := statetest.Use(t)
+	store.SetTableLayout(stateKeyAttributesTable, state.TableLayout{
+		Columns:    []string{"id", "name", "normalized", "worst", "threshold", "value", "failed"},
+		SortColumn: "name",
+	})
+	app, _ := testutil.NewApp()
+	testutil.RunApp(t, app)
+	var columns []*table.Column
+	testutil.OnUiThread(t, app, func() { columns = NewDiskDetails(app).tableContainer.GetColumnSpec() })
+	assert.Equal(t, attributeColumns, columns, "after the threshold, as in the default layout")
 }
 
 // Regression: a click into the details focused them, which Tab skips: there is nothing to do in them.

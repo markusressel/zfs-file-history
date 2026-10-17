@@ -28,8 +28,9 @@ var (
 	attributeColumnThreshold = &table.Column{Id: 4, Key: "threshold", Title: "Thresh", Alignment: tview.AlignRight}
 	attributeColumnValue     = &table.Column{Id: 5, Key: "value", Title: "Value", Alignment: tview.AlignRight}
 	attributeColumnFailed    = &table.Column{Id: 6, Key: "failed", Title: "Failed", Alignment: tview.AlignLeft}
-	// attributeColumnRisk shows how close an attribute is to failing, see disk.SmartAttribute.Risk
-	attributeColumnRisk = &table.Column{Id: 7, Key: "risk", Title: "Risk", Alignment: tview.AlignLeft}
+	// attributeColumnRisk shows how close an attribute is to failing, see disk.SmartAttribute.Risk. Added in 2.8.0, so
+	// the layouts saved before get it.
+	attributeColumnRisk = &table.Column{Id: 7, Key: "risk", Title: "Risk", Alignment: tview.AlignLeft, AddedLater: true}
 
 	// attributeColumns are the columns of all kinds of disks: only ATA attributes have an id and normalized values,
 	// the cells are empty for the values of NVMe and SCSI disks
