@@ -3,6 +3,7 @@ package snapshot_browser
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/logging"
@@ -24,6 +25,8 @@ var readWorkingCopy = folder_listing.Read
 type folderChanges struct {
 	folderPath string
 	bySnapshot map[string]folder_listing.SnapshotChanges
+	// onlyInSnapshots are the entries that exist in snapshots but not now
+	onlyInSnapshots map[string]folder_listing.SnapshotOnlyEntry
 }
 
 // folderChangesInput is what the folder changes are computed from, to compute them only when it changed.
@@ -114,7 +117,8 @@ func (snapshotBrowser *SnapshotBrowserComponent) updateFolderChanges() {
 				}
 				snapshotBrowser.folderChanges = result
 				snapshotBrowser.changesUpdated()
-				snapshotBrowser.emit(FolderChangesLoaded{FolderPath: result.folderPath, BySnapshot: result.bySnapshot})
+				snapshotBrowser.emit(FolderChangesLoaded{FolderPath: result.folderPath, BySnapshot: result.bySnapshot,
+					OnlyInSnapshots: result.onlyInSnapshots})
 			})
 		}()
 	})
@@ -129,11 +133,12 @@ func computeFolderChanges(ctx context.Context, input folderChangesInput, snapsho
 	} else {
 		workingCopy = readWorkingCopy(input.folderPath)
 	}
-	bySnapshot, err := compareSnapshots(ctx, input.folderPath, snapshots, workingCopy)
+	comparison, err := compareSnapshots(ctx, input.folderPath, snapshots, workingCopy)
 	if err != nil {
 		return nil, err
 	}
-	return &folderChanges{folderPath: input.folderPath, bySnapshot: bySnapshot}, nil
+	return &folderChanges{folderPath: input.folderPath, bySnapshot: comparison.BySnapshot,
+		onlyInSnapshots: comparison.OnlyInSnapshots}, nil
 }
 
 // changesOf returns the changes of the folder in the snapshot, and false while they are computed.
@@ -143,4 +148,16 @@ func (snapshotBrowser *SnapshotBrowserComponent) changesOf(snapshot *zfs.Snapsho
 	}
 	changes, ok := snapshotBrowser.folderChanges.bySnapshot[snapshot.Name]
 	return changes, ok
+}
+
+// SnapshotsOf returns the snapshots of the dataset that path is in, and the path of the dataset, if they are loaded
+// already (false otherwise, e.g. while the snapshots of another dataset are shown). path may also be in a child
+// dataset whose snapshots are not loaded yet: the caller checks that there is none between them, which needs the file
+// system. Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) SnapshotsOf(path string) (datasetPath string, snapshots []*zfs.Snapshot, ok bool) {
+	dataset := snapshotBrowser.hostDataset
+	if dataset == nil || (path != dataset.Path && !strings.HasPrefix(path, dataset.Path+"/")) {
+		return "", nil, false
+	}
+	return dataset.Path, slices.Clone(snapshotBrowser.currentSnapshots), true
 }

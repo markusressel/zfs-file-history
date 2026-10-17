@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 	"zfs-file-history/internal/ui/shortcut_helper"
 	"zfs-file-history/internal/ui/table"
+	"zfs-file-history/internal/ui/theme"
 	"zfs-file-history/internal/ui/util"
 
 	"github.com/gdamore/tcell/v2"
@@ -130,7 +131,7 @@ func (d *ColumnSelectionDialog) createLayout() {
 	maxColWidth := 0
 	for _, col := range d.allColumns {
 		if col != nil {
-			if l := utf8.RuneCountInString(col.Title); l > maxColWidth {
+			if l := utf8.RuneCountInString(columnSelectionText(col)); l > maxColWidth {
 				maxColWidth = l
 			}
 		}
@@ -211,10 +212,21 @@ func (d *ColumnSelectionDialog) reset() {
 	d.refreshTables()
 }
 
+// columnSelectionText returns the text of a column in the lists, with its note, see table.Column.Note.
+func columnSelectionText(column *table.Column) string {
+	if column.Note == "" {
+		return column.Title
+	}
+	return column.Title + " (" + column.Note + ")"
+}
+
 func renderColumnTable(tableView *tview.Table, columns []*table.Column) {
 	tableView.Clear()
 	for row, column := range columns {
 		tableView.SetCell(row, 0, tview.NewTableCell(column.Title).SetAlign(tview.AlignLeft))
+		if column.Note != "" {
+			tableView.SetCell(row, 1, tview.NewTableCell("("+column.Note+")").SetTextColor(theme.Colors.Info.Muted))
+		}
 	}
 	if len(columns) > 0 {
 		tableView.Select(0, 0)

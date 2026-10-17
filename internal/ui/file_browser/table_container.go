@@ -53,6 +53,9 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 				cellText += "  " + note
 				cellColor = color
 			}
+		case columnFoundIn:
+			cellText = formatFoundIn(entry)
+			cellColor = statusCellColor
 		case columnType:
 			cellText = typeCellText
 			cellColor = typeCellColor
@@ -129,6 +132,20 @@ func (fileBrowser *FileBrowserComponent) fileBrowserEntryTableCellsFunction(row 
 	}
 
 	return cells
+}
+
+// formatFoundIn returns the snapshot an entry that only exists in other snapshots than the selected one is found in:
+// the newest one (whose version is shown and restored), and how many more contain it, e.g. "daily-10-03 +2". Empty
+// for the other entries.
+func formatFoundIn(entry *data.FileBrowserEntry) string {
+	switch len(entry.OnlyInSnapshots) {
+	case 0:
+		return ""
+	case 1:
+		return entry.OnlyInSnapshots[0].Name
+	default:
+		return fmt.Sprintf("%s +%d", entry.OnlyInSnapshots[0].Name, len(entry.OnlyInSnapshots)-1)
+	}
 }
 
 func determineTypeCellColor(entry *data.FileBrowserEntry) tcell.Color {
@@ -275,6 +292,8 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 			})
 		case columnDiff:
 			result = int(b.DiffState - a.DiffState)
+		case columnFoundIn:
+			result = compareFoundIn(a, b)
 		case columnPermissions:
 			result = compareWithMissingStats(a, b, func(statA, statB os.FileInfo) int {
 				permA := util.UnixPermissions(statA.Mode())
@@ -339,6 +358,24 @@ func fileBrowserEntrySortFunction(entries []*data.FileBrowserEntry, columnToSort
 		}
 	})
 	return entries
+}
+
+// compareFoundIn orders the entries by the newest snapshot they are found in (see formatFoundIn), those found in no
+// other snapshot first.
+func compareFoundIn(a, b *data.FileBrowserEntry) int {
+	switch {
+	case len(a.OnlyInSnapshots) == 0 && len(b.OnlyInSnapshots) == 0:
+		return 0
+	case len(a.OnlyInSnapshots) == 0:
+		return -1
+	case len(b.OnlyInSnapshots) == 0:
+		return 1
+	}
+	newestA, newestB := a.OnlyInSnapshots[0], b.OnlyInSnapshots[0]
+	if result := newestA.Properties.CreationDate.Compare(newestB.Properties.CreationDate); result != 0 {
+		return result
+	}
+	return strings.Compare(newestA.Name, newestB.Name)
 }
 
 func compareWithMissingStats(a, b *data.FileBrowserEntry, compareFunc func(statA, statB os.FileInfo) int) int {

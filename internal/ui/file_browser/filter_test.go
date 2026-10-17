@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 	"zfs-file-history/internal/configuration"
@@ -17,12 +18,27 @@ import (
 )
 
 func TestFormatFooter(t *testing.T) {
-	assert.Equal(t, "42 entries", formatFooter(42, 42, false))
-	assert.Equal(t, "", formatFooter(0, 0, false))
-	assert.Equal(t, "5 of 42 entries", formatFooter(5, 42, true))
-	assert.Equal(t, "0 of 42 entries", formatFooter(0, 42, true))
-	assert.Equal(t, "1 entry", formatFooter(1, 1, false))
-	assert.Equal(t, "0 of 1 entry", formatFooter(0, 1, true))
+	footer := func(matching int, total int, filterActive bool, onlyInOtherSnapshots int, showAll bool) string {
+		var text strings.Builder
+		for _, part := range formatFooter(matching, total, filterActive, onlyInOtherSnapshots, showAll, func() {}) {
+			text.WriteString(part.Text)
+		}
+		return testutil.StripTags(text.String())
+	}
+	assert.Equal(t, "42 entries", footer(42, 42, false, 0, false))
+	assert.Equal(t, "", footer(0, 0, false, 0, false))
+	assert.Equal(t, "5 of 42 entries", footer(5, 42, true, 0, false))
+	assert.Equal(t, "0 of 42 entries", footer(0, 42, true, 0, false))
+	assert.Equal(t, "1 entry", footer(1, 1, false, 0, false))
+	assert.Equal(t, "0 of 1 entry", footer(0, 1, true, 0, false))
+	assert.Equal(t, "42 entries · 3 deleted hidden (all snapshots)", footer(42, 42, false, 3, false))
+	assert.Equal(t, "45 entries · 3 deleted (all snapshots)", footer(45, 45, false, 3, true))
+	assert.Equal(t, "3 deleted hidden (all snapshots)", footer(0, 0, false, 3, false), "an empty folder")
+
+	toggled := false
+	parts := formatFooter(42, 42, false, 3, false, func() { toggled = true })
+	parts[len(parts)-1].OnClick()
+	assert.True(t, toggled, "a click on the count toggles")
 }
 
 func TestFileMatchesFilter(t *testing.T) {
@@ -75,7 +91,7 @@ func (ft *fileBrowserTest) state() (s fileBrowserState) {
 			s.visible = append(s.visible, entry.Name)
 		}
 		sort.Strings(s.visible)
-		s.footer = ft.fileBrowser.tableContainer.GetFooter()
+		s.footer = testutil.StripTags(ft.fileBrowser.tableContainer.GetFooter())
 		s.filter = ft.fileBrowser.tableContainer.GetFilterText()
 		s.path = ft.fileBrowser.GetPath()
 	})

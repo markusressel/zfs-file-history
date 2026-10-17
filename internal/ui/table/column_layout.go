@@ -17,6 +17,8 @@ type savedLayoutBinding struct {
 	store         *state.Store
 	key           string
 	defaultLayout ColumnLayout
+	// allColumns are all columns of the table, saved as the known ones
+	allColumns []*Column
 	// defaultGrouping is the grouping at the time of BindColumnLayout, see SetGroupings
 	defaultGrouping string
 }
@@ -67,13 +69,15 @@ func (c *RowSelectionTable[T]) notifyColumnLayoutChanged() {
 	if c.savedLayout != nil {
 		saved := toSavedLayout(c.GetColumnLayout())
 		saved.Grouping = c.GetGrouping()
+		saved.Known = columnKeys(c.savedLayout.allColumns)
 		c.savedLayout.store.SetTableLayout(c.savedLayout.key, saved)
 	}
 }
 
 // BindColumnLayout restores the layout saved under key in store and saves every change the user makes to it.
 // The current layout becomes the default layout, see ResetColumnLayout, so call this after setting up the columns
-// (and the groupings, see SetGroupings).
+// (and the groupings, see SetGroupings). Columns of the default layout that the saved one did not know yet (added in
+// a later version) are added to it, next to the column they follow in the default layout.
 // allColumns are all columns of the table, used to resolve the saved column keys.
 // Does nothing if store is nil. Must be called on the UI thread.
 func (c *RowSelectionTable[T]) BindColumnLayout(store *state.Store, key string, allColumns []*Column) {
@@ -84,9 +88,11 @@ func (c *RowSelectionTable[T]) BindColumnLayout(store *state.Store, key string, 
 		store:           store,
 		key:             key,
 		defaultLayout:   c.GetColumnLayout(),
+		allColumns:      slices.Clone(allColumns),
 		defaultGrouping: c.GetGrouping(),
 	}
 	if saved, ok := store.TableLayout(key); ok {
+		saved.Columns = addUnknownColumns(saved, c.savedLayout.defaultLayout.Columns, allColumns)
 		if layout, ok := fromSavedLayout(saved, allColumns); ok {
 			c.SetColumnLayout(layout)
 			c.SetGrouping(saved.Grouping)
@@ -155,4 +161,42 @@ func fromSavedLayout(saved state.TableLayout, allColumns []*Column) (ColumnLayou
 	}
 	layout.SortColumn = byKey[saved.SortColumn]
 	return layout, len(layout.Columns) > 0
+}
+
+// columnKeys returns the keys of the columns.
+func columnKeys(columns []*Column) []string {
+	keys := make([]string, len(columns))
+	for i, column := range columns {
+		keys[i] = column.Key
+	}
+	return keys
+}
+
+// addUnknownColumns returns the column keys of the saved layout with the columns of the default layout added that
+// it did not know (see TableLayout.Known; layouts without it knew all but the columns AddedLater), each after the
+// column it follows in the default layout (or first).
+func addUnknownColumns(saved state.TableLayout, defaultColumns []*Column, allColumns []*Column) []string {
+	known := saved.Known
+	if known == nil {
+		for _, column := range allColumns {
+			if !column.AddedLater {
+				known = append(known, column.Key)
+			}
+		}
+	}
+	keys := slices.Clone(saved.Columns)
+	for i, column := range defaultColumns {
+		if slices.Contains(known, column.Key) || slices.Contains(keys, column.Key) {
+			continue
+		}
+		position := 0
+		for j := i - 1; j >= 0; j-- {
+			if index := slices.Index(keys, defaultColumns[j].Key); index >= 0 {
+				position = index + 1
+				break
+			}
+		}
+		keys = slices.Insert(keys, position, column.Key)
+	}
+	return keys
 }

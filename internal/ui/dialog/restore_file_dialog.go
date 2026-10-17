@@ -27,11 +27,20 @@ func NewRestoreFileDialog(
 		application,
 		string(RestoreFileDialogPage),
 		" ♻️ Restore File ",
-		fmt.Sprintf("Restore '%s'?", file.Name),
+		restoreQuestion(file),
 		buildRestoreDialogOptions(file),
 		asyncWork,
 		onComplete,
 	)
+}
+
+// restoreQuestion asks whether to restore the file, from which snapshot if it is known (e.g. the newest one that
+// contains a file that only exists in other snapshots than the selected one).
+func restoreQuestion(file *data.FileBrowserEntry) string {
+	if len(file.SnapshotFiles) > 0 && file.SnapshotFiles[0] != nil && file.SnapshotFiles[0].Snapshot != nil {
+		return fmt.Sprintf("Restore '%s' from snapshot '%s'?", file.Name, file.SnapshotFiles[0].Snapshot.Name)
+	}
+	return fmt.Sprintf("Restore '%s'?", file.Name)
 }
 
 func buildRestoreDialogOptions(file *data.FileBrowserEntry) []*DialogOption {

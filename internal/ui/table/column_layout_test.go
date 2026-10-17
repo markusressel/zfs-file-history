@@ -2,6 +2,7 @@ package table
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 	"zfs-file-history/internal/state"
 	"zfs-file-history/internal/testutil"
@@ -57,7 +58,8 @@ func TestBindColumnLayout_SavesChanges(t *testing.T) {
 	table.nextSortOrder()
 	table.toggleSortDirection()
 
-	expected := state.TableLayout{Columns: []string{"date", "name"}, SortColumn: "date", SortInverted: true}
+	expected := state.TableLayout{Columns: []string{"date", "name"}, SortColumn: "date", SortInverted: true,
+		Known: []string{"name", "size", "date"}}
 	saved, ok := store.TableLayout("files")
 	require.True(t, ok)
 	assert.Equal(t, expected, saved)
@@ -84,6 +86,46 @@ func TestBindColumnLayout_RestoresSavedLayout(t *testing.T) {
 		SortColumn:   layoutColumnDate,
 		SortInverted: true,
 	}, table.GetColumnLayout())
+}
+
+// Columns of the default layout added in a later version are added to saved layouts once, after the column they
+// follow; columns the user removed are not added again.
+func TestBindColumnLayout_AddsNewColumns(t *testing.T) {
+	added := &Column{Id: 3, Key: "added", Title: "Added", AddedLater: true}
+	allColumns := append(slices.Clone(layoutAllColumns), added)
+	newTable := func() *RowSelectionTable[mockEntry] {
+		table := newLayoutTestTable()
+		table.SetColumnSpec(allColumns, layoutColumnName, false)
+		table.SetActiveColumns([]*Column{layoutColumnName, added, layoutColumnSize})
+		return table
+	}
+
+	t.Run("layout of an older version", func(t *testing.T) {
+		store, _ := newLayoutTestStore(t)
+		// size was removed by the user, added did not exist
+		store.SetTableLayout("files", state.TableLayout{Columns: []string{"date", "name"}, SortColumn: "name"})
+		table := newTable()
+		table.BindColumnLayout(store, "files", allColumns)
+		assert.Equal(t, []*Column{layoutColumnDate, layoutColumnName, added}, table.GetColumnSpec())
+	})
+
+	t.Run("removed after it was known", func(t *testing.T) {
+		store, _ := newLayoutTestStore(t)
+		store.SetTableLayout("files", state.TableLayout{Columns: []string{"date", "name"}, SortColumn: "name",
+			Known: []string{"name", "size", "date", "added"}})
+		table := newTable()
+		table.BindColumnLayout(store, "files", allColumns)
+		assert.Equal(t, []*Column{layoutColumnDate, layoutColumnName}, table.GetColumnSpec())
+	})
+
+	t.Run("without the column it follows", func(t *testing.T) {
+		store, _ := newLayoutTestStore(t)
+		store.SetTableLayout("files", state.TableLayout{Columns: []string{"date"}, SortColumn: "date",
+			Known: []string{"name", "size", "date"}})
+		table := newTable()
+		table.BindColumnLayout(store, "files", allColumns)
+		assert.Equal(t, []*Column{added, layoutColumnDate}, table.GetColumnSpec())
+	})
 }
 
 func TestBindColumnLayout_SortColumnNotDisplayed(t *testing.T) {

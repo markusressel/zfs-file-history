@@ -173,6 +173,14 @@ of the code.
   - One package per component (`file_browser`, `snapshot_browser`, `dataset_browser`, `dataset_info`,
     `pool_browser`, `pool_status`, `disk_browser`, ...). Components emit typed events (`Events *util.Emitter[Event]`), the page wires
     them together.
+  - `file_browser/`: the files of a folder compared with the selected snapshot. By default (`a` or a click on the
+    count in the footer hides them, saved in the state) it also lists the entries that exist neither now nor in the selected snapshot,
+    but in other snapshots (`FileBrowserEntry.OnlyInSnapshots`, their version in the newest one, which a restore
+    takes, the column "Found in" while they are shown). It reads the folder in all snapshots next to the rest (`all_snapshots.go`): the list is shown at once
+    (after `showEntriesWhileSearchingAfter`, unless the search ended by then) with the progress of the search in the
+    footer, and the entries found are added, keeping the selection, with the snapshots the snapshot browser loaded (`SnapshotsOf`), and keeps what it read (snapshots
+    never change). While they are hidden, the footer counts them from the comparison the snapshot browser makes
+    anyway (`FolderChangesLoaded.OnlyInSnapshots`); while shown, that only loads the folder again if it differs.
   - `pool_activity/`: the operations running on the pools (scrub, resilver, TRIM, device removal, raidz expansion),
     shown below the header of every page. One `Monitor` for the application (loads `zpool status` of all pools,
     every 5 s while something runs, every minute otherwise, and on the zfs emitters; the pool status pane takes the
@@ -218,7 +226,10 @@ of the code.
   - `table/`: `RowSelectionTable[T]`, the table of all lists: sorting, filtering (`/`), column selection (F2),
     grouping (`SetGroupings`, `b` cycles them: a row above each group that cannot be selected, its title drawn over
     the row so it does not widen the first column; saved with the column layout),
-    horizontal scrolling, multi-selection, persisted column layouts, `ContentSize`.
+    horizontal scrolling, multi-selection, persisted column layouts, `ContentSize`. Columns that only mean something
+    in a mode of the table are drawn only then (`SetColumnShownFunc`, `Column.Note` in the column selection), and
+    stay in the layout. A new column of a default layout is marked `AddedLater`: saved layouts get it once
+    (`TableLayout.Known` tells it from columns the user removed).
   - `util/` (imported as `uiutil`): `DataLoader`, `Debouncer`, `SubscribeUI`, `LoadingContainer`, `ResizableSplit`,
     `SelectionMemory`, content size helpers, formatting.
   - `clickable/`: `Regions`, the parts of a primitive that are highlighted while hovered and run something when

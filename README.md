@@ -18,6 +18,7 @@
   * [x] Find the snapshots in which a file was changed
   * [x] Diff against the previous version or your local file
   * [x] Restore files and folders from any snapshot
+  * [x] List deleted files of all snapshots at once, e.g. one that only exists in a single snapshot
 * [x] Folder history, including size and item count over time
 * [x] Snapshot management (create, clone, destroy, hold)
 * [x] Dataset overview

@@ -33,11 +33,11 @@ func stubFolderChanges(t *testing.T, result map[string]folder_listing.SnapshotCh
 	// Shorter than in the application, the tests wait for it (also to see that nothing was compared). Set before the
 	// browser is created, which creates its debouncer with it.
 	testutil.Replace(t, &folderChangesDelay, 50*time.Millisecond)
-	testutil.Replace(t, &compareSnapshots, func(ctx context.Context, folderPath string, snapshots []*zfs.Snapshot, workingCopy folder_listing.Listing) (map[string]folder_listing.SnapshotChanges, error) {
+	testutil.Replace(t, &compareSnapshots, func(ctx context.Context, folderPath string, snapshots []*zfs.Snapshot, workingCopy folder_listing.Listing) (folder_listing.Comparison, error) {
 		stub.mu.Lock()
 		defer stub.mu.Unlock()
 		stub.compared = append(stub.compared, workingCopy)
-		return result, nil
+		return folder_listing.Comparison{BySnapshot: result}, nil
 	})
 	testutil.Replace(t, &readWorkingCopy, func(path string) folder_listing.Listing {
 		stub.mu.Lock()

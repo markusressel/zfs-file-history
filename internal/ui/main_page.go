@@ -96,6 +96,8 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 		}
 	})
 
+	// the entries of all snapshots are read with the snapshots the snapshot browser loaded, not loaded again
+	fileBrowser.SetSnapshotsFunc(snapshotBrowser.SnapshotsOf)
 	// the snapshot browser opens the history of what h opens in the file browser, at the selected snapshot
 	snapshotBrowser.SetHistoryTarget(fileBrowser.HistoryEntry)
 	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {
@@ -109,6 +111,7 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 			fileBrowser.Refresh(false)
 		case snapshot_browser.FolderChangesLoaded:
 			pathOverview.SetFolderChanges(e.FolderPath, e.BySnapshot)
+			fileBrowser.SetOnlyInSnapshots(e.FolderPath, e.OnlyInSnapshots)
 		case snapshot_browser.PathVersionsLoaded:
 			pathOverview.SetVersions(e.DatasetName, e.DatasetPath, e.FolderPath, e.Folder, e.Entry, e.EntryVersions)
 		case snapshot_browser.SelectedSnapshotChanged:
@@ -262,5 +265,6 @@ func (mainPage *MainPage) overviewShortcut() shortcut_helper.ShortcutEntry {
 func (mainPage *MainPage) SetPages(pages *tview.Pages) {
 	mainPage.basePage.SetPages(pages)
 	mainPage.fileBrowser.SetDialogPages(pages)
+	mainPage.fileBrowser.SetFooterEnabledFunc(mainPage.isInFront)
 	mainPage.snapshotBrowser.SetDialogPages(pages)
 }
