@@ -92,7 +92,7 @@ var (
 	// only drawn while they are shown (see showAllSnapshots)
 	columnFoundIn = &table.Column{
 		Id:         8,
-		Key:        "foundIn",
+		Key:        "foundInSnapshot",
 		Title:      "Found in",
 		Alignment:  tview.AlignLeft,
 		Note:       "all snapshots only",
