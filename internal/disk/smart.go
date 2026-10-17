@@ -110,26 +110,13 @@ type SmartAttribute struct {
 	Failed string
 	// Important is whether the attribute tells of failures, see importantAtaAttributes
 	Important bool
-	// Risk is how close the attribute is to the value it fails at: 0 far from it, 1 failing (or all of the rated
-	// endurance or spare used), valid if RiskKnown. Known for ATA attributes that can fail (a threshold above 0, see
-	// ataRisk), and the endurance and spare of NVMe disks.
+	// Risk is how close the attribute is to the value it fails at: 0 far from it, 1 failing (all of the rated
+	// endurance or spare used), valid if RiskKnown. Only known for the endurance and spare of NVMe disks, which the
+	// standard defines. Not for ATA attributes: their normalized values, where they start and where they fail are
+	// chosen by each vendor, and smartctl only tells the threshold. The distance to it said nothing (e.g. 100 of 97 is
+	// the value of a new Seagate disk), and Failed and Problems tell the ones that matter.
 	Risk      float64
 	RiskKnown bool
-}
-
-// ataRiskWindow is how many points of its normalized value above its threshold an ATA attribute starts to be at
-// risk, see ataRisk.
-const ataRiskWindow = 30
-
-// ataRisk returns how close an ATA attribute is to its threshold (see SmartAttribute.Risk): 0 from ataRiskWindow
-// points above it, 1 at it. False if it cannot fail (threshold 0). Not the way from the value of a new disk: smartctl
-// does not tell it (vendors start at 100, 200, 253, or anywhere between), and some values (e.g. the error rates of
-// Seagate) settle far below it on a healthy disk, which looked like wear.
-func ataRisk(normalized int, threshold int) (float64, bool) {
-	if threshold <= 0 || normalized < 0 {
-		return 0, false
-	}
-	return 1 - min(max(float64(normalized-threshold)/ataRiskWindow, 0), 1), true
 }
 
 // SmartReport is what is known about the SMART values of a disk, see SmartReader.
@@ -398,11 +385,10 @@ func parseSmartctl(disk string, output []byte, at time.Time) (report SmartReport
 	if parsed.AtaSmartAttributes != nil {
 		for _, attribute := range parsed.AtaSmartAttributes.Table {
 			important, isImportant := importantAtaAttributes[attribute.Id]
-			risk, riskKnown := ataRisk(attribute.Value, attribute.Thresh)
 			report.Attributes = append(report.Attributes, SmartAttribute{
 				Id: attribute.Id, Name: attribute.Name, Value: attribute.Raw.String, Raw: jsonCount(attribute.Raw.Value),
 				Normalized: attribute.Value, Worst: attribute.Worst, Threshold: attribute.Thresh,
-				Failed: attribute.WhenFailed, Important: isImportant, Risk: risk, RiskKnown: riskKnown,
+				Failed: attribute.WhenFailed, Important: isImportant,
 			})
 			if attribute.WhenFailed == "now" {
 				problems = append(problems, failingAttributeProblem(attribute.Id, attribute.Name, attribute.Flags.Prefailure))

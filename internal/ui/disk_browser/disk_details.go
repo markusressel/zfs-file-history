@@ -28,9 +28,11 @@ var (
 	attributeColumnThreshold = &table.Column{Id: 4, Key: "threshold", Title: "Thresh", Alignment: tview.AlignRight}
 	attributeColumnValue     = &table.Column{Id: 5, Key: "value", Title: "Value", Alignment: tview.AlignRight}
 	attributeColumnFailed    = &table.Column{Id: 6, Key: "failed", Title: "Failed", Alignment: tview.AlignLeft}
-	// attributeColumnRisk shows how close an attribute is to failing, see disk.SmartAttribute.Risk. Added in 2.8.0, so
-	// the layouts saved before get it.
-	attributeColumnRisk = &table.Column{Id: 7, Key: "risk", Title: "Risk", Alignment: tview.AlignLeft, AddedLater: true}
+	// attributeColumnRisk shows how close an attribute is to failing, see disk.SmartAttribute.Risk. Only drawn for disks
+	// that tell it of some attributes (NVMe), it would be empty for the others. Added in 2.8.0, so the layouts saved
+	// before get it.
+	attributeColumnRisk = &table.Column{Id: 7, Key: "risk", Title: "Risk", Alignment: tview.AlignLeft, AddedLater: true,
+		Note: "NVMe only"}
 
 	// attributeColumns are the columns of all kinds of disks: only ATA attributes have an id and normalized values,
 	// the cells are empty for the values of NVMe and SCSI disks
@@ -70,6 +72,8 @@ type DiskDetailsComponent struct {
 	shownDisk string
 	// shownEntry is the disk whose details are shown, nil: none
 	shownEntry *DiskEntry
+	// riskKnown is whether the risk of some of the attributes shown is known, see attributeColumnRisk
+	riskKnown bool
 	// renderedTimeFormat is the uiutil.TimeFormatGeneration the details were rendered with
 	renderedTimeFormat uint64
 	// layoutWidth and layoutHeight are the size of the layout as last drawn, 0 before; renderedWidth and
@@ -169,6 +173,9 @@ func NewDiskDetails(application *tview.Application) *DiskDetailsComponent {
 	t.SetColumnSpec(attributeColumns, attributeColumnId, false)
 	t.SetActiveColumns(attributeColumns)
 	t.BindColumnLayout(state.Current, stateKeyAttributesTable, attributeColumns)
+	t.SetColumnShownFunc(func(column *table.Column) bool {
+		return column != attributeColumnRisk || component.riskKnown
+	})
 	t.SetPlaceholder("No disk selected.", theme.Colors.Pool.Hint)
 	t.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyF2 {
@@ -215,8 +222,14 @@ func (component *DiskDetailsComponent) SetDisk(entry *DiskEntry) {
 	component.renderDetails()
 
 	var attributes []*AttributeEntry
+	riskKnown := false
 	for i, attribute := range entry.Report.Attributes {
 		attributes = append(attributes, &AttributeEntry{SmartAttribute: attribute, Index: i})
+		riskKnown = riskKnown || attribute.RiskKnown
+	}
+	if riskKnown != component.riskKnown {
+		component.riskKnown = riskKnown
+		component.tableContainer.UpdateShownColumns()
 	}
 	component.tableContainer.SetPlaceholder("No values read.", theme.Colors.Pool.Hint)
 	selected := component.tableContainer.GetSelectedEntry()
