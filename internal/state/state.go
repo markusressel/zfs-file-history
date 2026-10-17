@@ -56,6 +56,9 @@ type TableLayout struct {
 	SortInverted bool   `json:"sortInverted"`
 	// Grouping is the key of the grouping of the entries, "" if they are not grouped.
 	Grouping string `json:"grouping,omitempty"`
+	// Known are the keys of all columns of the table when it was saved, so columns added later can be told from
+	// those the user removed. Nil in layouts of older versions.
+	Known []string `json:"known,omitempty"`
 }
 
 // entry is a saved value, with the time it was saved, to merge the changes of several instances and to drop the

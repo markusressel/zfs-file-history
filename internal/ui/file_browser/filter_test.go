@@ -31,9 +31,9 @@ func TestFormatFooter(t *testing.T) {
 	assert.Equal(t, "0 of 42 entries", footer(0, 42, true, 0, false))
 	assert.Equal(t, "1 entry", footer(1, 1, false, 0, false))
 	assert.Equal(t, "0 of 1 entry", footer(0, 1, true, 0, false))
-	assert.Equal(t, "42 entries · 3 only in other snapshots hidden", footer(42, 42, false, 3, false))
-	assert.Equal(t, "45 entries · 3 only in other snapshots shown", footer(45, 45, false, 3, true))
-	assert.Equal(t, "3 only in other snapshots hidden", footer(0, 0, false, 3, false), "an empty folder")
+	assert.Equal(t, "42 entries · 3 deleted hidden (all snapshots)", footer(42, 42, false, 3, false))
+	assert.Equal(t, "45 entries · 3 deleted (all snapshots)", footer(45, 45, false, 3, true))
+	assert.Equal(t, "3 deleted hidden (all snapshots)", footer(0, 0, false, 3, false), "an empty folder")
 
 	toggled := false
 	parts := formatFooter(42, 42, false, 3, false, func() { toggled = true })

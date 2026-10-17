@@ -35,6 +35,11 @@ type Column struct {
 	Key       string
 	Title     string
 	Alignment int
+	// Note says when the column is shown, if not always (see SetColumnShownFunc), in the column selection
+	Note string
+	// AddedLater marks a column that saved layouts of versions before TableLayout.Known did not know: it is added to
+	// them if it is in the default layout, see BindColumnLayout
+	AddedLater bool
 }
 
 // RowSelectionTable is a table component for the special case where
@@ -108,7 +113,10 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 	inputCapture             func(event *tcell.EventKey) *tcell.EventKey
 	selectionChangedCallback func(selectedEntry *T)
 
-	columnSpec   []*Column
+	columnSpec []*Column
+	// columnShown returns whether an active column is drawn, nil: all are, see SetColumnShownFunc. Only accessed on
+	// the UI thread.
+	columnShown  func(column *Column) bool
 	sortInverted bool
 	// columnOffset is the number of columns hidden on the left (horizontal scrolling), see scrollColumns.
 	// Only accessed on the UI thread.
@@ -604,6 +612,19 @@ func (c *RowSelectionTable[T]) SetData(entries []*T) {
 	c.updateTableContents()
 }
 
+// SetDataKeepingSelection is SetData, keeping the selected entry selected if it is still there (without notifying
+// the selection changed callback, as it stays the same), e.g. when entries are added to the shown ones. Must be
+// called on the UI thread.
+func (c *RowSelectionTable[T]) SetDataKeepingSelection(entries []*T) {
+	selected := c.GetSelectedEntry()
+	c.SetData(entries)
+	if selected != nil {
+		c.isUpdatingData = true
+		defer func() { c.isUpdatingData = false }()
+		c.Select(selected)
+	}
+}
+
 func (c *RowSelectionTable[T]) UpdateEntry(entry *T) {
 	c.entriesMutex.Lock()
 	defer c.entriesMutex.Unlock()
@@ -644,13 +665,59 @@ func (c *RowSelectionTable[T]) SortBy(sortOption *Column, inverted bool) {
 	c.entriesMutex.Lock()
 	c.sortByColumn = sortOption
 	c.sortInverted = inverted
-	c.entries = c.sortIntoGroups(c.sortTableEntries(c.entries, c.sortByColumn, c.sortInverted))
+	c.entries = c.sortIntoGroups(c.sortTableEntries(c.entries, c.effectiveSortColumn(), c.sortInverted))
 	c.entriesMutex.Unlock()
 }
 
 // IsSortedBy returns whether the entries are sorted by the column.
 func (c *RowSelectionTable[T]) IsSortedBy(column *Column) bool {
-	return c.sortByColumn == column
+	return c.effectiveSortColumn() == column
+}
+
+// SetColumnShownFunc sets a function that returns whether an active column is drawn, for columns that only mean
+// something in some modes of the table (see Column.Note). A column that is not drawn stays active, and its place
+// in the layout is kept. Sorted by it, the entries are sorted by the default sort column meanwhile. Call
+// UpdateShownColumns when the result changes. Must be called on the UI thread.
+func (c *RowSelectionTable[T]) SetColumnShownFunc(shown func(column *Column) bool) {
+	c.columnShown = shown
+	c.UpdateShownColumns()
+}
+
+// UpdateShownColumns draws the columns again after the result of the function set with SetColumnShownFunc changed.
+// Must be called on the UI thread.
+func (c *RowSelectionTable[T]) UpdateShownColumns() {
+	c.columnOffset = min(c.columnOffset, max(len(c.shownColumns())-1, 0))
+	c.Resort()
+}
+
+// shownColumns returns the active columns that are drawn, see SetColumnShownFunc.
+func (c *RowSelectionTable[T]) shownColumns() []*Column {
+	if c.columnShown == nil {
+		return c.columnSpec
+	}
+	var shown []*Column
+	for _, column := range c.columnSpec {
+		if c.columnShown(column) {
+			shown = append(shown, column)
+		}
+	}
+	return shown
+}
+
+// effectiveSortColumn returns the column the entries are sorted by: the chosen one, unless it is not drawn (see
+// SetColumnShownFunc), then the default sort column, or the first one drawn.
+func (c *RowSelectionTable[T]) effectiveSortColumn() *Column {
+	shown := c.shownColumns()
+	if c.sortByColumn == nil || slices.Contains(shown, c.sortByColumn) {
+		return c.sortByColumn
+	}
+	if slices.Contains(shown, c.defaultSortColumn) {
+		return c.defaultSortColumn
+	}
+	if len(shown) > 0 {
+		return shown[0]
+	}
+	return c.sortByColumn
 }
 
 // Resort sorts the entries again, keeping the selected one selected (without notifying the selection changed
@@ -668,15 +735,23 @@ func (c *RowSelectionTable[T]) Resort() {
 }
 
 func (c *RowSelectionTable[T]) nextSortOrder() {
-	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
-	nextIndex := (currentIndex + 1) % len(c.columnSpec)
-	c.sortByColumnKeepingDirection(c.columnSpec[nextIndex])
+	columns := c.shownColumns()
+	if len(columns) == 0 {
+		return
+	}
+	currentIndex := slices.Index(columns, c.effectiveSortColumn())
+	nextIndex := (currentIndex + 1) % len(columns)
+	c.sortByColumnKeepingDirection(columns[nextIndex])
 }
 
 func (c *RowSelectionTable[T]) previousSortOrder() {
-	currentIndex := slices.Index(c.columnSpec, c.sortByColumn)
-	nextIndex := (len(c.columnSpec) + currentIndex - 1) % len(c.columnSpec)
-	c.sortByColumnKeepingDirection(c.columnSpec[nextIndex])
+	columns := c.shownColumns()
+	if len(columns) == 0 {
+		return
+	}
+	currentIndex := slices.Index(columns, c.effectiveSortColumn())
+	nextIndex := (len(columns) + currentIndex - 1) % len(columns)
+	c.sortByColumnKeepingDirection(columns[nextIndex])
 }
 
 // sortByColumnKeepingDirection sorts by the column, in the current direction.
@@ -714,7 +789,7 @@ func (c *RowSelectionTable[T]) handleHeaderClick(action tview.MouseAction, event
 		if row != 0 || column < 0 || column >= len(columns) {
 			return action, event
 		}
-		if columns[column] == c.sortByColumn {
+		if columns[column] == c.effectiveSortColumn() {
 			c.toggleSortDirection()
 		} else {
 			c.sortByColumnKeepingDirection(columns[column])
@@ -751,6 +826,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 	table.SetOffset(table.GetOffset())
 	c.renderedTimeFormat = uiutil.TimeFormatGeneration()
 	columns := c.visibleColumns()
+	sortColumn := c.effectiveSortColumn()
 
 	// Table Header
 	for column, tableColumn := range columns {
@@ -759,7 +835,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 		cellExpansion := 0
 
 		cellText := tableColumn.Title
-		if tableColumn == c.sortByColumn {
+		if tableColumn == sortColumn {
 			var sortDirectionIndicator = "↓"
 			if !c.sortInverted {
 				sortDirectionIndicator = "↑"
@@ -777,7 +853,7 @@ func (c *RowSelectionTable[T]) updateTableContents() {
 			SetAttributes(tcell.AttrBold).
 			SetAlign(cellAlignment).
 			SetExpansion(cellExpansion)
-		if tableColumn == c.sortByColumn {
+		if tableColumn == sortColumn {
 			// a cell's selected style is only applied while its row is selected,
 			// so this highlights the sort column only while the header row is selected
 			cell.SetSelectedStyle(
@@ -839,8 +915,9 @@ func (c *RowSelectionTable[T]) Select(entry *T) {
 
 // visibleColumns returns the displayed columns, without the ones hidden by horizontal scrolling.
 func (c *RowSelectionTable[T]) visibleColumns() []*Column {
-	offset := min(c.columnOffset, max(len(c.columnSpec)-1, 0))
-	return c.columnSpec[offset:]
+	shown := c.shownColumns()
+	offset := min(c.columnOffset, max(len(shown)-1, 0))
+	return shown[offset:]
 }
 
 // scrollColumns scrolls horizontally by delta columns: to the right only while columns are cut off on the right,
@@ -853,7 +930,7 @@ func (c *RowSelectionTable[T]) visibleColumns() []*Column {
 // be replaced by tview's column offset again (keeping the "◂" indicator would then need GetOffset in Draw).
 func (c *RowSelectionTable[T]) scrollColumns(delta int) {
 	offset := c.columnOffset + delta
-	if offset < 0 || offset >= len(c.columnSpec) || offset == c.columnOffset {
+	if offset < 0 || offset >= len(c.shownColumns()) || offset == c.columnOffset {
 		return
 	}
 	if delta > 0 && !c.isCutOffOnTheRight() {

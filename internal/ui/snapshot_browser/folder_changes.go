@@ -3,6 +3,7 @@ package snapshot_browser
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/logging"
@@ -147,4 +148,14 @@ func (snapshotBrowser *SnapshotBrowserComponent) changesOf(snapshot *zfs.Snapsho
 	}
 	changes, ok := snapshotBrowser.folderChanges.bySnapshot[snapshot.Name]
 	return changes, ok
+}
+
+// SnapshotsOf returns the snapshots of the dataset that contains path, if they are loaded already (false otherwise,
+// e.g. while the snapshots of another dataset are shown). Must be called on the UI thread.
+func (snapshotBrowser *SnapshotBrowserComponent) SnapshotsOf(path string) ([]*zfs.Snapshot, bool) {
+	dataset := snapshotBrowser.hostDataset
+	if dataset == nil || (path != dataset.Path && !strings.HasPrefix(path, dataset.Path+"/")) {
+		return nil, false
+	}
+	return slices.Clone(snapshotBrowser.currentSnapshots), true
 }

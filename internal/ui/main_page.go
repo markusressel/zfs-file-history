@@ -96,6 +96,8 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 		}
 	})
 
+	// the entries of all snapshots are read with the snapshots the snapshot browser loaded, not loaded again
+	fileBrowser.SetSnapshotsFunc(snapshotBrowser.SnapshotsOf)
 	// the snapshot browser opens the history of what h opens in the file browser, at the selected snapshot
 	snapshotBrowser.SetHistoryTarget(fileBrowser.HistoryEntry)
 	snapshotBrowser.Events.Subscribe(func(event snapshot_browser.Event) {

@@ -1130,3 +1130,45 @@ func TestTable_CellRegions(t *testing.T) {
 	assert.Len(t, clicked, 1)
 	assert.Same(t, entries[2], table.GetSelectedEntry())
 }
+
+// A column that is not drawn (see SetColumnShownFunc) stays active, is skipped when changing the sort column, and the
+// entries are sorted by the default sort column while it is hidden, by it again once it is drawn.
+func TestTable_ColumnShownFunc(t *testing.T) {
+	app, _ := testutil.NewApp()
+	cols := []*Column{{Id: 0, Key: "a", Title: "A"}, {Id: 1, Key: "b", Title: "B"}, {Id: 2, Key: "c", Title: "C"}}
+	var sortedBy []*Column
+	table := NewTableContainer[mockEntry](
+		app,
+		func(row int, columns []*Column, entry *mockEntry) []*tview.TableCell {
+			var cells []*tview.TableCell
+			for _, column := range columns {
+				cells = append(cells, tview.NewTableCell(column.Title))
+			}
+			return cells
+		},
+		func(entries []*mockEntry, column *Column, inverted bool) []*mockEntry {
+			sortedBy = append(sortedBy, column)
+			return entries
+		},
+	)
+	table.SetColumnSpec(cols, cols[0], false)
+	table.SetActiveColumns(cols)
+	table.SortBy(cols[1], false)
+	shown := false
+	table.SetColumnShownFunc(func(column *Column) bool { return column != cols[1] || shown })
+
+	assert.Equal(t, []*Column{cols[0], cols[2]}, table.visibleColumns())
+	assert.Equal(t, cols, table.GetColumnSpec(), "still active")
+	assert.Equal(t, cols[0], sortedBy[len(sortedBy)-1], "sorted by the default column meanwhile")
+	assert.True(t, table.IsSortedBy(cols[0]))
+	assert.Equal(t, cols[1], table.GetColumnLayout().SortColumn, "the chosen one is kept")
+	table.nextSortOrder()
+	assert.True(t, table.IsSortedBy(cols[2]), "the hidden column is skipped")
+	table.SortBy(cols[1], false)
+
+	shown = true
+	table.UpdateShownColumns()
+	assert.Equal(t, cols, table.visibleColumns())
+	assert.Equal(t, cols[1], sortedBy[len(sortedBy)-1])
+	assert.True(t, table.IsSortedBy(cols[1]))
+}

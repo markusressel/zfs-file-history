@@ -23,7 +23,7 @@ func (c *RowSelectionTable[T]) SortCommands() []shortcut_helper.ShortcutEntry {
 		Query:       "sort",
 		MenuOnly:    true,
 	}}
-	for _, column := range c.columnSpec {
+	for _, column := range c.shownColumns() {
 		commands = append(commands, shortcut_helper.ShortcutEntry{
 			Name:        "Sort by " + column.Title,
 			Description: "Sort the entries by the " + column.Title + " column",

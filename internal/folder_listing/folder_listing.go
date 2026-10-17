@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"zfs-file-history/internal/util"
 	"zfs-file-history/internal/zfs"
@@ -113,15 +114,25 @@ const readWorkers = 16
 // ReadInSnapshots reads the folder at folderPath in all snapshots, in parallel. The listings are in the order of
 // snapshots. Accesses the file system, so it must not run on the UI thread.
 func ReadInSnapshots(ctx context.Context, folderPath string, snapshots []*zfs.Snapshot) ([]Listing, error) {
+	return ReadInSnapshotsWithProgress(ctx, folderPath, snapshots, nil)
+}
+
+// ReadInSnapshotsWithProgress is ReadInSnapshots, calling progress (if not nil, from any goroutine) with the number
+// of snapshots read after each one.
+func ReadInSnapshotsWithProgress(ctx context.Context, folderPath string, snapshots []*zfs.Snapshot, progress func(read int)) ([]Listing, error) {
 	listings := make([]Listing, len(snapshots))
 	indices := make(chan int)
 	var workers sync.WaitGroup
+	var read atomic.Int64
 	for i := 0; i < readWorkers; i++ {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
 			for index := range indices {
 				listings[index] = Read(snapshots[index].GetSnapshotPath(folderPath))
+				if progress != nil {
+					progress(int(read.Add(1)))
+				}
 			}
 		}()
 	}
@@ -263,10 +274,7 @@ func CompareSnapshots(ctx context.Context, folderPath string, snapshots []*zfs.S
 	if err != nil {
 		return Comparison{}, err
 	}
-	result := Comparison{
-		BySnapshot:      make(map[string]SnapshotChanges, len(sorted)),
-		OnlyInSnapshots: map[string]SnapshotOnlyEntry{},
-	}
+	result := Comparison{BySnapshot: make(map[string]SnapshotChanges, len(sorted))}
 	previous := Missing()
 	for i, listing := range listings {
 		changes := SnapshotChanges{Exists: listing.Exists, Initial: i == 0}
@@ -279,19 +287,27 @@ func CompareSnapshots(ctx context.Context, folderPath string, snapshots []*zfs.S
 		result.BySnapshot[sorted[i].Name] = changes
 		previous = listing
 	}
+	result.OnlyInSnapshots = FindOnlyInSnapshots(sorted, listings, workingCopy)
+	return result, nil
+}
+
+// FindOnlyInSnapshots returns the entries of the listings of a folder in snapshots (oldest first, in the same order)
+// that are not in workingCopy, by name.
+func FindOnlyInSnapshots(snapshots []*zfs.Snapshot, listings []Listing, workingCopy Listing) map[string]SnapshotOnlyEntry {
+	result := map[string]SnapshotOnlyEntry{}
 	// newest first, so the entry is the one of the newest snapshot
 	for i := len(listings) - 1; i >= 0; i-- {
 		for name, entry := range listings[i].Entries {
 			if _, exists := workingCopy.Entries[name]; exists {
 				continue
 			}
-			onlyInSnapshots, known := result.OnlyInSnapshots[name]
+			onlyInSnapshots, known := result[name]
 			if !known {
 				onlyInSnapshots.Entry = entry
 			}
-			onlyInSnapshots.Snapshots = append(onlyInSnapshots.Snapshots, sorted[i])
-			result.OnlyInSnapshots[name] = onlyInSnapshots
+			onlyInSnapshots.Snapshots = append(onlyInSnapshots.Snapshots, snapshots[i])
+			result[name] = onlyInSnapshots
 		}
 	}
-	return result, nil
+	return result
 }
