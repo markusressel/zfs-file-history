@@ -1,6 +1,7 @@
 package zfs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -74,70 +75,106 @@ func (s *Snapshot) GetRealPath(path string) string {
 	return realPath
 }
 
-func (s *Snapshot) RestoreRecursive(srcPath string) error {
+// RestoreProgress is called by RestoreRecursive after each entry it restored, with the number of entries restored so
+// far.
+type RestoreProgress func(done int)
+
+// CountRestoreEntries returns how many entries RestoreRecursive restores for srcPath: the entry itself and everything
+// below it, for its progress. Stops with the error of ctx when it is cancelled.
+// This reads the snapshot, so it must not be called on the UI thread.
+func CountRestoreEntries(ctx context.Context, srcPath string) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	stat, err := os.Lstat(srcPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	dstPath := s.GetRealPath(srcPath)
-	if stat.IsDir() {
-		err = s.RestoreDir(dstPath, stat)
-		if err != nil {
-			return err
-		}
-
-		files, err := util.ListFilesIn(srcPath)
-		if err != nil {
-			return err
-		}
-		for _, file := range files {
-			stat, err = os.Lstat(file)
-			if err != nil {
-				return err
-			}
-			if stat.IsDir() {
-				err = s.RestoreRecursive(file)
-				if err != nil {
-					return err
-				}
-			} else {
-				err = s.RestoreFile(file)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	} else {
-		err = s.RestoreFile(srcPath)
-		if err != nil {
-			return err
-		}
+	count := 1
+	if !stat.IsDir() {
+		return count, nil
 	}
-
-	// TODO: we have to sync file properties from bottom to top, to avoid
-	//  affecting the modtime of folders due to changes of files within them
-
-	return err
+	files, err := util.ListFilesIn(srcPath)
+	if err != nil {
+		return 0, err
+	}
+	for _, file := range files {
+		below, err := CountRestoreEntries(ctx, file)
+		if err != nil {
+			return 0, err
+		}
+		count += below
+	}
+	return count, nil
 }
 
-func (s *Snapshot) Restore(srcPath string) error {
+// RestoreRecursive restores srcPath (a path in the snapshot) with everything below it, and calls progress (if not
+// nil) after each entry. The times and mode of a folder are set after its entries were restored: restoring them
+// changes its modification time, and a folder without write permission could not take them. Stops between entries
+// (and while copying a file, which then stays as it was) with the error of ctx when it is cancelled: the entries
+// restored until then stay restored.
+// This copies files, so it must not be called on the UI thread.
+func (s *Snapshot) RestoreRecursive(ctx context.Context, srcPath string, progress RestoreProgress) error {
+	done := 0
+	return s.restoreRecursive(ctx, srcPath, func() {
+		done++
+		if progress != nil {
+			progress(done)
+		}
+	})
+}
+
+// restoreRecursive restores srcPath with everything below it, see RestoreRecursive, and calls restored after each
+// entry.
+func (s *Snapshot) restoreRecursive(ctx context.Context, srcPath string, restored func()) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	stat, err := os.Lstat(srcPath)
 	if err != nil {
 		return err
 	}
-	dstPath := s.GetRealPath(srcPath)
-	if stat.IsDir() {
-		err = s.RestoreDir(dstPath, stat)
-		if err != nil {
+	if !stat.IsDir() {
+		if err := s.RestoreFile(ctx, srcPath); err != nil {
 			return err
 		}
-	} else {
-		err = s.RestoreFile(srcPath)
-		if err != nil {
+		restored()
+		return nil
+	}
+
+	dstPath := s.GetRealPath(srcPath)
+	// writable by the owner until its entries are restored, its own mode is set after them
+	if err := os.MkdirAll(dstPath, stat.Mode().Perm()|OS_USER_RWX); err != nil {
+		return err
+	}
+	files, err := util.ListFilesIn(srcPath)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if err := s.restoreRecursive(ctx, file, restored); err != nil {
 			return err
 		}
 	}
-	return err
+	if err := syncFileProperties(dstPath, stat); err != nil {
+		return err
+	}
+	restored()
+	return nil
+}
+
+// Restore restores srcPath (a path in the snapshot) without the entries below it: a file with its content, a folder
+// with its mode, owner and times. See RestoreFile for cancelling.
+// This copies files, so it must not be called on the UI thread.
+func (s *Snapshot) Restore(ctx context.Context, srcPath string) error {
+	stat, err := os.Lstat(srcPath)
+	if err != nil {
+		return err
+	}
+	if stat.IsDir() {
+		return s.RestoreDir(s.GetRealPath(srcPath), stat)
+	}
+	return s.RestoreFile(ctx, srcPath)
 }
 
 func (s *Snapshot) RestoreDir(dstPath string, stat os.FileInfo) error {
@@ -172,8 +209,9 @@ func (s *Snapshot) RestoreDir(dstPath string, stat os.FileInfo) error {
 // RestoreFile replaces the real file with its version in the snapshot (srcPath), with the mode, owner and times of
 // that version. The content is written to a temporary file next to the real one first, which then replaces it: so a
 // failed restore leaves the real file as it was, and files that cannot be written to while they are in use can be
-// restored as well, e.g. the executable of a running program (open fails with "text file busy").
-func (s *Snapshot) RestoreFile(srcPath string) (err error) {
+// restored as well, e.g. the executable of a running program (open fails with "text file busy"). Stops copying with
+// the error of ctx when it is cancelled, the real file stays as it was.
+func (s *Snapshot) RestoreFile(ctx context.Context, srcPath string) (err error) {
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
 		return err
@@ -209,7 +247,7 @@ func (s *Snapshot) RestoreFile(srcPath string) (err error) {
 		}
 	}()
 
-	_, err = io.Copy(tempFile, srcFile)
+	_, err = io.Copy(tempFile, contextReader{ctx: ctx, reader: srcFile})
 	if err != nil {
 		return err
 	}
@@ -230,6 +268,20 @@ func (s *Snapshot) RestoreFile(srcPath string) (err error) {
 	}
 
 	return os.Rename(tempFile.Name(), dstPath)
+}
+
+// contextReader reads from reader until ctx is cancelled, then fails with the error of ctx: a copy stops within a
+// read of the buffer of io.Copy.
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }
 
 func (s *Snapshot) IsRealFileDifferent(path string) bool {

@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,40 @@ func TestRestoreFileProgressDialog_ShowsTheWholeError(t *testing.T) {
 		return strings.Contains(text, "Failed!") && strings.Contains(text, "test.txt: no such file or") &&
 			strings.Contains(text, "directory")
 	}, 3*time.Second, 20*time.Millisecond, "the end of the error is shown")
+}
+
+// The restore of a folder can be cancelled with q while it runs (Esc as well); the dialog stays and tells what was
+// restored, and is closed with Esc once the restore stopped.
+func TestRestoreFileProgressDialog_Cancel(t *testing.T) {
+	app, screen, pages, _ := startDialogTestApp(t)
+	counting := make(chan struct{})
+	testutil.Replace(t, &countRestoreEntries, func(ctx context.Context, srcPath string) (int, error) {
+		close(counting)
+		<-ctx.Done()
+		return 0, ctx.Err()
+	})
+	file := &data.FileBrowserEntry{
+		Name: "folder",
+		SnapshotFiles: []*data.SnapshotFile{{
+			Path: "/pool/ds1/.zfs/snapshot/snap1/folder",
+			Snapshot: &zfs.Snapshot{
+				Name:          "snap1",
+				ParentDataset: &zfs.Dataset{Path: "/pool/ds1", HiddenZfsPath: "/pool/ds1/.zfs"},
+			},
+		}},
+	}
+	testutil.OnUiThread(t, app, func() {
+		ShowDialogOnPages(app, pages, NewRestoreFileProgressDialog(app, file, true), nil)
+	})
+	<-counting
+	assert.Contains(t, testutil.ScreenText(t, app, screen), "Press 'q' or Esc to cancel")
+
+	testutil.Type(t, app, screen, "q")
+	testutil.WaitForText(t, app, screen, "Cancelled: nothing was restored.", 3*time.Second)
+	testutil.Press(t, app, screen, tcell.KeyEscape, 0)
+	assert.Eventually(t, func() bool {
+		return !strings.Contains(testutil.ScreenText(t, app, screen), "Cancelled")
+	}, 3*time.Second, 20*time.Millisecond, "closed")
 }
 
 // startDialogTestApp runs an app with a focused list on its pages, to show dialogs on.
