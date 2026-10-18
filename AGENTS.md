@@ -61,6 +61,14 @@ of the code.
   properties through it (a dataset all at once with the first getter, snapshots with `GetSnapshots`); the snapshot
   names come from the `.zfs/snapshot` folder. `SetBackend` replaces the backend (e.g. in tests) before anything
   runs. `.zfs` itself is never listed as a folder, also with `snapdir=visible` (`util.IsZfsControlDirectory`).
+- `internal/zfs/permissions.go`: each operation on datasets says which permissions it lacks. Operations that can be
+  delegated (`zfs allow`: snapshot, clone, destroy, rollback, promote, hold, release) return a
+  `MissingPermissionsError` with the missing ones: checked before with `checkPermissions` where the operation would
+  appear to work without them (a dry run of destroy succeeds), otherwise the refusal of zfs explained with
+  `explainPermissionError`. `dialog.NewMissingPermissionsDialog` (through `dialog.NewErrorDialogWithRetry`) offers to
+  grant them and retries. Changes the application does not delegate (setting and inheriting properties,
+  `zfs allow` itself) wrap `ErrPermissionDenied`, and `dialog.runZfsChange` runs them once with sudo in the terminal.
+  New operations report their permissions one of these ways (mounting and pool actions: see below).
 - `internal/zfs/zfs_evemt_watcher.go`: follows `zpool events` and emits the emitters of `common.go`:
   `DatasetsLoaded` (snapshots created/destroyed, pools imported/exported, also after F5 via `RefreshZfsData`) and
   `PoolsChanged` (state changes, scrub/resilver/trim, vdev changes, `ereport.*`/`resource.*`; throttled to once a
