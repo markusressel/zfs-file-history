@@ -381,8 +381,7 @@ func focusedDialog(pages *tview.Pages) (modalLayout, bool) {
 }
 
 // ShowDialogOnPages mounts and focuses a dialog to the provided pages component.
-// The dialog will be removed from the pages when it emits a close action.
-// onUpdate - Called when the dialog emits a close action.
+// The dialog will be removed from the pages when it emits a close action, then onClosed is called (if not nil).
 func ShowDialogOnPages(
 	application *tview.Application,
 	pages *tview.Pages,
@@ -502,10 +501,6 @@ func ShowDialogOnPages(
 		}
 		return action, event
 	})
-
-	if onClosed != nil {
-		onClosed()
-	}
 }
 
 type DialogSizeConstraints struct {
