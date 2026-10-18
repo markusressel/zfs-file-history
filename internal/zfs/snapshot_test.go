@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"syscall"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data/diff_state"
@@ -381,4 +382,56 @@ func TestSnapshot_RestoreFileCancelled(t *testing.T) {
 	entries, err := os.ReadDir(datasetPath)
 	require.NoError(t, err)
 	assert.Len(t, entries, 2, ".zfs and the file, no temporary file")
+}
+
+// fileInfoOwnedBy is a FileInfo with another owner, as of a file in a snapshot that belongs to someone else.
+type fileInfoOwnedBy struct {
+	os.FileInfo
+	stat syscall.Stat_t
+}
+
+func (f fileInfoOwnedBy) Sys() any { return &f.stat }
+
+// Regression: restoring a file that belongs to a group the user is not in failed with "operation not permitted" (only
+// root may give files to such a group), and stopped the restore. The user keeps them, like "cp -p".
+func TestSyncFileProperties_GroupTheUserIsNotIn(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root may give files to any group")
+	}
+	groups, err := os.Getgroups()
+	require.NoError(t, err)
+	foreignGid := 0
+	for slices.Contains(groups, foreignGid) || foreignGid == os.Getgid() {
+		foreignGid++
+	}
+
+	path := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(path, []byte("content"), 0o600))
+	stat, err := os.Lstat(path)
+	require.NoError(t, err)
+	sys := *stat.Sys().(*syscall.Stat_t)
+	sys.Gid = uint32(foreignGid)
+	sys.Mtim = syscall.NsecToTimespec(time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC).UnixNano())
+	snapshotVersion := fileInfoOwnedBy{FileInfo: stat, stat: sys}
+
+	require.NoError(t, syncFileProperties(path, snapshotVersion))
+	restored, err := os.Lstat(path)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(os.Getgid()), restored.Sys().(*syscall.Stat_t).Gid, "the group of the user")
+	assert.Equal(t, time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC), restored.ModTime().UTC(), "the times are restored")
+}
+
+// Regression: the mode was set before the owner, and chown clears the setgid bit, so restored files lost it.
+func TestSyncFileProperties_KeepsSetgid(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(path, []byte("content"), 0o600))
+	require.NoError(t, os.Chmod(path, 0o755|os.ModeSetgid))
+	stat, err := os.Lstat(path)
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(path, 0o600))
+
+	require.NoError(t, syncFileProperties(path, stat))
+	restored, err := os.Lstat(path)
+	require.NoError(t, err)
+	assert.Equal(t, 0o755|os.ModeSetgid, restored.Mode())
 }

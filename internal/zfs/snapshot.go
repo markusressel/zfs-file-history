@@ -464,19 +464,26 @@ type SnapshotProperties struct {
 	Holds uint64
 }
 
+// syncFileProperties gives dstPath the owner, mode and times of the version in the snapshot (stat). The owner first:
+// chown clears the setuid and setgid bits. Like "cp -p", an owner the user may not give (only root may give files to
+// others, or to a group the user is not in) is kept as far as allowed: the group alone, else the owner and group of
+// the user who restores; the restore goes on.
 func syncFileProperties(dstPath string, stat os.FileInfo) error {
+	sys, ok := stat.Sys().(*syscall.Stat_t)
+	if ok {
+		if err := chownAsAllowed(dstPath, int(sys.Uid), int(sys.Gid)); err != nil {
+			return err
+		}
+	}
+
 	err := os.Chmod(dstPath, stat.Mode())
 	if err != nil {
 		return err
 	}
 
-	if stat, ok := stat.Sys().(*syscall.Stat_t); ok {
-		err = os.Chown(dstPath, int(stat.Uid), int(stat.Gid))
-		if err != nil {
-			return err
-		}
-		aTime := time.Unix(stat.Atim.Unix())
-		mTime := time.Unix(stat.Mtim.Unix())
+	if ok {
+		aTime := time.Unix(sys.Atim.Unix())
+		mTime := time.Unix(sys.Mtim.Unix())
 		err = os.Chtimes(dstPath, aTime, mTime)
 		if err != nil {
 			return err
@@ -485,5 +492,20 @@ func syncFileProperties(dstPath string, stat os.FileInfo) error {
 		logging.Error("Could not sync timestamps")
 	}
 
+	return nil
+}
+
+// chownAsAllowed gives path the owner uid and group gid, or only the group if the owner may not be changed, or
+// neither if the group may not be given either, see syncFileProperties.
+func chownAsAllowed(path string, uid int, gid int) error {
+	err := os.Chown(path, uid, gid)
+	if !errors.Is(err, os.ErrPermission) {
+		return err
+	}
+	err = os.Chown(path, -1, gid)
+	if !errors.Is(err, os.ErrPermission) {
+		return err
+	}
+	logging.Debug("Kept the owner of %s: may not give it to %d:%d", path, uid, gid)
 	return nil
 }
