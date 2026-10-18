@@ -1,10 +1,12 @@
 package zfs
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"syscall"
 	"testing"
 	"time"
 	"zfs-file-history/internal/data/diff_state"
@@ -191,7 +193,7 @@ func TestSnapshot_RestoreOperations(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(srcFile), 0755))
 	require.NoError(t, os.WriteFile(srcFile, []byte("hello world"), 0644))
 
-	err := snap.RestoreFile(srcFile)
+	err := snap.RestoreFile(context.Background(), srcFile)
 	require.NoError(t, err)
 
 	dstFile := filepath.Join(datasetPath, "sub", "hello.txt")
@@ -213,16 +215,16 @@ func TestSnapshot_RestoreOperations(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(nestedDir, "f1.txt"), []byte("file1"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(nestedDir, "child", "f2.txt"), []byte("file2"), 0644))
 
-	err = snap.RestoreRecursive(nestedDir)
+	err = snap.RestoreRecursive(context.Background(), nestedDir, nil)
 	require.NoError(t, err)
 
 	assert.FileExists(t, filepath.Join(datasetPath, "nested", "f1.txt"))
 	assert.FileExists(t, filepath.Join(datasetPath, "nested", "child", "f2.txt"))
 
 	// 4. Restore generic function on file and dir
-	err = snap.Restore(srcFile)
+	err = snap.Restore(context.Background(), srcFile)
 	require.NoError(t, err)
-	err = snap.Restore(nestedDir)
+	err = snap.Restore(context.Background(), nestedDir)
 	require.NoError(t, err)
 }
 
@@ -262,7 +264,7 @@ func TestSnapshot_RestoreFileOfARunningProgram(t *testing.T) {
 		_ = program.Wait()
 	})
 
-	require.NoError(t, snap.RestoreFile(srcFile))
+	require.NoError(t, snap.RestoreFile(context.Background(), srcFile))
 
 	restored, err := os.ReadFile(realFile)
 	require.NoError(t, err)
@@ -274,4 +276,162 @@ func TestSnapshot_RestoreFileOfARunningProgram(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(datasetPath, "bin"))
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "no temporary file is left")
+}
+
+// newRestoreTest returns a snapshot of a dataset in a temp dir, with its path in the snapshot and the path of the
+// dataset.
+func newRestoreTest(t *testing.T) (*Snapshot, string, string) {
+	datasetPath := filepath.Join(t.TempDir(), "dataset")
+	snapPath := filepath.Join(datasetPath, ".zfs", "snapshot", "snap1")
+	require.NoError(t, os.MkdirAll(snapPath, 0o755))
+	return &Snapshot{
+		Name:          "snap1",
+		Path:          snapPath,
+		ParentDataset: &Dataset{Path: datasetPath, HiddenZfsPath: filepath.Join(datasetPath, ".zfs")},
+	}, snapPath, datasetPath
+}
+
+// writeTree writes a folder with a file and a subfolder with a file into the snapshot, with old times, and returns
+// the folder.
+func writeTree(t *testing.T, snapPath string) string {
+	folder := filepath.Join(snapPath, "folder")
+	require.NoError(t, os.MkdirAll(filepath.Join(folder, "child"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "f1.txt"), []byte("file1"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "child", "f2.txt"), []byte("file2"), 0o644))
+	old := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, path := range []string{filepath.Join(folder, "child", "f2.txt"), filepath.Join(folder, "child"), filepath.Join(folder, "f1.txt"), folder} {
+		require.NoError(t, os.Chtimes(path, old, old))
+	}
+	return folder
+}
+
+// Regression: the folders restored by RestoreRecursive got the modification time of the restore, as their entries
+// were restored after their times were set; the restore ran twice to set them again, copying every file twice.
+func TestSnapshot_RestoreRecursiveKeepsTheTimesOfFolders(t *testing.T) {
+	snap, snapPath, datasetPath := newRestoreTest(t)
+	folder := writeTree(t, snapPath)
+
+	var progress []int
+	require.NoError(t, snap.RestoreRecursive(context.Background(), folder, func(done int) { progress = append(progress, done) }))
+
+	for _, name := range []string{"folder", "folder/child"} {
+		snapshotStat, err := os.Lstat(filepath.Join(snapPath, name))
+		require.NoError(t, err)
+		realStat, err := os.Lstat(filepath.Join(datasetPath, name))
+		require.NoError(t, err)
+		assert.Equal(t, snapshotStat.ModTime(), realStat.ModTime(), name)
+	}
+	total, err := CountRestoreEntries(context.Background(), folder)
+	require.NoError(t, err)
+	assert.Equal(t, 4, total, "the folder, its subfolder and their files")
+	assert.Equal(t, []int{1, 2, 3, 4}, progress)
+}
+
+// A folder without write permission is restored with its entries: its mode is set after them.
+func TestSnapshot_RestoreRecursiveReadOnlyFolder(t *testing.T) {
+	snap, snapPath, datasetPath := newRestoreTest(t)
+	folder := writeTree(t, snapPath)
+	require.NoError(t, os.Chmod(folder, 0o555))
+	t.Cleanup(func() {
+		_ = os.Chmod(folder, 0o755)
+		_ = os.Chmod(filepath.Join(datasetPath, "folder"), 0o755)
+	})
+
+	require.NoError(t, snap.RestoreRecursive(context.Background(), folder, nil))
+	assert.FileExists(t, filepath.Join(datasetPath, "folder", "child", "f2.txt"))
+	stat, err := os.Lstat(filepath.Join(datasetPath, "folder"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o555), stat.Mode().Perm())
+}
+
+// A cancelled restore stops between entries: the ones restored stay restored.
+func TestSnapshot_RestoreRecursiveCancelled(t *testing.T) {
+	snap, snapPath, datasetPath := newRestoreTest(t)
+	folder := writeTree(t, snapPath)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	restored := 0
+	err := snap.RestoreRecursive(ctx, folder, func(done int) {
+		restored = done
+		cancel()
+	})
+	assert.ErrorIs(t, err, context.Canceled)
+	// child/f2.txt, then child, whose entries are all restored then
+	assert.Equal(t, 2, restored)
+	assert.FileExists(t, filepath.Join(datasetPath, "folder", "child", "f2.txt"))
+	assert.NoFileExists(t, filepath.Join(datasetPath, "folder", "f1.txt"))
+
+	_, err = CountRestoreEntries(ctx, folder)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// A file whose copy is cancelled stays as it was, without the temporary file.
+func TestSnapshot_RestoreFileCancelled(t *testing.T) {
+	snap, snapPath, datasetPath := newRestoreTest(t)
+	require.NoError(t, os.WriteFile(filepath.Join(snapPath, "file.txt"), []byte("snapshot"), 0o644))
+	realFile := filepath.Join(datasetPath, "file.txt")
+	require.NoError(t, os.WriteFile(realFile, []byte("now"), 0o644))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.ErrorIs(t, snap.RestoreFile(ctx, filepath.Join(snapPath, "file.txt")), context.Canceled)
+	content, err := os.ReadFile(realFile)
+	require.NoError(t, err)
+	assert.Equal(t, "now", string(content))
+	entries, err := os.ReadDir(datasetPath)
+	require.NoError(t, err)
+	assert.Len(t, entries, 2, ".zfs and the file, no temporary file")
+}
+
+// fileInfoOwnedBy is a FileInfo with another owner, as of a file in a snapshot that belongs to someone else.
+type fileInfoOwnedBy struct {
+	os.FileInfo
+	stat syscall.Stat_t
+}
+
+func (f fileInfoOwnedBy) Sys() any { return &f.stat }
+
+// Regression: restoring a file that belongs to a group the user is not in failed with "operation not permitted" (only
+// root may give files to such a group), and stopped the restore. The user keeps them, like "cp -p".
+func TestSyncFileProperties_GroupTheUserIsNotIn(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root may give files to any group")
+	}
+	groups, err := os.Getgroups()
+	require.NoError(t, err)
+	foreignGid := 0
+	for slices.Contains(groups, foreignGid) || foreignGid == os.Getgid() {
+		foreignGid++
+	}
+
+	path := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(path, []byte("content"), 0o600))
+	stat, err := os.Lstat(path)
+	require.NoError(t, err)
+	sys := *stat.Sys().(*syscall.Stat_t)
+	sys.Gid = uint32(foreignGid)
+	sys.Mtim = syscall.NsecToTimespec(time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC).UnixNano())
+	snapshotVersion := fileInfoOwnedBy{FileInfo: stat, stat: sys}
+
+	require.NoError(t, syncFileProperties(path, snapshotVersion))
+	restored, err := os.Lstat(path)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(os.Getgid()), restored.Sys().(*syscall.Stat_t).Gid, "the group of the user")
+	assert.Equal(t, time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC), restored.ModTime().UTC(), "the times are restored")
+}
+
+// Regression: the mode was set before the owner, and chown clears the setgid bit, so restored files lost it.
+func TestSyncFileProperties_KeepsSetgid(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(path, []byte("content"), 0o600))
+	require.NoError(t, os.Chmod(path, 0o755|os.ModeSetgid))
+	stat, err := os.Lstat(path)
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(path, 0o600))
+
+	require.NoError(t, syncFileProperties(path, stat))
+	restored, err := os.Lstat(path)
+	require.NoError(t, err)
+	assert.Equal(t, 0o755|os.ModeSetgid, restored.Mode())
 }

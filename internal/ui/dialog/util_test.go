@@ -186,3 +186,21 @@ func TestIsDescendantOf_SearchesComponentsEmbeddingContainers(t *testing.T) {
 	assert.True(t, isDescendantOf(pages, table))
 	assert.False(t, isDescendantOf(pages, tview.NewTable()))
 }
+
+// Regression: onClosed was also called when the dialog was shown, so callers that refresh in it refreshed twice.
+func TestShowDialogOnPages_OnClosedOnlyWhenClosed(t *testing.T) {
+	app, _ := testutil.NewApp()
+	pages := tview.NewPages().AddPage("main", tview.NewTable(), true, true)
+	testutil.StartApp(t, app, pages)
+	options := []*DialogOption{{Id: DialogCloseActionId, Name: "OK"}}
+	d := NewSelectionDialog(app, "dialog", "Dialog", "Desc", options, nil, nil)
+
+	calls := 0
+	testutil.OnUiThread(t, app, func() {
+		ShowDialogOnPages(app, pages, d, func() { calls++ })
+		assert.Zero(t, calls, "not when shown")
+	})
+	d.Close()
+	testutil.WaitForNoPage(t, app, pages, "dialog", 2*time.Second)
+	testutil.OnUiThread(t, app, func() { assert.Equal(t, 1, calls) })
+}

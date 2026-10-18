@@ -629,7 +629,7 @@ func (fileBrowser *FileBrowserComponent) openDeleteDialog(selection *data.FileBr
 	}
 
 	deleteDialog := dialog.NewDeleteFileDialog(fileBrowser.application, selection, asyncWork, onComplete)
-	fileBrowser.ShowDialog(deleteDialog, nil) // nil for the onUpdate callback
+	fileBrowser.ShowDialog(deleteDialog, nil)
 }
 func (fileBrowser *FileBrowserComponent) openRestoreDialog(selection *data.FileBrowserEntry) {
 	if selection == nil {
@@ -1120,8 +1120,7 @@ func (fileBrowser *FileBrowserComponent) runRestoreFileAction(entry *data.FileBr
 
 	d := dialog.NewRestoreFileProgressDialog(fileBrowser.application, entry, recursive)
 
-	// Pass the refresh logic as the onUpdate callback.
-	// This will execute safely on the main thread after the dialog closes.
+	// the restored files are shown once the dialog is closed (on the UI thread)
 	fileBrowser.ShowDialog(d, func() {
 		fileBrowser.Refresh(false)
 	})
