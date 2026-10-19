@@ -144,6 +144,9 @@ type FileBrowserComponent struct {
 
 	diffLoader    *uiutil.DebouncedLoader
 	refreshLoader *uiutil.DebouncedLoader
+	// loadingEntries is whether the entries of a Refresh are being read, until they are shown. Only accessed on the
+	// UI thread.
+	loadingEntries bool
 	// dataErrors are the damaged files, nil if there are none, see SetDataErrors. Only accessed on the UI thread.
 	dataErrors *zfs.DataErrorIndex
 	// showAllSnapshots also lists the entries that exist neither now nor in the selected snapshot, but in other
@@ -792,6 +795,8 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 	allSnapshots := fileBrowser.allSnapshotsInput(path)
 
 	ctx, seq := fileBrowser.refreshLoader.Start()
+	fileBrowser.loadingEntries = true
+	go fileBrowser.redrawWhileLoading(ctx, seq)
 
 	go func() {
 		// Debounce rapid calls to Refresh (e.g. from fast scrolling in SnapshotBrowser)
@@ -814,6 +819,26 @@ func (fileBrowser *FileBrowserComponent) Refresh(debounce bool) {
 		}
 		fileBrowser.addEntriesOfAllSnapshots(ctx, seq, path, entries, *allSnapshots)
 	}()
+}
+
+// redrawWhileLoading redraws while the entries of the Refresh seq are read, so the spinner of the overview turns (see
+// FolderSummary). Runs in the background.
+func (fileBrowser *FileBrowserComponent) redrawWhileLoading(ctx context.Context, seq uint64) {
+	redraw := time.NewTicker(snapshotSearchRedrawInterval)
+	defer redraw.Stop()
+	var loaded atomic.Bool
+	for !loaded.Load() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-redraw.C:
+		}
+		fileBrowser.application.QueueUpdateDraw(func() {
+			if !fileBrowser.refreshLoader.IsCurrentSequence(seq) || !fileBrowser.loadingEntries {
+				loaded.Store(true)
+			}
+		})
+	}
 }
 
 // addEntriesOfAllSnapshots shows the entries of the folder at path with those of all snapshots added that exist
@@ -897,6 +922,7 @@ func (fileBrowser *FileBrowserComponent) addEntriesOfAllSnapshots(
 func (fileBrowser *FileBrowserComponent) showEntries(path string, entries []*data.FileBrowserEntry, err error, searching *snapshotSearchProgress) {
 	fileBrowser.snapshotSearch = searching
 	fileBrowser.pendingSelection = nil
+	fileBrowser.loadingEntries = false
 	if err != nil {
 		// e.g. no permission: shown in place of the entries, until the entries of a path can be listed
 		logging.Error("Cannot list %s: %s", path, err.Error())
@@ -1278,6 +1304,35 @@ func (fileBrowser *FileBrowserComponent) DiffCounts() diff_state.Counts {
 		}
 	}
 	return counts
+}
+
+// FolderSummary sums up the entries of the folder (including the ones hidden by the filter) now and in the selected
+// snapshot, from the file infos the entries were loaded with, so it reads nothing. Entries that only exist in other
+// snapshots are not part of it.
+func (fileBrowser *FileBrowserComponent) FolderSummary() data.FolderSummary {
+	summary := data.FolderSummary{
+		InSnapshot: fileBrowser.currentSnapshot != nil,
+		// not for a moment, so a quick load does not flicker
+		Loading: fileBrowser.loadingEntries && fileBrowser.refreshLoader.ShowLoadingSpinner(),
+	}
+	for _, entry := range fileBrowser.tableContainer.GetAllEntries() {
+		if entry.OnlyInSnapshots != nil {
+			continue
+		}
+		if entry.HasReal() && entry.RealFile.Stat != nil {
+			if entry.RealFile.Stat.IsDir() {
+				summary.Folders++
+			} else {
+				summary.Files++
+				summary.Size += entry.RealFile.Stat.Size()
+			}
+		}
+		if len(entry.SnapshotFiles) > 0 && entry.SnapshotFiles[0] != nil && entry.SnapshotFiles[0].Stat != nil &&
+			!entry.SnapshotFiles[0].Stat.IsDir() {
+			summary.SnapshotSize += entry.SnapshotFiles[0].Stat.Size()
+		}
+	}
+	return summary
 }
 
 // HistoryEntry returns the entry whose history h shows: the selected file or folder, or the folder that is shown
