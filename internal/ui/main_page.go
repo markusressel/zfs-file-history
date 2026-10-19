@@ -42,6 +42,7 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 
 	fileBrowser := file_browser.NewFileBrowser(application)
 	pathOverview := path_overview.NewPathOverview(fileBrowser.DiffCounts)
+	pathOverview.SetFolderSummaryFunc(fileBrowser.FolderSummary)
 	// about the path that is shown; the overview shows how the folder differs from now
 	snapshotBrowser.UseColumnLayout(snapshot_browser.FilesLayout)
 	snapshotBrowser.RequireFolderChanges()
@@ -55,6 +56,9 @@ func NewMainPage(application *tview.Application, messages *status_message.Center
 	mainPage.focusableComponents = func() []FocusableUiComponent {
 		return []FocusableUiComponent{fileBrowser, snapshotBrowser}
 	}
+	// a click on a snapshot in the graphs of the overview selects it
+	pathOverview.SetOnSelectSnapshot(func(snapshot *zfs.Snapshot) { snapshotBrowser.SelectSnapshot(snapshot.FullName) })
+	pathOverview.SetEnabledFunc(mainPage.isInFront)
 	mainPage.componentTitles = map[FocusableUiComponent]string{fileBrowser: "Files", snapshotBrowser: "Snapshots"}
 	// the damaged files are marked, see pool_activity.Monitor.DataErrors
 	activities.OnDataErrorsChanged(func() {
