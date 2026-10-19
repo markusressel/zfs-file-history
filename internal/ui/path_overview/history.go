@@ -72,6 +72,15 @@ func (history *pathHistory) indexOf(snapshot *zfs.Snapshot) int {
 	})
 }
 
+// snapshots returns the snapshots of the versions, oldest first.
+func (history *pathHistory) snapshots() []*zfs.Snapshot {
+	snapshots := make([]*zfs.Snapshot, len(history.versions))
+	for i, version := range history.versions {
+		snapshots[i] = version.Snapshot
+	}
+	return snapshots
+}
+
 // sizes returns the sizes of a file for a sparkline, -1 where it does not exist.
 func (history *pathHistory) sizes() []int64 {
 	values := make([]int64, len(history.versions))

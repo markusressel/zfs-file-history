@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"zfs-file-history/internal/testutil"
 
 	"github.com/gdamore/tcell/v2"
@@ -190,4 +191,24 @@ func TestGrouping_SavedWithTheLayout(t *testing.T) {
 
 	restored.ResetColumnLayout()
 	assert.Empty(t, restored.GetGrouping(), "not grouped by default")
+}
+
+// PgUp selects the first entry before the header also where the row of its group is above it, which is shown with it.
+func TestGrouping_PgUpSelectsTheFirstEntryBeforeTheHeader(t *testing.T) {
+	table, _ := newGroupingTestTable()
+	table.CycleGrouping()
+	drawGroupedTable(t, table)
+	entries := table.GetEntries()
+	table.Select(entries[len(entries)-1])
+	now, advance := pressedAfter()
+	table.firstRowStop.SetClock(now)
+	pgUp := func() {
+		advance(time.Second)
+		table.table.InputHandler()(tcell.NewEventKey(tcell.KeyPgUp, 0, tcell.ModNone), func(tview.Primitive) {})
+	}
+	pgUp()
+	assert.Equal(t, entries[0], table.GetSelectedEntry(), "the first entry, not the row of its group")
+	assert.Contains(t, drawGroupedTable(t, table)[2], "Kind b", "its group is shown above it")
+	pgUp()
+	assert.Nil(t, table.GetSelectedEntry(), "then the header")
 }

@@ -210,6 +210,12 @@ func createUiFor(start Start, fullscreen bool) (*tview.Application, *MainPage, *
 		diskPage.diskBrowser.SelectDevice(pool, device)
 	}
 	poolPage.poolDevices.SetOnShowDisk(showDisk)
+	// a click on the dataset of the folder in the overview of the files page shows it
+	mainPage.pathOverview.SetOnShowDataset(func(name string) {
+		switchTo(Dataset)
+		datasetPage.focusComponent(datasetPage.componentTitles[datasetPage.datasetBrowser])
+		datasetPage.datasetBrowser.SelectDataset(name)
+	})
 	// showSetupPermissions offers to allow the commands that need root (see zfs.SudoersRules), from the command
 	// menu, or by itself (automatic) at the start if not all that only read are allowed: then only if nothing else
 	// is in front, and with the option to never ask again.

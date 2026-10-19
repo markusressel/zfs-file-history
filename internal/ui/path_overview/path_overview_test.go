@@ -94,62 +94,6 @@ func TestSparklineValues(t *testing.T) {
 	assert.Equal(t, []int64{-1, 1, 0, 1, 0}, history.activity(), "1 where entries were added or removed")
 }
 
-// plainText returns the parts as shown, without style tags.
-func plainText(parts []textPart) []string {
-	var result []string
-	for _, part := range parts {
-		result = append(result, testutil.StripTags(part.text()))
-	}
-	return result
-}
-
-func TestHistoryParts(t *testing.T) {
-	uiutil.InitTimeFormat()
-	lastChange := uiutil.FormatTime(snapshots[4].Properties.CreationDate)
-
-	assert.Equal(t, []string{"3 versions", "last changed " + lastChange, "in 5 of 5 snapshots"},
-		plainText(historyParts(summarize(versions(file(1, 1), file(1, 1), file(2, 2), file(2, 2), file(3, 3))), false)))
-	assert.Equal(t, []string{"1 version", "in 5 of 5 snapshots"},
-		plainText(historyParts(summarize(versions(file(1, 1), file(1, 1), file(1, 1), file(1, 1), file(1, 1))), false)))
-	assert.Equal(t, []string{"not in any of the 5 snapshots"}, plainText(historyParts(summarize(versions(nil, nil, nil, nil, nil)), false)))
-	assert.Equal(t, []string{"entries added/removed in 1 of 5 snapshots", "last " + lastChange},
-		plainText(historyParts(summarize(versions(folder(1), folder(1), folder(1), folder(1), folder(2))), true)))
-	assert.Equal(t, []string{"no entries added/removed in 5 snapshots"},
-		plainText(historyParts(summarize(versions(folder(1), folder(1), folder(1), folder(1), folder(1))), true)))
-	assert.Equal(t, []string{"no snapshots"}, plainText(historyParts(summarize(nil), false)))
-}
-
-// Lines that are too long leave out their least important parts first, then shorten the path from the left.
-func TestFitParts(t *testing.T) {
-	parts := []textPart{
-		{plain: "pool/home/markus/docs", color: tcell.ColorWhite},
-		{styled: "vs s3: +2 −1 ~4", priority: 1},
-		{styled: "12 unchanged", priority: 5},
-		{styled: "in 4 of 5 snapshots", priority: 3},
-	}
-	full := "pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged · in 4 of 5 snapshots"
-	for _, test := range []struct {
-		width    int
-		expected string
-	}{
-		{100, full},
-		{textWidth(full), full},
-		{70, "pool/home/markus/docs · vs s3: +2 −1 ~4 · in 4 of 5 snapshots"},
-		{45, "pool/home/markus/docs · vs s3: +2 −1 ~4"},
-		// the path is shortened before the comparison is left out
-		{35, "…home/markus/docs · vs s3: +2 −1 ~4"},
-		{30, "…markus/docs · vs s3: +2 −1 ~4"},
-		// not below minShortenedWidth: then the comparison is left out, and the whole path may fit again
-		{25, "pool/home/markus/docs"},
-		{15, "…me/markus/docs"},
-		{5, "…docs"},
-	} {
-		line := testutil.StripTags(fitParts(parts, test.width))
-		assert.Equal(t, test.expected, line, "width %d", test.width)
-		assert.LessOrEqual(t, textWidth(line), test.width, "width %d", test.width)
-	}
-}
-
 // render draws the overview on a simulation screen and returns its lines and the screen.
 func render(t *testing.T, overview *PathOverviewComponent, width int) ([]string, tcell.SimulationScreen) {
 	screen := testutil.DrawToScreen(t, overview.GetLayout(), width, Height)
@@ -160,70 +104,325 @@ func render(t *testing.T, overview *PathOverviewComponent, width int) ([]string,
 	return lines, screen
 }
 
-func TestPathOverview_Draw(t *testing.T) {
+// newDrawnOverview returns an overview of a folder with an added, a deleted and 4 modified entries compared to s3,
+// 12 files and 3 folders, with report.pdf selected, its versions and distances loaded.
+func newDrawnOverview(t *testing.T) (*PathOverviewComponent, *data.FileBrowserEntry, *data.FolderSummary) {
 	uiutil.InitTimeFormat()
 	counts := diff_state.Counts{Added: 2, Deleted: 1, Modified: 4, Equal: 12}
 	overview := NewPathOverview(func() diff_state.Counts { return counts })
+	summary := &data.FolderSummary{Files: 12, Folders: 3, Size: 3 << 30, SnapshotSize: 3<<30 - 120<<20, InSnapshot: true}
+	overview.SetFolderSummaryFunc(func() data.FolderSummary { return *summary })
 	folderPath := "/pool/home/markus/docs"
-	entry := &data.FileBrowserEntry{Name: "report.pdf", Type: data.File, RealFile: &data.RealFile{Name: "report.pdf", Path: folderPath + "/report.pdf"}}
+	entry := &data.FileBrowserEntry{Name: "report.pdf", Type: data.File, DiffState: diff_state.Modified,
+		RealFile: &data.RealFile{Name: "report.pdf", Path: folderPath + "/report.pdf", Stat: file(42<<20, 3)}}
 	overview.SetFolder(folderPath)
 	overview.SetEntry(entry)
 	overview.SetSelectedSnapshot(snapshots[2])
+	return overview, entry, summary
+}
+
+// loadVersions loads the versions of the folder and of report.pdf; 3 entries differ from now in s1, 2 in s2, 1 in
+// s3, none in s4 and s5.
+func loadVersions(overview *PathOverviewComponent, entry *data.FileBrowserEntry) {
+	overview.SetVersions("pool/home", "/pool/home", overview.folderPath,
+		versions(folder(1), folder(1), folder(2), folder(2), folder(3)),
+		entry, versions(nil, file(10, 1), file(20, 2), file(20, 2), file(40, 3)))
+	// computed in the background (see TestPathOverview_SetFolderChanges)
+	overview.distances = &folderDistances{folderPath: overview.folderPath, byName: map[string]int{"s1": 3, "s2": 2, "s3": 1, "s4": 0, "s5": 0}}
+}
+
+// The overview has a section for the folder and one for the selected entry, each with the same three columns: what
+// it is now, how it compares to the selected snapshot and its history, with a graph below.
+func TestPathOverview_Draw(t *testing.T) {
+	overview, entry, _ := newDrawnOverview(t)
 
 	// while the versions load
 	lines, _ := render(t, overview, 120)
-	assert.Contains(t, lines[1], "Folder    /pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged")
-	assert.Contains(t, lines[2], "…")
-	assert.Contains(t, lines[4], "Selected  report.pdf · …")
+	for _, line := range lines {
+		t.Log(line)
+	}
+	assert.Regexp(t, `^│ Folder    3\.0 GiB  12 files  3 folders +│ vs s3  \+2 −1 ~4  \+120 MiB │ … │$`, lines[1])
+	assert.Contains(t, lines[2], "          …")
+	assert.Regexp(t, `^│ Selected  report\.pdf  42 MiB +│ vs s3  modified           │ … │$`, lines[4])
 
-	overview.SetVersions("pool/home", "/pool/home", folderPath,
-		versions(folder(1), folder(1), folder(2), folder(2), folder(3)),
-		entry, versions(nil, file(10, 1), file(20, 2), file(20, 2), file(40, 3)))
-	// the distances are computed in the background (see TestPathOverview_Distances)
-	lines, _ = render(t, overview, 120)
-	assert.Contains(t, lines[2], "…")
-	// 3 entries differ from now in s1, 2 in s2, 1 in s3, none in s4 and s5
-	overview.distances = &folderDistances{folderPath: folderPath, byName: map[string]int{"s1": 3, "s2": 2, "s3": 1, "s4": 0, "s5": 0}}
-
+	loadVersions(overview, entry)
 	lines, screen := render(t, overview, 120)
 	for _, line := range lines {
 		t.Log(line)
 	}
 	assert.Contains(t, lines[0], "Overview")
-	assert.Contains(t, lines[1], "Folder    pool/home/markus/docs · vs s3: +2 −1 ~4 · 12 unchanged · same as now since s4")
-	// the graphs have their own lines, one dot column per snapshot: s1..s5
-	assert.Contains(t, lines[2], "  differs ⣷⣄⡀ → now")
-	assert.Contains(t, lines[4], "Selected  report.pdf · 3 versions · last changed ")
-	assert.Contains(t, lines[5], "  size    ⢀⣤⡇")
-
-	// the selected snapshot (s3, in the second cell) is highlighted in both graphs
-	graphX := 2 + labelWidth
-	for _, y := range []int{2, 5} {
-		for i := 0; i < 3; i++ {
-			_, style, _ := screen.Get(graphX+i, y)
-			_, background, _ := style.Decompose()
-			assert.Equal(t, i == 1, background == theme.Colors.Sparkline.SelectedBackground, "row %d, cell %d", y, i)
-		}
-	}
+	// the first column fills the rest: the others are at the right edge
+	assert.Regexp(t, `^│ Folder    3\.0 GiB  12 files  3 folders +│ vs s3  \+2 −1 ~4  \+120 MiB │ unchanged since s4 +│$`, lines[1])
+	assert.Contains(t, lines[2], "  vs now  ")
+	assert.Contains(t, lines[2], " → now │ in pool/home")
+	assert.Regexp(t, `^│ Selected  report\.pdf  42 MiB +│ vs s3  modified           │ 3 versions in 4 of 5 snapshots +│$`, lines[4])
+	assert.Contains(t, lines[5], "  size    ")
+	assert.Contains(t, lines[5], " → now │ last changed ")
 	// a divider between the folder and the selected entry, joined to the border
 	assert.Equal(t, "├"+strings.Repeat("─", 118)+"┤", lines[3])
 
-	// narrow: nothing is cut off, the least important parts are left out
-	lines, _ = render(t, overview, 50)
-	for _, line := range lines {
-		t.Log(line)
+	// Regression: only one cell of the selected snapshot (s3) was highlighted, not all of its cells in the stretched
+	// graphs
+	graphX := 2 + labelWidth
+	for _, y := range []int{2, 5} {
+		var highlighted []int
+		for column := graphX; column < 120; column++ {
+			_, style, _ := screen.Get(column, y)
+			if _, background, _ := style.Decompose(); background == theme.Colors.Sparkline.SelectedBackground {
+				highlighted = append(highlighted, column-graphX)
+			}
+		}
+		require.NotEmpty(t, highlighted, "row %d", y)
+		width := len(highlighted)
+		assert.Greater(t, width, 1, "row %d: all cells of s3", y)
+		assert.Equal(t, highlighted[len(highlighted)-1]-highlighted[0]+1, width, "row %d: one run", y)
+		assert.InDelta(t, 2*width, highlighted[0], float64(width), "row %d: the third of five", y)
 	}
-	assert.Contains(t, lines[1], "Folder    …/home/markus/docs · vs s3: +2 −1 ~4 │")
-	assert.Contains(t, lines[4], "Selected  report.pdf · 3 versions")
 
 	// moving to another folder: loading again
 	overview.SetFolder("/pool/home/markus/other")
 	overview.SetEntry(nil)
 	overview.SetSelectedSnapshot(nil)
 	lines, _ = render(t, overview, 120)
-	assert.Contains(t, lines[1], "/pool/home/markus/other · select a snapshot to compare")
-	assert.Contains(t, lines[2], "…")
+	assert.Contains(t, lines[1], "no snapshot selected")
 	assert.Contains(t, lines[4], "select a file or folder to see its history")
+}
+
+// The comparison and the history keep their place while the selection moves: their widths only grow while the folder
+// is shown, and start again in another folder.
+func TestPathOverview_ColumnsDoNotMove(t *testing.T) {
+	overview, entry, _ := newDrawnOverview(t)
+	loadVersions(overview, entry)
+	historyColumn := func() int {
+		lines, _ := render(t, overview, 120)
+		return strings.Index(lines[1], "│ unchanged since")
+	}
+	before := historyColumn()
+
+	// a file with a short history and a long name
+	other := &data.FileBrowserEntry{Name: strings.Repeat("long-name-", 5) + ".txt", Type: data.File, DiffState: diff_state.Equal}
+	overview.SetEntry(other)
+	overview.SetVersions("pool/home", "/pool/home", overview.folderPath,
+		versions(folder(1), folder(1), folder(2), folder(2), folder(3)), other, versions(nil, nil, nil, nil, file(1, 1)))
+	assert.Equal(t, before, historyColumn(), "the history column of the longest history stays")
+
+	overview.SetFolder("/pool/home/markus/other")
+	overview.SetVersions("pool/home", "/pool/home", overview.folderPath, versions(folder(1), folder(1), folder(1), folder(1), folder(1)), nil, nil)
+	overview.distances = &folderDistances{folderPath: overview.folderPath, byName: map[string]int{"s1": 0, "s2": 0, "s3": 0, "s4": 0, "s5": 0}}
+	overview.SetEntry(nil)
+	lines, _ := render(t, overview, 120)
+	assert.Regexp(t, `│ unchanged in all 5 snapshots │$`, lines[1], "as wide as the texts of the other folder")
+}
+
+// Regression: the comparison kept the width of a longer text shown before (e.g. "3 pending" while the states were
+// compared), while the name of the selected file next to it was shortened: "demo-pools-large.g…".
+func TestPathOverview_NameTakesTheWidthGrownBefore(t *testing.T) {
+	overview, _, summary := newDrawnOverview(t)
+	long := &zfs.Snapshot{Name: "2026-10-18-190000", ParentDataset: dataset, Properties: zfs.SnapshotProperties{CreationDate: time.Date(2026, 10, 18, 19, 0, 0, 0, time.UTC)}}
+	overview.SetSelectedSnapshot(long)
+	entry := &data.FileBrowserEntry{Name: "demo-pools-large.gif", Type: data.File, DiffState: diff_state.Equal,
+		RealFile: &data.RealFile{Name: "demo-pools-large.gif", Path: overview.folderPath + "/demo-pools-large.gif", Stat: file(12<<20, 3)}}
+	overview.SetEntry(entry)
+	overview.SetVersions("pool/home", "/pool/home", overview.folderPath, versions(folder(1), folder(1), folder(1), folder(1), folder(1)),
+		entry, versions(nil, file(1, 1), file(1, 1), file(1, 1), file(1, 1)))
+	overview.distances = &folderDistances{folderPath: overview.folderPath, byName: map[string]int{"s1": 0, "s2": 0, "s3": 0, "s4": 0, "s5": 0}}
+	// the comparison of the folder is wide: with the change of the size
+	render(t, overview, 115)
+	summary.SnapshotSize = summary.Size
+
+	lines, _ := render(t, overview, 115)
+	assert.Contains(t, lines[4], "Selected  demo-pools-large.gif  12 MiB │ vs 2026-10-18-190000  same")
+	assert.Contains(t, lines[4], "│ 1 version in 4 of 5 snapshots")
+}
+
+// Regression: with nothing selected, "select a file or folder to see its history" was shortened to the first column.
+func TestPathOverview_NothingSelectedTakesTheLine(t *testing.T) {
+	overview, entry, _ := newDrawnOverview(t)
+	loadVersions(overview, entry)
+	overview.SetEntry(nil)
+	lines, _ := render(t, overview, 90)
+	assert.Regexp(t, `^│ Selected  select a file or folder to see its history +│$`, lines[4], "no columns")
+}
+
+// A click on a snapshot in a graph selects it, the snapshot below the mouse is highlighted in both graphs.
+func TestPathOverview_ClickSelectsSnapshot(t *testing.T) {
+	overview, entry, _ := newDrawnOverview(t)
+	loadVersions(overview, entry)
+	var selected []string
+	overview.SetOnSelectSnapshot(func(snapshot *zfs.Snapshot) { selected = append(selected, snapshot.Name) })
+	_, screen := render(t, overview, 120)
+	mouse := func(action tview.MouseAction, x int, y int) {
+		overview.GetLayout().MouseHandler()(action, tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone), func(tview.Primitive) {})
+	}
+
+	// the first cells of the graph of the folder are s1
+	graphX := 2 + labelWidth
+	mouse(tview.MouseMove, graphX, 2)
+	screen = testutil.DrawToScreen(t, overview.GetLayout(), 120, Height)
+	hovered := func(y int) bool {
+		_, style, _ := screen.Get(graphX, y)
+		_, background, _ := style.Decompose()
+		return background == theme.Colors.Sparkline.HoverBackground
+	}
+	assert.True(t, hovered(2), "in the graph of the folder")
+	mouse(tview.MouseLeftClick, graphX, 2)
+	assert.Equal(t, []string{"s1"}, selected)
+
+	// the last cells of the graph of report.pdf are s5
+	lines := testutil.ScreenLines(screen)
+	end := strings.Index(lines[5], " → now")
+	require.Positive(t, end)
+	mouse(tview.MouseLeftClick, len([]rune(lines[5][:end]))-1, 5)
+	assert.Equal(t, []string{"s1", "s5"}, selected)
+
+	// not while a dialog is in front
+	overview.SetEnabledFunc(func() bool { return false })
+	mouse(tview.MouseLeftClick, graphX, 2)
+	assert.Equal(t, []string{"s1", "s5"}, selected)
+}
+
+// The snapshot in the history of the folder ("unchanged since s4") selects it when clicked, the name of the dataset
+// shows it on the datasets page.
+func TestPathOverview_HistoryLinks(t *testing.T) {
+	overview, entry, _ := newDrawnOverview(t)
+	loadVersions(overview, entry)
+	var clicked []string
+	overview.SetOnSelectSnapshot(func(snapshot *zfs.Snapshot) { clicked = append(clicked, "snapshot "+snapshot.Name) })
+	overview.SetOnShowDataset(func(name string) { clicked = append(clicked, "dataset "+name) })
+	_, screen := render(t, overview, 120)
+	click := func(text string, offset int) {
+		x, y, found := testutil.FindInScreen(screen, text)
+		require.True(t, found, text)
+		overview.GetLayout().MouseHandler()(tview.MouseLeftClick, tcell.NewEventMouse(x+offset, y, tcell.Button1, tcell.ModNone), func(tview.Primitive) {})
+	}
+
+	click("unchanged since s4", len("unchanged since "))
+	click("in pool/home", len("in "))
+	assert.Equal(t, []string{"snapshot s4", "dataset pool/home"}, clicked)
+	// not the words in front of them
+	click("unchanged since s4", 0)
+	click("in pool/home", 0)
+	assert.Len(t, clicked, 2)
+
+	// hovered, the snapshot is highlighted in the graphs as well
+	x, y, _ := testutil.FindInScreen(screen, "unchanged since s4")
+	overview.GetLayout().MouseHandler()(tview.MouseMove, tcell.NewEventMouse(x+len("unchanged since "), y, tcell.ButtonNone, tcell.ModNone), func(tview.Primitive) {})
+	screen = testutil.DrawToScreen(t, overview.GetLayout(), 120, Height)
+	hovered := 0
+	for column := 2 + labelWidth; column < 120; column++ {
+		_, style, _ := screen.Get(column, 2)
+		if _, background, _ := style.Decompose(); background == theme.Colors.Sparkline.HoverBackground {
+			hovered++
+		}
+	}
+	assert.Positive(t, hovered, "s4 in the graph of the folder")
+}
+
+// Narrow: the columns on the right are left out first, the first one is shortened.
+func TestPathOverview_Narrow(t *testing.T) {
+	overview, entry, _ := newDrawnOverview(t)
+	loadVersions(overview, entry)
+
+	lines, _ := render(t, overview, 80)
+	for _, line := range lines {
+		t.Log(line)
+	}
+	assert.Regexp(t, `^│ Folder    3\.0 GiB  12 files  3 folders +│ vs s3  \+2 −1 ~4  \+120 MiB │$`, lines[1])
+	assert.NotContains(t, lines[1], "unchanged")
+	assert.Contains(t, lines[2], " → now")
+
+	lines, _ = render(t, overview, 40)
+	for _, line := range lines {
+		t.Log(line)
+	}
+	assert.Contains(t, lines[1], "Folder    3.0 GiB  12 files  3 fold…")
+	assert.Contains(t, lines[4], "Selected  report.pdf  42 MiB")
+}
+
+// The folder section tells what the folder holds directly, and how much the size of its files changed since the
+// selected snapshot.
+func TestPathOverview_FolderSummary(t *testing.T) {
+	overview, _, summary := newDrawnOverview(t)
+
+	summary.SnapshotSize = summary.Size + 2048
+	lines, _ := render(t, overview, 140)
+	assert.Contains(t, lines[1], "vs s3  +2 −1 ~4  −2.0 KiB")
+
+	summary.SnapshotSize = summary.Size
+	lines, _ = render(t, overview, 140)
+	assert.Contains(t, lines[1], "vs s3  +2 −1 ~4 ", "no change of the size")
+	assert.NotContains(t, lines[1], "KiB")
+
+	*summary = data.FolderSummary{Folders: 1}
+	lines, _ = render(t, overview, 140)
+	assert.Contains(t, lines[1], "Folder    no files  1 folder")
+
+	// while the folder is read: a spinner in place of the sizes of the last load, and no change of the size
+	*summary = data.FolderSummary{Files: 12, Size: 3 << 30, SnapshotSize: 1 << 30, InSnapshot: true, Loading: true}
+	lines, screen := render(t, overview, 140)
+	assert.Regexp(t, `Folder    [`+strings.Join(uiutil.SpinnerFrames, "")+`] reading the folder +│ vs s3  \+2 −1 ~4 +│`, lines[1])
+	_, style, _ := screen.Get(2+labelWidth, 1)
+	foreground, _, _ := style.Decompose()
+	assert.Equal(t, theme.Colors.Layout.Loading.Spinner, foreground)
+}
+
+// Since when the folder is the same as now, from how many entries differ from now in each snapshot.
+func TestSameAsNowText(t *testing.T) {
+	history := summarize(versions(folder(1), folder(1), folder(1), folder(1), folder(1)))
+	text := func(byName map[string]int) string {
+		text, _ := (&PathOverviewComponent{}).sameAsNowText(history, &folderDistances{byName: byName})
+		return testutil.StripTags(text)
+	}
+	assert.Equal(t, "unchanged since s4", text(map[string]int{"s1": 3, "s2": 2, "s3": 1, "s4": 0, "s5": 0}))
+	assert.Equal(t, "unchanged in all 5 snapshots", text(map[string]int{"s1": 0, "s2": 0, "s3": 0, "s4": 0, "s5": 0}))
+	assert.Equal(t, "changed since s5", text(map[string]int{"s1": 0, "s2": 0, "s3": 0, "s4": 0, "s5": 1}))
+	assert.Equal(t, "created after s5", text(map[string]int{"s1": 0, "s2": 0}), "not in the newest snapshot")
+	loading, link := (&PathOverviewComponent{}).sameAsNowText(history, nil)
+	assert.Equal(t, "…", testutil.StripTags(loading))
+	assert.Nil(t, link)
+}
+
+func TestHistoryTexts(t *testing.T) {
+	uiutil.InitTimeFormat()
+	lastChange := uiutil.FormatTime(snapshots[4].Properties.CreationDate)
+	texts := func(history *pathHistory, isFolder bool) []string {
+		first, second := historyTexts(history, isFolder)
+		return []string{testutil.StripTags(first), testutil.StripTags(second)}
+	}
+	assert.Equal(t, []string{"3 versions in 5 of 5 snapshots", "last changed " + lastChange},
+		texts(summarize(versions(file(1, 1), file(1, 1), file(2, 2), file(2, 2), file(3, 3))), false))
+	assert.Equal(t, []string{"1 version in 5 of 5 snapshots", ""},
+		texts(summarize(versions(file(1, 1), file(1, 1), file(1, 1), file(1, 1), file(1, 1))), false))
+	assert.Equal(t, []string{"not in any of the 5 snapshots", ""}, texts(summarize(versions(nil, nil, nil, nil, nil)), false))
+	assert.Equal(t, []string{"1 change in 5 snapshots", "last changed " + lastChange},
+		texts(summarize(versions(folder(1), folder(1), folder(1), folder(1), folder(2))), true))
+	assert.Equal(t, []string{"no changes in 5 snapshots", ""},
+		texts(summarize(versions(folder(1), folder(1), folder(1), folder(1), folder(1))), true))
+	assert.Equal(t, []string{"no snapshots", ""}, texts(summarize(nil), false))
+}
+
+func TestStretch(t *testing.T) {
+	values, selected := stretch([]int64{1, 2, 3}, 1, 6)
+	assert.Equal(t, []int64{1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3}, values, "whole cells: two values per cell")
+	assert.Equal(t, 4, selected, "the first of its cells")
+
+	// Regression: each value was repeated as often as all of them fit, rounded down, so cells at the end stayed
+	// empty: 5 values in 51 cells took 50.
+	values, _ = stretch([]int64{1, 2, 3, 4, 5}, -1, 51)
+	assert.Len(t, values, 102, "all cells")
+	values, selected = stretch([]int64{1, 2, 3}, 2, 7)
+	assert.Equal(t, []int64{1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3}, values)
+	assert.Equal(t, 8, selected)
+
+	values, selected = stretch([]int64{1, 2, 3}, 1, 2)
+	assert.Equal(t, []int64{1, 2, 3, 3}, values, "half cells: more values than cells")
+	assert.Equal(t, 1, selected)
+	values, _ = stretch(make([]int64, 60), -1, 40)
+	assert.Len(t, values, 80, "all cells, not 30")
+
+	values, selected = stretch([]int64{1, 2, 3, 4}, -1, 2)
+	assert.Equal(t, []int64{1, 2, 3, 4}, values, "no room to stretch")
+	assert.Equal(t, -1, selected)
 }
 
 func TestSameAsNowSince(t *testing.T) {
@@ -292,8 +491,8 @@ func TestPathOverview_NowMarker(t *testing.T) {
 	assert.Contains(t, lines[2], " → now")
 	// only room for 16 cells after the label: the graph uses all of it (merging snapshots), no marker
 	lines, _ = render(t, overview, 2+labelWidth+16+2)
-	assert.NotContains(t, lines[2], "now")
-	assert.Contains(t, lines[2], "differs")
+	assert.NotContains(t, lines[2], "→ now")
+	assert.Contains(t, lines[2], "vs now")
 }
 
 // Regression: a click into the overview focused it, which Tab skips: there is nothing to do in it.

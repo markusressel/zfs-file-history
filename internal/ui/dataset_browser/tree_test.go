@@ -398,3 +398,45 @@ func TestDatasetBrowser_ClickOnToggle(t *testing.T) {
 	clickToggle("▾ rpool", 0)
 	waitFor("rpool selected", []string{"rpool"}, "rpool")
 }
+
+// SelectDataset selects a dataset below collapsed parents (e.g. the dataset of a folder of the files page): they are
+// expanded. While the datasets load, it is selected once they are loaded, instead of the one selected before.
+func TestDatasetBrowser_SelectDataset(t *testing.T) {
+	setListDatasets(t, func() ([]*zfs.DatasetListEntry, error) {
+		return datasets("rpool", "rpool/home", "rpool/var", "rpool/var/lib", "rpool/var/log"), nil
+	})
+	app, browser, _ := newBrowserApp(t)
+	state := func() (visible []string, selected string, loading bool) {
+		testutil.OnUiThread(t, app, func() {
+			visible = names(browser.tableContainer.GetEntries())
+			if entry := browser.tableContainer.GetSelectedEntry(); entry != nil {
+				selected = entry.Name
+			}
+			loading = browser.IsLoading()
+		})
+		return
+	}
+	testutil.OnUiThread(t, app, func() {
+		browser.SetPath("/rpool/home", false)
+		browser.Refresh(false)
+	})
+	require.Eventually(t, func() bool { visible, _, _ := state(); return len(visible) == 5 }, 2*time.Second, 10*time.Millisecond)
+
+	testutil.OnUiThread(t, app, func() {
+		browser.setCollapsed("rpool/var", true)
+		browser.SelectDataset("rpool/var/log")
+	})
+	visible, selected, _ := state()
+	assert.Equal(t, "rpool/var/log", selected)
+	assert.Contains(t, visible, "rpool/var/log", "its parent is expanded")
+
+	// while loading: once loaded
+	testutil.OnUiThread(t, app, func() {
+		browser.Refresh(false)
+		browser.SelectDataset("rpool/home")
+	})
+	require.Eventually(t, func() bool {
+		_, selected, loading := state()
+		return !loading && selected == "rpool/home"
+	}, 2*time.Second, 10*time.Millisecond)
+}

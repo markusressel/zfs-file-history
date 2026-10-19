@@ -712,3 +712,38 @@ func TestPoolHistoryColumnKeysAreUnique(t *testing.T) {
 		}
 	}
 }
+
+// Regression: PgUp near the top selected the header row, skipping the first row. It selects the first row first, then
+// the header; also from far down a long list, a page at a time.
+func TestPoolHistoryDialog_PgUpSelectsTheFirstRowBeforeTheHeader(t *testing.T) {
+	var many []zfs.PoolHistoryEntry
+	for i := range 200 {
+		many = append(many, zfs.PoolHistoryEntry{Pool: "tank", Time: historyAt(0).Add(time.Duration(i) * 2 * time.Minute), Event: "zfs snapshot"})
+	}
+	dt := newHistoryDialogTest(t, "tank", "", func() ([]zfs.PoolHistoryEntry, error) { return many, nil })
+	dt.waitForText("200 of 200 groups")
+	selection := func() (row int) {
+		testutil.OnUiThread(t, dt.app, func() { row, _ = dt.dialog.table.GetSelection() })
+		return row
+	}
+	// each a new press, not held down
+	clock := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	testutil.OnUiThread(t, dt.app, func() {
+		dt.dialog.firstRowStop.SetClock(func() time.Time {
+			clock = clock.Add(time.Second)
+			return clock
+		})
+		dt.dialog.table.Select(100, 0)
+	})
+	testutil.ScreenText(t, dt.app, dt.screen)
+
+	var rows []int
+	for i := 0; i < 50 && selection() != 0; i++ {
+		dt.key(tcell.KeyPgUp, 0)
+		testutil.ScreenText(t, dt.app, dt.screen)
+		rows = append(rows, selection())
+	}
+	require.GreaterOrEqual(t, len(rows), 3)
+	assert.Equal(t, []int{1, 0}, rows[len(rows)-2:], "the first row, then the header")
+	assert.Greater(t, rows[0], 1, "a page up, not to the first row at once")
+}

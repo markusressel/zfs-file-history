@@ -151,6 +151,7 @@ var (
 			Graph:              Accent,
 			Selected:           Primary,
 			SelectedBackground: Secondary,
+			HoverBackground:    Hover,
 		},
 		// calm for small values, warm for large ones
 		Magnitude: []GradientStop{

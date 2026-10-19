@@ -102,6 +102,9 @@ type RowSelectionTable[T RowSelectionTableEntry] struct {
 
 	isUpdatingData bool
 
+	// firstRowStop makes PgUp and Home stop at the first entry before the header row. Only accessed on the UI thread.
+	firstRowStop uiutil.FirstRowStop
+
 	lastSelectedEntry      *T
 	multiSelectEnabled     bool
 	multiSelectionEntryMap map[string]*T
@@ -262,6 +265,10 @@ func (c *RowSelectionTable[T]) createLayout() {
 
 		if key == tcell.KeyRune && event.Rune() == 'b' && len(c.groupings) > 0 {
 			c.CycleGrouping()
+			return nil
+		}
+
+		if len(c.entries) > 0 && c.firstRowStop.HandleKey(c.table, event, slices.Index(c.rowEntries, c.entries[0]), c.SelectFirstIfExists) {
 			return nil
 		}
 

@@ -310,6 +310,8 @@ type SparklineColors struct {
 	// Selected and SelectedBackground mark the selected value, e.g. the snapshot selected in a list
 	Selected           tcell.Color
 	SelectedBackground tcell.Color
+	// HoverBackground is the background of the value below the mouse, which can be clicked
+	HoverBackground tcell.Color
 }
 
 // GradientStop is a color of a gradient: values at Position (0: zero, 1: the highest value of the graph) have this

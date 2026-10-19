@@ -111,6 +111,8 @@ type PoolHistoryDialog struct {
 	internal bool
 	// groupOrder and entryOrder are the indices of groups and all in the order they are shown, see sortRows
 	groupOrder, entryOrder []int
+	// firstRowStop makes PgUp and Home stop at the first row before the header row
+	firstRowStop util.FirstRowStop
 	// headerWasSelected is whether the header row was selected when the mouse button went down, see handleHeaderClick
 	headerWasSelected bool
 }
@@ -291,6 +293,11 @@ func (d *PoolHistoryDialog) createLayout() {
 			return nil
 		case event.Key() == tcell.KeyF2:
 			d.openColumnDialog()
+			return nil
+		case len(d.content.rows) > 0 && d.firstRowStop.HandleKey(d.table.Table, event, 1, func() {
+			d.table.Select(1, 0)
+			d.table.ScrollToBeginning()
+		}):
 			return nil
 		case d.isHeaderSelected() && (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight):
 			step := 1

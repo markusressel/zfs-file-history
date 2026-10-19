@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 	"time"
+	"zfs-file-history/internal/data"
 	"zfs-file-history/internal/folder_listing"
 	"zfs-file-history/internal/testutil"
 
@@ -40,4 +41,20 @@ func TestFileBrowser_WorkingCopyListing(t *testing.T) {
 	slices.Sort(names)
 	assert.Equal(t, []string{"a.txt", "b.txt", "c.log", "sub"}, names)
 	require.True(t, listing.Equal(folder_listing.Read(ft.dir)), "the same as reading the folder")
+}
+
+// The summary of the folder counts its entries and sums the size of its files, not of what is below its folders.
+func TestFileBrowser_FolderSummary(t *testing.T) {
+	ft := newFileBrowserTest(t, "")
+	testutil.OnUiThread(t, ft.app, func() { ft.fileBrowser.SetPath(ft.dir, true) })
+	require.Eventually(t, func() bool {
+		summary := data.FolderSummary{}
+		testutil.OnUiThread(t, ft.app, func() { summary = ft.fileBrowser.FolderSummary() })
+		return summary.Files+summary.Folders == 4
+	}, 3*time.Second, 10*time.Millisecond)
+
+	var summary data.FolderSummary
+	testutil.OnUiThread(t, ft.app, func() { summary = ft.fileBrowser.FolderSummary() })
+	// a.txt, b.txt and c.log with their names as content, not sub/x.txt
+	assert.Equal(t, data.FolderSummary{Files: 3, Folders: 1, Size: 15}, summary)
 }

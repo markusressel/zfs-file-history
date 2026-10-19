@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -211,9 +212,37 @@ func (datasetBrowser *DatasetBrowserComponent) saveCollapsed() {
 }
 
 // SelectOnLoad selects the dataset with the given name once the datasets are loaded (if it is shown), instead of
-// the one containing the path set with SetPath, e.g. to restore the last session. Must be called on the UI thread.
+// the one selected before or the one containing the path set with SetPath, e.g. to restore the last session. Must be
+// called on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) SelectOnLoad(name string) {
 	datasetBrowser.initialSelection = name
+}
+
+// SelectDataset selects the dataset with the given name, e.g. the dataset of a folder on the files page: its parents
+// are expanded in the tree, so it is shown. Once the datasets are loaded, while a load runs. Must be called on the UI
+// thread.
+func (datasetBrowser *DatasetBrowserComponent) SelectDataset(name string) {
+	if datasetBrowser.loader.IsLoading() || len(datasetBrowser.allEntries) == 0 {
+		datasetBrowser.initialSelection = name
+		return
+	}
+	expanded := false
+	for parent := path.Dir(name); parent != "." && parent != "/"; parent = path.Dir(parent) {
+		if datasetBrowser.collapsed[parent] {
+			delete(datasetBrowser.collapsed, parent)
+			expanded = true
+		}
+	}
+	if expanded {
+		datasetBrowser.saveCollapsed()
+		datasetBrowser.updateEntries()
+	}
+	for _, entry := range datasetBrowser.tableContainer.GetEntries() {
+		if entry.Name == name {
+			datasetBrowser.tableContainer.Select(entry)
+			return
+		}
+	}
 }
 
 // IsLoading returns whether the datasets are being loaded (their result, or error, is not shown yet).
@@ -698,11 +727,12 @@ func formatStatus(allEntries []*zfs.DatasetListEntry, visibleCount int, hideUnmo
 // Runs on the UI thread.
 func (datasetBrowser *DatasetBrowserComponent) updateEntries() {
 	previousName := ""
-	if previous := datasetBrowser.tableContainer.GetSelectedEntry(); previous != nil {
-		previousName = previous.Name
-	} else if datasetBrowser.initialSelection != "" && len(datasetBrowser.allEntries) > 0 {
+	if datasetBrowser.initialSelection != "" && len(datasetBrowser.allEntries) > 0 {
+		// e.g. asked for with SelectDataset while loading: instead of the one selected before
 		previousName = datasetBrowser.initialSelection
 		datasetBrowser.initialSelection = ""
+	} else if previous := datasetBrowser.tableContainer.GetSelectedEntry(); previous != nil {
+		previousName = previous.Name
 	}
 
 	datasetBrowser.updateSizeScales()
