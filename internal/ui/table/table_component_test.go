@@ -580,11 +580,9 @@ func newWideTestTable(columnCount int) (*RowSelectionTable[namedEntry], []*named
 }
 
 // pressTableKey sends a key through the input capture of the component and then to tview, like the application.
+// pressTableKey handles the key like the application: tview's input handler runs the input capture of the table first.
 func pressTableKey(table *RowSelectionTable[namedEntry], key tcell.Key) {
-	event := table.table.GetInputCapture()(tcell.NewEventKey(key, 0, tcell.ModNone))
-	if event != nil {
-		table.table.InputHandler()(event, func(p tview.Primitive) {})
-	}
+	table.table.InputHandler()(tcell.NewEventKey(key, 0, tcell.ModNone), func(p tview.Primitive) {})
 }
 
 func headerTexts(table *RowSelectionTable[namedEntry]) []string {
@@ -722,6 +720,88 @@ func TestTable_ScrollbarReachesTheEndWithPgDn(t *testing.T) {
 		drawTableLayout(table, screen)
 	}
 	assert.Zero(t, table.scrollbar.GetPosition())
+}
+
+// pressedAfter returns a clock for uiutil.FirstRowStop that is advanced by the time between two presses: more than a
+// held key repeats in (a new press), or less (held down).
+func pressedAfter() (now func() time.Time, advance func(time.Duration)) {
+	current := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	return func() time.Time { return current }, func(d time.Duration) { current = current.Add(d) }
+}
+
+// Regression: PgUp from anywhere on the first page selected the header row, skipping the first entry. It selects the
+// first entry first, the header with the next PgUp; also in a long list scrolled down, from where PgUp goes up pages.
+func TestTable_PgUpSelectsTheFirstEntryBeforeTheHeader(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	screen := testutil.NewScreen(t, 40, 12)
+	table.GetLayout().SetRect(0, 0, 40, 12)
+	table.table.Focus(func(tview.Primitive) {})
+	now, advance := pressedAfter()
+	table.firstRowStop.SetClock(now)
+	press := func(key tcell.Key) {
+		advance(time.Second)
+		pressTableKey(table, key)
+		drawTableLayout(table, screen)
+	}
+
+	// on the first page
+	table.Select(entries[3])
+	drawTableLayout(table, screen)
+	press(tcell.KeyPgUp)
+	assert.Equal(t, entries[0], table.GetSelectedEntry(), "the first entry")
+	press(tcell.KeyPgUp)
+	assert.Nil(t, table.GetSelectedEntry(), "then the header")
+
+	// scrolled down: a page up at a time, the first entry, then the header
+	table.Select(entries[40])
+	drawTableLayout(table, screen)
+	var selected []*namedEntry
+	for i := 0; i < 20 && table.GetSelectedEntry() != nil; i++ {
+		press(tcell.KeyPgUp)
+		selected = append(selected, table.GetSelectedEntry())
+	}
+	require.GreaterOrEqual(t, len(selected), 3, "pages")
+	assert.Equal(t, entries[0], selected[len(selected)-2], "the first entry before the header")
+	assert.Nil(t, selected[len(selected)-1])
+	assert.NotEqual(t, entries[0], selected[0], "a page up, not to the first entry at once")
+	assert.Zero(t, table.scrollbar.GetPosition(), "scrolled to the top")
+
+	// Home: the first entry, then the header
+	table.Select(entries[40])
+	drawTableLayout(table, screen)
+	press(tcell.KeyHome)
+	assert.Equal(t, entries[0], table.GetSelectedEntry())
+	assert.Zero(t, table.scrollbar.GetPosition())
+	press(tcell.KeyHome)
+	assert.Nil(t, table.GetSelectedEntry())
+}
+
+// Held down, PgUp and Home stop at the first entry until they are pressed again: a held key repeats faster than it
+// is pressed.
+func TestTable_HeldPgUpStaysOnTheFirstEntry(t *testing.T) {
+	table, entries, _ := newWideTestTable(1)
+	screen := testutil.NewScreen(t, 40, 12)
+	table.GetLayout().SetRect(0, 0, 40, 12)
+	table.table.Focus(func(tview.Primitive) {})
+	now, advance := pressedAfter()
+	table.firstRowStop.SetClock(now)
+
+	for _, key := range []tcell.Key{tcell.KeyPgUp, tcell.KeyHome} {
+		table.Select(entries[40])
+		drawTableLayout(table, screen)
+		advance(time.Second)
+		// repeated every 30 ms
+		for range 30 {
+			pressTableKey(table, key)
+			drawTableLayout(table, screen)
+			advance(30 * time.Millisecond)
+		}
+		assert.Equal(t, entries[0], table.GetSelectedEntry(), "%v: on the first entry while held", key)
+
+		advance(time.Second)
+		pressTableKey(table, key)
+		assert.Nil(t, table.GetSelectedEntry(), "%v: pressed again: the header", key)
+	}
 }
 
 func TestTable_ScrollbarVisibility(t *testing.T) {
