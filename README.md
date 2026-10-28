@@ -11,35 +11,42 @@
 
 </div>
 
+`zfs-file-history` replaces tedious CLI workflows with a visual interface:
+
+* **File Recovery:** Instead of manually navigating `.zfs/snapshot` paths, browse and restore versions via a native file browser.
+* **Proactive Monitoring:** Instant alerts for pool degradation or SMART errors upon startup, replacing manual `zpool status` checks.
+* **Safe Administration:** Visual dataset trees and operation explainers reduce the risk of destructive "fat-finger" CLI errors.
+
 # Features
 
+### 📂 File & Folder History
 * [x] Terminal based file browser for your datasets
-* [x] File history
-  * [x] Find the snapshots in which a file was changed
-  * [x] Diff against the previous version or your local file
-  * [x] Restore files and folders from any snapshot
-  * [x] List deleted files of all snapshots at once, e.g. one that only exists in a single snapshot
+* [x] Find snapshots in which a specific file was changed
+* [x] Diff against the previous version or your local file
+* [x] Restore files and folders from any snapshot
+* [x] List deleted files across all snapshots (e.g., files that only exist in a single snapshot)
 * [x] Folder history, including size and item count over time
+
+### 🛠️ Dataset & Snapshot Management
 * [x] Snapshot management (create, clone, destroy, hold)
-* [x] Dataset overview
-  * [x] Tree view
-  * [x] Space usage breakdown
-  * [x] Edit properties
-  * [x] Manage delegated permissions
-  * [x] Destroy datasets, after a dry run and typing their name
-  * [x] Mount and unmount datasets, load and unload encryption keys (zfs asks for the passphrase in the terminal)
-* [x] Pool health and `zpool status`
-* [x] Progress of running scrubs, resilvers, TRIMs and other pool operations on every page
-* [x] Alerts on every page when a pool has problems (data errors, degraded, failing devices)
-* [x] Disk temperatures and SMART health of the disks of all pools, without waking sleeping disks
-* [x] Damaged files (data errors) marked in the file and snapshot browsers, including the snapshots holding them
-* [x] Start, pause and cancel scrubs and TRIMs, clear pool errors, upgrade pools or enable single features
-* [x] History of pools and datasets (`zpool history`): what was done, when and by whom, including destroyed snapshots,
-  grouped into scrubs, resilvers, TRIMs and runs of commands
+* [x] Dataset overview with tree view and space usage breakdown
+* [x] Edit properties and manage delegated permissions
+* [x] Safe dataset destruction (dry run + manual name confirmation)
+* [x] Mount/unmount datasets and load/unload encryption keys
+
+### 🏥 Pool Health & Hardware
+* [x] Integrated `zpool status` and progress of scrubs, resilvers, and TRIMs on every page
+* [x] Persistent alerts for pool problems (data errors, degraded, failing devices)
+* [x] Disk temperatures and SMART health (without waking sleeping disks)
+* [x] Damaged files (data errors) flagged directly in the file and snapshot browsers
+* [x] Manage pool operations: start/pause/cancel scrubs, clear errors, or upgrade pools
+
+### ⚙️ System & UX
+* [x] Pool and dataset history (`zpool history`) grouped by operation type
 * [x] Live updates using zpool events
-* [x] Filter, sort and configure the columns of all lists
-* [x] Copy any text with the mouse (drag, or double-click a word), also over SSH (needs a terminal with OSC 52)
-* [x] Remembers your last session
+* [x] Filter, sort, and configure list columns
+* [x] Mouse support for text copying (including OSC 52 for SSH)
+* [x] Session persistence (remembers your last state)
 
 All important shortcuts are shown at the bottom of the screen, press `:` to see everything else.
 
@@ -81,8 +88,7 @@ make deploy
 
 ### Root Permissions
 
-Some features need `zpool` and `smartctl` commands that only root may run, ZFS cannot delegate them like dataset
-permissions:
+Certain operations (`zpool events`, `smartctl`, `zpool history`) cannot be delegated via ZFS permissions. To avoid running the entire application as root, `zfs-file-history` uses a targeted sudoers setup to grant your user access only to the specific commands required.
 
 - **Live updates** (`zpool events`): new snapshots and changes of the pools show up right away.
 - **Damaged files** (`zpool status -v`): which files are damaged by data errors.
