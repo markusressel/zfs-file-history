@@ -130,6 +130,21 @@ func TestOnlyChangesKey(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 }
 
+// Regression: "Only changes" was listed in the command menu as a command named by what its key does next, not as a
+// switch with its state.
+func TestOnlyChangesIsASwitch(t *testing.T) {
+	browser := NewSnapshotBrowser(nil)
+	entry := browser.onlyChangesShortcut()
+	require.NotNil(t, entry.On)
+	assert.Equal(t, "Only changes", entry.SwitchName)
+	assert.False(t, entry.On())
+
+	browser.onlyChanges = true
+	entry = browser.onlyChangesShortcut()
+	assert.Equal(t, "Only changes", entry.SwitchName, "the same name while on")
+	assert.True(t, entry.On())
+}
+
 // Regression: the Diff column flashed "?" while the state of a snapshot was determined.
 func TestDiffColumnWhileLoading(t *testing.T) {
 	browser := NewSnapshotBrowser(nil)

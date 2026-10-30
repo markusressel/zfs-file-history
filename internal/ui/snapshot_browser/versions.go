@@ -104,5 +104,6 @@ func (snapshotBrowser *SnapshotBrowserComponent) onlyChangesShortcut() shortcut_
 	if snapshotBrowser.onlyChanges {
 		name, description = "All snapshots", "Show all snapshots again"
 	}
-	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"v"}, Name: name, Description: description, Group: shortcut_helper.GroupView}
+	return shortcut_helper.ShortcutEntry{KeyCombo: []string{"v"}, Name: name, Description: description, Group: shortcut_helper.GroupView}.
+		AsSwitch("Only changes", "Show only the snapshots in which the selection changed", func() bool { return snapshotBrowser.onlyChanges })
 }
