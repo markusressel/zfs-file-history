@@ -24,6 +24,7 @@ env:
   # zfs-utils (libzfs) is not in the official repositories. The packages depend on the zfs-utils AUR package; CI takes
   # it from the ArchZFS repository, signed with this key (see https://github.com/archzfs/archzfs-keyring).
   ARCHZFS_KEY: 3A9917BF0DED5C13F69AC68FABEC0A1208037BE9
+  ARCHZFS_KEY_UID: ArchZFS_Project__https___github.com_archzfs__51bd577f
 
 jobs:
   aur:
@@ -33,11 +34,17 @@ jobs:
 
     steps:
       - name: Add the ArchZFS repository
+        shell: bash
         run: |
+          set -euo pipefail
           pacman-key --init
-          curl --fail --location --silent --show-error --output /tmp/archzfs.asc \
-            "https://raw.githubusercontent.com/archzfs/archzfs-keyring/master/keyring/packager/archzfs/${ARCHZFS_KEY}/${ARCHZFS_KEY}.asc"
-          pacman-key --add /tmp/archzfs.asc
+          # the keyring stores the key, its user ID and the self-signature of the user ID as separate packets
+          base="https://raw.githubusercontent.com/archzfs/archzfs-keyring/master/keyring/packager/archzfs/${ARCHZFS_KEY}"
+          uid="uid/${ARCHZFS_KEY_UID}"
+          for packet in "${ARCHZFS_KEY}.asc" "${uid}/${ARCHZFS_KEY_UID}.asc" "${uid}/certification/${ARCHZFS_KEY}.asc"; do
+            curl --fail --location --silent --show-error "${base}/${packet}" | gpg --dearmor
+          done > /tmp/archzfs.gpg
+          pacman-key --add /tmp/archzfs.gpg
           # fails unless the file contained the key with exactly this fingerprint
           pacman-key --lsign-key "${ARCHZFS_KEY}"
           printf '\n[archzfs]\nSigLevel = Required\nServer = https://github.com/archzfs/archzfs/releases/download/experimental\n' >> /etc/pacman.conf
