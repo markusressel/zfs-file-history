@@ -12,8 +12,11 @@ license=('AGPL3')
 # zfs-utils: libzfs (linked) and the zfs and zpool commands
 depends=('glibc' 'zfs-utils')
 makedepends=('go' 'git' 'just')
-optdepends=('smartmontools: disk health of the pools'
-            'sudo: the permission setup and the operations that need root')
+optdepends=('diffutils: diffs of file versions'
+            'smartmontools: disk health of the pools'
+            'sudo: the permission setup and the operations that need root'
+            'wl-clipboard: copying to the clipboard on Wayland'
+            'xclip: copying to the clipboard on X11')
 provides=("zfs-file-history")
 conflicts=("zfs-file-history")
 install=zfs-file-history.install
