@@ -1,0 +1,94 @@
+name: AUR Packages
+
+# Test-builds the Arch packages from packaging/aur:
+# - zfs-file-history:     stable package, built from the release tag's source tarball
+# - zfs-file-history-git: development package, built from main
+# This workflow never publishes: the maintainer publishes with packaging/aur/publish.sh, so the AUR SSH key never has
+# to be stored in GitHub (see RELEASING.md).
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+  # Every pull request, also one stacked on another: GitHub retargets it to main when the one below is merged, which
+  # starts no workflow. The checks of its commit from before still count then.
+  pull_request:
+    paths:
+      - 'packaging/aur/**'
+      - '.github/workflows/aur-packages.yml'
+
+permissions:
+  contents: read
+
+env:
+  # zfs-utils (libzfs) is not in the official repositories. The packages depend on the zfs-utils AUR package; CI takes
+  # it from the ArchZFS repository, signed with this key (see https://github.com/archzfs/archzfs-keyring).
+  ARCHZFS_KEY: 3A9917BF0DED5C13F69AC68FABEC0A1208037BE9
+
+jobs:
+  aur:
+    name: Build AUR packages
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+
+    steps:
+      - name: Add the ArchZFS repository
+        run: |
+          pacman-key --init
+          curl --fail --location --silent --show-error --output /tmp/archzfs.asc \
+            "https://raw.githubusercontent.com/archzfs/archzfs-keyring/master/keyring/packager/archzfs/${ARCHZFS_KEY}/${ARCHZFS_KEY}.asc"
+          pacman-key --add /tmp/archzfs.asc
+          # fails unless the file contained the key with exactly this fingerprint
+          pacman-key --lsign-key "${ARCHZFS_KEY}"
+          printf '\n[archzfs]\nSigLevel = Required\nServer = https://github.com/archzfs/archzfs/releases/download/experimental\n' >> /etc/pacman.conf
+
+      - name: Install build dependencies
+        run: pacman -Syu --noconfirm --needed git pacman-contrib go just zfs-utils
+
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+
+      - name: Determine version
+        id: meta
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            # PR: build the version currently in the stable PKGBUILD
+            version="$(sed -n 's/^pkgver=//p' packaging/aur/zfs-file-history/PKGBUILD)"
+          fi
+          if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'${version}' is not a release version (expected X.Y.Z)"
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check the publish script
+        run: bash -n packaging/aur/publish.sh
+
+      - name: Prepare build user
+        run: |
+          useradd --create-home builder
+          mkdir -p /build
+          cp -r packaging/aur/zfs-file-history packaging/aur/zfs-file-history-git /build/
+          cp packaging/aur/zfs-file-history.install /build/zfs-file-history/
+          cp packaging/aur/zfs-file-history.install /build/zfs-file-history-git/
+          chown -R builder:builder /build
+
+      - name: Build zfs-file-history (stable)
+        shell: bash
+        working-directory: /build/zfs-file-history
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.meta.outputs.version }}/; s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          su builder -c "updpkgsums && makepkg --printsrcinfo > .SRCINFO && makepkg --force --noconfirm"
+          bash -n zfs-file-history.install
+          cat PKGBUILD .SRCINFO
+
+      - name: Build zfs-file-history-git
+        shell: bash
+        working-directory: /build/zfs-file-history-git
+        run: |
+          # makepkg updates pkgver in the PKGBUILD from `git describe`
+          su builder -c "makepkg --force --noconfirm && makepkg --printsrcinfo > .SRCINFO"
+          cat .SRCINFO
